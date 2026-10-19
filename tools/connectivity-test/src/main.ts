@@ -5,6 +5,7 @@ import { aggregateSamples, formatReport } from "./report";
 import { shareReducer, type ShareEvent, type ShareState } from "./share-state";
 import { mergeSummaries, summarizeStats, type ConnectivitySummary, type InboundVideoStat, type RTCStatsLike } from "./stats";
 import { isTokenExpired, readTokenFromHash } from "./token";
+import { signalUrl } from "./signal-url";
 import { h, renderLiveStats } from "./view";
 
 const STATS_INTERVAL_MS = 2000;
@@ -126,7 +127,7 @@ function start(root: HTMLElement, accessToken: string): void {
     connectBtn.disabled = true;
     status.textContent = "Подключаемся…";
     try {
-      await room.connect(`wss://${location.host}`, accessToken);
+      await room.connect(signalUrl(location), accessToken);
     } catch (err) {
       status.textContent = `Не удалось подключиться: ${errorMessage(err)}`;
       connectBtn.disabled = false;
