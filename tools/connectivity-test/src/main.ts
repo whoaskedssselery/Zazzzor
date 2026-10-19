@@ -1,6 +1,7 @@
 import { Room, RoomEvent, Track, type RemoteTrack } from "livekit-client";
 import { detectBrowser } from "./browser";
-import { isPickerCancelled, screenShareOptions } from "./media-options";
+import { countConnectionEvent, disconnectMessage, emptyConnectionEvents, type ConnectionEvent, type ConnectionEvents } from "./connection-events";
+import { isPickerCancelled, roomOptions, screenShareOptions } from "./media-options";
 import { aggregateSamples, formatReport } from "./report";
 import { shareReducer, type ShareEvent, type ShareState } from "./share-state";
 import { mergeSummaries, summarizeStats, type ConnectivitySummary, type InboundVideoStat, type RTCStatsLike } from "./stats";
@@ -37,10 +38,14 @@ function errorMessage(err: unknown): string {
 }
 
 function start(root: HTMLElement, accessToken: string): void {
-  const room = new Room({ adaptiveStream: true, dynacast: true });
+  const room = new Room(roomOptions());
+  // One measurement phase (e.g. «одна демка»): reset by «Новый замер», the connection stays.
   const samples: ConnectivitySummary[] = [];
   let prevInbound = new Map<string, InboundVideoStat>();
+  let events: ConnectionEvents = emptyConnectionEvents();
   let startedAt = new Date();
+  let phaseStarted = false;
+  const labels = new Map<string, string>();
   let identity = "";
   let share: ShareState = { status: "idle" };
   let timer: number | undefined;
@@ -49,17 +54,28 @@ function start(root: HTMLElement, accessToken: string): void {
   const connectBtn = h("button", { textContent: "Подключиться" });
   const shareBtn = h("button", { textContent: "Начать демку" });
   const copyBtn = h("button", { textContent: "Скопировать отчёт" });
+  const resetBtn = h("button", { textContent: "Новый замер" });
   const shareError = h("p", { className: "warn" });
   const participants = h("p");
   const videos = h("div", { className: "videos" });
   const live = h("div");
   const reportOut = h("pre");
   shareBtn.disabled = true;
+  resetBtn.disabled = true;
 
   if (!browser.reliable60fps) {
     root.append(h("p", { className: "banner", textContent: "Для проверки 60 fps открой ссылку в Chrome или Edge" }));
   }
-  root.append(status, h("p", {}, connectBtn, " ", shareBtn), shareError, participants, videos, live, h("p", {}, copyBtn), reportOut);
+  root.append(
+    status,
+    h("p", {}, connectBtn, " ", shareBtn),
+    shareError,
+    participants,
+    videos,
+    live,
+    h("p", {}, copyBtn, " ", resetBtn),
+    reportOut,
+  );
 
   const renderParticipants = (): void => {
     if (room.state !== "connected") return;
@@ -74,10 +90,30 @@ function start(root: HTMLElement, accessToken: string): void {
     shareError.textContent = share.status === "error" ? `Не удалось начать демку: ${share.message}` : "";
   };
 
+  const renderLive = (summary: ConnectivitySummary | null): void => {
+    live.replaceChildren(renderLiveStats(summary, { prevInbound, agg: samples.length ? aggregateSamples(samples) : null, events, labels }));
+  };
+
+  const record = (event: ConnectionEvent): void => {
+    events = countConnectionEvent(events, event);
+    renderLive(samples[samples.length - 1] ?? null);
+  };
+
   const attach = (track: RemoteTrack, label: string): void => {
     const media = track.attach();
-    if (track.kind === Track.Kind.Video) {
+    if (media instanceof HTMLVideoElement) {
+      // getStats() names inbound streams by this id (trackIdentifier).
+      labels.set(track.mediaStreamTrack.id, label);
       media.className = "demo";
+      media.playsInline = true;
+      // The video track has no sound (demo audio is a separate track with its
+      // own <audio>); muted also lets the browser autoplay it.
+      media.muted = true;
+      media.title = "Двойной клик — во весь экран";
+      media.addEventListener("dblclick", () => {
+        if (document.fullscreenElement) void document.exitFullscreen();
+        else media.requestFullscreen().catch((err: unknown) => console.warn("fullscreen failed", err));
+      });
       videos.append(h("figure", {}, media, h("figcaption", { textContent: label })));
     } else {
       media.hidden = true;
@@ -95,15 +131,29 @@ function start(root: HTMLElement, accessToken: string): void {
     .on(RoomEvent.LocalTrackUnpublished, (pub) => {
       if (pub.source === Track.Source.ScreenShare) dispatch({ type: "stopped" });
     })
-    .on(RoomEvent.Disconnected, () => {
-      status.textContent = "Соединение потеряно";
+    .on(RoomEvent.Reconnecting, () => {
+      status.textContent = "Связь прервалась, переподключаемся…";
+      record({ type: "reconnecting" });
+    })
+    .on(RoomEvent.Reconnected, () => {
+      status.textContent = `Подключено как ${identity} (после переподключения)`;
+      record({ type: "reconnected" });
+    })
+    .on(RoomEvent.Disconnected, (reason) => {
+      window.clearInterval(timer);
+      status.textContent = disconnectMessage(reason);
       connectBtn.disabled = false;
       dispatch({ type: "stopped" });
+      record({ type: "disconnected", reason });
     });
 
   const refreshReport = (): string => {
     const text = samples.length
-      ? formatReport({ name: identity, browser: browser.name, startedAt }, aggregateSamples(samples))
+      ? formatReport(
+          { name: identity, browser: browser.name, userAgent: navigator.userAgent, startedAt, now: new Date() },
+          aggregateSamples(samples),
+          events,
+        )
       : "Данных пока нет: сначала подключись и подожди пару секунд";
     reportOut.textContent = text;
     return text;
@@ -119,7 +169,7 @@ function start(root: HTMLElement, accessToken: string): void {
     if (!pub && !sub) return;
     const summary = mergeSummaries(pub, sub);
     samples.push(summary);
-    live.replaceChildren(renderLiveStats(summary, prevInbound, aggregateSamples(samples)));
+    renderLive(summary);
     prevInbound = new Map(summary.inbound.map((i) => [i.trackId, i]));
   };
 
@@ -134,8 +184,13 @@ function start(root: HTMLElement, accessToken: string): void {
       return;
     }
     identity = room.localParticipant.identity;
-    startedAt = new Date();
+    // Reconnecting after a drop continues the same phase, so the drop stays in the report.
+    if (!phaseStarted) {
+      startedAt = new Date();
+      phaseStarted = true;
+    }
     status.textContent = `Подключено как ${identity}`;
+    resetBtn.disabled = false;
     renderParticipants();
     dispatch({ type: "stopped" });
     try {
@@ -144,7 +199,9 @@ function start(root: HTMLElement, accessToken: string): void {
       status.textContent += " (микрофон недоступен)";
     }
     window.clearInterval(timer);
-    timer = window.setInterval(() => void tick().catch(() => undefined), STATS_INTERVAL_MS);
+    timer = window.setInterval(() => {
+      tick().catch((err: unknown) => console.warn("stats tick failed", err));
+    }, STATS_INTERVAL_MS);
   });
 
   shareBtn.addEventListener("click", async () => {
@@ -171,6 +228,16 @@ function start(root: HTMLElement, accessToken: string): void {
     } catch {
       copyBtn.textContent = "Скопируй текст ниже вручную";
     }
+  });
+
+  resetBtn.addEventListener("click", () => {
+    samples.length = 0;
+    prevInbound = new Map();
+    events = emptyConnectionEvents();
+    startedAt = new Date();
+    copyBtn.textContent = "Скопировать отчёт";
+    reportOut.textContent = "";
+    renderLive(null);
   });
 
   window.addEventListener("pagehide", () => {

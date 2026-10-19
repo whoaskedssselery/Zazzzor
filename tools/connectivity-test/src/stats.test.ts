@@ -1,6 +1,6 @@
-import { summarizeStats, bitrateKbps, mergeSummaries, type ConnectivitySummary, type InboundVideoStat } from "./stats";
+import { summarizeStats, inboundInterval, mergeSummaries, type ConnectivitySummary, type InboundVideoStat, type RTCStatsLike } from "./stats";
 
-const base = (o: object) => ({ timestamp: 1000, ...o }) as any;
+const base = (o: object): RTCStatsLike => ({ id: "x", type: "x", timestamp: 1000, ...o });
 const pair = (localId: string, extra: object = {}) =>
   base({ id: "cp", type: "candidate-pair", state: "succeeded", nominated: true, localCandidateId: localId, currentRoundTripTime: 0.042, ...extra });
 
@@ -29,30 +29,20 @@ test("outbound picks the largest simulcast layer", () => {
   ]);
   expect(s.outbound).toEqual({ width: 1920, height: 1080, fps: 58, qualityLimitation: "bandwidth" });
 });
-test("inbound loss percent", () => {
+test("inbound keeps raw packet counters for per-interval loss", () => {
   const s = summarizeStats([
     base({ id: "i1", type: "inbound-rtp", kind: "video", trackIdentifier: "t1", frameWidth: 1920, frameHeight: 1080, framesPerSecond: 60, packetsLost: 2, packetsReceived: 98, bytesReceived: 5000 }),
     base({ id: "i2", type: "inbound-rtp", kind: "audio", packetsLost: 50, packetsReceived: 50 }),
   ]);
-  expect(s.inbound).toEqual([{ trackId: "t1", width: 1920, height: 1080, fps: 60, lossPercent: 2, packets: 100, bytesReceived: 5000, timestamp: 1000 }]);
+  expect(s.inbound).toEqual([{ trackId: "t1", width: 1920, height: 1080, fps: 60, packetsLost: 2, packetsReceived: 98, bytesReceived: 5000, timestamp: 1000 }]);
 });
-test("bitrate in kbps", () => {
-  const a = { trackId: "t", width: 0, height: 0, fps: 0, lossPercent: 0, packets: 0, bytesReceived: 0, timestamp: 0 };
-  expect(bitrateKbps(a, { ...a, bytesReceived: 1_000_000, timestamp: 1000 })).toBe(8000);
-  expect(bitrateKbps(a, { ...a, bytesReceived: 10 })).toBe(0);
+test("negative packetsLost clamps to 0", () => {
+  const s = summarizeStats([base({ id: "i1", type: "inbound-rtp", kind: "video", trackIdentifier: "t1", packetsLost: -5, packetsReceived: 100 })]);
+  expect(s.inbound[0].packetsLost).toBe(0);
 });
-
 test("NaN rtt gives null", () => {
   const s = summarizeStats([pair("lc", { currentRoundTripTime: NaN }), base({ id: "lc", type: "local-candidate", protocol: "udp", candidateType: "host" })]);
   expect(s.rttMs).toBeNull();
-});
-test("negative packetsLost clamps loss to 0", () => {
-  const s = summarizeStats([base({ id: "i1", type: "inbound-rtp", kind: "video", trackIdentifier: "t1", packetsLost: -5, packetsReceived: 100 })]);
-  expect(s.inbound[0].lossPercent).toBe(0);
-});
-test("bitrate clamps counter reset to 0", () => {
-  const a = { trackId: "t", width: 0, height: 0, fps: 0, lossPercent: 0, packets: 0, bytesReceived: 5000, timestamp: 0 };
-  expect(bitrateKbps(a, { ...a, bytesReceived: 100, timestamp: 1000 })).toBe(0);
 });
 test("transport selectedCandidatePairId picks that pair", () => {
   const s = summarizeStats([
@@ -65,7 +55,36 @@ test("transport selectedCandidatePairId picks that pair", () => {
   expect(s).toMatchObject({ protocol: "tcp", candidateType: "relay", rttMs: 100 });
 });
 
-const inb = (trackId: string): InboundVideoStat => ({ trackId, width: 1920, height: 1080, fps: 60, lossPercent: 0, packets: 10, bytesReceived: 1, timestamp: 1 });
+const stat = (o: Partial<InboundVideoStat> = {}): InboundVideoStat => ({
+  trackId: "t", width: 1920, height: 1080, fps: 60, packetsLost: 0, packetsReceived: 0, bytesReceived: 0, timestamp: 0, ...o,
+});
+
+describe("inboundInterval", () => {
+  test("bitrate in kbps from the byte delta", () => {
+    expect(inboundInterval(stat(), stat({ bytesReceived: 1_000_000, timestamp: 1000 })).kbps).toBe(8000);
+  });
+  test("no time passed gives no bitrate", () => {
+    expect(inboundInterval(stat(), stat({ bytesReceived: 10 })).kbps).toBeNull();
+  });
+  test("counter reset gives no bitrate instead of a fake zero", () => {
+    expect(inboundInterval(stat({ bytesReceived: 5000 }), stat({ bytesReceived: 100, timestamp: 1000 })).kbps).toBeNull();
+  });
+  test("loss is computed from this interval only", () => {
+    const prev = stat({ packetsLost: 10, packetsReceived: 90 });
+    const next = stat({ packetsLost: 11, packetsReceived: 189, timestamp: 2000 });
+    expect(inboundInterval(prev, next).lossPercent).toBe(1);
+  });
+  test("no packets in the interval gives null loss", () => {
+    const prev = stat({ packetsLost: 1, packetsReceived: 9 });
+    expect(inboundInterval(prev, { ...prev, timestamp: 2000 }).lossPercent).toBeNull();
+  });
+  test("interval exposes packet deltas", () => {
+    const i = inboundInterval(stat({ packetsLost: 1, packetsReceived: 9 }), stat({ packetsLost: 3, packetsReceived: 107, timestamp: 2000 }));
+    expect(i).toMatchObject({ lost: 2, received: 98, lossPercent: 2 });
+  });
+});
+
+const inb = (trackId: string): InboundVideoStat => stat({ trackId, packetsReceived: 10, bytesReceived: 1, timestamp: 1 });
 const out = { width: 1920, height: 1080, fps: 60, qualityLimitation: "none" };
 const summ = (o: Partial<ConnectivitySummary>): ConnectivitySummary => ({ protocol: "udp", candidateType: "host", rttMs: 10, outbound: null, inbound: [], ...o });
 

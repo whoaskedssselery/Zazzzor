@@ -6,12 +6,22 @@ export interface VideoStat {
   fps: number;
 }
 
+/** Cumulative counters as getStats() reports them; per-interval values come from inboundInterval(). */
 export interface InboundVideoStat extends VideoStat {
   trackId: string;
-  lossPercent: number;
-  packets: number;
+  packetsLost: number;
+  packetsReceived: number;
   bytesReceived: number;
   timestamp: number;
+}
+
+export interface InboundInterval {
+  /** null when no time passed or the byte counter went backwards (stream restarted). */
+  kbps: number | null;
+  lost: number;
+  received: number;
+  /** null when no packets arrived or were lost in the interval. */
+  lossPercent: number | null;
 }
 
 export interface ConnectivitySummary {
@@ -54,29 +64,34 @@ export function summarizeStats(stats: RTCStatsLike[]): ConnectivitySummary {
 
   const inbound: InboundVideoStat[] = stats
     .filter((s) => s.type === "inbound-rtp" && s.kind === "video")
-    .map((s) => {
-      const lost = num(s.packetsLost);
-      const received = num(s.packetsReceived);
-      const total = lost + received;
-      return {
-        trackId: str(s.trackIdentifier, s.id),
-        width: num(s.frameWidth),
-        height: num(s.frameHeight),
-        fps: num(s.framesPerSecond),
-        lossPercent: total > 0 ? Math.max(0, (lost / total) * 100) : 0,
-        packets: Math.max(0, total),
-        bytesReceived: num(s.bytesReceived),
-        timestamp: s.timestamp,
-      };
-    });
+    .map((s) => ({
+      trackId: str(s.trackIdentifier, s.id),
+      width: num(s.frameWidth),
+      height: num(s.frameHeight),
+      fps: num(s.framesPerSecond),
+      // packetsLost may go negative (duplicated packets); that is not loss.
+      packetsLost: Math.max(0, num(s.packetsLost)),
+      packetsReceived: Math.max(0, num(s.packetsReceived)),
+      bytesReceived: num(s.bytesReceived),
+      timestamp: s.timestamp,
+    }));
 
   return { protocol, candidateType, rttMs, outbound, inbound };
 }
 
-export function bitrateKbps(prev: InboundVideoStat, next: InboundVideoStat): number {
+/** Bitrate and loss between two samples of the same stream. */
+export function inboundInterval(prev: InboundVideoStat, next: InboundVideoStat): InboundInterval {
   const dtMs = next.timestamp - prev.timestamp;
-  if (dtMs <= 0) return 0;
-  return Math.max(0, ((next.bytesReceived - prev.bytesReceived) * 8) / dtMs);
+  const bytes = next.bytesReceived - prev.bytesReceived;
+  const lost = Math.max(0, next.packetsLost - prev.packetsLost);
+  const received = Math.max(0, next.packetsReceived - prev.packetsReceived);
+  const total = lost + received;
+  return {
+    kbps: dtMs > 0 && bytes >= 0 ? (bytes * 8) / dtMs : null,
+    lost,
+    received,
+    lossPercent: total > 0 ? (lost / total) * 100 : null,
+  };
 }
 
 /** Merges per-peer-connection summaries. With singlePeerConnection (livekit-client default) everything is on `pub`. */

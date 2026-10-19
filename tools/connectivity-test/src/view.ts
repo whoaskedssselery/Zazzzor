@@ -1,5 +1,6 @@
-import { bitrateKbps, type ConnectivitySummary, type InboundVideoStat } from "./stats";
+import { inboundInterval, type ConnectivitySummary, type InboundVideoStat } from "./stats";
 import type { ConnectivityAggregate } from "./report";
+import type { ConnectionEvents } from "./connection-events";
 
 type Child = Node | string;
 
@@ -21,12 +22,16 @@ function row(label: string, value: string, warn = false): HTMLElement {
   return h("tr", {}, h("th", { textContent: label }), h("td", { textContent: value, className: warn ? "warn" : "" }));
 }
 
+export interface LiveContext {
+  prevInbound: Map<string, InboundVideoStat>;
+  agg: ConnectivityAggregate | null;
+  events: ConnectionEvents;
+  /** MediaStreamTrack id → identity of the participant who sends it. */
+  labels: Map<string, string>;
+}
+
 /** Строит таблицу живых показателей. Только текст, без innerHTML. */
-export function renderLiveStats(
-  summary: ConnectivitySummary | null,
-  prevInbound: Map<string, InboundVideoStat>,
-  agg: ConnectivityAggregate | null,
-): HTMLElement {
+export function renderLiveStats(summary: ConnectivitySummary | null, ctx: LiveContext): HTMLElement {
   if (!summary) return h("p", { textContent: "Ждём первых данных…" });
   const table = h("table");
   table.append(
@@ -42,23 +47,31 @@ export function renderLiveStats(
     );
   }
   for (const i of summary.inbound) {
-    const prev = prevInbound.get(i.trackId);
+    const prev = ctx.prevInbound.get(i.trackId);
+    const interval = prev ? inboundInterval(prev, i) : null;
     const stalled = i.fps === 0;
-    const kbps = prev ? bitrateKbps(prev, i) : null;
     table.append(
       row(
-        `Приём ${i.trackId.slice(0, 8)}`,
+        `Приём от ${ctx.labels.get(i.trackId) ?? "участника"}`,
         `${resolution(i.width, i.height)} @ ${stalled ? "0 fps — замер" : `${i.fps.toFixed(0)} fps`}, ` +
-          `потери ${i.lossPercent.toFixed(1)}%, ${fmt(kbps, 0, " кбит/с")}`,
+          `${fmt(interval?.kbps ?? null, 0, " кбит/с")}, потери ${fmt(interval?.lossPercent ?? null, 1, "%")}`,
         stalled,
       ),
     );
   }
-  if (agg) {
+  if (ctx.agg) {
     table.append(
-      row("Макс. потери", fmt(agg.maxLossPercent, 1, "%")),
-      row("Замеров с остановкой кадров", `${agg.inboundStallSamples} из ${agg.inboundStreamSamples}`, agg.inboundStallSamples > 0),
+      row("Макс. потери за 2 с", fmt(ctx.agg.maxLossPercent, 1, "%")),
+      row("Замеров с остановкой кадров", `${ctx.agg.inboundStallSamples} из ${ctx.agg.inboundStreamSamples}`, ctx.agg.inboundStallSamples > 0),
     );
   }
+  const e = ctx.events;
+  table.append(
+    row(
+      "Обрывы связи",
+      `отключений ${e.disconnects}, попыток переподключения ${e.reconnectAttempts}, переподключений ${e.reconnects}`,
+      e.disconnects + e.reconnectAttempts > 0,
+    ),
+  );
   return table;
 }

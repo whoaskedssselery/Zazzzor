@@ -1,4 +1,8 @@
-import { screenShareOptions, isPickerCancelled } from "./media-options";
+import { screenShareOptions, isPickerCancelled, roomOptions } from "./media-options";
+
+test("viewers receive the full 1080p layer: no adaptive stream, dynacast on", () => {
+  expect(roomOptions()).toEqual({ adaptiveStream: false, dynacast: true });
+});
 
 test("screen share keeps 60 fps at 1080p over H.264", () => {
   const { capture, publish } = screenShareOptions();

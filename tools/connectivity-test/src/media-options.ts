@@ -1,4 +1,15 @@
-import type { ScreenShareCaptureOptions, TrackPublishOptions } from "livekit-client";
+import type { RoomOptions, ScreenShareCaptureOptions, TrackPublishOptions } from "livekit-client";
+
+/**
+ * adaptiveStream is off on purpose: it would pick a simulcast layer by the size
+ * of the <video> element, and the test must measure the real 1080p load.
+ * Side effect: pauseVideoInBackground is an AdaptiveStreamSettings option and
+ * does nothing without adaptiveStream, so a background tab keeps receiving
+ * video and does not show fake stalls. dynacast still stops unused layers.
+ */
+export function roomOptions(): Partial<RoomOptions> {
+  return { adaptiveStream: false, dynacast: true };
+}
 
 export function screenShareOptions(): { capture: ScreenShareCaptureOptions; publish: TrackPublishOptions } {
   return {
