@@ -38,8 +38,8 @@ api_key="$(env_value LIVEKIT_API_KEY)"
 api_secret="$(env_value LIVEKIT_API_SECRET)"
 cli_version="$(env_value LIVEKIT_CLI_VERSION)"
 
-if [[ "$api_key" == CHANGE_ME* || "$api_secret" == CHANGE_ME* ]]; then
-  echo "В $env_file остались ключи-заглушки LiveKit. Сгенерируйте свои (см. комментарии в .env.example)." >&2
+if [[ -z "$domain" || -z "$api_key" || -z "$api_secret" ]]; then
+  echo "В $env_file не заполнены ZAZZZOR_DOMAIN, LIVEKIT_API_KEY или LIVEKIT_API_SECRET (см. комментарии в .env.example)." >&2
   exit 2
 fi
 
