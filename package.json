@@ -1,0 +1,9 @@
+{
+  "name": "zazzzor",
+  "private": true,
+  "packageManager": "pnpm@12.3.4",
+  "scripts": {
+    "test": "pnpm -r test",
+    "build": "pnpm -r build"
+  }
+}
