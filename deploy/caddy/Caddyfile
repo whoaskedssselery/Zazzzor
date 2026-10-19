@@ -1,0 +1,36 @@
+{
+	email {$ACME_EMAIL}
+	https_port {$ZAZZZOR_HTTPS_PORT}
+	# Port 80 is never opened: certificates come via DNS-01 (DuckDNS).
+	auto_https disable_redirects
+	# No admin API on :2019 (the host may already run its own Caddy there);
+	# config changes are applied by restarting the container.
+	admin off
+}
+
+{$ZAZZZOR_DOMAIN} {
+	tls {
+		dns duckdns {$DUCKDNS_TOKEN}
+	}
+
+	encode zstd gzip
+
+	redir /connectivity-test /connectivity-test/ permanent
+
+	handle_path /connectivity-test/* {
+		root * /srv/connectivity-test
+		file_server
+	}
+
+	# LiveKit signaling (WebSocket) and server API.
+	handle /rtc* {
+		reverse_proxy 127.0.0.1:7880
+	}
+	handle /twirp/* {
+		reverse_proxy 127.0.0.1:7880
+	}
+
+	handle {
+		respond 404
+	}
+}

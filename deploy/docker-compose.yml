@@ -1,0 +1,60 @@
+name: zazzzor
+
+services:
+  caddy:
+    build:
+      context: ..
+      dockerfile: deploy/caddy/Dockerfile
+      args:
+        CADDY_VERSION: ${CADDY_VERSION:?set CADDY_VERSION in deploy/.env}
+    image: zazzzor-caddy:${CADDY_VERSION}
+    network_mode: host
+    environment:
+      ZAZZZOR_DOMAIN: ${ZAZZZOR_DOMAIN:?set ZAZZZOR_DOMAIN in deploy/.env}
+      ZAZZZOR_HTTPS_PORT: ${ZAZZZOR_HTTPS_PORT:?set ZAZZZOR_HTTPS_PORT in deploy/.env}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in deploy/.env}
+      DUCKDNS_TOKEN: ${DUCKDNS_TOKEN:?set DUCKDNS_TOKEN in deploy/.env}
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - livekit
+    mem_limit: 256m
+    restart: unless-stopped
+
+  livekit:
+    image: livekit/livekit-server:${LIVEKIT_VERSION:?set LIVEKIT_VERSION in deploy/.env}
+    network_mode: host
+    environment:
+      LIVEKIT_CONFIG: |
+        port: 7880
+        bind_addresses:
+          - 127.0.0.1
+        rtc:
+          tcp_port: ${LIVEKIT_TCP_PORT:?set LIVEKIT_TCP_PORT in deploy/.env}
+          udp_port: ${LIVEKIT_UDP_PORT:?set LIVEKIT_UDP_PORT in deploy/.env}
+          use_external_ip: true
+        turn:
+          enabled: true
+          domain: ${ZAZZZOR_DOMAIN}
+          udp_port: ${LIVEKIT_TURN_UDP_PORT:?set LIVEKIT_TURN_UDP_PORT in deploy/.env}
+        keys:
+          "${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY in deploy/.env}": "${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in deploy/.env}"
+        logging:
+          level: info
+    mem_limit: 1g
+    restart: unless-stopped
+
+  duckdns:
+    image: lscr.io/linuxserver/duckdns:${DUCKDNS_IMAGE_VERSION:?set DUCKDNS_IMAGE_VERSION in deploy/.env}
+    environment:
+      SUBDOMAINS: ${DUCKDNS_SUBDOMAIN:?set DUCKDNS_SUBDOMAIN in deploy/.env}
+      TOKEN: ${DUCKDNS_TOKEN}
+      UPDATE_IP: ipv4
+      LOG_FILE: "false"
+    mem_limit: 64m
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:
