@@ -33,7 +33,12 @@ services:
         rtc:
           tcp_port: ${LIVEKIT_TCP_PORT:?set LIVEKIT_TCP_PORT in deploy/.env}
           udp_port: ${LIVEKIT_UDP_PORT:?set LIVEKIT_UDP_PORT in deploy/.env}
-          use_external_ip: true
+          # LiveKit 1.13 lets STUN override node_ip, so when LIVEKIT_NODE_IP is
+          # set the next line turns into a YAML comment (use_external_ip: false).
+          ${LIVEKIT_NODE_IP:+#}use_external_ip: true
+          node_ip: ${LIVEKIT_NODE_IP:-}
+          # Empty list = LiveKit's built-in STUN servers.
+          stun_servers: [${LIVEKIT_STUN_SERVERS:-}]
         turn:
           enabled: true
           domain: ${ZAZZZOR_DOMAIN}

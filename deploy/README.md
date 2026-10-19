@@ -215,9 +215,28 @@ docker compose -f deploy/docker-compose.yml up -d --build
   сертификат (`logs caddy`).
 - **Caddy не получает сертификат.** Проверьте `DUCKDNS_TOKEN` и
   `ZAZZZOR_DOMAIN` в `.env`.
-- **LiveKit не стартует с ошибкой про внешний IP.** LiveKit узнаёт внешний IP
-  через STUN-серверы Google и Twilio; если они недоступны, посмотрите
-  `logs livekit`.
+- **LiveKit не может узнать внешний IP.** При запуске LiveKit один раз
+  спрашивает свой внешний IP у STUN-серверов (по умолчанию Google и Twilio).
+  В `logs livekit` при успехе есть строка `found external IP via STUN`.
+  Если STUN недоступен, есть два варианта (оба в `deploy/.env`):
+  - указать другие STUN-серверы:
+    `LIVEKIT_STUN_SERVERS=stun.cloudflare.com:3478,stun.l.google.com:19302`;
+  - указать IP вручную: `LIVEKIT_NODE_IP=<ваш внешний IP>` (узнать можно на
+    <https://2ip.ru>). Тогда STUN не используется вовсе, но при каждой смене
+    IP это значение придётся менять самому.
+
+  После правки `.env`: `docker compose -f deploy/docker-compose.yml up -d`.
+- **Сменился внешний IP (у домашнего интернета он часто динамический).**
+  Контейнер `duckdns` обновит только имя `<домен>` — страница и вход будут
+  работать, но LiveKit продолжит сообщать участникам старый IP, и звук с видео
+  пропадут. Перезапустите LiveKit, чтобы он заново узнал IP:
+
+  ```bash
+  docker compose -f deploy/docker-compose.yml restart livekit
+  ```
+
+  Если задан `LIVEKIT_NODE_IP`, сначала впишите в него новый IP и выполните
+  `docker compose -f deploy/docker-compose.yml up -d`.
 - **Страница открывается, но подключение не устанавливается.** Скорее всего,
   не проброшены 7881/TCP и 7882/UDP или их режет файрвол сервера.
 - **Порт в ссылке.** Если HTTPS-порт не 443, скрипт добавляет его в ссылку.
