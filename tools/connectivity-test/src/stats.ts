@@ -78,3 +78,15 @@ export function bitrateKbps(prev: InboundVideoStat, next: InboundVideoStat): num
   if (dtMs <= 0) return 0;
   return Math.max(0, ((next.bytesReceived - prev.bytesReceived) * 8) / dtMs);
 }
+
+/** Merges per-peer-connection summaries. With singlePeerConnection (livekit-client default) everything is on `pub`. */
+export function mergeSummaries(pub: ConnectivitySummary | null, sub: ConnectivitySummary | null): ConnectivitySummary {
+  const transport = [pub, sub].find((s) => s && s.protocol !== "unknown") ?? pub ?? sub;
+  return {
+    protocol: transport?.protocol ?? "unknown",
+    candidateType: transport?.candidateType ?? "unknown",
+    rttMs: transport?.rttMs ?? null,
+    outbound: pub?.outbound ?? sub?.outbound ?? null,
+    inbound: [...(pub?.inbound ?? []), ...(sub?.inbound ?? [])],
+  };
+}

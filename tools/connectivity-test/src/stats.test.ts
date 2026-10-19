@@ -1,4 +1,4 @@
-import { summarizeStats, bitrateKbps } from "./stats";
+import { summarizeStats, bitrateKbps, mergeSummaries, type ConnectivitySummary, type InboundVideoStat } from "./stats";
 
 const base = (o: object) => ({ timestamp: 1000, ...o }) as any;
 const pair = (localId: string, extra: object = {}) =>
@@ -63,4 +63,27 @@ test("transport selectedCandidatePairId picks that pair", () => {
     base({ id: "lc2", type: "local-candidate", protocol: "tcp", candidateType: "relay" }),
   ]);
   expect(s).toMatchObject({ protocol: "tcp", candidateType: "relay", rttMs: 100 });
+});
+
+const inb = (trackId: string): InboundVideoStat => ({ trackId, width: 1920, height: 1080, fps: 60, lossPercent: 0, packets: 10, bytesReceived: 1, timestamp: 1 });
+const out = { width: 1920, height: 1080, fps: 60, qualityLimitation: "none" };
+const summ = (o: Partial<ConnectivitySummary>): ConnectivitySummary => ({ protocol: "udp", candidateType: "host", rttMs: 10, outbound: null, inbound: [], ...o });
+
+test("mergeSummaries keeps inbound when only publisher exists (single peer connection)", () => {
+  const m = mergeSummaries(summ({ outbound: out, inbound: [inb("a")] }), null);
+  expect(m.outbound).toEqual(out);
+  expect(m.inbound).toEqual([inb("a")]);
+});
+test("mergeSummaries combines separate publisher and subscriber", () => {
+  const m = mergeSummaries(summ({ outbound: out }), summ({ protocol: "tcp", inbound: [inb("b")] }));
+  expect(m.outbound).toEqual(out);
+  expect(m.inbound).toEqual([inb("b")]);
+  expect(m.protocol).toBe("udp");
+});
+test("mergeSummaries falls back to subscriber when publisher transport is unknown", () => {
+  const m = mergeSummaries(summ({ protocol: "unknown", candidateType: "unknown", rttMs: null }), summ({ protocol: "tcp", candidateType: "relay", rttMs: 5 }));
+  expect(m).toMatchObject({ protocol: "tcp", candidateType: "relay", rttMs: 5 });
+});
+test("mergeSummaries of nothing is unknown and empty", () => {
+  expect(mergeSummaries(null, null)).toEqual({ protocol: "unknown", candidateType: "unknown", rttMs: null, outbound: null, inbound: [] });
 });

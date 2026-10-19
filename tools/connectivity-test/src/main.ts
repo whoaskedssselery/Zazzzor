@@ -3,7 +3,7 @@ import { detectBrowser } from "./browser";
 import { isPickerCancelled, screenShareOptions } from "./media-options";
 import { aggregateSamples, formatReport } from "./report";
 import { shareReducer, type ShareEvent, type ShareState } from "./share-state";
-import { summarizeStats, type ConnectivitySummary, type InboundVideoStat, type RTCStatsLike } from "./stats";
+import { mergeSummaries, summarizeStats, type ConnectivitySummary, type InboundVideoStat, type RTCStatsLike } from "./stats";
 import { isTokenExpired, readTokenFromHash } from "./token";
 import { h, renderLiveStats } from "./view";
 
@@ -115,9 +115,8 @@ function start(root: HTMLElement, accessToken: string): void {
     // Транспорты разбираем по отдельности: id записей getStats() у разных
     // RTCPeerConnection могут совпадать, и общий Map перепутал бы их.
     const [pub, sub] = await Promise.all([readSummary(pcs.publisher), readSummary(pcs.subscriber)]);
-    const base = [pub, sub].find((s) => s && s.protocol !== "unknown") ?? pub ?? sub;
-    if (!base) return;
-    const summary: ConnectivitySummary = { ...base, outbound: pub?.outbound ?? null, inbound: sub?.inbound ?? [] };
+    if (!pub && !sub) return;
+    const summary = mergeSummaries(pub, sub);
     samples.push(summary);
     live.replaceChildren(renderLiveStats(summary, prevInbound, aggregateSamples(samples)));
     prevInbound = new Map(summary.inbound.map((i) => [i.trackId, i]));
@@ -142,9 +141,6 @@ function start(root: HTMLElement, accessToken: string): void {
       await room.localParticipant.setMicrophoneEnabled(true);
     } catch {
       status.textContent += " (микрофон недоступен)";
-    }
-    for (const p of room.remoteParticipants.values()) {
-      for (const pub of p.trackPublications.values()) if (pub.track) attach(pub.track as RemoteTrack, p.identity);
     }
     window.clearInterval(timer);
     timer = window.setInterval(() => void tick().catch(() => undefined), STATS_INTERVAL_MS);
