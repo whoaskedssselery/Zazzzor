@@ -9,6 +9,7 @@ export interface VideoStat {
 export interface InboundVideoStat extends VideoStat {
   trackId: string;
   lossPercent: number;
+  packets: number;
   bytesReceived: number;
   timestamp: number;
 }
@@ -29,12 +30,15 @@ const CANDIDATE_TYPES = ["host", "srflx", "prflx", "relay"] as const;
 
 export function summarizeStats(stats: RTCStatsLike[]): ConnectivitySummary {
   const byId = new Map(stats.map((s) => [s.id, s]));
-  const pair = stats.find((s) => s.type === "candidate-pair" && s.state === "succeeded" && s.nominated === true);
+  const selectedId = stats.find((s) => s.type === "transport" && typeof s.selectedCandidatePairId === "string")?.selectedCandidatePairId;
+  const pair =
+    (typeof selectedId === "string" ? byId.get(selectedId) : undefined) ??
+    stats.find((s) => s.type === "candidate-pair" && s.state === "succeeded" && s.nominated === true);
   const local = pair ? byId.get(str(pair.localCandidateId, "")) : undefined;
 
   const protocol = PROTOCOLS.find((p) => p === local?.protocol) ?? "unknown";
   const candidateType = CANDIDATE_TYPES.find((t) => t === local?.candidateType) ?? "unknown";
-  const rttMs = pair && typeof pair.currentRoundTripTime === "number" ? pair.currentRoundTripTime * 1000 : null;
+  const rttMs = pair && typeof pair.currentRoundTripTime === "number" && Number.isFinite(pair.currentRoundTripTime) ? pair.currentRoundTripTime * 1000 : null;
 
   let outbound: ConnectivitySummary["outbound"] = null;
   for (const s of stats) {
@@ -59,7 +63,8 @@ export function summarizeStats(stats: RTCStatsLike[]): ConnectivitySummary {
         width: num(s.frameWidth),
         height: num(s.frameHeight),
         fps: num(s.framesPerSecond),
-        lossPercent: total > 0 ? (lost / total) * 100 : 0,
+        lossPercent: total > 0 ? Math.max(0, (lost / total) * 100) : 0,
+        packets: Math.max(0, total),
         bytesReceived: num(s.bytesReceived),
         timestamp: s.timestamp,
       };
@@ -71,5 +76,5 @@ export function summarizeStats(stats: RTCStatsLike[]): ConnectivitySummary {
 export function bitrateKbps(prev: InboundVideoStat, next: InboundVideoStat): number {
   const dtMs = next.timestamp - prev.timestamp;
   if (dtMs <= 0) return 0;
-  return ((next.bytesReceived - prev.bytesReceived) * 8) / dtMs;
+  return Math.max(0, ((next.bytesReceived - prev.bytesReceived) * 8) / dtMs);
 }

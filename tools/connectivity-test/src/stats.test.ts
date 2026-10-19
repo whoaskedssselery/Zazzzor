@@ -34,10 +34,33 @@ test("inbound loss percent", () => {
     base({ id: "i1", type: "inbound-rtp", kind: "video", trackIdentifier: "t1", frameWidth: 1920, frameHeight: 1080, framesPerSecond: 60, packetsLost: 2, packetsReceived: 98, bytesReceived: 5000 }),
     base({ id: "i2", type: "inbound-rtp", kind: "audio", packetsLost: 50, packetsReceived: 50 }),
   ]);
-  expect(s.inbound).toEqual([{ trackId: "t1", width: 1920, height: 1080, fps: 60, lossPercent: 2, bytesReceived: 5000, timestamp: 1000 }]);
+  expect(s.inbound).toEqual([{ trackId: "t1", width: 1920, height: 1080, fps: 60, lossPercent: 2, packets: 100, bytesReceived: 5000, timestamp: 1000 }]);
 });
 test("bitrate in kbps", () => {
-  const a = { trackId: "t", width: 0, height: 0, fps: 0, lossPercent: 0, bytesReceived: 0, timestamp: 0 };
+  const a = { trackId: "t", width: 0, height: 0, fps: 0, lossPercent: 0, packets: 0, bytesReceived: 0, timestamp: 0 };
   expect(bitrateKbps(a, { ...a, bytesReceived: 1_000_000, timestamp: 1000 })).toBe(8000);
   expect(bitrateKbps(a, { ...a, bytesReceived: 10 })).toBe(0);
+});
+
+test("NaN rtt gives null", () => {
+  const s = summarizeStats([pair("lc", { currentRoundTripTime: NaN }), base({ id: "lc", type: "local-candidate", protocol: "udp", candidateType: "host" })]);
+  expect(s.rttMs).toBeNull();
+});
+test("negative packetsLost clamps loss to 0", () => {
+  const s = summarizeStats([base({ id: "i1", type: "inbound-rtp", kind: "video", trackIdentifier: "t1", packetsLost: -5, packetsReceived: 100 })]);
+  expect(s.inbound[0].lossPercent).toBe(0);
+});
+test("bitrate clamps counter reset to 0", () => {
+  const a = { trackId: "t", width: 0, height: 0, fps: 0, lossPercent: 0, packets: 0, bytesReceived: 5000, timestamp: 0 };
+  expect(bitrateKbps(a, { ...a, bytesReceived: 100, timestamp: 1000 })).toBe(0);
+});
+test("transport selectedCandidatePairId picks that pair", () => {
+  const s = summarizeStats([
+    pair("lc1", { id: "cp1" }),
+    pair("lc2", { id: "cp2", currentRoundTripTime: 0.1 }),
+    base({ id: "t", type: "transport", selectedCandidatePairId: "cp2" }),
+    base({ id: "lc1", type: "local-candidate", protocol: "udp", candidateType: "host" }),
+    base({ id: "lc2", type: "local-candidate", protocol: "tcp", candidateType: "relay" }),
+  ]);
+  expect(s).toMatchObject({ protocol: "tcp", candidateType: "relay", rttMs: 100 });
 });

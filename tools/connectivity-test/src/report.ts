@@ -8,7 +8,9 @@ export interface ConnectivityAggregate {
   avgRttMs: number | null;
   minInboundFps: number | null;
   avgInboundFps: number | null;
-  maxLossPercent: number;
+  inboundStreamSamples: number;
+  inboundStallSamples: number;
+  maxLossPercent: number | null;
   maxOutboundFps: number | null;
   outboundLimitations: string[];
 }
@@ -20,6 +22,7 @@ export function aggregateSamples(samples: ConnectivitySummary[]): ConnectivityAg
   const last = samples[samples.length - 1];
   const inbound = samples.flatMap((s) => s.inbound);
   const fps = inbound.map((i) => i.fps).filter((f) => f > 0);
+  const withPackets = inbound.filter((i) => i.packets > 0);
   const rtts = samples.flatMap((s) => (s.rttMs === null ? [] : [s.rttMs]));
   const outFps = samples.flatMap((s) => (s.outbound ? [s.outbound.fps] : []));
   const limits = samples.flatMap((s) => (s.outbound ? [s.outbound.qualityLimitation] : []));
@@ -31,7 +34,9 @@ export function aggregateSamples(samples: ConnectivitySummary[]): ConnectivityAg
     avgRttMs: rounded(avg(rtts)),
     minInboundFps: fps.length ? Math.min(...fps) : null,
     avgInboundFps: rounded(avg(fps)),
-    maxLossPercent: inbound.reduce((m, i) => Math.max(m, i.lossPercent), 0),
+    inboundStreamSamples: inbound.length,
+    inboundStallSamples: inbound.filter((i) => i.fps === 0).length,
+    maxLossPercent: withPackets.length ? Math.max(...withPackets.map((i) => i.lossPercent)) : null,
     maxOutboundFps: outFps.length ? Math.max(...outFps) : null,
     outboundLimitations: [...new Set(limits.filter((l) => l !== "none"))],
   };
