@@ -1,0 +1,126 @@
+openapi: 3.1.0
+info:
+  title: Zazzzor API
+  version: 0.1.0
+  summary: REST API of a self-hosted Zazzzor instance.
+  description: |
+    All IDs and permission masks are JSON strings. Field names are snake_case;
+    timestamps are RFC 3339 UTC with milliseconds. Errors are
+    `application/problem+json` (RFC 7807) with a stable machine `code`.
+
+    State-changing requests (POST, PUT, PATCH, DELETE) and WebSocket upgrades
+    must carry an `Origin` header from the instance's allowed origins,
+    otherwise they are refused with `403 origin_not_allowed`.
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+  - url: /api/v1
+# Every operation requires a session unless it declares `security: []`.
+security:
+  - cookieAuth: []
+tags:
+  - name: health
+    description: Liveness and readiness probes.
+paths:
+  /healthz:
+    get:
+      tags: [health]
+      operationId: getHealthz
+      security: []
+      summary: Liveness probe
+      description: Returns 200 while the process is able to serve HTTP.
+      responses:
+        "200":
+          description: The process is alive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Status"
+        "4XX":
+          $ref: "#/components/responses/Problem"
+        "5XX":
+          $ref: "#/components/responses/Problem"
+  /readyz:
+    get:
+      tags: [health]
+      operationId: getReadyz
+      security: []
+      summary: Readiness probe
+      description: Returns 200 when the server can take traffic (its database answers).
+      responses:
+        "200":
+          description: The server is ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Status"
+        "503":
+          description: The server is not ready (`not_ready`).
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "4XX":
+          $ref: "#/components/responses/Problem"
+        "5XX":
+          $ref: "#/components/responses/Problem"
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: zz_session
+      description: Opaque session token set by the login endpoint (HttpOnly, Secure, SameSite=Lax).
+  responses:
+    Problem:
+      description: An error, described as RFC 7807 problem details.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+  schemas:
+    Status:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          const: ok
+    FieldError:
+      type: object
+      additionalProperties: false
+      required: [field, message]
+      properties:
+        field:
+          type: string
+          description: Request field (snake_case, dotted for nesting) that failed validation.
+        message:
+          type: string
+    Problem:
+      type: object
+      additionalProperties: false
+      required: [type, title, status, code]
+      properties:
+        type:
+          type: string
+          pattern: "^urn:zazzzor:error:[a-z0-9_]+$"
+          examples: ["urn:zazzzor:error:missing_permission"]
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+        code:
+          type: string
+          pattern: "^[a-z0-9_]+$"
+          description: Stable machine-readable error code.
+          examples: [missing_permission]
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/FieldError"
