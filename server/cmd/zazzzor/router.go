@@ -26,6 +26,9 @@ type routerDeps struct {
 	// Ready reports whether the server can take traffic (e.g. the database
 	// answers). nil means always ready.
 	Ready func(context.Context) error
+	// Deadlines bounds body read and response write time per request; zero
+	// values take the httpx defaults.
+	Deadlines httpx.DeadlineOptions
 }
 
 func newRouter(d routerDeps) http.Handler {
@@ -41,6 +44,8 @@ func newRouter(d routerDeps) http.Handler {
 	r.MethodNotAllowed(httpx.Wrap(func(http.ResponseWriter, *http.Request) error { return httpx.MethodNotAllowed() }))
 
 	r.Use(
+		// First, so it sees the raw connection writer.
+		httpx.Deadlines(d.Deadlines),
 		withRequestID,
 		withRequestLog(d.Logger, d.Config),
 		d.Metrics.middleware,
