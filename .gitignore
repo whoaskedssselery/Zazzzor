@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.idea/
+# Real deploy settings hold secrets; only the template and the fake CI values are tracked.
+deploy/.env
+deploy/.env.*
+!deploy/.env.example
+!deploy/.env.ci
+# Editor and manual backups (e.g. of deploy/.env).
+*.bak
+*.save
+# Playwright output.
+test-results/
+playwright-report/

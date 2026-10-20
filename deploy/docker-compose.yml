@@ -1,0 +1,76 @@
+name: zazzzor
+
+# Every service rotates its logs: at most 3 files of 10 MB each.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+services:
+  caddy:
+    build:
+      context: ..
+      dockerfile: deploy/caddy/Dockerfile
+      args:
+        CADDY_VERSION: ${CADDY_VERSION:?заполните CADDY_VERSION в deploy/.env (см. deploy/.env.example)}
+        DUCKDNS_PLUGIN_VERSION: ${DUCKDNS_PLUGIN_VERSION:?заполните DUCKDNS_PLUGIN_VERSION в deploy/.env (см. deploy/.env.example)}
+    image: zazzzor-caddy:${CADDY_VERSION}-duckdns-${DUCKDNS_PLUGIN_VERSION}
+    network_mode: host
+    environment:
+      ZAZZZOR_DOMAIN: ${ZAZZZOR_DOMAIN:?заполните ZAZZZOR_DOMAIN в deploy/.env - полное имя вида zazzzor.duckdns.org}
+      ZAZZZOR_HTTPS_PORT: ${ZAZZZOR_HTTPS_PORT:?заполните ZAZZZOR_HTTPS_PORT в deploy/.env (обычно 443)}
+      ACME_EMAIL: ${ACME_EMAIL:?заполните ACME_EMAIL в deploy/.env - ваша почта для Let's Encrypt}
+      DUCKDNS_TOKEN: ${DUCKDNS_TOKEN:?заполните DUCKDNS_TOKEN в deploy/.env - токен со страницы duckdns.org}
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - livekit
+    mem_limit: 256m
+    logging: *logging
+    restart: unless-stopped
+
+  livekit:
+    image: livekit/livekit-server:${LIVEKIT_VERSION:?заполните LIVEKIT_VERSION в deploy/.env (см. deploy/.env.example)}
+    network_mode: host
+    environment:
+      LIVEKIT_CONFIG: |
+        port: 7880
+        bind_addresses:
+          - 127.0.0.1
+        rtc:
+          tcp_port: ${LIVEKIT_TCP_PORT:?заполните LIVEKIT_TCP_PORT в deploy/.env (обычно 7881)}
+          udp_port: ${LIVEKIT_UDP_PORT:?заполните LIVEKIT_UDP_PORT в deploy/.env (обычно 7882)}
+          # LiveKit 1.13 lets STUN override node_ip, so when LIVEKIT_NODE_IP is
+          # set the next line turns into a YAML comment (use_external_ip: false).
+          ${LIVEKIT_NODE_IP:+#}use_external_ip: true
+          node_ip: ${LIVEKIT_NODE_IP:-}
+          # Empty list = LiveKit's built-in STUN servers.
+          stun_servers: [${LIVEKIT_STUN_SERVERS:-}]
+        # Stage 1.1 measures direct UDP/TCP only. TURN/TLS on 443 is the
+        # fallback, considered only if the test shows UDP blocked.
+        turn:
+          enabled: false
+        keys:
+          "${LIVEKIT_API_KEY:?заполните LIVEKIT_API_KEY в deploy/.env - результат openssl rand -hex 16}": "${LIVEKIT_API_SECRET:?заполните LIVEKIT_API_SECRET в deploy/.env - результат openssl rand -hex 32}"
+        logging:
+          level: info
+    mem_limit: 1g
+    logging: *logging
+    restart: unless-stopped
+
+  duckdns:
+    image: lscr.io/linuxserver/duckdns:${DUCKDNS_IMAGE_VERSION:?заполните DUCKDNS_IMAGE_VERSION в deploy/.env (см. deploy/.env.example)}
+    environment:
+      SUBDOMAINS: ${DUCKDNS_SUBDOMAIN:?заполните DUCKDNS_SUBDOMAIN в deploy/.env - только поддомен, без .duckdns.org}
+      TOKEN: ${DUCKDNS_TOKEN}
+      UPDATE_IP: ipv4
+      LOG_FILE: "false"
+    mem_limit: 64m
+    logging: *logging
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

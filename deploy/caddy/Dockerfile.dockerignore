@@ -1,0 +1,9 @@
+# Context is the repo root: send only what the Caddy image needs.
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!tools
+!deploy/caddy/Caddyfile
+**/node_modules
+**/dist

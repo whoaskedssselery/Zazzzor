@@ -1,0 +1,48 @@
+{
+	email {$ACME_EMAIL}
+	https_port {$ZAZZZOR_HTTPS_PORT}
+	# Port 80 is never opened: certificates come via DNS-01 (DuckDNS).
+	auto_https disable_redirects
+	# No admin API on :2019 (the host may already run its own Caddy there);
+	# config changes are applied by restarting the container.
+	admin off
+}
+
+{$ZAZZZOR_DOMAIN} {
+	tls {
+		dns duckdns {$DUCKDNS_TOKEN}
+		# Check the DNS-01 TXT record through public resolvers, not the host's
+		# (often an ISP or router cache that delays propagation checks).
+		resolvers 1.1.1.1 8.8.8.8
+	}
+
+	redir /connectivity-test /connectivity-test/ permanent
+
+	handle_path /connectivity-test/* {
+		# Only the static page is compressed; signaling below is not touched.
+		encode zstd gzip
+		header {
+			Content-Security-Policy "default-src 'self'; connect-src 'self' wss:; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:"
+			Referrer-Policy no-referrer
+			X-Content-Type-Options nosniff
+		}
+		# index.html must be revalidated so a rebuilt page reaches everyone;
+		# assets have content hashes in their names and may be cached for long.
+		@index path / /index.html
+		header @index Cache-Control no-cache
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		root * /srv/connectivity-test
+		file_server
+	}
+
+	# LiveKit signaling (WebSocket). The server API (/twirp) is deliberately
+	# not exposed: tokens are issued locally by deploy/scripts/make-test-links.sh.
+	handle /rtc* {
+		reverse_proxy 127.0.0.1:7880
+	}
+
+	handle {
+		respond 404
+	}
+}
