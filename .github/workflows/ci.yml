@@ -37,6 +37,8 @@ jobs:
       - name: Verify go.mod and go.sum are tidy
         run: |
           go mod tidy -diff
+      - name: Verify sqlc output is current
+        run: go tool sqlc diff
       - name: go vet
         run: go vet ./...
       - name: golangci-lint
