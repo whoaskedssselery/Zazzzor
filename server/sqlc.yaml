@@ -1,0 +1,7 @@
+# sqlc: go tool sqlc generate (run from server/).
+# Each module adds an entry: queries in internal/<module>/queries.sql,
+# generated code in internal/<module>/store/. The schema is the goose
+# migrations (sqlc ignores the Down sections).
+# Until the first module adds an entry, `sqlc generate` reports "no packages".
+version: "2"
+sql: []

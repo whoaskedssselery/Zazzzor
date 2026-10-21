@@ -47,7 +47,9 @@ paths:
       operationId: getReadyz
       security: []
       summary: Readiness probe
-      description: Returns 200 when the server can take traffic (its database answers).
+      description: |
+        Returns 200 when the server can take traffic: its database answers a
+        ping within 2 seconds. Otherwise returns 503 `not_ready`.
       responses:
         "200":
           description: The server is ready.
@@ -80,6 +82,14 @@ components:
           schema:
             $ref: "#/components/schemas/Problem"
   schemas:
+    Snowflake:
+      type: string
+      pattern: "^[0-9]{1,19}$"
+      description: |
+        64-bit snowflake ID as a decimal string (41 bits of milliseconds since
+        2026-01-01T00:00:00Z, 10 bits of worker, 12 bits of sequence). Kept a
+        string so JavaScript clients never lose precision.
+      examples: ["1234567890123456789"]
     Status:
       type: object
       additionalProperties: false

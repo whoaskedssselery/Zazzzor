@@ -205,7 +205,7 @@ func TestServeShutsDownGracefully(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- serve(ctx, slog.New(slog.DiscardHandler), testConfig(), apiLn, metricsLn)
+		done <- serve(ctx, slog.New(slog.DiscardHandler), testConfig(), nil, apiLn, metricsLn)
 	}()
 
 	client := &http.Client{Timeout: 3 * time.Second}

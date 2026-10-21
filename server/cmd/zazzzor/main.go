@@ -20,11 +20,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/config"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/db"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
@@ -33,6 +35,8 @@ var version = "dev"
 const (
 	shutdownTimeout    = 15 * time.Second
 	healthcheckTimeout = 3 * time.Second
+	startupDBTimeout   = 30 * time.Second
+	readyTimeout       = 2 * time.Second
 	readHeaderTimeout  = 10 * time.Second
 	idleTimeout        = 120 * time.Second
 )
@@ -64,6 +68,18 @@ func run(args []string, env func(string) string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// The schema must be current before any request is served; a database
+	// that is down or a migration that fails stops the start-up.
+	pool, err := openDatabase(ctx, cfg.DatabaseURL)
+	if err != nil {
+		logger.Error("open database", "err", err.Error())
+		return 1
+	}
+	defer pool.Close()
+
 	apiLn, err := net.Listen("tcp", cfg.HTTPAddr)
 	if err != nil {
 		logger.Error("listen api", "addr", cfg.HTTPAddr, "err", err.Error())
@@ -76,12 +92,9 @@ func run(args []string, env func(string) string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
 	logger.Info("starting", "version", version, "http_addr", apiLn.Addr().String(),
 		"metrics_addr", metricsLn.Addr().String())
-	if err := serve(ctx, logger, cfg, apiLn, metricsLn); err != nil {
+	if err := serve(ctx, logger, cfg, dbReady(pool), apiLn, metricsLn); err != nil {
 		logger.Error("server stopped with error", "err", err.Error())
 		return 1
 	}
@@ -91,7 +104,9 @@ func run(args []string, env func(string) string, stdout, stderr io.Writer) int {
 
 // serve runs the API and metrics servers on the given listeners until ctx is
 // done, then shuts both down gracefully within shutdownTimeout.
-func serve(ctx context.Context, logger *slog.Logger, cfg config.Config, apiLn, metricsLn net.Listener) error {
+func serve(ctx context.Context, logger *slog.Logger, cfg config.Config, ready func(context.Context) error,
+	apiLn, metricsLn net.Listener,
+) error {
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(
 		collectors.NewGoCollector(),
@@ -102,6 +117,7 @@ func serve(ctx context.Context, logger *slog.Logger, cfg config.Config, apiLn, m
 		Config:  cfg,
 		Logger:  logger,
 		Metrics: newHTTPMetrics(reg),
+		Ready:   ready,
 	}), logger)
 
 	metricsMux := http.NewServeMux()
@@ -139,6 +155,35 @@ func serveOn(s *http.Server, ln net.Listener) error {
 		return err
 	}
 	return nil
+}
+
+// openDatabase connects to the database and applies pending migrations.
+func openDatabase(ctx context.Context, url string) (*pgxpool.Pool, error) {
+	ctx, cancel := context.WithTimeout(ctx, startupDBTimeout)
+	defer cancel()
+	pool, err := db.Open(ctx, url)
+	if err != nil {
+		return nil, err
+	}
+	if err := db.Migrate(ctx, pool); err != nil {
+		pool.Close()
+		return nil, err
+	}
+	return pool, nil
+}
+
+// pinger is the part of a pool readiness needs.
+type pinger interface {
+	Ping(ctx context.Context) error
+}
+
+// dbReady reports ready when the database answers a ping within readyTimeout.
+func dbReady(p pinger) func(context.Context) error {
+	return func(ctx context.Context) error {
+		ctx, cancel := context.WithTimeout(ctx, readyTimeout)
+		defer cancel()
+		return p.Ping(ctx)
+	}
 }
 
 // healthcheck probes the local readiness endpoint. It only needs
