@@ -25,7 +25,11 @@ tags:
   - name: auth
     description: Registration, login and cookie sessions.
   - name: users
-    description: Accounts.
+    description: Profile of the signed-in user.
+  - name: files
+    description: Stored images (avatars, server icons).
+  - name: admin
+    description: Instance administration, for the usernames in `ZAZZZOR_ADMIN_USERNAMES`.
 paths:
   /healthz:
     get:
@@ -209,13 +213,338 @@ paths:
           $ref: "#/components/responses/Problem"
         "500":
           $ref: "#/components/responses/Problem"
+    patch:
+      tags: [users]
+      operationId: updateCurrentUser
+      summary: Change the profile
+      description: |
+        Changes the fields that are present; an empty object changes nothing.
+        `display_name` is trimmed and must then be 1 to 32 characters with a
+        visible character and no control or bidirectional control characters.
+        A change is announced as `USER_UPDATE` to the user and everyone
+        sharing a server with them.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+      responses:
+        "200":
+          description: The updated account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: "`invalid_body`, `body_too_large` or `validation_failed` (with `errors`)."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed`."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /users/@me/password:
+    post:
+      tags: [users]
+      operationId: changePassword
+      summary: Change the password
+      description: |
+        Checks `current_password`, sets `new_password` and signs out every
+        other session of the user; the session making the request stays.
+        A wrong `current_password` is `400 validation_failed` with an error
+        on that field (not 401: the session itself is fine).
+
+        Limited to 5 requests per 15 minutes per user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+      responses:
+        "204":
+          description: The password was changed.
+        "400":
+          description: "`invalid_body`, `body_too_large` or `validation_failed` (with `errors` on `current_password` or `new_password`)."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed`."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/ServerBusy"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /users/@me/avatar:
+    put:
+      tags: [users]
+      operationId: setAvatar
+      summary: Upload an avatar
+      description: |
+        `multipart/form-data` with the image in the part `file`: PNG, JPEG,
+        WebP or GIF (first frame), at most 4 MiB and 8192 pixels on a side
+        (40 megapixels in all). The type is detected from the content; the
+        file name and the part's Content-Type are ignored. The image is cut
+        to a centred square, scaled to 256x256 and stored as PNG without
+        metadata; the same image always gets the same `avatar_url`. The
+        upload may take up to 120 seconds. A change is announced as
+        `USER_UPDATE`.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/AvatarUpload"
+      responses:
+        "200":
+          description: The account with its new `avatar_url`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: |
+            `unsupported_image` (not a supported image, unreadable, or too
+            many pixels), `invalid_body` (malformed multipart) or
+            `validation_failed` (no `file` part).
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed`."
+          $ref: "#/components/responses/Problem"
+        "413":
+          description: "`file_too_large`: the file is over 4 MiB."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`: the body is not multipart/form-data."
+          $ref: "#/components/responses/Problem"
+        "503":
+          $ref: "#/components/responses/ImagesBusy"
+        "500":
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [users]
+      operationId: deleteAvatar
+      summary: Remove the avatar
+      description: Clears the avatar (a no-op without one). A change is announced as `USER_UPDATE`.
+      responses:
+        "200":
+          description: The account with `avatar_url` null.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed`."
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /files/avatars/{user_id}/{hash}.png:
+    get:
+      tags: [files]
+      operationId: getAvatarFile
+      security: []
+      summary: An avatar image
+      description: The content behind a URL never changes, so it may be cached forever.
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+        - $ref: "#/components/parameters/FileHash"
+      responses:
+        "200":
+          $ref: "#/components/responses/ImageFile"
+        "404":
+          description: "`not_found`: no such file (also for malformed IDs or hashes)."
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /files/icons/{guild_id}/{hash}.png:
+    get:
+      tags: [files]
+      operationId: getGuildIconFile
+      security: []
+      summary: A server icon image
+      description: The content behind a URL never changes, so it may be cached forever.
+      parameters:
+        - name: guild_id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/Snowflake"
+        - $ref: "#/components/parameters/FileHash"
+      responses:
+        "200":
+          $ref: "#/components/responses/ImageFile"
+        "404":
+          description: "`not_found`: no such file (also for malformed IDs or hashes)."
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /admin/settings:
+    get:
+      tags: [admin]
+      operationId: getInstanceSettings
+      summary: Instance settings
+      description: Only for instance administrators (`ZAZZZOR_ADMIN_USERNAMES`), like every `/admin` operation.
+      responses:
+        "200":
+          description: The current settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstanceSettings"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`admin_only`."
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+    patch:
+      tags: [admin]
+      operationId: updateInstanceSettings
+      summary: Change instance settings
+      description: |
+        Changes the fields that are present. With `registration_open` false,
+        `POST /auth/register` answers `403 registration_closed`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateInstanceSettingsRequest"
+      responses:
+        "200":
+          description: The settings after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstanceSettings"
+        "400":
+          description: "`invalid_body` or `body_too_large`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `admin_only`."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /admin/users/{user_id}/password-reset:
+    post:
+      tags: [admin]
+      operationId: resetUserPassword
+      summary: Reset a user's password
+      description: |
+        Replaces the password with a random 16-character one, returned only
+        in this response, and signs out every session of the user.
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+      responses:
+        "200":
+          description: The temporary password.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemporaryPassword"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `admin_only`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such user."
+          $ref: "#/components/responses/Problem"
+        "503":
+          $ref: "#/components/responses/ServerBusy"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /admin/users/{user_id}/disable:
+    post:
+      tags: [admin]
+      operationId: disableUser
+      summary: Disable an account
+      description: |
+        The user is signed out everywhere and cannot sign in (`403
+        account_disabled`) until enabled again. Idempotent. Administrators
+        cannot disable themselves.
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+      responses:
+        "204":
+          description: The account is disabled.
+        "400":
+          description: "`cannot_disable_self`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `admin_only`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such user."
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /admin/users/{user_id}/enable:
+    post:
+      tags: [admin]
+      operationId: enableUser
+      summary: Enable an account
+      description: Lets a disabled account sign in again. Idempotent.
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+      responses:
+        "204":
+          description: The account is enabled.
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `admin_only`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such user."
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
 components:
   securitySchemes:
     cookieAuth:
       type: apiKey
       in: cookie
       name: zz_session
-      description: Opaque session token set by the login endpoint (HttpOnly, Secure, SameSite=Lax).
+      description: |
+        Opaque session token set by the login endpoint (HttpOnly, Secure,
+        SameSite=Lax). Any response to a request made with a valid session
+        may carry `Set-Cookie: zz_session=...` with the same token: the
+        session is renewed for 30 more days at most once a day when used
+        (sliding expiry). Clients must accept it on every operation.
   headers:
     SessionCookie:
       description: |
@@ -225,7 +554,50 @@ components:
         renewed (cookie re-sent) at most once a day when used.
       schema:
         type: string
+  parameters:
+    UserID:
+      name: user_id
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Snowflake"
+    FileHash:
+      name: hash
+      in: path
+      required: true
+      description: First 16 hex digits of the SHA-256 of the stored PNG.
+      schema:
+        type: string
+        pattern: "^[0-9a-f]{16}$"
   responses:
+    ImageFile:
+      description: |
+        The PNG image. Sent with `Cache-Control: public, max-age=31536000,
+        immutable`, `X-Content-Type-Options: nosniff` and
+        `Content-Security-Policy: default-src 'none'; sandbox`.
+      headers:
+        Cache-Control:
+          required: true
+          schema:
+            type: string
+            const: "public, max-age=31536000, immutable"
+      content:
+        image/png: {}
+    ImagesBusy:
+      description: |
+        `server_busy`: too many images are being processed at once. Retry
+        after `Retry-After` seconds.
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying.
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
     Problem:
       description: An error, described as RFC 7807 problem details.
       content:
@@ -369,3 +741,54 @@ components:
           description: Case-insensitive.
         password:
           type: string
+    UpdateUserRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 32
+    ChangePasswordRequest:
+      type: object
+      additionalProperties: false
+      required: [current_password, new_password]
+      properties:
+        current_password:
+          type: string
+        new_password:
+          type: string
+          minLength: 8
+          maxLength: 128
+          description: 8 to 128 characters (Unicode code points).
+    AvatarUpload:
+      type: object
+      required: [file]
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          description: PNG, JPEG, WebP or GIF, at most 4 MiB.
+    InstanceSettings:
+      type: object
+      additionalProperties: false
+      required: [registration_open]
+      properties:
+        registration_open:
+          type: boolean
+          description: Whether new accounts may register.
+    UpdateInstanceSettingsRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        registration_open:
+          type: boolean
+    TemporaryPassword:
+      type: object
+      additionalProperties: false
+      required: [temporary_password]
+      properties:
+        temporary_password:
+          type: string
+          pattern: "^[A-Za-z0-9]{16}$"
+          description: Shown once; the user should change it after signing in.

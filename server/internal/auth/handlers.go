@@ -12,13 +12,11 @@ import (
 // Mount registers the auth endpoints on r, which must already run
 // Middleware(s):
 //
-//	POST /auth/register, POST /auth/login, POST /auth/logout, GET /users/@me
+//	POST /auth/register, POST /auth/login, POST /auth/logout
 func Mount(r chi.Router, s *Service) {
 	r.Post("/auth/register", httpx.Wrap(s.handleRegister))
 	r.Post("/auth/login", httpx.Wrap(s.handleLogin))
 	r.Post("/auth/logout", httpx.Wrap(s.handleLogout))
-	// Minimal until the users module takes it over.
-	r.With(Require).Get("/users/@me", httpx.Wrap(handleMe))
 }
 
 type registerRequest struct {
@@ -103,12 +101,5 @@ func (s *Service) handleLogout(w http.ResponseWriter, r *http.Request) error {
 	}
 	s.clearSessionCookie(w)
 	w.WriteHeader(http.StatusNoContent)
-	return nil
-}
-
-func handleMe(w http.ResponseWriter, r *http.Request) error {
-	u, _ := FromContext(r.Context())
-	w.Header().Set("Cache-Control", "no-store")
-	httpx.JSON(w, http.StatusOK, u.Public())
 	return nil
 }

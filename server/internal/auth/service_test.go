@@ -57,19 +57,20 @@ func TestAccountsProfileAndAvatar(t *testing.T) {
 	}
 
 	hash := "0123456789abcdef"
-	u, err = e.svc.SetAvatar(ctx, id, &hash)
-	if err != nil || u.AvatarHash == nil || *u.AvatarHash != hash {
-		t.Fatalf("SetAvatar = %+v, %v", u, err)
+	u, prev, err := e.svc.SetAvatar(ctx, id, &hash)
+	if err != nil || u.AvatarHash == nil || *u.AvatarHash != hash || prev != nil {
+		t.Fatalf("SetAvatar = %+v, previous %v, %v", u, prev, err)
 	}
 	if got := u.Public().AvatarURL; got == nil || *got != "/api/v1/files/avatars/"+id.String()+"/"+hash+".png" {
 		t.Fatalf("avatar_url = %v", got)
 	}
 	bad := "../../etc/passwd"
-	if _, err = e.svc.SetAvatar(ctx, id, &bad); err == nil {
+	if _, _, err = e.svc.SetAvatar(ctx, id, &bad); err == nil {
 		t.Fatal("SetAvatar accepted a hash that is not 16 hex digits")
 	}
-	if u, err = e.svc.SetAvatar(ctx, id, nil); err != nil || u.AvatarHash != nil || u.Public().AvatarURL != nil {
-		t.Fatalf("clear avatar = %+v, %v", u, err)
+	if u, prev, err = e.svc.SetAvatar(ctx, id, nil); err != nil || u.AvatarHash != nil || u.Public().AvatarURL != nil ||
+		prev == nil || *prev != hash {
+		t.Fatalf("clear avatar = %+v, previous %v, %v", u, prev, err)
 	}
 
 	got, err := e.svc.GetUser(ctx, id)

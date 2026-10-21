@@ -19,9 +19,6 @@ UPDATE users SET password_hash = @password_hash WHERE id = @id;
 -- name: SetDisplayName :one
 UPDATE users SET display_name = @display_name WHERE id = @id RETURNING *;
 
--- name: SetAvatarHash :one
-UPDATE users SET avatar_hash = @avatar_hash WHERE id = @id RETURNING *;
-
 -- name: CreateSession :exec
 INSERT INTO sessions (id, user_id, token_hash, created_at, last_used_at, expires_at, user_agent, ip)
 VALUES (@id, @user_id, @token_hash, @created_at, @created_at, @expires_at, @user_agent, @ip);
@@ -51,3 +48,17 @@ DELETE FROM sessions WHERE user_id = @user_id RETURNING id;
 
 -- name: DeleteOtherUserSessions :many
 DELETE FROM sessions WHERE user_id = @user_id AND id <> @keep_id RETURNING id;
+
+-- name: DisableUser :one
+-- Keeps the time of the first disable.
+UPDATE users SET disabled_at = COALESCE(disabled_at, @now::timestamptz) WHERE id = @id RETURNING *;
+
+-- name: EnableUser :one
+UPDATE users SET disabled_at = NULL WHERE id = @id RETURNING *;
+
+-- name: ReplaceAvatarHash :one
+-- Locks the row first, so concurrent calls each see the hash they replace.
+UPDATE users SET avatar_hash = @avatar_hash
+FROM (SELECT users.avatar_hash FROM users WHERE users.id = @id FOR UPDATE) AS prev
+WHERE users.id = @id
+RETURNING sqlc.embed(users), prev.avatar_hash AS previous_hash;

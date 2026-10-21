@@ -25,11 +25,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"github.com/whoaskedssselery/zazzzor/server/internal/admin"
 	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
 	"github.com/whoaskedssselery/zazzzor/server/internal/config"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
+	"github.com/whoaskedssselery/zazzzor/server/internal/files"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/db"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
+	"github.com/whoaskedssselery/zazzzor/server/internal/users"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
@@ -127,9 +130,12 @@ func serve(ctx context.Context, logger *slog.Logger, cfg config.Config, pool *pg
 		Bus:     bus,
 	}
 	if pool != nil {
-		ids := snowflake.NewGenerator(0, time.Now)
+		m, err := newModules(cfg, pool, snowflake.NewGenerator(0, time.Now), bus)
+		if err != nil {
+			return err
+		}
 		deps.Ready = dbReady(pool)
-		deps.Auth = newAuthService(cfg, pool, ids, bus)
+		deps.Modules = m
 	}
 	api := newServer(newRouter(deps), logger)
 
@@ -185,16 +191,38 @@ func openDatabase(ctx context.Context, url string) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
-// newAuthService wires the auth module to the configuration.
-func newAuthService(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator, pub events.Publisher) *auth.Service {
-	return auth.NewService(auth.Options{
-		Pool:           pool,
-		IDs:            ids,
-		Publisher:      pub,
-		AdminUsernames: cfg.AdminUsernames,
-		CookieSecure:   cfg.CookieSecure,
-		TrustedProxies: cfg.TrustedProxies,
+// modules are the domain modules served by the API.
+type modules struct {
+	Auth  *auth.Service
+	Users *users.Service
+	Admin *admin.Service
+	Files *files.Disk
+}
+
+// newModules wires the domain modules to the configuration and to each
+// other. Images live under cfg.DataDir, which is created if missing.
+func newModules(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator, pub events.Publisher) (*modules, error) {
+	disk, err := files.NewDisk(cfg.DataDir)
+	if err != nil {
+		return nil, err
+	}
+	// auth asks the admin settings on every registration.
+	settings := admin.NewSettings(pool)
+	authSvc := auth.NewService(auth.Options{
+		Pool:             pool,
+		IDs:              ids,
+		Publisher:        pub,
+		AdminUsernames:   cfg.AdminUsernames,
+		CookieSecure:     cfg.CookieSecure,
+		TrustedProxies:   cfg.TrustedProxies,
+		RegistrationOpen: settings.RegistrationOpen,
 	})
+	return &modules{
+		Auth:  authSvc,
+		Users: users.NewService(users.Options{Accounts: authSvc, Files: disk, Publisher: pub}),
+		Admin: admin.NewService(settings, authSvc),
+		Files: disk,
+	}, nil
 }
 
 // pinger is the part of a pool readiness needs.

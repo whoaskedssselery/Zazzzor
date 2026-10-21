@@ -44,3 +44,12 @@ sql:
             go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
           - column: sessions.user_id
             go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+  - engine: postgresql
+    schema: internal/platform/db/migrations
+    queries: internal/admin/queries.sql
+    gen:
+      go:
+        package: store
+        out: internal/admin/store
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: true

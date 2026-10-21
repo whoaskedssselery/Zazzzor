@@ -13,6 +13,7 @@ import (
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/testkit"
 )
@@ -34,22 +35,35 @@ func (b *lockedBuffer) String() string {
 	return b.buf.String()
 }
 
-// newAuthRouter is the production router with the auth module on a fresh
-// database, logging into the returned buffer.
+// newAuthRouter is the production router with the domain modules on a fresh
+// database and data directory, logging into the returned buffer. "boss" is
+// an administrator.
 func newAuthRouter(t *testing.T) (http.Handler, *lockedBuffer) {
+	t.Helper()
+	return newModulesRouter(t, httpx.DeadlineOptions{})
+}
+
+func newModulesRouter(t *testing.T, deadlines httpx.DeadlineOptions) (http.Handler, *lockedBuffer) {
 	t.Helper()
 	cfg := testConfig()
 	cfg.AllowedOrigins = []string{testkit.DefaultOrigin}
+	cfg.AdminUsernames = []string{"boss"}
+	cfg.DataDir = t.TempDir()
 	logs := &lockedBuffer{}
 	reg := prometheus.NewRegistry()
 	bus := events.NewBus(reg)
 	t.Cleanup(bus.Close)
+	m, err := newModules(cfg, testkit.Postgres(t), snowflake.NewGenerator(0, time.Now), bus)
+	if err != nil {
+		t.Fatal(err)
+	}
 	return newRouter(routerDeps{
-		Config:  cfg,
-		Logger:  slog.New(slog.NewJSONHandler(logs, nil)),
-		Metrics: newHTTPMetrics(reg),
-		Bus:     bus,
-		Auth:    newAuthService(cfg, testkit.Postgres(t), snowflake.NewGenerator(0, time.Now), bus),
+		Config:    cfg,
+		Logger:    slog.New(slog.NewJSONHandler(logs, nil)),
+		Metrics:   newHTTPMetrics(reg),
+		Bus:       bus,
+		Modules:   m,
+		Deadlines: deadlines,
 	}), logs
 }
 

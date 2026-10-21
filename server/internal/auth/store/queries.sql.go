@@ -155,6 +155,84 @@ func (q *Queries) DeleteUserSessions(ctx context.Context, db DBTX, userID snowfl
 	return items, nil
 }
 
+const disableUser = `-- name: DisableUser :one
+UPDATE users SET disabled_at = COALESCE(disabled_at, $1::timestamptz) WHERE id = $2 RETURNING id, username, display_name, password_hash, avatar_hash, disabled_at, created_at
+`
+
+type DisableUserParams struct {
+	Now time.Time
+	ID  snowflake.ID
+}
+
+// Keeps the time of the first disable.
+func (q *Queries) DisableUser(ctx context.Context, db DBTX, arg DisableUserParams) (User, error) {
+	row := db.QueryRow(ctx, disableUser, arg.Now, arg.ID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.DisplayName,
+		&i.PasswordHash,
+		&i.AvatarHash,
+		&i.DisabledAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const enableUser = `-- name: EnableUser :one
+UPDATE users SET disabled_at = NULL WHERE id = $1 RETURNING id, username, display_name, password_hash, avatar_hash, disabled_at, created_at
+`
+
+func (q *Queries) EnableUser(ctx context.Context, db DBTX, id snowflake.ID) (User, error) {
+	row := db.QueryRow(ctx, enableUser, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.DisplayName,
+		&i.PasswordHash,
+		&i.AvatarHash,
+		&i.DisabledAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const replaceAvatarHash = `-- name: ReplaceAvatarHash :one
+UPDATE users SET avatar_hash = $1
+FROM (SELECT users.avatar_hash FROM users WHERE users.id = $2 FOR UPDATE) AS prev
+WHERE users.id = $2
+RETURNING users.id, users.username, users.display_name, users.password_hash, users.avatar_hash, users.disabled_at, users.created_at, prev.avatar_hash AS previous_hash
+`
+
+type ReplaceAvatarHashParams struct {
+	AvatarHash *string
+	ID         snowflake.ID
+}
+
+type ReplaceAvatarHashRow struct {
+	User         User
+	PreviousHash *string
+}
+
+// Locks the row first, so concurrent calls each see the hash they replace.
+func (q *Queries) ReplaceAvatarHash(ctx context.Context, db DBTX, arg ReplaceAvatarHashParams) (ReplaceAvatarHashRow, error) {
+	row := db.QueryRow(ctx, replaceAvatarHash, arg.AvatarHash, arg.ID)
+	var i ReplaceAvatarHashRow
+	err := row.Scan(
+		&i.User.ID,
+		&i.User.Username,
+		&i.User.DisplayName,
+		&i.User.PasswordHash,
+		&i.User.AvatarHash,
+		&i.User.DisabledAt,
+		&i.User.CreatedAt,
+		&i.PreviousHash,
+	)
+	return i, err
+}
+
 const sessionByTokenHash = `-- name: SessionByTokenHash :one
 SELECT sessions.id AS session_id, sessions.last_used_at, sessions.expires_at, users.id, users.username, users.display_name, users.password_hash, users.avatar_hash, users.disabled_at, users.created_at
 FROM sessions
@@ -191,30 +269,6 @@ func (q *Queries) SessionByTokenHash(ctx context.Context, db DBTX, arg SessionBy
 		&i.User.AvatarHash,
 		&i.User.DisabledAt,
 		&i.User.CreatedAt,
-	)
-	return i, err
-}
-
-const setAvatarHash = `-- name: SetAvatarHash :one
-UPDATE users SET avatar_hash = $1 WHERE id = $2 RETURNING id, username, display_name, password_hash, avatar_hash, disabled_at, created_at
-`
-
-type SetAvatarHashParams struct {
-	AvatarHash *string
-	ID         snowflake.ID
-}
-
-func (q *Queries) SetAvatarHash(ctx context.Context, db DBTX, arg SetAvatarHashParams) (User, error) {
-	row := db.QueryRow(ctx, setAvatarHash, arg.AvatarHash, arg.ID)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.Username,
-		&i.DisplayName,
-		&i.PasswordHash,
-		&i.AvatarHash,
-		&i.DisabledAt,
-		&i.CreatedAt,
 	)
 	return i, err
 }

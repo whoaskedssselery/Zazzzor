@@ -132,8 +132,9 @@ type Accounts interface {
 	GetUser(ctx context.Context, userID snowflake.ID) (User, error)
 	UsersByIDs(ctx context.Context, ids []snowflake.ID) ([]User, error)
 	UpdateProfile(ctx context.Context, userID snowflake.ID, displayName string) (User, error)
-	// SetAvatar sets (hash = 16 lower-case hex digits) or clears (nil) the avatar.
-	SetAvatar(ctx context.Context, userID snowflake.ID, hash *string) (User, error)
+	// SetAvatar sets (hash = 16 lower-case hex digits) or clears (nil) the
+	// avatar and returns the hash it replaced (nil if there was none).
+	SetAvatar(ctx context.Context, userID snowflake.ID, hash *string) (u User, previous *string, err error)
 	// ChangePassword checks current, sets next and revokes every session of
 	// the user except keepSessionID.
 	ChangePassword(ctx context.Context, userID snowflake.ID, current, next string, keepSessionID snowflake.ID) error
@@ -639,19 +640,21 @@ func (s *Service) UpdateProfile(ctx context.Context, userID snowflake.ID, displa
 
 var avatarHashRE = regexp.MustCompile(`^[0-9a-f]{16}$`)
 
-// SetAvatar stores or clears the avatar hash.
-func (s *Service) SetAvatar(ctx context.Context, userID snowflake.ID, hash *string) (User, error) {
+// SetAvatar stores or clears the avatar hash and returns the one it
+// replaced. The row is locked first, so of two concurrent calls each sees the
+// hash the other one set, and no replaced hash is reported twice or missed.
+func (s *Service) SetAvatar(ctx context.Context, userID snowflake.ID, hash *string) (User, *string, error) {
 	if hash != nil && !avatarHashRE.MatchString(*hash) {
-		return User{}, fmt.Errorf("auth: avatar hash %q is not 16 hex digits", *hash)
+		return User{}, nil, fmt.Errorf("auth: avatar hash %q is not 16 hex digits", *hash)
 	}
-	row, err := s.q.SetAvatarHash(ctx, s.pool, store.SetAvatarHashParams{ID: userID, AvatarHash: hash})
+	row, err := s.q.ReplaceAvatarHash(ctx, s.pool, store.ReplaceAvatarHashParams{ID: userID, AvatarHash: hash})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return User{}, ErrUserNotFound
+		return User{}, nil, ErrUserNotFound
 	}
 	if err != nil {
-		return User{}, fmt.Errorf("auth: update avatar: %w", err)
+		return User{}, nil, fmt.Errorf("auth: update avatar: %w", err)
 	}
-	return s.toUser(row), nil
+	return s.toUser(row.User), row.PreviousHash, nil
 }
 
 // ChangePassword verifies current exactly like Login does (an unknown user
@@ -704,4 +707,73 @@ func (s *Service) ChangePassword(ctx context.Context, userID snowflake.ID, curre
 	}
 	s.publishRevoked(ctx, userID, revoked)
 	return nil
+}
+
+// ResetPassword sets a new password without knowing the old one (an
+// administrator's reset) and revokes every session of the user, announcing
+// the revocation once the change has committed.
+func (s *Service) ResetPassword(ctx context.Context, userID snowflake.ID, next string) error {
+	if msg := passwordProblem(next); msg != "" {
+		return &ValidationError{Fields: []httpx.FieldError{{Field: "new_password", Message: msg}}}
+	}
+	if _, err := s.GetUser(ctx, userID); err != nil {
+		return err // unknown users cost no hashing
+	}
+	hash, err := HashPassword(ctx, next)
+	if err != nil {
+		return err
+	}
+	var revoked []snowflake.ID
+	err = db.InTx(ctx, s.pool, func(tx pgx.Tx) error {
+		n, txErr := s.q.SetPasswordHash(ctx, tx, store.SetPasswordHashParams{ID: userID, PasswordHash: hash})
+		if txErr != nil {
+			return fmt.Errorf("auth: set password: %w", txErr)
+		}
+		if n == 0 {
+			return ErrUserNotFound
+		}
+		revoked, txErr = s.q.DeleteUserSessions(ctx, tx, userID)
+		if txErr != nil {
+			return fmt.Errorf("auth: revoke sessions: %w", txErr)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	s.publishRevoked(ctx, userID, revoked)
+	return nil
+}
+
+// SetDisabled disables or re-enables an account. Disabling also revokes
+// every session of the user (announced after commit); a disabled account
+// cannot sign in until it is enabled again. Both are idempotent.
+func (s *Service) SetDisabled(ctx context.Context, userID snowflake.ID, disabled bool) (User, error) {
+	var row store.User
+	var revoked []snowflake.ID
+	err := db.InTx(ctx, s.pool, func(tx pgx.Tx) error {
+		var txErr error
+		if !disabled {
+			row, txErr = s.q.EnableUser(ctx, tx, userID)
+		} else {
+			row, txErr = s.q.DisableUser(ctx, tx, store.DisableUserParams{ID: userID, Now: s.now()})
+		}
+		if errors.Is(txErr, pgx.ErrNoRows) {
+			return ErrUserNotFound
+		}
+		if txErr != nil {
+			return fmt.Errorf("auth: set disabled: %w", txErr)
+		}
+		if disabled {
+			if revoked, txErr = s.q.DeleteUserSessions(ctx, tx, userID); txErr != nil {
+				return fmt.Errorf("auth: revoke sessions: %w", txErr)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return User{}, err
+	}
+	s.publishRevoked(ctx, userID, revoked)
+	return s.toUser(row), nil
 }

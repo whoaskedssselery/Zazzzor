@@ -114,6 +114,13 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(auth.Middleware(e.svc))
 		auth.Mount(r, e.svc)
+		// GET /users/@me belongs to the users module; this stand-in answers
+		// the same way, so the tests can probe whether a session works.
+		r.With(auth.Require).Get("/users/@me", func(w http.ResponseWriter, r *http.Request) {
+			u, _ := auth.FromContext(r.Context())
+			w.Header().Set("Cache-Control", "no-store")
+			httpx.JSON(w, http.StatusOK, u.Public())
+		})
 	})
 	e.h = r
 	return e

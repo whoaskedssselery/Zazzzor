@@ -15,10 +15,13 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/whoaskedssselery/zazzzor/server/internal/admin"
 	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
 	"github.com/whoaskedssselery/zazzzor/server/internal/config"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
+	"github.com/whoaskedssselery/zazzzor/server/internal/files"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
+	"github.com/whoaskedssselery/zazzzor/server/internal/users"
 )
 
 type routerDeps struct {
@@ -27,9 +30,9 @@ type routerDeps struct {
 	Metrics *httpMetrics
 	// Bus carries domain events from the modules to the gateway.
 	Bus *events.Bus
-	// Auth serves accounts and sessions; nil leaves the auth routes out
-	// (tests without a database).
-	Auth *auth.Service
+	// Modules serve the domain routes; nil leaves them out (tests without a
+	// database).
+	Modules *modules
 	// Ready reports whether the server can take traffic (e.g. the database
 	// answers). nil means always ready.
 	Ready func(context.Context) error
@@ -75,10 +78,14 @@ func newRouter(d routerDeps) http.Handler {
 			return nil
 		}))
 
-		if d.Auth != nil {
+		if m := d.Modules; m != nil {
+			// Public images need no session lookup.
+			files.Mount(r, m.Files)
 			r.Group(func(r chi.Router) {
-				r.Use(auth.Middleware(d.Auth))
-				auth.Mount(r, d.Auth)
+				r.Use(auth.Middleware(m.Auth))
+				auth.Mount(r, m.Auth)
+				users.Mount(r, m.Users)
+				admin.Mount(r, m.Admin)
 			})
 		}
 	})

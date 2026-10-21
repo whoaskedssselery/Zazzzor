@@ -11,6 +11,11 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
 
+type Instance struct {
+	ID               bool
+	RegistrationOpen bool
+}
+
 type Session struct {
 	ID         snowflake.ID
 	UserID     snowflake.ID
