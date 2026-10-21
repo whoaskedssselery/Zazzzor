@@ -25,9 +25,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
 	"github.com/whoaskedssselery/zazzzor/server/internal/config"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/db"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
@@ -95,7 +97,7 @@ func run(args []string, env func(string) string, stdout, stderr io.Writer) int {
 
 	logger.Info("starting", "version", version, "http_addr", apiLn.Addr().String(),
 		"metrics_addr", metricsLn.Addr().String())
-	if err := serve(ctx, logger, cfg, dbReady(pool), apiLn, metricsLn); err != nil {
+	if err := serve(ctx, logger, cfg, pool, apiLn, metricsLn); err != nil {
 		logger.Error("server stopped with error", "err", err.Error())
 		return 1
 	}
@@ -104,8 +106,9 @@ func run(args []string, env func(string) string, stdout, stderr io.Writer) int {
 }
 
 // serve runs the API and metrics servers on the given listeners until ctx is
-// done, then shuts both down gracefully within shutdownTimeout.
-func serve(ctx context.Context, logger *slog.Logger, cfg config.Config, ready func(context.Context) error,
+// done, then shuts both down gracefully within shutdownTimeout. A nil pool
+// serves only the probes (always ready).
+func serve(ctx context.Context, logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool,
 	apiLn, metricsLn net.Listener,
 ) error {
 	reg := prometheus.NewRegistry()
@@ -117,13 +120,18 @@ func serve(ctx context.Context, logger *slog.Logger, cfg config.Config, ready fu
 	bus := events.NewBus(reg)
 	defer bus.Close()
 
-	api := newServer(newRouter(routerDeps{
+	deps := routerDeps{
 		Config:  cfg,
 		Logger:  logger,
 		Metrics: newHTTPMetrics(reg),
 		Bus:     bus,
-		Ready:   ready,
-	}), logger)
+	}
+	if pool != nil {
+		ids := snowflake.NewGenerator(0, time.Now)
+		deps.Ready = dbReady(pool)
+		deps.Auth = newAuthService(cfg, pool, ids, bus)
+	}
+	api := newServer(newRouter(deps), logger)
 
 	metricsMux := http.NewServeMux()
 	metricsMux.Handle("GET /metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
@@ -175,6 +183,18 @@ func openDatabase(ctx context.Context, url string) (*pgxpool.Pool, error) {
 		return nil, err
 	}
 	return pool, nil
+}
+
+// newAuthService wires the auth module to the configuration.
+func newAuthService(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator, pub events.Publisher) *auth.Service {
+	return auth.NewService(auth.Options{
+		Pool:           pool,
+		IDs:            ids,
+		Publisher:      pub,
+		AdminUsernames: cfg.AdminUsernames,
+		CookieSecure:   cfg.CookieSecure,
+		TrustedProxies: cfg.TrustedProxies,
+	})
 }
 
 // pinger is the part of a pool readiness needs.

@@ -22,6 +22,10 @@ security:
 tags:
   - name: health
     description: Liveness and readiness probes.
+  - name: auth
+    description: Registration, login and cookie sessions.
+  - name: users
+    description: Accounts.
 paths:
   /healthz:
     get:
@@ -67,6 +71,137 @@ paths:
           $ref: "#/components/responses/Problem"
         "5XX":
           $ref: "#/components/responses/Problem"
+  /auth/register:
+    post:
+      tags: [auth]
+      operationId: register
+      security: []
+      summary: Create an account
+      description: |
+        Creates an account and signs it in: the response sets the `zz_session`
+        cookie. The username is stored lower-cased and is unique regardless
+        of case. `display_name` defaults to the username as typed.
+
+        Limited to 3 well-formed requests per hour per client IP; requests
+        rejected with 400 do not count.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: The account was created and a session opened.
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/SessionCookie"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: "`invalid_body`, `body_too_large` or `validation_failed` (with `errors`)."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `registration_closed`."
+          $ref: "#/components/responses/Problem"
+        "409":
+          description: "`username_taken`."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`: the body is not application/json."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      security: []
+      summary: Sign in
+      description: |
+        Checks the credentials and opens a session (sets `zz_session`). An
+        unknown username and a wrong password give the same
+        `401 invalid_credentials`. `403 account_disabled` is returned only
+        for the right password of a disabled account.
+
+        Limited to 10 attempts per minute per client IP.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Signed in.
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/SessionCookie"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: "`invalid_body` or `body_too_large`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`invalid_credentials`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `account_disabled`."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      security:
+        - cookieAuth: []
+        - {}
+      summary: Sign out
+      description: |
+        Deletes the current session, if any, and clears the cookie. Always
+        204, also without a session.
+      responses:
+        "204":
+          description: Signed out.
+          headers:
+            Set-Cookie:
+              description: "`zz_session` with `Max-Age=0`."
+              schema:
+                type: string
+        "403":
+          description: "`origin_not_allowed`."
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /users/@me:
+    get:
+      tags: [users]
+      operationId: getCurrentUser
+      summary: The signed-in user
+      responses:
+        "200":
+          description: The account of the session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: "`unauthenticated`: no valid session."
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
 components:
   securitySchemes:
     cookieAuth:
@@ -74,9 +209,31 @@ components:
       in: cookie
       name: zz_session
       description: Opaque session token set by the login endpoint (HttpOnly, Secure, SameSite=Lax).
+  headers:
+    SessionCookie:
+      description: |
+        `zz_session=<token>; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax`.
+        The token is 32 random bytes, base64url; the server stores only its
+        SHA-256. The session lasts 30 days from its last renewal and is
+        renewed (cookie re-sent) at most once a day when used.
+      schema:
+        type: string
   responses:
     Problem:
       description: An error, described as RFC 7807 problem details.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    RateLimited:
+      description: "`rate_limited`: too many requests from this client; retry after `Retry-After` seconds."
+      headers:
+        Retry-After:
+          description: Seconds until the next request may succeed.
+          required: true
+          schema:
+            type: integer
+            minimum: 1
       content:
         application/problem+json:
           schema:
@@ -134,3 +291,55 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/FieldError"
+    User:
+      type: object
+      additionalProperties: false
+      required: [id, username, display_name, avatar_url, created_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        username:
+          type: string
+          pattern: "^[a-z0-9_.]{2,32}$"
+          description: Unique login name, lower-case.
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 32
+        avatar_url:
+          type: [string, "null"]
+          pattern: '^/api/v1/files/avatars/[0-9]{1,19}/[0-9a-f]{16}\.png$'
+          description: Path of the avatar image, or null when the user has none.
+        created_at:
+          type: string
+          format: date-time
+          examples: ["2026-10-21T12:00:00.000Z"]
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          pattern: "^[A-Za-z0-9_.]{2,32}$"
+          description: Latin letters, digits, `_` and `.`; stored lower-cased.
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+          description: 8 to 128 characters (Unicode code points).
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 32
+          description: 1 to 32 characters after trimming spaces; defaults to the username as typed.
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          description: Case-insensitive.
+        password:
+          type: string

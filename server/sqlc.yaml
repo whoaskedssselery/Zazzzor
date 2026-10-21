@@ -1,7 +1,46 @@
-# sqlc: go tool sqlc generate (run from server/).
+# sqlc: go tool sqlc generate (run from server/); CI runs `go tool sqlc diff`.
 # Each module adds an entry: queries in internal/<module>/queries.sql,
 # generated code in internal/<module>/store/. The schema is the goose
 # migrations (sqlc ignores the Down sections).
-# Until the first module adds an entry, `sqlc generate` reports "no packages".
 version: "2"
-sql: []
+
+# Shared Go type mappings; every module's entry references them.
+overrides:
+  go:
+    overrides:
+      - db_type: timestamptz
+        go_type: time.Time
+      - db_type: timestamptz
+        nullable: true
+        go_type:
+          type: time.Time
+          pointer: true
+      - db_type: inet
+        nullable: true
+        go_type:
+          import: net/netip
+          type: Addr
+          pointer: true
+      - db_type: text
+        nullable: true
+        go_type:
+          type: string
+          pointer: true
+
+sql:
+  - engine: postgresql
+    schema: internal/platform/db/migrations
+    queries: internal/auth/queries.sql
+    gen:
+      go:
+        package: store
+        out: internal/auth/store
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: true
+        overrides:
+          - column: users.id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: sessions.id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: sessions.user_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID

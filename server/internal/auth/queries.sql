@@ -1,0 +1,53 @@
+-- name: CreateUser :one
+INSERT INTO users (id, username, display_name, password_hash, created_at)
+VALUES (@id, @username, @display_name, @password_hash, @created_at)
+ON CONFLICT (username) DO NOTHING
+RETURNING *;
+
+-- name: UserByUsername :one
+SELECT * FROM users WHERE username = @username;
+
+-- name: UserByID :one
+SELECT * FROM users WHERE id = @id;
+
+-- name: UsersByIDs :many
+SELECT * FROM users WHERE id = ANY(@ids::bigint[]) ORDER BY id;
+
+-- name: SetPasswordHash :execrows
+UPDATE users SET password_hash = @password_hash WHERE id = @id;
+
+-- name: SetDisplayName :one
+UPDATE users SET display_name = @display_name WHERE id = @id RETURNING *;
+
+-- name: SetAvatarHash :one
+UPDATE users SET avatar_hash = @avatar_hash WHERE id = @id RETURNING *;
+
+-- name: CreateSession :exec
+INSERT INTO sessions (id, user_id, token_hash, created_at, last_used_at, expires_at, user_agent, ip)
+VALUES (@id, @user_id, @token_hash, @created_at, @created_at, @expires_at, @user_agent, @ip);
+
+-- name: DeleteExpiredUserSessions :exec
+DELETE FROM sessions WHERE user_id = @user_id AND expires_at <= @now;
+
+-- name: SessionByTokenHash :one
+-- Only live sessions of enabled accounts authenticate.
+SELECT sessions.id AS session_id, sessions.last_used_at, sessions.expires_at, sqlc.embed(users)
+FROM sessions
+JOIN users ON users.id = sessions.user_id
+WHERE sessions.token_hash = @token_hash
+  AND sessions.expires_at > @now
+  AND users.disabled_at IS NULL;
+
+-- name: TouchSession :execrows
+-- Conditional on the previous last_used_at, so concurrent requests renew once.
+UPDATE sessions SET last_used_at = @now, expires_at = @expires_at
+WHERE id = @id AND last_used_at = @prev_last_used_at;
+
+-- name: DeleteSession :one
+DELETE FROM sessions WHERE id = @id RETURNING user_id;
+
+-- name: DeleteUserSessions :many
+DELETE FROM sessions WHERE user_id = @user_id RETURNING id;
+
+-- name: DeleteOtherUserSessions :many
+DELETE FROM sessions WHERE user_id = @user_id AND id <> @keep_id RETURNING id;

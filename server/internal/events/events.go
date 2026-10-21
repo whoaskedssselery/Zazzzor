@@ -78,3 +78,10 @@ type Event struct {
 type Publisher interface {
 	Publish(ctx context.Context, e Event)
 }
+
+// SessionRevokedPayload is the payload of a SessionRevoked event: the gateway
+// closes the connections that authenticated with these sessions.
+type SessionRevokedPayload struct {
+	UserID     snowflake.ID
+	SessionIDs []snowflake.ID
+}
