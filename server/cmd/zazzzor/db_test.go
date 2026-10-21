@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/testkit"
@@ -64,30 +65,41 @@ func (slowPinger) Ping(ctx context.Context) error {
 
 func TestOpenDatabaseRunsMigrations(t *testing.T) {
 	ctx := t.Context()
-	url := testkit.PostgresURL(t)
+	url := testkit.EmptyPostgresURL(t)
+
 	pool, err := openDatabase(ctx, url)
 	if err != nil {
-		t.Fatalf("openDatabase: %v", err)
+		t.Fatalf("openDatabase on an empty database: %v", err)
 	}
 	t.Cleanup(pool.Close)
-	// Forget the schema history, as on a brand-new database.
-	if _, err = pool.Exec(ctx, "DROP TABLE goose_db_version"); err != nil {
-		t.Fatal(err)
-	}
-	pool.Close()
+	got := schemaVersion(t, pool)
 
+	// It reaches the same version as the fully migrated test template.
+	if want := schemaVersion(t, testkit.Postgres(t)); got != want || got < 1 {
+		t.Fatalf("schema version after start-up = %d, want %d", got, want)
+	}
+
+	// A restart on the migrated database is a no-op.
+	pool.Close()
 	pool, err = openDatabase(ctx, url)
 	if err != nil {
-		t.Fatalf("openDatabase on a blank schema: %v", err)
+		t.Fatalf("openDatabase on a migrated database: %v", err)
 	}
 	t.Cleanup(pool.Close)
-	var applied int
-	if err := pool.QueryRow(ctx, "SELECT count(*) FROM goose_db_version WHERE version_id > 0 AND is_applied").Scan(&applied); err != nil {
-		t.Fatalf("migrations were not applied: %v", err)
+	if v := schemaVersion(t, pool); v != got {
+		t.Fatalf("schema version after restart = %d, want %d", v, got)
 	}
-	if applied < 1 {
-		t.Fatalf("applied migrations = %d", applied)
+}
+
+func schemaVersion(t *testing.T, pool *pgxpool.Pool) int64 {
+	t.Helper()
+	var v int64
+	err := pool.QueryRow(t.Context(),
+		"SELECT coalesce(max(version_id), 0) FROM goose_db_version WHERE is_applied").Scan(&v)
+	if err != nil {
+		t.Fatalf("read schema version: %v", err)
 	}
+	return v
 }
 
 func TestRunFailsWhenDatabaseIsUnreachable(t *testing.T) {

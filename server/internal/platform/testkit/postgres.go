@@ -102,6 +102,18 @@ func Postgres(t testing.TB) *pgxpool.Pool {
 // its connection URL instead of a pool.
 func PostgresURL(t testing.TB) string {
 	t.Helper()
+	return newDatabase(t, templateDB)
+}
+
+// EmptyPostgresURL creates a fresh database with no migrations applied (cloned
+// from template0) and returns its URL. It is dropped when t ends.
+func EmptyPostgresURL(t testing.TB) string {
+	t.Helper()
+	return newDatabase(t, "template0")
+}
+
+func newDatabase(t testing.TB, template string) string {
+	t.Helper()
 	if !mainActive.Load() {
 		t.Fatal("testkit: add `func TestMain(m *testing.M) { os.Exit(testkit.Main(m)) }` " +
 			"to the package so its PostgreSQL container is removed after the tests")
@@ -117,7 +129,7 @@ func PostgresURL(t testing.TB) string {
 	name := fmt.Sprintf("zz_test_%d", dbSeq.Add(1))
 	ctx, cancel := context.WithTimeout(context.Background(), createDBTimout)
 	defer cancel()
-	if err := pg.createDatabase(ctx, name); err != nil {
+	if err := pg.createDatabase(ctx, name, template); err != nil {
 		t.Fatalf("testkit: create database: %v", err)
 	}
 	t.Cleanup(func() {
@@ -194,10 +206,10 @@ func (s *sharedPostgres) init(ctx context.Context) error {
 	return nil
 }
 
-func (s *sharedPostgres) createDatabase(ctx context.Context, name string) error {
+func (s *sharedPostgres) createDatabase(ctx context.Context, name, template string) error {
 	s.createMu.Lock()
 	defer s.createMu.Unlock()
-	_, err := s.admin.Exec(ctx, "CREATE DATABASE "+quote(name)+" TEMPLATE "+templateDB)
+	_, err := s.admin.Exec(ctx, "CREATE DATABASE "+quote(name)+" TEMPLATE "+quote(template))
 	return err
 }
 
