@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/config"
+	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
 )
 
@@ -23,6 +24,8 @@ type routerDeps struct {
 	Config  config.Config
 	Logger  *slog.Logger
 	Metrics *httpMetrics
+	// Bus carries domain events from the modules to the gateway.
+	Bus *events.Bus
 	// Ready reports whether the server can take traffic (e.g. the database
 	// answers). nil means always ready.
 	Ready func(context.Context) error

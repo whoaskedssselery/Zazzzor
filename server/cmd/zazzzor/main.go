@@ -26,6 +26,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/config"
+	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/db"
 )
 
@@ -113,10 +114,14 @@ func serve(ctx context.Context, logger *slog.Logger, cfg config.Config, ready fu
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
 
+	bus := events.NewBus(reg)
+	defer bus.Close()
+
 	api := newServer(newRouter(routerDeps{
 		Config:  cfg,
 		Logger:  logger,
 		Metrics: newHTTPMetrics(reg),
+		Bus:     bus,
 		Ready:   ready,
 	}), logger)
 
