@@ -56,7 +56,8 @@ func (m Permission) Has(p Permission) bool { return m&p == p }
 // maxDigits is the length of math.MaxUint64 in decimal.
 const maxDigits = 20
 
-var errInvalidPermission = errors.New("permissions: must be a decimal string that fits uint64")
+// ErrInvalid is returned when a JSON permission is not a valid decimal string.
+var ErrInvalid = errors.New("permissions: must be a decimal string that fits uint64")
 
 // MarshalJSON encodes the mask as a decimal string.
 func (m Permission) MarshalJSON() ([]byte, error) {
@@ -68,19 +69,19 @@ func (m Permission) MarshalJSON() ([]byte, error) {
 func (m *Permission) UnmarshalJSON(b []byte) error {
 	var s string
 	if err := json.Unmarshal(b, &s); err != nil {
-		return errInvalidPermission
+		return ErrInvalid
 	}
 	if s == "" || len(s) > maxDigits || (len(s) > 1 && s[0] == '0') {
-		return errInvalidPermission
+		return ErrInvalid
 	}
 	for i := 0; i < len(s); i++ {
 		if s[i] < '0' || s[i] > '9' {
-			return errInvalidPermission
+			return ErrInvalid
 		}
 	}
 	v, err := strconv.ParseUint(s, 10, 64)
 	if err != nil {
-		return errInvalidPermission
+		return ErrInvalid
 	}
 	*m = Permission(v)
 	return nil

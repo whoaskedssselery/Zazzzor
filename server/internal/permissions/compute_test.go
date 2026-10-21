@@ -240,7 +240,9 @@ func TestHierarchy(t *testing.T) {
 			req   permissions.Permission
 			want  bool
 		}{
-			{"owner grants anything", owner, permissions.Administrator | 1<<50, true},
+			{"owner grants Administrator", owner, permissions.Administrator, true},
+			{"owner cannot grant unknown bits", owner, 1 << 50, false},
+			{"admin cannot grant unknown bits", admin, permissions.All | 1<<50, false},
 			{"admin grants anything", admin, permissions.All, true},
 			{"subset is allowed", plain, permissions.ViewChannel, true},
 			{"empty request is allowed", plain, 0, true},
@@ -262,6 +264,9 @@ func TestHierarchy(t *testing.T) {
 		ownerTarget.UserID = ownerID
 		higher := subject(0, role(roleA, 9, 0))
 		lower := subject(0, role(roleB, 2, 0))
+		lower.UserID = otherID
+		lowPlain := subject(0)
+		lowPlain.UserID = otherID + 1
 		tests := []struct {
 			name          string
 			actor, target permissions.Subject
@@ -272,7 +277,7 @@ func TestHierarchy(t *testing.T) {
 			{"owner cannot act on owner either", owner, ownerTarget, false},
 			{"higher acts on lower", higher, lower, true},
 			{"lower cannot act on higher", lower, higher, false},
-			{"equal positions are denied", subject(0, role(roleA, 4, 0)), subject(0, role(roleB, 4, 0)), false},
+			{"equal positions are denied", subject(0, role(roleA, 4, 0)), func() permissions.Subject { s := subject(0, role(roleB, 4, 0)); s.UserID = otherID; return s }(), false},
 			{"role-holder acts on role-less", lower, lowPlain, true},
 		}
 		for _, tc := range tests {

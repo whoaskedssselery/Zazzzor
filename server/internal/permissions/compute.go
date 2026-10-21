@@ -34,10 +34,17 @@ type Subject struct {
 	Roles []Role
 }
 
-func (s Subject) isOwner() bool { return s.UserID == s.OwnerID }
+// valid reports whether all identifiers are set; a zero-valued Subject must
+// never be mistaken for the owner, so invalid subjects get no rights at all.
+func (s Subject) valid() bool { return s.UserID != 0 && s.GuildID != 0 && s.OwnerID != 0 }
+
+func (s Subject) isOwner() bool { return s.valid() && s.UserID == s.OwnerID }
 
 // Base returns the server-wide permissions of s.
 func Base(s Subject) Permission {
+	if !s.valid() {
+		return 0
+	}
 	if s.isOwner() {
 		return All
 	}
@@ -54,11 +61,15 @@ func Base(s Subject) Permission {
 // InChannel returns the permissions of s in a channel with the given
 // overwrites. Order: base, administrator shortcut, @everyone overwrite,
 // merged role overwrites, member overwrite; in each step deny is applied
-// before allow. Without VIEW_CHANNEL the result is 0.
+// before allow. ADMINISTRATOR in an overwrite is ignored. Without
+// VIEW_CHANNEL the result is 0. Guild-scoped actions must use Base, not this.
 //
 // If several overwrites target the same role or member (a programming error
 // upstream), only the first one counts.
 func InChannel(s Subject, overwrites []Overwrite) Permission {
+	if !s.valid() {
+		return 0
+	}
 	p := Base(s)
 	if p.Has(Administrator) {
 		return All
@@ -90,11 +101,11 @@ func InChannel(s Subject, overwrites []Overwrite) Permission {
 	}
 
 	if everyoneOW != nil {
-		p = p&^everyoneOW.Deny | everyoneOW.Allow
+		p = p&^(everyoneOW.Deny&^Administrator) | (everyoneOW.Allow &^ Administrator)
 	}
-	p = p&^roleDeny | roleAllow
+	p = p&^(roleDeny&^Administrator) | (roleAllow &^ Administrator)
 	if memberOW != nil {
-		p = p&^memberOW.Deny | memberOW.Allow
+		p = p&^(memberOW.Deny&^Administrator) | (memberOW.Allow &^ Administrator)
 	}
 
 	if !p.Has(ViewChannel) {
