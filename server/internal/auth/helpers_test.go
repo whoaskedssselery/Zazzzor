@@ -184,3 +184,7 @@ func sessionCookie(t *testing.T, resp *testkit.Response) *http.Cookie {
 	t.Fatalf("no zz_session cookie in %v", resp.Header.Values("Set-Cookie"))
 	return nil
 }
+
+// cps builds a string from code points, keeping invisible characters out of
+// the source.
+func cps(r ...rune) string { return string(r) }

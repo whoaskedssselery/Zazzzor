@@ -118,5 +118,13 @@ func ServiceUnavailable(code string) *Problem {
 	return newProblem(http.StatusServiceUnavailable, code, "")
 }
 
+// ServiceUnavailableRetryAfter is 503 with a Retry-After header in whole
+// seconds, rounded up.
+func ServiceUnavailableRetryAfter(code string, retryAfter time.Duration) *Problem {
+	p := newProblem(http.StatusServiceUnavailable, code, "")
+	p.retryAfter = retryAfter
+	return p
+}
+
 // Internal is 500 internal. It never carries details.
 func Internal() *Problem { return newProblem(http.StatusInternalServerError, "internal", "") }

@@ -91,7 +91,7 @@ func TestRegisterNormalizesAndValidates(t *testing.T) {
 		t.Fatalf("stored username = %q (%v)", stored, err)
 	}
 
-	for _, name := range []string{"в", "a b", strings.Repeat("a", 33), "a", "", "Kelvin", "bob!"} {
+	for _, name := range []string{"в", "a b", strings.Repeat("a", 33), "a", "", string(rune(0x212A)) + "elvin", "bob!"} {
 		p := problemOf(t, c.Do(http.MethodPost, "/api/v1/auth/register", creds(name, "password123")),
 			http.StatusBadRequest, "validation_failed")
 		if len(p.Errors) == 0 || p.Errors[0].Field != "username" {
@@ -111,7 +111,9 @@ func TestRegisterNormalizesAndValidates(t *testing.T) {
 		t.Fatalf("128-rune password = %d: %s", resp.Status, resp.Body)
 	}
 
-	for _, dn := range []string{"   ", strings.Repeat("ж", 33), "a\x00b"} {
+	for _, dn := range []string{"   ", strings.Repeat("ж", 33), "a\x00b",
+		cps(0x202E) + "evil", "ab" + cps(0x2066) + "c", "x" + cps(0x202A) + "y", cps(0x3164), cps(0x115F, 0x1160),
+		cps(0xFFA0), cps(0x200B, 0x200B), cps(0x0301, 0x0301), cps(0x2800)} {
 		p := problemOf(t, c.Do(http.MethodPost, "/api/v1/auth/register",
 			map[string]string{"username": "dname", "password": "password123", "display_name": dn}),
 			http.StatusBadRequest, "validation_failed")
@@ -238,15 +240,23 @@ func TestRateLimitKeyedByForwardedClient(t *testing.T) {
 		return c.Do(http.MethodPost, "/api/v1/auth/login", creds("ghost", "password123"),
 			testkit.WithHeader("X-Forwarded-For", xff)).Status
 	}
-	if s := login("fe80::1%eth0"); s != http.StatusUnauthorized {
-		t.Fatalf("first = %d", s)
-	}
-	// The same address with another zone is the same client.
-	if s := login("fe80::1%eth1"); s != http.StatusTooManyRequests {
-		t.Fatalf("zoned twin = %d, want 429", s)
-	}
-	if s := login("203.0.113.9"); s != http.StatusUnauthorized {
-		t.Fatalf("other client = %d, want 401", s)
+	for _, step := range []struct {
+		xff  string
+		want int
+	}{
+		{"2001:db8:1:2::1", http.StatusUnauthorized},
+		// Another address, or a zone, in the same /64 is the same client.
+		{"2001:db8:1:2:ffff::9", http.StatusTooManyRequests},
+		{"2001:db8:1:2::1%eth1", http.StatusTooManyRequests},
+		// Another /64 and IPv4 clients have their own buckets.
+		{"2001:db8:1:3::1", http.StatusUnauthorized},
+		{"203.0.113.9", http.StatusUnauthorized},
+		{"203.0.113.10", http.StatusUnauthorized},
+		{"203.0.113.9", http.StatusTooManyRequests},
+	} {
+		if s := login(step.xff); s != step.want {
+			t.Fatalf("login from %s = %d, want %d", step.xff, s, step.want)
+		}
 	}
 }
 
@@ -409,4 +419,38 @@ func TestLogsCarryNoSecrets(t *testing.T) {
 			t.Fatalf("logs contain a secret: %s", logs)
 		}
 	}
+}
+
+func TestLoginThrottledPerUsername(t *testing.T) {
+	e := newEnv(t, func(o *auth.Options) {
+		o.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}
+	})
+	c := e.client()
+	register(t, c, "victim", "password123")
+	register(t, c, "bystander", "password123")
+	login := func(ip, username, password string) *testkit.Response {
+		return c.Do(http.MethodPost, "/api/v1/auth/login", creds(username, password),
+			testkit.WithHeader("X-Forwarded-For", ip))
+	}
+	// Ten failures from ten different IPs, mixing the case of the name.
+	for i := range 10 {
+		name := "victim"
+		if i%2 == 1 {
+			name = "VICTIM"
+		}
+		problemOf(t, login("198.51.100."+strconv.Itoa(i+1), name, "guess-"+strconv.Itoa(i)),
+			http.StatusUnauthorized, "invalid_credentials")
+	}
+	// The 11th attempt from yet another IP is throttled, even with the right
+	// password: the check runs before hashing.
+	resp := login("198.51.100.99", "victim", "password123")
+	problemOf(t, resp, http.StatusTooManyRequests, "rate_limited")
+	if secs, err := strconv.Atoi(resp.Header.Get("Retry-After")); err != nil || secs < 1 || secs > 15*60 {
+		t.Fatalf("Retry-After = %q", resp.Header.Get("Retry-After"))
+	}
+	// Other usernames are unaffected, and so are unknown ones.
+	if resp := login("198.51.100.99", "bystander", "password123"); resp.Status != http.StatusOK {
+		t.Fatalf("bystander login = %d", resp.Status)
+	}
+	problemOf(t, login("198.51.100.98", "nobody", "x"), http.StatusUnauthorized, "invalid_credentials")
 }

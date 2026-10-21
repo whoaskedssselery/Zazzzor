@@ -25,6 +25,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/ratelimit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/textx"
 )
 
 // Errors returned by Service. ToProblem maps them to HTTP problems.
@@ -56,6 +57,9 @@ func ToProblem(err error) error {
 	if verr, ok := errors.AsType[*ValidationError](err); ok {
 		return httpx.BadRequest("validation_failed", "some fields are invalid", verr.Fields...)
 	}
+	if rl, ok := errors.AsType[*RateLimitedError](err); ok {
+		return httpx.TooManyRequests(rl.RetryAfter)
+	}
 	switch {
 	case errors.Is(err, ErrInvalidCredentials):
 		return httpx.Unauthorized("invalid_credentials")
@@ -69,9 +73,21 @@ func ToProblem(err error) error {
 		return httpx.Unauthorized("unauthenticated")
 	case errors.Is(err, ErrUserNotFound):
 		return httpx.NotFound()
+	case errors.Is(err, ErrBusy):
+		return httpx.ServiceUnavailableRetryAfter("server_busy", busyRetryAfter)
 	}
 	return err
 }
+
+// busyRetryAfter is the Retry-After sent with 503 server_busy.
+const busyRetryAfter = 5 * time.Second
+
+// RateLimitedError is returned when a per-account limit refuses a request.
+type RateLimitedError struct {
+	RetryAfter time.Duration
+}
+
+func (e *RateLimitedError) Error() string { return "auth: rate limited" }
 
 // User is an account as the rest of the server sees it. The password hash
 // never leaves this package.
@@ -133,6 +149,11 @@ var (
 	registerBurst  = 3
 	loginLimitTTL  = 10 * time.Minute
 	registerLimTTL = 2 * time.Hour
+
+	// Failed logins per username, from any IP: 10 per 15 minutes.
+	loginFailRate  = rate.Every(15 * time.Minute / 10)
+	loginFailBurst = 10
+	loginFailTTL   = 30 * time.Minute
 )
 
 // Options configures a Service. Pool and IDs are required.
@@ -153,6 +174,9 @@ type Options struct {
 	Now func() time.Time
 	// Per-IP limiters; nil takes the defaults (login 10/min, register 3/h).
 	LoginLimiter, RegisterLimiter *ratelimit.Limiter
+	// LoginFailureLimiter counts failed logins per username; nil takes the
+	// default (10 per 15 min).
+	LoginFailureLimiter *ratelimit.Limiter
 }
 
 // Service implements registration, login and sessions.
@@ -168,7 +192,8 @@ type Service struct {
 	now              func() time.Time
 	loginLimiter     *ratelimit.Limiter
 	registerLimiter  *ratelimit.Limiter
-	verify           func(pw, encoded string) (ok, needsRehash bool, err error)
+	loginFailures    *ratelimit.Limiter
+	verify           func(ctx context.Context, pw, encoded string) (ok, needsRehash bool, err error)
 }
 
 // NewService builds a Service from o.
@@ -185,6 +210,7 @@ func NewService(o Options) *Service {
 		now:              o.Now,
 		loginLimiter:     o.LoginLimiter,
 		registerLimiter:  o.RegisterLimiter,
+		loginFailures:    o.LoginFailureLimiter,
 		verify:           VerifyPassword,
 	}
 	for _, name := range o.AdminUsernames {
@@ -198,6 +224,9 @@ func NewService(o Options) *Service {
 	}
 	if s.registerLimiter == nil {
 		s.registerLimiter = ratelimit.New(registerRate, registerBurst, registerLimTTL)
+	}
+	if s.loginFailures == nil {
+		s.loginFailures = ratelimit.New(loginFailRate, loginFailBurst, loginFailTTL)
 	}
 	_ = dummyHash() // ready before the first login
 	return s
@@ -253,17 +282,23 @@ func passwordProblem(pw string) string {
 }
 
 // NormalizeDisplayName trims spaces and invisible format characters from the
-// ends of s and checks it is 1 to 32 characters without control characters.
+// ends of s and checks it is 1 to 32 characters, has a visible character and
+// contains no control characters and no bidi embedding, override or isolate
+// anywhere (see textx).
 func NormalizeDisplayName(s string) (string, error) {
 	t := strings.TrimFunc(s, func(r rune) bool { return unicode.IsSpace(r) || unicode.Is(unicode.Cf, r) })
 	var msg string
 	switch n := utf8.RuneCountInString(t); {
+	case textx.ContainsBidiControl(s):
+		msg = "must not contain bidirectional control characters"
 	case n == 0:
 		msg = "must not be empty"
 	case n > 32:
 		msg = "must be at most 32 characters"
 	case strings.ContainsFunc(t, unicode.IsControl):
 		msg = "must not contain control characters"
+	case !textx.HasVisible(t):
+		msg = "must contain a visible character"
 	default:
 		return t, nil
 	}
@@ -323,7 +358,7 @@ func (s *Service) Register(ctx context.Context, in RegisterInput, meta SessionMe
 }
 
 func (s *Service) register(ctx context.Context, v validRegistration, meta SessionMeta) (User, string, error) {
-	hash, err := HashPassword(v.password)
+	hash, err := HashPassword(ctx, v.password)
 	if err != nil {
 		return User{}, "", err
 	}
@@ -358,7 +393,29 @@ func (s *Service) register(ctx context.Context, v validRegistration, meta Sessio
 // usernames and wrong passwords all return ErrInvalidCredentials after one
 // full Argon2id verification, so neither the answer nor its timing tells
 // them apart. A disabled account is reported only after a correct password.
+//
+// Failed attempts are also counted per username, from any IP: past 10 in 15
+// minutes further attempts get a RateLimitedError before any hashing, even
+// with the right password. A success does not reset the count.
 func (s *Service) Login(ctx context.Context, username, password string, meta SessionMeta) (User, string, error) {
+	failKey := loginFailureKey(username)
+	if ok, retry := s.loginFailures.Check(failKey); !ok {
+		return User{}, "", &RateLimitedError{RetryAfter: retry}
+	}
+	u, token, err := s.login(ctx, username, password, meta)
+	if errors.Is(err, ErrInvalidCredentials) {
+		s.loginFailures.Charge(failKey)
+	}
+	return u, token, err
+}
+
+// loginFailureKey is the per-username throttle key: the name lower-cased as
+// it is stored, cut to a bounded length so junk input cannot bloat the table.
+func loginFailureKey(username string) string {
+	return truncateUTF8(strings.ToLower(username), 64)
+}
+
+func (s *Service) login(ctx context.Context, username, password string, meta SessionMeta) (User, string, error) {
 	var row store.User
 	found := false
 	if name, ok := normalizeUsername(username); ok {
@@ -372,13 +429,15 @@ func (s *Service) Login(ctx context.Context, username, password string, meta Ses
 		}
 	}
 	if !found {
-		_, _, _ = s.verify(password, dummyHash())
+		if _, _, err := s.verify(ctx, password, dummyHash()); err != nil {
+			return User{}, "", err // busy or cancelled
+		}
 		return User{}, "", ErrInvalidCredentials
 	}
 
-	ok, rehash, err := s.verify(password, row.PasswordHash)
+	ok, rehash, err := s.verify(ctx, password, row.PasswordHash)
 	if err != nil {
-		return User{}, "", fmt.Errorf("auth: stored hash of user %d: %w", row.ID, err)
+		return User{}, "", fmt.Errorf("auth: verify password of user %d: %w", row.ID, err)
 	}
 	if !ok {
 		return User{}, "", ErrInvalidCredentials
@@ -399,7 +458,7 @@ func (s *Service) Login(ctx context.Context, username, password string, meta Ses
 // upgradeHash re-hashes a password stored with old parameters. Failure only
 // postpones the upgrade to the next login.
 func (s *Service) upgradeHash(ctx context.Context, userID snowflake.ID, password string) {
-	hash, err := HashPassword(password)
+	hash, err := HashPassword(ctx, password)
 	if err == nil {
 		_, err = s.q.SetPasswordHash(ctx, s.pool, store.SetPasswordHashParams{ID: userID, PasswordHash: hash})
 	}
@@ -605,21 +664,23 @@ func (s *Service) ChangePassword(ctx context.Context, userID snowflake.ID, curre
 	}
 	row, err := s.q.UserByID(ctx, s.pool, userID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		_, _, _ = s.verify(current, dummyHash())
+		if _, _, verr := s.verify(ctx, current, dummyHash()); verr != nil {
+			return verr // busy or cancelled
+		}
 		return ErrInvalidCredentials
 	}
 	if err != nil {
 		return fmt.Errorf("auth: load user: %w", err)
 	}
-	ok, _, err := s.verify(current, row.PasswordHash)
+	ok, _, err := s.verify(ctx, current, row.PasswordHash)
 	if err != nil {
-		return fmt.Errorf("auth: stored hash of user %d: %w", row.ID, err)
+		return fmt.Errorf("auth: verify password of user %d: %w", row.ID, err)
 	}
 	if !ok {
 		return ErrInvalidCredentials
 	}
 
-	hash, err := HashPassword(next)
+	hash, err := HashPassword(ctx, next)
 	if err != nil {
 		return err
 	}

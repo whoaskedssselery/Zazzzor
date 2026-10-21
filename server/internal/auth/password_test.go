@@ -14,7 +14,7 @@ import (
 
 func TestPasswordRoundTrip(t *testing.T) {
 	const pw = "correct horse battery staple"
-	encoded, err := auth.HashPassword(pw)
+	encoded, err := auth.HashPassword(t.Context(), pw)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,16 +34,16 @@ func TestPasswordRoundTrip(t *testing.T) {
 		t.Fatalf("key = %d bytes (%v), want 32", len(key), err)
 	}
 
-	ok, rehash, err := auth.VerifyPassword(pw, encoded)
+	ok, rehash, err := auth.VerifyPassword(t.Context(), pw, encoded)
 	if err != nil || !ok || rehash {
 		t.Fatalf("VerifyPassword(right) = %v, %v, %v; want true, false, nil", ok, rehash, err)
 	}
-	ok, _, err = auth.VerifyPassword(pw+"x", encoded)
+	ok, _, err = auth.VerifyPassword(t.Context(), pw+"x", encoded)
 	if err != nil || ok {
 		t.Fatalf("VerifyPassword(wrong) = %v, %v; want false, nil", ok, err)
 	}
 
-	again, err := auth.HashPassword(pw)
+	again, err := auth.HashPassword(t.Context(), pw)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestVerifyDetectsRehash(t *testing.T) {
 	old := fmt.Sprintf("$argon2id$v=19$m=19456,t=2,p=1$%s$%s",
 		base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(key))
 
-	ok, rehash, err := auth.VerifyPassword(pw, old)
+	ok, rehash, err := auth.VerifyPassword(t.Context(), pw, old)
 	if err != nil || !ok {
 		t.Fatalf("VerifyPassword = %v, %v; want true, nil", ok, err)
 	}
@@ -68,7 +68,7 @@ func TestVerifyDetectsRehash(t *testing.T) {
 		t.Fatal("needsRehash = false for m=19456, want true")
 	}
 	// A wrong password never asks for a rehash.
-	if ok, rehash, _ := auth.VerifyPassword("nope", old); ok || rehash {
+	if ok, rehash, _ := auth.VerifyPassword(t.Context(), "nope", old); ok || rehash {
 		t.Fatalf("wrong password: ok=%v rehash=%v", ok, rehash)
 	}
 }
@@ -84,7 +84,7 @@ func TestVerifyRejectsMalformedHashes(t *testing.T) {
 		"$argon2id$v=19$m=65536,t=0,p=2$c2FsdHNhbHRzYWx0c2FsdA$a2V5",
 		"$argon2id$v=19$m=4294967295,t=3,p=2$c2FsdHNhbHRzYWx0c2FsdA$a2V5",
 	} {
-		if ok, _, err := auth.VerifyPassword("pw", enc); ok || err == nil {
+		if ok, _, err := auth.VerifyPassword(t.Context(), "pw", enc); ok || err == nil {
 			t.Errorf("VerifyPassword(%q) = %v, %v; want false and an error", enc, ok, err)
 		}
 	}

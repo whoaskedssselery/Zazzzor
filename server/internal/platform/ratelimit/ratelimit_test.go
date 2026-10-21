@@ -125,3 +125,69 @@ func (l *Limiter) size() int {
 	defer l.mu.Unlock()
 	return len(l.buckets)
 }
+
+func TestLimiterCapsKeys(t *testing.T) {
+	clk := &fakeClock{now: time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)}
+	l := New(rate.Every(time.Second), 1, time.Minute, WithMaxKeys(2))
+	l.now = clk.Now
+	l.Allow("a")
+	clk.Advance(30 * time.Second)
+	l.Allow("b")
+	ok, retry := l.Allow("c")
+	if ok {
+		t.Fatal("a third key was admitted to a full limiter")
+	}
+	if retry <= 0 || retry > 5*time.Second {
+		t.Fatalf("retryAfter = %v, want a short positive delay", retry)
+	}
+	if n := l.size(); n != 2 {
+		t.Fatalf("size = %d, want 2", n)
+	}
+	// t=61 s: the periodic sweep drops a (idle 61 s) and the call re-admits
+	// it; b (idle 31 s) stays.
+	clk.Advance(31 * time.Second)
+	if ok, _ := l.Allow("a"); !ok {
+		t.Fatal("known key refused while the table is full")
+	}
+	clk.Advance(34 * time.Second)
+	l.Allow("a")
+	// t=100 s: the periodic sweep is not due (39 s since the last), but the
+	// full table sweeps at once and drops b, idle for 70 s > TTL.
+	clk.Advance(5 * time.Second)
+	if ok, _ := l.Allow("c"); !ok {
+		t.Fatal("new key refused although an idle key could be swept")
+	}
+	if n := l.size(); n != 2 {
+		t.Fatalf("size = %d, want 2 (a, c)", n)
+	}
+}
+
+func TestLimiterDefaultMaxKeys(t *testing.T) {
+	if l := New(rate.Every(time.Second), 1, time.Minute); l.maxKeys != DefaultMaxKeys || DefaultMaxKeys != 100_000 {
+		t.Fatalf("maxKeys = %d (DefaultMaxKeys %d), want 100000", l.maxKeys, DefaultMaxKeys)
+	}
+}
+
+func TestLimiterCheckAndCharge(t *testing.T) {
+	l, clk := newTestLimiter(rate.Every(90*time.Second), 3, time.Hour)
+	for i := range 3 {
+		if ok, _ := l.Check("u"); !ok {
+			t.Fatalf("check %d refused before any charge", i+1)
+		}
+		l.Charge("u")
+	}
+	// Checking alone never uses tokens.
+	for range 5 {
+		if ok, _ := l.Check("other"); !ok {
+			t.Fatal("check consumed tokens")
+		}
+	}
+	ok, retry := l.Check("u")
+	if ok || retry != 90*time.Second {
+		t.Fatalf("Check after 3 charges = %v, %v; want refused, 90s", ok, retry)
+	}
+	clk.Advance(90 * time.Second)
+	if ok, _ := l.Check("u"); !ok {
+		t.Fatal("not refilled after 90s")
+	}
+}

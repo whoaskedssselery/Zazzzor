@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
@@ -9,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -38,13 +40,39 @@ const (
 	maxConcurrentHashes = 4
 )
 
-// hashSlots bounds concurrent hashing; a full set of slots makes callers wait.
+// hashSlots bounds concurrent hashing.
 var hashSlots = make(chan struct{}, maxConcurrentHashes)
 
-func argonKey(pw string, salt []byte, p argonParams, n uint32) []byte {
-	hashSlots <- struct{}{}
+// hashWaitTimeout is how long a request waits for a free hashing slot
+// before it is turned away with ErrBusy.
+var hashWaitTimeout = 3 * time.Second
+
+// ErrBusy means every hashing slot stayed taken for hashWaitTimeout; the
+// request is answered 503 server_busy instead of queueing without bound.
+var ErrBusy = errors.New("auth: password hashing is saturated")
+
+// argonKey runs Argon2id in one of the hashing slots. It never hashes for a
+// request whose context is done, and gives up with ErrBusy when no slot
+// frees up in time.
+func argonKey(ctx context.Context, pw string, salt []byte, p argonParams, n uint32) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	timer := time.NewTimer(hashWaitTimeout)
+	defer timer.Stop()
+	select {
+	case hashSlots <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-timer.C:
+		return nil, ErrBusy
+	}
 	defer func() { <-hashSlots }()
-	return argon2.IDKey([]byte(pw), salt, p.time, p.memory, p.threads, n)
+	// The context may have ended while this call won the slot.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return argon2.IDKey([]byte(pw), salt, p.time, p.memory, p.threads, n), nil
 }
 
 // errMalformedHash is returned for stored hashes that are not a PHC string
@@ -53,12 +81,16 @@ var errMalformedHash = errors.New("auth: malformed password hash")
 
 // HashPassword returns the Argon2id PHC string of pw with a fresh random salt:
 // $argon2id$v=19$m=65536,t=3,p=2$<salt>$<key> (unpadded standard base64).
-func HashPassword(pw string) (string, error) {
+func HashPassword(ctx context.Context, pw string) (string, error) {
 	salt := make([]byte, saltLen)
 	if _, err := rand.Read(salt); err != nil {
 		return "", fmt.Errorf("auth: salt: %w", err)
 	}
-	return encodePHC(currentParams, salt, argonKey(pw, salt, currentParams, keyLen)), nil
+	key, err := argonKey(ctx, pw, salt, currentParams, keyLen)
+	if err != nil {
+		return "", err
+	}
+	return encodePHC(currentParams, salt, key), nil
 }
 
 func encodePHC(p argonParams, salt, key []byte) string {
@@ -68,14 +100,17 @@ func encodePHC(p argonParams, salt, key []byte) string {
 
 // VerifyPassword reports whether pw matches encoded, comparing in constant
 // time. needsRehash is true when pw matches but encoded was made with
-// parameters other than the current ones. err is non-nil only for a
-// malformed encoded string.
-func VerifyPassword(pw, encoded string) (ok, needsRehash bool, err error) {
+// parameters other than the current ones. err is non-nil for a malformed
+// encoded string, a done ctx or ErrBusy.
+func VerifyPassword(ctx context.Context, pw, encoded string) (ok, needsRehash bool, err error) {
 	h, err := parsePHC(encoded)
 	if err != nil {
 		return false, false, err
 	}
-	key := argonKey(pw, h.salt, h.params, uint32(len(h.key))) //nolint:gosec // len checked in parsePHC
+	key, err := argonKey(ctx, pw, h.salt, h.params, uint32(len(h.key))) //nolint:gosec // len checked in parsePHC
+	if err != nil {
+		return false, false, err
+	}
 	if subtle.ConstantTimeCompare(key, h.key) != 1 {
 		return false, false, nil
 	}

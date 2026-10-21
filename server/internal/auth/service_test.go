@@ -38,6 +38,20 @@ func TestAccountsProfileAndAvatar(t *testing.T) {
 	if _, err = e.svc.UpdateProfile(ctx, id, " "); !errors.As(err, &verr) || verr.Fields[0].Field != "display_name" {
 		t.Fatalf("empty display name: err = %v", err)
 	}
+	// Plain marks (LRM/RLM), combining accents and emoji ZWJ sequences are fine.
+	for _, dn := range []string{"שלום" + cps(0x200F), "e" + cps(0x0301), cps(0x1F469, 0x200D, 0x1F4BB), cps(0x3164) + "a"} {
+		if _, err = e.svc.UpdateProfile(ctx, id, dn); err != nil {
+			t.Errorf("UpdateProfile(%q) = %v, want accepted", dn, err)
+		}
+	}
+	for _, dn := range []string{cps(0x202E) + "evil", cps(0x3164, 0x3164), cps(0x200F)} {
+		if _, err = e.svc.UpdateProfile(ctx, id, dn); !errors.As(err, &verr) {
+			t.Errorf("UpdateProfile(%q) = %v, want ValidationError", dn, err)
+		}
+	}
+	if _, err = e.svc.UpdateProfile(ctx, id, "  Нина  "); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = e.svc.UpdateProfile(ctx, 12345, "x"); !errors.Is(err, auth.ErrUserNotFound) {
 		t.Fatalf("unknown user: err = %v", err)
 	}
