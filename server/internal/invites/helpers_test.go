@@ -77,7 +77,7 @@ func newEnv(t *testing.T, opts ...func(*invites.Options)) *env {
 		t.Fatal(err)
 	}
 	guildSvc := guilds.NewService(guilds.Options{Pool: e.pool, IDs: ids, Users: authSvc, Files: disk, Publisher: e.pub,
-		Hooks:         guilds.Hooks{Channels: channels.NewBootstrapper(ids, nil)},
+		Hooks:         guilds.Hooks{Channels: channels.NewBootstrapper(ids, nil), Overwrites: channels.NewCleaner()},
 		CreateLimiter: unlimited(), WriteLimiter: unlimited()})
 	chanSvc := channels.NewService(channels.Options{Pool: e.pool, IDs: ids, Guilds: guildSvc, Publisher: e.pub,
 		WriteLimiter: unlimited()})

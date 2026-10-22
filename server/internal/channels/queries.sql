@@ -48,3 +48,11 @@ DELETE FROM overwrites WHERE channel_id = @channel_id;
 INSERT INTO overwrites (channel_id, target_id, target_type, allow, deny)
 SELECT @channel_id, unnest(@target_ids::bigint[]), unnest(@target_types::smallint[]),
     unnest(@allows::bigint[]), unnest(@denies::bigint[]);
+
+-- name: DeleteTargetOverwrites :exec
+-- Drops every overwrite of a role or member in the guild's channels.
+DELETE FROM overwrites
+USING channels
+WHERE channels.id = overwrites.channel_id
+  AND channels.guild_id = @guild_id
+  AND overwrites.target_id = @target_id;

@@ -226,7 +226,7 @@ func newModules(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator,
 	// guilds runs the channels bootstrapper inside guild creation; channels
 	// reads guilds through its exported reads, invites both.
 	guildSvc := guilds.NewService(guilds.Options{Pool: pool, IDs: ids, Users: authSvc, Files: disk, Publisher: pub,
-		Hooks: guilds.Hooks{Channels: channels.NewBootstrapper(ids, nil)}})
+		Hooks: guilds.Hooks{Channels: channels.NewBootstrapper(ids, nil), Overwrites: channels.NewCleaner()}})
 	channelSvc := channels.NewService(channels.Options{Pool: pool, IDs: ids, Guilds: guildSvc, Publisher: pub})
 	return &modules{
 		Auth:     authSvc,

@@ -284,10 +284,26 @@ type noChannels struct{}
 
 func (noChannels) CreateDefaultChannels(context.Context, pgx.Tx, snowflake.ID) error { return nil }
 
+// OverwriteCleaner drops the channel overwrites that target a role or member
+// leaving the guild, inside the transaction (holding the guild lock) that
+// removes it; an error rolls the removal back. Without it a member who
+// rejoins would get back their old per-channel rights.
+type OverwriteCleaner interface {
+	RoleDeleted(ctx context.Context, tx pgx.Tx, guildID, roleID snowflake.ID) error
+	MemberRemoved(ctx context.Context, tx pgx.Tx, guildID, userID snowflake.ID) error
+}
+
+type noCleaner struct{}
+
+func (noCleaner) RoleDeleted(context.Context, pgx.Tx, snowflake.ID, snowflake.ID) error   { return nil }
+func (noCleaner) MemberRemoved(context.Context, pgx.Tx, snowflake.ID, snowflake.ID) error { return nil }
+
 // Hooks connect other modules to guild life-cycle steps.
 type Hooks struct {
 	// Channels runs on guild creation; nil does nothing.
 	Channels ChannelsBootstrapper
+	// Overwrites runs on role deletion and member removal; nil does nothing.
+	Overwrites OverwriteCleaner
 }
 
 // Users is what guilds needs from the auth module.
@@ -324,6 +340,7 @@ type Service struct {
 	files         files.Store
 	pub           events.Publisher
 	channels      ChannelsBootstrapper
+	overwrites    OverwriteCleaner
 	now           func() time.Time
 	createLimiter *ratelimit.Limiter
 	writeLimiter  *ratelimit.Limiter
@@ -336,9 +353,12 @@ type Service struct {
 // NewService builds a Service from o.
 func NewService(o Options) *Service {
 	s := &Service{pool: o.Pool, q: store.New(), ids: o.IDs, users: o.Users, files: o.Files, pub: o.Publisher,
-		channels: o.Hooks.Channels, now: o.Now, createLimiter: o.CreateLimiter, writeLimiter: o.WriteLimiter}
+		channels: o.Hooks.Channels, overwrites: o.Hooks.Overwrites, now: o.Now, createLimiter: o.CreateLimiter, writeLimiter: o.WriteLimiter}
 	if s.channels == nil {
 		s.channels = noChannels{}
+	}
+	if s.overwrites == nil {
+		s.overwrites = noCleaner{}
 	}
 	if s.now == nil {
 		s.now = time.Now

@@ -553,3 +553,19 @@ func TestDeleteGuildWithChannels(t *testing.T) {
 		}
 	}
 }
+
+func TestDeleteRoleDropsItsOverwrites(t *testing.T) {
+	e := newEnv(t)
+	owner, _ := e.user("alice")
+	g := createGuild(t, owner, "home")
+	keep := createRole(t, owner, g, "keep", 0)
+	gone := createRole(t, owner, g, "gone", 0)
+	ch := createChannel(t, owner, g, map[string]any{"name": "room", "type": 0})
+	expect(t, putOverwrite(owner, ch.ID, gone, roleTarget, permissions.SendMessages, 0), http.StatusOK)
+	expect(t, putOverwrite(owner, ch.ID, keep, roleTarget, permissions.SendMessages, 0), http.StatusOK)
+	expect(t, owner.Do(http.MethodDelete, "/api/v1/guilds/"+g.ID+"/roles/"+gone, nil), http.StatusNoContent)
+	got := getChannel(t, owner, ch.ID)
+	if len(got.PermissionOverwrites) != 1 || got.PermissionOverwrites[0].ID != keep {
+		t.Fatalf("overwrites after deleting a role = %+v", got.PermissionOverwrites)
+	}
+}

@@ -625,8 +625,10 @@ paths:
       description: |
         The owner cannot leave (`400 owner_cannot_leave`); they delete the
         server instead. The remaining members get `GUILD_MEMBER_REMOVE`,
-        the user `GUILD_DELETE`. Counts against the write limit (30 per
-        minute per user, shared by every server, role and member write).
+        the user `GUILD_DELETE`. The user's channel overwrites in the
+        server are deleted, so rejoining does not restore them. Counts
+        against the write limit (30 per minute per user, shared by every
+        server, role and member write).
       parameters:
         - $ref: "#/components/parameters/GuildID"
       responses:
@@ -1064,8 +1066,9 @@ paths:
       description: |
         Needs `MANAGE_ROLES` and a highest role above this one. `@everyone`
         cannot be deleted (`400 cannot_delete_everyone`). The roles above
-        move down one position. Announced as `GUILD_ROLE_DELETE` and
-        `GUILD_SYNC`. Counts against the write limit.
+        move down one position and the role's channel overwrites are
+        deleted. Announced as `GUILD_ROLE_DELETE` and `GUILD_SYNC`. Counts
+        against the write limit.
       parameters:
         - $ref: "#/components/parameters/GuildID"
         - $ref: "#/components/parameters/RoleID"

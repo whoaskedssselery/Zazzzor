@@ -372,6 +372,9 @@ func (s *Service) DeleteRole(ctx context.Context, guildID, roleID, actorID snowf
 		if _, err = s.q.DeleteRole(ctx, tx, store.DeleteRoleParams{GuildID: guildID, ID: roleID}); err != nil {
 			return fmt.Errorf("guilds: delete role: %w", err)
 		}
+		if err = s.overwrites.RoleDeleted(ctx, tx, guildID, roleID); err != nil {
+			return fmt.Errorf("guilds: drop role overwrites: %w", err)
+		}
 		if err = s.q.CloseRoleGap(ctx, tx, store.CloseRoleGapParams{GuildID: guildID, Position: int32(r.Position)}); err != nil { //nolint:gosec // G115: positions are small
 			return fmt.Errorf("guilds: close role gap: %w", err)
 		}

@@ -355,6 +355,9 @@ func (s *Service) Leave(ctx context.Context, guildID snowflake.ID, user auth.Use
 		if _, err = s.q.DeleteMember(ctx, tx, store.DeleteMemberParams{GuildID: guildID, UserID: user.ID}); err != nil {
 			return fmt.Errorf("guilds: delete member: %w", err)
 		}
+		if err = s.overwrites.MemberRemoved(ctx, tx, guildID, user.ID); err != nil {
+			return fmt.Errorf("guilds: drop member overwrites: %w", err)
+		}
 		return nil
 	})
 	if err != nil {

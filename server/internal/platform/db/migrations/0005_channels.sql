@@ -28,8 +28,9 @@ CREATE TABLE channels (
 );
 
 -- target_type: 0 role (the @everyone role has the guild's ID), 1 member.
--- Overwrites of a deleted role or of a member who left stay behind and
--- simply match no one.
+-- The overwrites of a role or member are dropped with it (role deletion,
+-- leaving the guild) through guilds.OverwriteCleaner, so a member who
+-- rejoins starts without them.
 CREATE TABLE overwrites (
     channel_id  bigint NOT NULL REFERENCES channels ON DELETE CASCADE,
     target_id   bigint NOT NULL,

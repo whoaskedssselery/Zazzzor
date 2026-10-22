@@ -283,3 +283,36 @@ func TestInviteCreationRateLimited(t *testing.T) {
 	problemOf(t, owner.Do(http.MethodPost, "/api/v1/channels/"+ch.ID+"/invites", map[string]any{}),
 		http.StatusTooManyRequests, "rate_limited")
 }
+
+// A member's overwrites go when they leave: rejoining does not bring back
+// a private channel they were let into.
+func TestRejoinDoesNotRestoreOverwrites(t *testing.T) {
+	e := newEnv(t)
+	owner, _ := e.user("alice")
+	bobC, bob := e.user("bob")
+	g, ch := newGuild(t, owner, "home")
+	inv := createInvite(t, owner, ch.ID, map[string]any{"max_age_seconds": 0})
+	expect(t, join(bobC, inv.Code), http.StatusOK)
+
+	resp := owner.Do(http.MethodPost, "/api/v1/guilds/"+g.ID+"/channels", map[string]any{"name": "private", "type": 0})
+	expect(t, resp, http.StatusCreated)
+	var private channelBody
+	resp.JSON(&private)
+	view := strconv.FormatUint(uint64(permissions.ViewChannel), 10)
+	expect(t, owner.Do(http.MethodPut, "/api/v1/channels/"+private.ID+"/permissions/"+g.ID,
+		map[string]any{"type": 0, "deny": view}), http.StatusOK)
+	expect(t, owner.Do(http.MethodPut, "/api/v1/channels/"+private.ID+"/permissions/"+bob.ID,
+		map[string]any{"type": 1, "allow": view}), http.StatusOK)
+	expect(t, bobC.Do(http.MethodGet, "/api/v1/channels/"+private.ID, nil), http.StatusOK)
+
+	expect(t, bobC.Do(http.MethodDelete, "/api/v1/users/@me/guilds/"+g.ID, nil), http.StatusNoContent)
+	var n int
+	if err := e.pool.QueryRow(t.Context(), "SELECT count(*) FROM overwrites WHERE target_id = $1", bob.ID).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("%d overwrites of bob survive his leaving", n)
+	}
+	expect(t, join(bobC, inv.Code), http.StatusOK)
+	problemOf(t, bobC.Do(http.MethodGet, "/api/v1/channels/"+private.ID, nil), http.StatusNotFound, "not_found")
+}

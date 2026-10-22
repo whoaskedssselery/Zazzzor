@@ -107,6 +107,25 @@ func (q *Queries) DeleteChannel(ctx context.Context, db DBTX, id snowflake.ID) e
 	return err
 }
 
+const deleteTargetOverwrites = `-- name: DeleteTargetOverwrites :exec
+DELETE FROM overwrites
+USING channels
+WHERE channels.id = overwrites.channel_id
+  AND channels.guild_id = $1
+  AND overwrites.target_id = $2
+`
+
+type DeleteTargetOverwritesParams struct {
+	GuildID  snowflake.ID
+	TargetID snowflake.ID
+}
+
+// Drops every overwrite of a role or member in the guild's channels.
+func (q *Queries) DeleteTargetOverwrites(ctx context.Context, db DBTX, arg DeleteTargetOverwritesParams) error {
+	_, err := db.Exec(ctx, deleteTargetOverwrites, arg.GuildID, arg.TargetID)
+	return err
+}
+
 const guildChannels = `-- name: GuildChannels :many
 SELECT id, guild_id, type, name, topic, parent_id, position, permission_synced, created_at FROM channels WHERE guild_id = $1 ORDER BY position, id
 `
