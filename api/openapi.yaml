@@ -2723,6 +2723,14 @@ x-gateway:
     overwrite change) carry the receiver's own GuildState. A member who
     leaves gets GUILD_DELETE and nothing more from that server.
 
+    Recipients are resolved when an event is sent, not when it happened: an
+    event published right around a permission or membership change may or
+    may not reach a member whose access changed with it (the GUILD_SYNC
+    that follows the change is authoritative). Events published while the
+    connection is being set up are sent after READY and may already be
+    reflected in it, so clients must apply every event idempotently:
+    upsert or delete by ID, never append blindly.
+
     Presence: a user is `online` from their first connection and `offline`
     5 seconds after their last one closed (a reconnection within that time
     announces nothing). PRESENCE_UPDATE goes to everyone sharing a server

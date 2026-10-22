@@ -190,7 +190,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	go c.run() //nolint:contextcheck // the connection outlives the request; it has contexts of its own
 }
 
-// register adds c to the live connections (and to presence); false once
+// register adds c to the live connections; false once
 // the gateway is closed.
 func (g *Gateway) register(c *conn) bool {
 	g.mu.Lock()
@@ -201,8 +201,19 @@ func (g *Gateway) register(c *conn) bool {
 	g.conns[c] = struct{}{}
 	g.connWG.Add(1)
 	g.m.connections.Inc()
-	g.presenceConnected(c.user.ID)
 	return true
+}
+
+// markOnline counts c in presence once its session was re-checked after
+// registration; a connection refused there never shows the user online.
+func (g *Gateway) markOnline(c *conn) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.closed {
+		return
+	}
+	c.online = true
+	g.presenceConnected(c.user.ID)
 }
 
 // unregister removes c; called once, when its goroutines are done.
@@ -211,7 +222,9 @@ func (g *Gateway) unregister(c *conn) {
 	defer g.mu.Unlock()
 	delete(g.conns, c)
 	g.m.connections.Dec()
-	g.presenceDisconnected(c.user.ID)
+	if c.online {
+		g.presenceDisconnected(c.user.ID)
+	}
 	g.connWG.Done()
 }
 
@@ -252,8 +265,10 @@ func (g *Gateway) Close(ctx context.Context) error {
 	unsub := g.unsub
 	g.mu.Unlock()
 
-	unsub() // the dispatcher sees its channel closed and returns
+	// Cancel first: queries in flight then fail as a shutdown, which the
+	// dispatcher does not count as a dispatch error.
 	g.cancel()
+	unsub() // the dispatcher sees its channel closed and returns
 	g.closeAll(CloseServiceRestart)
 
 	done := make(chan struct{})

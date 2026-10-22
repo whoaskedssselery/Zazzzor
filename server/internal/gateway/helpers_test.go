@@ -67,6 +67,10 @@ func newEnv(t *testing.T, opts gateway.Options) *env {
 		if err := e.gw.Close(ctx); err != nil {
 			t.Errorf("gateway close: %v", err)
 		}
+		// Nothing in these tests should fail to resolve, a shutdown included.
+		if n := e.metric("zazzzor_gateway_dispatch_errors_total", ""); n != 0 {
+			t.Errorf("dispatch errors = %v", n)
+		}
 	})
 
 	r := chi.NewRouter()

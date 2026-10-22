@@ -28,7 +28,9 @@ func (g *Gateway) dispatchLoop(ch <-chan events.Event) {
 			return
 		}
 		g.log.Warn("gateway fell behind the event bus; closing every connection")
-		g.closeAll(CloseOverloaded)
+		// Subscribe again before closing, under the lock that registration
+		// takes: a connection registered before the new subscription is
+		// closed, one registered after it misses nothing.
 		g.mu.Lock()
 		if g.closed {
 			g.mu.Unlock()
@@ -37,7 +39,14 @@ func (g *Gateway) dispatchLoop(ch <-chan events.Event) {
 		var unsub func()
 		ch, unsub = g.opts.Bus.Subscribe(g.opts.BusBuffer)
 		g.unsub = unsub
+		stale := make([]*conn, 0, len(g.conns))
+		for c := range g.conns {
+			stale = append(stale, c)
+		}
 		g.mu.Unlock()
+		for _, c := range stale {
+			c.closeWith(CloseOverloaded)
+		}
 	}
 }
 
@@ -57,6 +66,9 @@ func (g *Gateway) consume(ch <-chan events.Event) bool {
 // resolved now from the database. A failed resolution is logged (without
 // detail to anyone) and drops the event.
 func (g *Gateway) dispatch(e events.Event) {
+	if g.ctx.Err() != nil {
+		return // shutting down
+	}
 	if e.Type == events.SessionRevoked {
 		g.revokeSessions(e)
 		return
@@ -122,6 +134,9 @@ func (g *Gateway) dispatch(e events.Event) {
 }
 
 func (g *Gateway) dropped(e events.Event, err error) {
+	if g.ctx.Err() != nil {
+		return // the query was cancelled by Close: not a failure
+	}
 	g.m.dispatchErrors.Inc()
 	g.log.Error("gateway dispatch", "type", e.Type, "err", err.Error())
 }

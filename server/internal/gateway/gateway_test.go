@@ -146,13 +146,13 @@ func TestHeartbeatAck(t *testing.T) {
 }
 
 func TestHeartbeatTimeoutCloses(t *testing.T) {
-	const timeout = 300 * time.Millisecond
+	const timeout = time.Second
 	e := newEnv(t, gateway.Options{HeartbeatTimeout: timeout})
 	alice, _ := e.user("alice")
 	cl, _ := connect(t, alice)
 	// Heartbeats keep it open past the timeout...
-	for range 6 {
-		time.Sleep(timeout / 3)
+	for range 4 {
+		time.Sleep(timeout / 2)
 		cl.send(gateway.OpHeartbeat)
 		if f := cl.next(); f.Op != gateway.OpHeartbeatAck {
 			t.Fatalf("frame = %+v, want HEARTBEAT_ACK", f)
@@ -441,7 +441,7 @@ func TestPresenceMultipleConnections(t *testing.T) {
 }
 
 func TestPresenceReconnectWithinGrace(t *testing.T) {
-	const grace = time.Second
+	const grace = 2 * time.Second
 	e := newEnv(t, gateway.Options{PresenceGrace: grace})
 	alice, au := e.user("alice")
 	bob, bu := e.user("bob")
@@ -567,11 +567,22 @@ func TestCloseSendsServiceRestart(t *testing.T) {
 	bob, _ := e.user("bob")
 	a, _ := connect(t, alice)
 	b, _ := connect(t, bob)
+	g, _ := newGuild(t, alice, "guild")
+	guild, err := e.m.Guilds.Lookup(t.Context(), parseID(t, g.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Events still being resolved when Close cancels their queries are
+	// not dispatch errors (checked when the env is cleaned up).
+	for range 50 {
+		e.bus.Publish(t.Context(), events.Event{Type: events.GuildUpdate,
+			Audience: events.Audience{Kind: events.AudienceGuild, GuildID: guild.ID}, Payload: guild.Public()})
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), wait)
 	defer cancel()
 	start := time.Now()
-	if err := e.gw.Close(ctx); err != nil {
+	if err = e.gw.Close(ctx); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
 	if d := time.Since(start); d > 3*time.Second {

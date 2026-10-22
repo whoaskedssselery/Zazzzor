@@ -47,6 +47,8 @@ type conn struct {
 	abort atomic.Bool
 
 	seq int64 // run only
+	// online: counted in presence (guarded by Gateway.mu).
+	online bool
 }
 
 func newConn(g *Gateway, ws *websocket.Conn, user auth.User, sessionID snowflake.ID, token string) *conn {
@@ -175,6 +177,7 @@ func (c *conn) sendReady() bool {
 		c.closeWith(closeInternal)
 		return true
 	}
+	c.g.markOnline(c)
 	ready, err := c.g.ready(ctx, user)
 	if err != nil {
 		c.g.log.Error("gateway build ready", "user_id", user.ID.String(), "err", err.Error())

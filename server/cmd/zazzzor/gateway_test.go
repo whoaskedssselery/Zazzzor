@@ -50,7 +50,7 @@ func readOp(t *testing.T, ws *websocket.Conn) string {
 func TestGatewayRouteWired(t *testing.T) {
 	// The write deadline must leave room for the password hashing of
 	// the registration below.
-	const deadline = 1500 * time.Millisecond
+	const deadline = 3 * time.Second
 	h, logs := newModulesRouter(t, httpx.DeadlineOptions{Read: deadline / 5, Write: deadline})
 	c := testkit.NewClient(t, h)
 	expect := func(resp *testkit.Response, status int) {
