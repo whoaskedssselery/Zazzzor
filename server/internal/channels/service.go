@@ -175,7 +175,9 @@ func (s *Service) CreateChannel(ctx context.Context, guildID, actorID snowflake.
 
 // UpdateChannel changes the fields that are set. The actor needs
 // MANAGE_CHANNELS in the channel, and MANAGE_ROLES there to change its
-// sync. A channel moved to another category goes last in it.
+// sync; re-syncing is authorized like the overwrite changes it makes
+// (authorizeOverwrites). A channel moved to another category goes last in
+// it and, if it was synced, keeps its overwrites as its own (see place).
 func (s *Service) UpdateChannel(ctx context.Context, channelID, actorID snowflake.ID, f UpdateFields) (Channel, error) {
 	var (
 		name  *string
@@ -227,6 +229,18 @@ func (s *Service) UpdateChannel(ctx context.Context, channelID, actorID snowflak
 			}
 		}
 		if f.SyncPermissions != nil {
+			if *f.SyncPermissions && n.ch.ParentID != nil && !n.ch.PermissionSynced {
+				// Syncing replaces the effective overwrites with the
+				// category's: authorize it like an overwrite change.
+				a, err := s.guilds.AccessIn(ctx, tx, l.guildID)
+				if err != nil {
+					return err
+				}
+				parent := l.nodes[*n.ch.ParentID]
+				if err = authorizeOverwrites(a, actor, perm, l.effective(n), parent.ch.Overwrites); err != nil {
+					return err
+				}
+			}
 			if err := l.setSync(n, *f.SyncPermissions); err != nil {
 				return err
 			}
@@ -313,7 +327,8 @@ func (l *layout) setSync(n *node, sync bool) error {
 // within its (new) parent, the others keep their order around them, and
 // positions end up dense (0..n-1) within every parent. The actor needs
 // MANAGE_CHANNELS in the guild and must see every channel and category
-// named. It returns the channels the actor can see.
+// named. A synced channel that changes parent stops being synced (see
+// place). It returns the channels the actor can see.
 func (s *Service) ReorderChannels(ctx context.Context, guildID, actorID snowflake.ID, moves []Move) ([]Channel, error) {
 	if len(moves) > MaxChannels {
 		return nil, invalid("channels", fmt.Sprintf("must list at most %d channels", MaxChannels))

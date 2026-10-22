@@ -11,6 +11,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/testkit"
 )
 
 const (
@@ -404,13 +405,14 @@ func TestReorderChannels(t *testing.T) {
 			t.Fatalf("%s at %+v, want %+v (all: %+v)", name, got[name], p, got)
 		}
 	}
-	// The order is what a fresh list shows; a moved-out channel is unsynced,
-	// one moved between categories stays synced.
+	// The order is what a fresh list shows; every channel that changed
+	// parent is unsynced, one that did not stays synced.
 	cs = listChannels(t, owner, g)
 	if !sameMap(where(cs), want) {
 		t.Fatalf("list = %+v", where(cs))
 	}
-	if byName(t, cs, general.Name).PermissionSynced || !byName(t, cs, "a").PermissionSynced {
+	if byName(t, cs, general.Name).PermissionSynced || byName(t, cs, "a").PermissionSynced ||
+		!byName(t, cs, "b").PermissionSynced {
 		t.Fatalf("sync flags: %+v", cs)
 	}
 
@@ -568,4 +570,112 @@ func TestDeleteRoleDropsItsOverwrites(t *testing.T) {
 	if len(got.PermissionOverwrites) != 1 || got.PermissionOverwrites[0].ID != keep {
 		t.Fatalf("overwrites after deleting a role = %+v", got.PermissionOverwrites)
 	}
+}
+
+// moverEnv is a guild whose text category is private (the mover's role may
+// see it) and whose voice category is public; the mover has
+// MANAGE_CHANNELS but not MANAGE_ROLES.
+func moverEnv(t *testing.T) (e *env, owner, mover, bobC *testkit.Client, g guildBody, private, public channelBody) {
+	t.Helper()
+	e = newEnv(t)
+	owner, _ = e.user("alice")
+	mover, m := e.user("mover")
+	bobC, bob := e.user("bob")
+	g = createGuild(t, owner, "home")
+	e.join(g, m)
+	e.join(g, bob)
+	movers := createRole(t, owner, g, "movers", permissions.ManageChannels)
+	setRoles(t, owner, g, m.ID, movers)
+	cs := listChannels(t, owner, g)
+	private, public = byName(t, cs, channels.DefaultTextCategory), byName(t, cs, channels.DefaultVoiceCategory)
+	expect(t, putOverwrite(owner, private.ID, g.ID, roleTarget, 0, permissions.ViewChannel), http.StatusOK)
+	expect(t, putOverwrite(owner, private.ID, movers, roleTarget, permissions.ViewChannel, 0), http.StatusOK)
+	return e, owner, mover, bobC, g, private, public
+}
+
+func TestMoveKeepsVisibility(t *testing.T) {
+	_, owner, mover, bobC, g, private, public := moverEnv(t)
+	secret := byName(t, listChannels(t, owner, g), channels.DefaultTextChannel)
+	open := byName(t, listChannels(t, owner, g), channels.DefaultVoiceChannel)
+
+	// Private to public with PATCH: still hidden, now with its own copy.
+	resp := mover.Do(http.MethodPatch, "/api/v1/channels/"+secret.ID, map[string]any{"parent_id": public.ID})
+	expect(t, resp, http.StatusOK)
+	var got channelBody
+	resp.JSON(&got)
+	if got.PermissionSynced || got.ParentID == nil || *got.ParentID != public.ID || len(got.PermissionOverwrites) != 2 {
+		t.Fatalf("moved private channel = %+v", got)
+	}
+	if hasChannel(listChannels(t, bobC, g), secret.ID) {
+		t.Fatal("moving to a public category revealed the channel")
+	}
+	// Public to private with a reorder: still visible.
+	resp = mover.Do(http.MethodPatch, "/api/v1/guilds/"+g.ID+"/channels",
+		[]map[string]any{{"id": open.ID, "position": 0, "parent_id": private.ID}})
+	expect(t, resp, http.StatusOK)
+	if got = getChannel(t, owner, open.ID); got.PermissionSynced || len(got.PermissionOverwrites) != 0 {
+		t.Fatalf("moved public channel = %+v", got)
+	}
+	if !hasChannel(listChannels(t, bobC, g), open.ID) {
+		t.Fatal("moving to a private category hid the channel")
+	}
+	// Re-syncing is a permission change the mover may not make.
+	problemOf(t, mover.Do(http.MethodPatch, "/api/v1/channels/"+open.ID, map[string]any{"sync_permissions": true}),
+		http.StatusForbidden, "missing_permission")
+	expect(t, owner.Do(http.MethodPatch, "/api/v1/channels/"+open.ID, map[string]any{"sync_permissions": true}), http.StatusOK)
+	if hasChannel(listChannels(t, bobC, g), open.ID) {
+		t.Fatal("bob sees the channel synced with the private category")
+	}
+}
+
+func TestSyncRequiresOverwriteAuthorization(t *testing.T) {
+	e := newEnv(t)
+	owner, _ := e.user("alice")
+	modC, mod := e.user("mod")
+	_, bob := e.user("bob")
+	g := createGuild(t, owner, "home")
+	e.join(g, mod)
+	e.join(g, bob)
+	// Created top-down: boss ends up above mods, low below.
+	boss := createRole(t, owner, g, "boss", 0)
+	mods := createRole(t, owner, g, "mods", permissions.ManageChannels|permissions.ManageRoles)
+	low := createRole(t, owner, g, "low", 0)
+	setRoles(t, owner, g, mod.ID, mods)
+	cs := listChannels(t, owner, g)
+	cat, general := byName(t, cs, channels.DefaultTextCategory), byName(t, cs, channels.DefaultTextChannel)
+	// Unsync the channel with an overwrite of its own.
+	expect(t, putOverwrite(owner, general.ID, bob.ID, memberTarget, permissions.AttachFiles, 0), http.StatusOK)
+	sync := func(c *testkit.Client) *testkit.Response {
+		return c.Do(http.MethodPatch, "/api/v1/channels/"+general.ID, map[string]any{"sync_permissions": true})
+	}
+	catOW := func(target string, allow permissions.Permission) {
+		t.Helper()
+		expect(t, owner.Do(http.MethodDelete, "/api/v1/channels/"+cat.ID+"/permissions/"+boss, nil), http.StatusNoContent)
+		expect(t, owner.Do(http.MethodDelete, "/api/v1/channels/"+cat.ID+"/permissions/"+low, nil), http.StatusNoContent)
+		expect(t, putOverwrite(owner, cat.ID, target, roleTarget, allow, 0), http.StatusOK)
+	}
+
+	// Syncing would put an overwrite on a role above the moderator.
+	catOW(boss, permissions.SendMessages)
+	problemOf(t, sync(modC), http.StatusForbidden, "missing_permission")
+	// Syncing would grant a bit the moderator lacks.
+	catOW(low, permissions.ManageGuild)
+	problemOf(t, sync(modC), http.StatusForbidden, "missing_permission")
+	if getChannel(t, owner, general.ID).PermissionSynced {
+		t.Fatal("a refused sync took effect")
+	}
+	// Within the moderator's rights it works (dropping bob's overwrite,
+	// a member target, needs no rank).
+	catOW(low, permissions.SendMessages)
+	resp := sync(modC)
+	expect(t, resp, http.StatusOK)
+	var got channelBody
+	resp.JSON(&got)
+	if !got.PermissionSynced || len(got.PermissionOverwrites) != 1 || got.PermissionOverwrites[0].ID != low {
+		t.Fatalf("after sync = %+v", got)
+	}
+	// The owner may sync anything.
+	expect(t, putOverwrite(owner, general.ID, bob.ID, memberTarget, permissions.AttachFiles, 0), http.StatusOK)
+	catOW(boss, permissions.ManageGuild)
+	expect(t, sync(owner), http.StatusOK)
 }

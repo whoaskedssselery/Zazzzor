@@ -106,28 +106,16 @@ func (s *Service) changeOverwrite(ctx context.Context, channelID, targetID, acto
 		if !perm.Has(permissions.ManageRoles) {
 			return ErrMissingPerm
 		}
-		if err = checkTarget(a, actor, targetID, next); err != nil {
-			return err
+		if next != nil {
+			if err = targetExists(a, *next); err != nil {
+				return err
+			}
 		}
 
 		i := slices.IndexFunc(eff, func(o permissions.Overwrite) bool { return o.ID == targetID })
-		var old permissions.Overwrite
-		if i >= 0 {
-			old = eff[i]
-		}
-		var diff permissions.Permission
-		if next != nil {
-			diff = (old.Allow ^ next.Allow) | (old.Deny ^ next.Deny)
-		} else {
-			diff = old.Allow | old.Deny
-		}
-		if !permissions.CanGrant(actor, diff) {
-			return ErrMissingPerm
-		}
-
 		set := cloneOverwrites(eff)
 		switch {
-		case next != nil && i >= 0 && *next == old:
+		case next != nil && i >= 0 && *next == eff[i]:
 			result = l.view(n)
 			return nil // nothing changes
 		case next != nil && i >= 0:
@@ -140,6 +128,9 @@ func (s *Service) changeOverwrite(ctx context.Context, channelID, targetID, acto
 		default:
 			result = l.view(n)
 			return nil // nothing to remove
+		}
+		if err = authorizeOverwrites(a, actor, perm, eff, set); err != nil {
+			return err
 		}
 		n.ch.Overwrites, n.ch.PermissionSynced, n.owDirty = set, false, true
 		if _, err = s.save(ctx, tx, l); err != nil {
@@ -169,23 +160,61 @@ func (s *Service) changeOverwrite(ctx context.Context, channelID, targetID, acto
 	return result, nil
 }
 
-// checkTarget checks the target of a new overwrite (next set) is a role or
-// member of the guild, and that the actor ranks above a target role.
-func checkTarget(a guilds.Access, actor permissions.Subject, targetID snowflake.ID, next *permissions.Overwrite) error {
-	if next != nil && next.Type == permissions.OverwriteMember {
-		if !a.IsMember(targetID) {
+// targetExists checks the target of a new overwrite is a role or member of
+// the guild.
+func targetExists(a guilds.Access, ow permissions.Overwrite) error {
+	if ow.Type == permissions.OverwriteMember {
+		if !a.IsMember(ow.ID) {
 			return ErrNotFound
 		}
 		return nil
 	}
-	role, ok := a.Role(targetID)
-	switch {
-	case ok:
-		if permissions.HighestPosition(actor) <= role.Position {
+	if _, ok := a.Role(ow.ID); !ok {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// authorizeOverwrites checks that actor, whose permissions in the channel
+// are perm, may replace the effective overwrites from with to: it needs
+// MANAGE_ROLES there, must hold every allow or deny bit that changes for
+// any target (CanGrant) and must rank above every role whose overwrite
+// changes (the owner ranks above all). Member targets have no rank check,
+// as in Discord; a target role that no longer exists has none either.
+func authorizeOverwrites(a guilds.Access, actor permissions.Subject, perm permissions.Permission,
+	from, to []permissions.Overwrite,
+) error {
+	if !perm.Has(permissions.ManageRoles) {
+		return ErrMissingPerm
+	}
+	type pair struct{ old, new permissions.Overwrite }
+	byTarget := make(map[snowflake.ID]*pair, len(from)+len(to))
+	get := func(id snowflake.ID) *pair {
+		p := byTarget[id]
+		if p == nil {
+			p = &pair{}
+			byTarget[id] = p
+		}
+		return p
+	}
+	for _, o := range from {
+		get(o.ID).old = o
+	}
+	for _, o := range to {
+		get(o.ID).new = o
+	}
+	top := permissions.HighestPosition(actor)
+	for id, p := range byTarget {
+		if p.old == p.new {
+			continue
+		}
+		diff := (p.old.Allow ^ p.new.Allow) | (p.old.Deny ^ p.new.Deny)
+		if !permissions.CanGrant(actor, diff) {
 			return ErrMissingPerm
 		}
-	case next != nil:
-		return ErrNotFound // no such role
+		if role, ok := a.Role(id); ok && top <= role.Position {
+			return ErrMissingPerm
+		}
 	}
-	return nil // removing the overwrite of a member, a former member or a deleted role
+	return nil
 }

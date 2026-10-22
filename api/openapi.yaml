@@ -1181,12 +1181,16 @@ paths:
         Moves each listed channel to `position` within its parent, or
         within `parent_id` when given (`null`: the top level). The other
         channels keep their order around them and every parent (the top
-        level being one) ends up with the positions 0..n-1; a position past
-        the end means last. Every listed channel and parent must be one the
-        caller can see, parents must be categories of this server, and a
-        category stays at the top level. A channel that leaves its category
-        while synced keeps the category's overwrites as its own; one moved
-        to another category stays synced (with the new one). Needs
+        level being one) is renumbered densely to the positions 0..n-1:
+        gaps in the requested positions are accepted and closed, a position
+        past the end means last, while a channel listed twice, a position
+        listed twice in one parent and a negative position are refused.
+        Every listed channel and parent must be one the caller can see,
+        parents must be categories of this server, and a category stays at
+        the top level. A synced channel that changes parent keeps the
+        overwrites it had as its own and stops being synced, so a move
+        never changes who can see it; only `sync_permissions` re-syncs.
+        Needs
         `MANAGE_CHANNELS` in the server. Announced as `CHANNEL_UPDATE` for
         every channel that moved and, when a parent changed, `GUILD_SYNC`.
         Counts against the channel write limit.
@@ -1265,10 +1269,14 @@ paths:
         channel; `sync_permissions` also needs `MANAGE_ROLES` there.
         `name` and `topic` follow the rules of creation (`topic: null`
         clears it). `parent_id` moves the channel to the end of that
-        category (`null`: of the top level), under the rules of reordering.
-        `sync_permissions: true` replaces the channel's overwrites with a
-        copy of its category's and keeps following them; `false` keeps the
-        current ones as the channel's own. Announced as `CHANNEL_UPDATE` for
+        category (`null`: of the top level), under the rules of reordering:
+        a synced channel keeps its overwrites as its own and is no longer
+        synced. `sync_permissions: true` replaces the channel's overwrites
+        with a copy of its category's and keeps following them; it is
+        authorized like setting each overwrite that changes (every changed
+        bit held by the caller, every changed role target below the
+        caller's highest role). `false` keeps the current ones as the
+        channel's own. Announced as `CHANNEL_UPDATE` for
         every channel that changed and, when the parent or the sync
         changed, `GUILD_SYNC`. Counts against the channel write limit.
       parameters:
@@ -1346,7 +1354,8 @@ paths:
         changes in `allow` or `deny` must be one the caller holds in the
         server (owners and administrators may change any), and a target
         role must be below the caller's highest role (except for the
-        owner). `ADMINISTRATOR`, unknown bits and a bit in both masks are
+        owner). A member target has no rank check, as in Discord.
+        `ADMINISTRATOR`, unknown bits and a bit in both masks are
         refused. A synced channel stops being synced: it keeps its
         category's overwrites as its own, with this change. Announced as
         `CHANNEL_UPDATE` and `GUILD_SYNC`. Counts against the channel write
@@ -1498,7 +1507,9 @@ paths:
       operationId: previewInvite
       summary: Preview an invite
       description: |
-        What the invite leads to, for any signed-in user. An unknown or
+        What the invite leads to, for any signed-in user; `channel` is the
+        channel its creator chose, shown by name even to non-members. An
+        unknown or
         malformed code is `404 not_found`. Previews, joins and deletions by
         code share a limit of 30 per minute per user, so codes cannot be
         guessed by trying.

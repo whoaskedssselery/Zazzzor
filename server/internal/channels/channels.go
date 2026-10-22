@@ -446,13 +446,14 @@ func sortByPosition(ns []*node) {
 	})
 }
 
-// place assigns parents and dense positions from scopes. A channel that
-// leaves its category while synced keeps the category's overwrites as its
-// own and stops being synced; one moved between categories stays synced.
+// place assigns parents and dense positions from scopes. A synced channel
+// that changes parent (to another category or the top level) keeps the
+// overwrites it had as its own and stops being synced, so a move never
+// changes who can see it; only an explicit sync does.
 func (l *layout) place(scopes map[snowflake.ID][]*node) {
 	for parent, sc := range scopes {
 		for i, n := range sc {
-			if parent == 0 && n.ch.PermissionSynced {
+			if parent != n.parent() && n.ch.PermissionSynced {
 				n.ch.Overwrites = cloneOverwrites(l.effective(n))
 				n.ch.PermissionSynced = false
 				n.owDirty = true
