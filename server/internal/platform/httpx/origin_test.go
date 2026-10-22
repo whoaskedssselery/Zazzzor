@@ -51,3 +51,24 @@ func TestRequireOriginBlocksForeignOrigin(t *testing.T) {
 		})
 	}
 }
+
+func TestOriginAllowed(t *testing.T) {
+	allowed := []string{"https://zazzzor.example"}
+	for origin, want := range map[string]bool{
+		"https://zazzzor.example":      true,
+		"":                             false,
+		"null":                         false,
+		"http://zazzzor.example":       false,
+		"https://zazzzor.example:443":  false,
+		"https://ZAZZZOR.example":      false,
+		"https://zazzzor.example.evil": false,
+	} {
+		r := httptest.NewRequest(http.MethodGet, "/x", nil)
+		if origin != "" {
+			r.Header.Set("Origin", origin)
+		}
+		if got := httpx.OriginAllowed(allowed, r); got != want {
+			t.Errorf("OriginAllowed(%q) = %v, want %v", origin, got, want)
+		}
+	}
+}

@@ -77,16 +77,43 @@ func TestDeadlinesCutOffSlowBody(t *testing.T) {
 	}
 }
 
-func TestDeadlinesSkipWebSocketUpgrade(t *testing.T) {
+// An Upgrade header does not buy a request out of the deadlines: only routes
+// wrapped in WithoutDeadlines (the gateway) are exempt.
+func TestDeadlinesApplyToUpgradeRequests(t *testing.T) {
+	const deadline = 200 * time.Millisecond
+	srv, results := slowBodyServer(t, httpx.DeadlineOptions{Read: deadline, Write: time.Second})
+	sendStalled(t, srv.Listener.Addr().String(), "Connection: Upgrade\r\nUpgrade: websocket\r\n", 5*time.Second)
+
+	select {
+	case res := <-results:
+		if res.err == nil {
+			t.Fatal("upgrade-looking request escaped the read deadline")
+		}
+	case <-time.After(deadline + 2*time.Second):
+		t.Fatal("handler still reading the body long after the read deadline")
+	}
+}
+
+func TestWithoutDeadlinesClearsThem(t *testing.T) {
 	const deadline = 100 * time.Millisecond
-	srv, results := slowBodyServer(t, httpx.DeadlineOptions{Read: deadline, Write: deadline})
-	conn := sendStalled(t, srv.Listener.Addr().String(),
-		"Connection: Upgrade\r\nUpgrade: websocket\r\n", 4*deadline)
+	results := make(chan readResult, 1)
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		_, err := io.Copy(io.Discard, r.Body)
+		results <- readResult{err: err, elapsed: time.Since(start)}
+		// Answer only after the write deadline would have passed.
+		time.Sleep(2 * deadline)
+		w.WriteHeader(http.StatusOK)
+	})
+	h := httpx.Deadlines(httpx.DeadlineOptions{Read: deadline, Write: deadline})(httpx.WithoutDeadlines(inner))
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+	conn := sendStalled(t, srv.Listener.Addr().String(), "", 4*deadline)
 
 	select {
 	case res := <-results:
 		if res.err != nil {
-			t.Fatalf("upgrade request got a deadline: body read failed after %v: %v", res.elapsed, res.err)
+			t.Fatalf("exempt route got a read deadline: body read failed after %v: %v", res.elapsed, res.err)
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("handler did not finish")
@@ -94,11 +121,21 @@ func TestDeadlinesSkipWebSocketUpgrade(t *testing.T) {
 	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
 	if err != nil {
-		t.Fatalf("read response: %v", err)
+		t.Fatalf("read response (write deadline not cleared?): %v", err)
 	}
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestWithoutDeadlinesToleratesPlainWriters(t *testing.T) {
+	rec := httptest.NewRecorder()
+	httpx.WithoutDeadlines(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("status = %d", rec.Code)
 	}
 }
 
