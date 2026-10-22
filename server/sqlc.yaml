@@ -81,3 +81,43 @@ sql:
             go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
           - column: member_roles.role_id
             go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+  - engine: postgresql
+    schema: internal/platform/db/migrations
+    queries: internal/channels/queries.sql
+    gen:
+      go:
+        package: store
+        out: internal/channels/store
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: true
+        overrides:
+          - column: channels.id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: channels.guild_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: channels.parent_id
+            go_type:
+              import: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake
+              type: ID
+              pointer: true
+            nullable: true
+          - column: overwrites.channel_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: overwrites.target_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+  - engine: postgresql
+    schema: internal/platform/db/migrations
+    queries: internal/invites/queries.sql
+    gen:
+      go:
+        package: store
+        out: internal/invites/store
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: true
+        overrides:
+          - column: invites.guild_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: invites.channel_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: invites.inviter_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID

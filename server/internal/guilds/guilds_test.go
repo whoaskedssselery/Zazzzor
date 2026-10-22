@@ -685,3 +685,54 @@ func TestDirectory(t *testing.T) {
 		t.Fatalf("join missing guild err = %v", err)
 	}
 }
+
+func TestAccessForOtherModules(t *testing.T) {
+	e := newEnv(t)
+	owner, ou := e.user("alice")
+	_, mu := e.user("bob")
+	g := createGuild(t, owner, "guild")
+	gid := g.id(t)
+	e.join(gid, mu.id(t))
+	r := createRole(t, owner, g, "r", permissions.KickMembers)
+	expect(t, setRoles(owner, g, mu.ID, r.ID), http.StatusOK)
+	ctx := t.Context()
+
+	a, err := e.svc.AccessIn(ctx, e.pool, gid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(a.MemberIDs(), []snowflake.ID{ou.id(t), mu.id(t)}) || !a.IsMember(mu.id(t)) || a.IsMember(42) {
+		t.Fatalf("members = %v", a.MemberIDs())
+	}
+	if role, ok := a.Role(gid); !ok || role.Permissions != permissions.DefaultEveryone {
+		t.Fatalf("@everyone = %+v, %v", role, ok)
+	}
+	if _, ok := a.Role(42); ok {
+		t.Fatal("unknown role found")
+	}
+	// Access answers exactly like Subject.
+	want, err := e.svc.SubjectIn(ctx, e.pool, gid, mu.id(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := a.Subject(mu.id(t))
+	if !ok || got.OwnerID != want.OwnerID || got.Everyone != want.Everyone || !slices.Equal(got.Roles, want.Roles) {
+		t.Fatalf("Access subject = %+v, Subject = %+v", got, want)
+	}
+	if _, ok = a.Subject(42); ok {
+		t.Fatal("stranger has a subject")
+	}
+	if _, err = e.svc.AccessIn(ctx, e.pool, 42); !errors.Is(err, guilds.ErrNotFound) {
+		t.Fatalf("AccessIn of a missing guild: %v", err)
+	}
+	if lg, lerr := e.svc.Lookup(ctx, gid); lerr != nil || lg.Name != "guild" {
+		t.Fatalf("Lookup = %+v, %v", lg, lerr)
+	}
+	if _, err = e.svc.Lookup(ctx, 42); !errors.Is(err, guilds.ErrNotFound) {
+		t.Fatalf("Lookup of a missing guild: %v", err)
+	}
+	err = db.InTx(ctx, e.pool, func(tx pgx.Tx) error { return e.svc.LockGuild(ctx, tx, 42) })
+	if !errors.Is(err, guilds.ErrNotMember) {
+		t.Fatalf("LockGuild of a missing guild: %v", err)
+	}
+}

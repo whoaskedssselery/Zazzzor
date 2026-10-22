@@ -143,3 +143,43 @@ func TestGuildRoutesWired(t *testing.T) {
 		t.Fatalf("my guilds = %d: %s", resp.Status, resp.Body)
 	}
 }
+
+// Channels and invites are served by the production wiring, and a new
+// guild gets its default channels.
+func TestChannelAndInviteRoutesWired(t *testing.T) {
+	h, _ := newAuthRouter(t)
+	register := func(name string) *testkit.Client {
+		c := testkit.NewClient(t, h)
+		if resp := c.Do(http.MethodPost, "/api/v1/auth/register",
+			map[string]string{"username": name, "password": "password123"}); resp.Status != http.StatusCreated {
+			t.Fatalf("register %s = %d", name, resp.Status)
+		}
+		return c
+	}
+	owner, guest := register("alice"), register("bob")
+	resp := owner.Do(http.MethodPost, "/api/v1/guilds", map[string]string{"name": "home"})
+	var g struct {
+		ID string `json:"id"`
+	}
+	resp.JSON(&g)
+	resp = owner.Do(http.MethodGet, "/api/v1/guilds/"+g.ID+"/channels", nil)
+	var cs []struct {
+		ID   string `json:"id"`
+		Type int    `json:"type"`
+	}
+	resp.JSON(&cs)
+	if resp.Status != http.StatusOK || len(cs) != 4 || cs[1].Type != 0 {
+		t.Fatalf("channels = %d: %s", resp.Status, resp.Body)
+	}
+	resp = owner.Do(http.MethodPost, "/api/v1/channels/"+cs[1].ID+"/invites", map[string]any{})
+	var inv struct {
+		Code string `json:"code"`
+	}
+	resp.JSON(&inv)
+	if resp.Status != http.StatusCreated {
+		t.Fatalf("create invite = %d: %s", resp.Status, resp.Body)
+	}
+	if resp = guest.Do(http.MethodPost, "/api/v1/invites/"+inv.Code, nil); resp.Status != http.StatusOK {
+		t.Fatalf("join = %d: %s", resp.Status, resp.Body)
+	}
+}

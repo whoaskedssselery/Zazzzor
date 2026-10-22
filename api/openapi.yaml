@@ -30,6 +30,10 @@ tags:
     description: Stored images (avatars, server icons).
   - name: guilds
     description: Servers, their members and roles.
+  - name: channels
+    description: Channels, categories and their permission overwrites.
+  - name: invites
+    description: Invite links to servers.
   - name: admin
     description: Instance administration, for the usernames in `ZAZZZOR_ADMIN_USERNAMES`.
 paths:
@@ -1084,6 +1088,503 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
+  /guilds/{guild_id}/channels:
+    get:
+      tags: [channels]
+      operationId: listGuildChannels
+      summary: Channels of a server
+      description: |
+        The channels and categories the caller may view (`VIEW_CHANNEL`), in
+        display order: the top level by position, each category followed by
+        its channels by position. Not paginated: a server has at most 500
+        channels.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+      responses:
+        "200":
+          description: The visible channels.
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 500
+                items:
+                  $ref: "#/components/schemas/Channel"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+    post:
+      tags: [channels]
+      operationId: createGuildChannel
+      summary: Create a channel or category
+      description: |
+        Needs `MANAGE_CHANNELS` in the server. `name` is trimmed and must
+        then be 1 to 100 characters with a visible character and no control
+        or bidirectional control characters. `topic` (text channels only)
+        is trimmed, at most 1024 characters, may span lines and has no
+        other control or bidirectional control characters; blank means
+        none. `parent_id` must be a category of this server the caller can
+        see; a category has no parent. The channel goes last in its parent
+        (or the top level); in a category it starts synced with it. At most
+        500 channels per server, categories included
+        (`400 too_many_channels`). Announced as `CHANNEL_CREATE` to the
+        members who can view it. Counts against the channel write limit
+        (30 per minute per user, shared by every channel and overwrite
+        write).
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChannelRequest"
+      responses:
+        "201":
+          description: The new channel.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+        "400":
+          description: "`invalid_body`, `body_too_large`, `validation_failed` (with `errors`) or `too_many_channels`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    patch:
+      tags: [channels]
+      operationId: reorderGuildChannels
+      summary: Reorder and move channels
+      description: |
+        Moves each listed channel to `position` within its parent, or
+        within `parent_id` when given (`null`: the top level). The other
+        channels keep their order around them and every parent (the top
+        level being one) ends up with the positions 0..n-1; a position past
+        the end means last. Every listed channel and parent must be one the
+        caller can see, parents must be categories of this server, and a
+        category stays at the top level. A channel that leaves its category
+        while synced keeps the category's overwrites as its own; one moved
+        to another category stays synced (with the new one). Needs
+        `MANAGE_CHANNELS` in the server. Announced as `CHANNEL_UPDATE` for
+        every channel that moved and, when a parent changed, `GUILD_SYNC`.
+        Counts against the channel write limit.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              maxItems: 500
+              items:
+                $ref: "#/components/schemas/ChannelPosition"
+      responses:
+        "200":
+          description: The channels the caller can see, in display order.
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 500
+                items:
+                  $ref: "#/components/schemas/Channel"
+        "400":
+          description: |
+            `invalid_body`, `body_too_large` or `validation_failed` (unknown
+            channel or parent, a channel or a position listed twice in one
+            parent, a negative or missing position, a category in a category).
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /channels/{channel_id}:
+    get:
+      tags: [channels]
+      operationId: getChannel
+      summary: A channel
+      description: Only for members who may view it; to anyone else it does not exist.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      responses:
+        "200":
+          description: The channel.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such channel, or the caller may not view it."
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+    patch:
+      tags: [channels]
+      operationId: updateChannel
+      summary: Change a channel
+      description: |
+        Changes the fields that are present. Needs `MANAGE_CHANNELS` in the
+        channel; `sync_permissions` also needs `MANAGE_ROLES` there.
+        `name` and `topic` follow the rules of creation (`topic: null`
+        clears it). `parent_id` moves the channel to the end of that
+        category (`null`: of the top level), under the rules of reordering.
+        `sync_permissions: true` replaces the channel's overwrites with a
+        copy of its category's and keeps following them; `false` keeps the
+        current ones as the channel's own. Announced as `CHANNEL_UPDATE` for
+        every channel that changed and, when the parent or the sync
+        changed, `GUILD_SYNC`. Counts against the channel write limit.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateChannelRequest"
+      responses:
+        "200":
+          description: The channel.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+        "400":
+          description: "`invalid_body`, `body_too_large` or `validation_failed` (with `errors`)."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such channel, or the caller may not view it."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [channels]
+      operationId: deleteChannel
+      summary: Delete a channel or category
+      description: |
+        Needs `MANAGE_CHANNELS` in the channel. The channels of a deleted
+        category move to the end of the top level, keeping its overwrites
+        as their own if they were synced. Its invites are deleted with it.
+        Announced as `CHANNEL_DELETE` to the members who could view it, and
+        `CHANNEL_UPDATE` for every channel that moved. Counts against the
+        channel write limit.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      responses:
+        "204":
+          description: The channel is gone.
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such channel, or the caller may not view it."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /channels/{channel_id}/permissions/{target_id}:
+    put:
+      tags: [channels]
+      operationId: putChannelOverwrite
+      summary: Set a permission overwrite
+      description: |
+        Sets the allow/deny pair of a role of this server (`type` 0;
+        `@everyone` has the server's ID) or a member (`type` 1) in the
+        channel. Needs `MANAGE_ROLES` in the channel, every bit that
+        changes in `allow` or `deny` must be one the caller holds in the
+        server (owners and administrators may change any), and a target
+        role must be below the caller's highest role (except for the
+        owner). `ADMINISTRATOR`, unknown bits and a bit in both masks are
+        refused. A synced channel stops being synced: it keeps its
+        category's overwrites as its own, with this change. Announced as
+        `CHANNEL_UPDATE` and `GUILD_SYNC`. Counts against the channel write
+        limit.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+        - $ref: "#/components/parameters/TargetID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OverwriteRequest"
+      responses:
+        "200":
+          description: The channel with its overwrites.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+        "400":
+          description: |
+            `invalid_body` (also for a mask that is not a decimal string),
+            `body_too_large` or `validation_failed` (with `errors`).
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such channel (or the caller may not view it), or the target is not a role or member of this server."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [channels]
+      operationId: deleteChannelOverwrite
+      summary: Remove a permission overwrite
+      description: |
+        Removes the overwrite of the target under the rules of setting one
+        (every bit it held counts as changed). Removing one that is not
+        there changes nothing; one of a deleted role or a former member can
+        always be removed. Announced as `CHANNEL_UPDATE` and `GUILD_SYNC`
+        when something changed. Counts against the channel write limit.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+        - $ref: "#/components/parameters/TargetID"
+      responses:
+        "204":
+          description: The overwrite is gone.
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such channel, or the caller may not view it."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /channels/{channel_id}/invites:
+    post:
+      tags: [invites]
+      operationId: createInvite
+      summary: Create an invite
+      description: |
+        Needs `CREATE_INVITE` in the channel. The code is 8 random base62
+        characters. `max_age_seconds` 0 means it never expires (default
+        604800, a week); `max_uses` 0 means unlimited (the default).
+        Limited to 20 creations per hour per user.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInviteRequest"
+      responses:
+        "201":
+          description: The new invite.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invite"
+        "400":
+          description: "`invalid_body`, `body_too_large` or `validation_failed` (with `errors`)."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such channel, or the caller may not view it."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /guilds/{guild_id}/invites:
+    get:
+      tags: [invites]
+      operationId: listGuildInvites
+      summary: Invites of a server
+      description: |
+        Needs `MANAGE_GUILD`. Newest first, at most 1000, expired and used
+        up ones included; only invites to channels the caller can see.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+      responses:
+        "200":
+          description: The invites.
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 1000
+                items:
+                  $ref: "#/components/schemas/Invite"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /invites/{code}:
+    get:
+      tags: [invites]
+      operationId: previewInvite
+      summary: Preview an invite
+      description: |
+        What the invite leads to, for any signed-in user. An unknown or
+        malformed code is `404 not_found`. Previews, joins and deletions by
+        code share a limit of 30 per minute per user, so codes cannot be
+        guessed by trying.
+      parameters:
+        - $ref: "#/components/parameters/InviteCode"
+      responses:
+        "200":
+          description: The invite.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invite"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such invite."
+          $ref: "#/components/responses/Problem"
+        "410":
+          description: "`invite_expired` or `invite_exhausted` (every use is taken)."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    post:
+      tags: [invites]
+      operationId: joinInvite
+      summary: Join a server through an invite
+      description: |
+        Makes the caller a member and takes one use, atomically: of
+        concurrent joins with the last use left exactly one succeeds. A
+        member already in the server gets it back without taking a use,
+        whatever the invite's state. Announced as `GUILD_MEMBER_ADD` to the
+        members and `GUILD_CREATE` to the new member. A user can be in at
+        most 100 servers (`400 too_many_guilds`). Shares the by-code limit.
+      parameters:
+        - $ref: "#/components/parameters/InviteCode"
+      responses:
+        "200":
+          description: The server joined.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Guild"
+        "400":
+          description: "`too_many_guilds`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such invite."
+          $ref: "#/components/responses/Problem"
+        "410":
+          description: "`invite_expired` or `invite_exhausted`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [invites]
+      operationId: deleteInvite
+      summary: Delete an invite
+      description: |
+        Its creator or a member with `MANAGE_GUILD` may; to anyone outside
+        the server it does not exist. Shares the by-code limit.
+      parameters:
+        - $ref: "#/components/parameters/InviteCode"
+      responses:
+        "204":
+          description: The invite is gone.
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such invite, or not a member of its server."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
 components:
   securitySchemes:
     cookieAuth:
@@ -1132,6 +1633,26 @@ components:
       schema:
         type: string
         pattern: "^[0-9a-f]{16}$"
+    ChannelID:
+      name: channel_id
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Snowflake"
+    TargetID:
+      name: target_id
+      in: path
+      required: true
+      description: The role or member the overwrite is for.
+      schema:
+        $ref: "#/components/schemas/Snowflake"
+    InviteCode:
+      name: code
+      in: path
+      required: true
+      description: 8 base62 characters; anything else is `404 not_found`.
+      schema:
+        type: string
   responses:
     ImageFile:
       description: |
@@ -1505,3 +2026,178 @@ components:
         position:
           type: integer
           minimum: 1
+    ChannelType:
+      type: integer
+      enum: [0, 2, 4]
+      description: 0 text, 2 voice, 4 category.
+    Overwrite:
+      type: object
+      additionalProperties: false
+      required: [id, type, allow, deny]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        type:
+          type: integer
+          enum: [0, 1]
+          description: 0 a role (`@everyone` has the server's ID), 1 a member.
+        allow:
+          $ref: "#/components/schemas/Permission"
+        deny:
+          $ref: "#/components/schemas/Permission"
+    Channel:
+      type: object
+      additionalProperties: false
+      required: [id, guild_id, type, name, topic, parent_id, position, permission_synced, permission_overwrites]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        guild_id:
+          $ref: "#/components/schemas/Snowflake"
+        type:
+          $ref: "#/components/schemas/ChannelType"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        topic:
+          type: [string, "null"]
+          maxLength: 1024
+        parent_id:
+          description: The category of the channel; null at the top level (always for a category).
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
+        position:
+          type: integer
+          minimum: 0
+          description: Dense (0..n-1) within the parent; the top level is one scope.
+        permission_synced:
+          type: boolean
+          description: The overwrites are the category's and follow it.
+        permission_overwrites:
+          type: array
+          description: The overwrites in effect (the category's when synced), by target ID.
+          items:
+            $ref: "#/components/schemas/Overwrite"
+    CreateChannelRequest:
+      type: object
+      additionalProperties: false
+      required: [name, type]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        type:
+          $ref: "#/components/schemas/ChannelType"
+        parent_id:
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
+        topic:
+          type: [string, "null"]
+          maxLength: 1024
+    UpdateChannelRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        topic:
+          type: [string, "null"]
+          maxLength: 1024
+        parent_id:
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
+        sync_permissions:
+          type: boolean
+    ChannelPosition:
+      type: object
+      additionalProperties: false
+      required: [id, position]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        position:
+          type: integer
+          minimum: 0
+        parent_id:
+          description: The new parent; null for the top level; absent keeps the parent.
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
+    OverwriteRequest:
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type:
+          type: integer
+          enum: [0, 1]
+        allow:
+          $ref: "#/components/schemas/Permission"
+        deny:
+          $ref: "#/components/schemas/Permission"
+    CreateInviteRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        max_age_seconds:
+          type: integer
+          minimum: 0
+          maximum: 2592000
+          default: 604800
+          description: Lifetime in seconds; 0 means it never expires.
+        max_uses:
+          type: integer
+          minimum: 0
+          maximum: 100
+          default: 0
+          description: How many joins it allows; 0 means unlimited.
+    Invite:
+      type: object
+      additionalProperties: false
+      required: [code, guild, channel, inviter, uses, max_uses, expires_at]
+      properties:
+        code:
+          type: string
+          pattern: "^[0-9A-Za-z]{8}$"
+        guild:
+          type: object
+          additionalProperties: false
+          required: [id, name, icon_url]
+          properties:
+            id:
+              $ref: "#/components/schemas/Snowflake"
+            name:
+              type: string
+            icon_url:
+              type: [string, "null"]
+              pattern: '^/api/v1/files/icons/[0-9]{1,19}/[0-9a-f]{16}\.png$'
+        channel:
+          type: object
+          additionalProperties: false
+          required: [id, name]
+          properties:
+            id:
+              $ref: "#/components/schemas/Snowflake"
+            name:
+              type: string
+        inviter:
+          $ref: "#/components/schemas/User"
+        uses:
+          type: integer
+          minimum: 0
+        max_uses:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: 0 means unlimited.
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: Null when it never expires.

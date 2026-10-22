@@ -546,6 +546,43 @@ func (q *Queries) MembersPage(ctx context.Context, db DBTX, arg MembersPageParam
 	return items, nil
 }
 
+const membersWithRoles = `-- name: MembersWithRoles :many
+SELECT members.user_id,
+    coalesce(array_agg(member_roles.role_id ORDER BY member_roles.role_id)
+        FILTER (WHERE member_roles.role_id IS NOT NULL), '{}')::bigint[] AS role_ids
+FROM members
+LEFT JOIN member_roles ON member_roles.guild_id = members.guild_id AND member_roles.user_id = members.user_id
+WHERE members.guild_id = $1
+GROUP BY members.user_id
+ORDER BY members.user_id
+`
+
+type MembersWithRolesRow struct {
+	UserID  snowflake.ID
+	RoleIds []int64
+}
+
+// Every member of the guild with the IDs of their non-@everyone roles.
+func (q *Queries) MembersWithRoles(ctx context.Context, db DBTX, guildID snowflake.ID) ([]MembersWithRolesRow, error) {
+	rows, err := db.Query(ctx, membersWithRoles, guildID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MembersWithRolesRow
+	for rows.Next() {
+		var i MembersWithRolesRow
+		if err := rows.Scan(&i.UserID, &i.RoleIds); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const removeMemberRoles = `-- name: RemoveMemberRoles :exec
 DELETE FROM member_roles
 WHERE guild_id = $1 AND user_id = $2 AND role_id = ANY($3::bigint[])

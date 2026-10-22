@@ -10,8 +10,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -388,26 +386,13 @@ func ids64(ids []snowflake.ID) []int64 {
 	return out
 }
 
-// normalizeName trims s and checks it is min to max characters with a
-// visible character and no control or bidi control characters.
+// normalizeName applies textx.Name to s, reporting a problem on field.
 func normalizeName(field, s string, minLen, maxLen int) (string, error) {
-	t := strings.TrimFunc(s, func(r rune) bool { return unicode.IsSpace(r) || unicode.Is(unicode.Cf, r) })
-	var msg string
-	switch n := utf8.RuneCountInString(t); {
-	case textx.ContainsBidiControl(s):
-		msg = "must not contain bidirectional control characters"
-	case n < minLen:
-		msg = fmt.Sprintf("must be at least %d characters", minLen)
-	case n > maxLen:
-		msg = fmt.Sprintf("must be at most %d characters", maxLen)
-	case strings.ContainsFunc(t, unicode.IsControl):
-		msg = "must not contain control characters"
-	case !textx.HasVisible(t):
-		msg = "must contain a visible character"
-	default:
-		return t, nil
+	name, problem := textx.Name(s, minLen, maxLen)
+	if problem != "" {
+		return "", invalid(field, problem)
 	}
-	return "", invalid(field, msg)
+	return name, nil
 }
 
 // --- Directory ---

@@ -7,7 +7,21 @@ package store
 import (
 	"net/netip"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type Channel struct {
+	ID               int64
+	GuildID          int64
+	Type             int16
+	Name             string
+	Topic            *string
+	ParentID         pgtype.Int8
+	Position         int32
+	PermissionSynced bool
+	CreatedAt        time.Time
+}
 
 type Guild struct {
 	ID        int64
@@ -22,6 +36,17 @@ type Instance struct {
 	RegistrationOpen bool
 }
 
+type Invite struct {
+	Code      string
+	GuildID   int64
+	ChannelID int64
+	InviterID int64
+	MaxUses   int32
+	Uses      int32
+	ExpiresAt *time.Time
+	CreatedAt time.Time
+}
+
 type Member struct {
 	GuildID  int64
 	UserID   int64
@@ -33,6 +58,14 @@ type MemberRole struct {
 	GuildID int64
 	UserID  int64
 	RoleID  int64
+}
+
+type Overwrite struct {
+	ChannelID  int64
+	TargetID   int64
+	TargetType int16
+	Allow      int64
+	Deny       int64
 }
 
 type Role struct {

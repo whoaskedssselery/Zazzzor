@@ -2,7 +2,12 @@
 // (display names, later messages).
 package textx
 
-import "unicode"
+import (
+	"fmt"
+	"strings"
+	"unicode"
+	"unicode/utf8"
+)
 
 // fillers are code points that render as blank space although Unicode does
 // not class them as spaces or marks: the Hangul fillers and the blank
@@ -49,4 +54,26 @@ func ContainsBidiControl(s string) bool {
 		}
 	}
 	return false
+}
+
+// Name trims white space and format characters from both ends of s and
+// checks the rest is minLen to maxLen characters (runes) with a visible
+// character and no control or bidirectional control characters: the rules
+// for server, role, channel and nick names. It returns the trimmed name and
+// "", or "" and what is wrong with s.
+func Name(s string, minLen, maxLen int) (name, problem string) {
+	t := strings.TrimFunc(s, func(r rune) bool { return unicode.IsSpace(r) || unicode.Is(unicode.Cf, r) })
+	switch n := utf8.RuneCountInString(t); {
+	case ContainsBidiControl(s):
+		return "", "must not contain bidirectional control characters"
+	case n < minLen:
+		return "", fmt.Sprintf("must be at least %d characters", minLen)
+	case n > maxLen:
+		return "", fmt.Sprintf("must be at most %d characters", maxLen)
+	case strings.ContainsFunc(t, unicode.IsControl):
+		return "", "must not contain control characters"
+	case !HasVisible(t):
+		return "", "must contain a visible character"
+	}
+	return t, ""
 }

@@ -8,8 +8,21 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
+
+type Channel struct {
+	ID               int64
+	GuildID          int64
+	Type             int16
+	Name             string
+	Topic            *string
+	ParentID         pgtype.Int8
+	Position         int32
+	PermissionSynced bool
+	CreatedAt        time.Time
+}
 
 type Guild struct {
 	ID        snowflake.ID
@@ -24,6 +37,17 @@ type Instance struct {
 	RegistrationOpen bool
 }
 
+type Invite struct {
+	Code      string
+	GuildID   int64
+	ChannelID int64
+	InviterID int64
+	MaxUses   int32
+	Uses      int32
+	ExpiresAt *time.Time
+	CreatedAt time.Time
+}
+
 type Member struct {
 	GuildID  snowflake.ID
 	UserID   snowflake.ID
@@ -35,6 +59,14 @@ type MemberRole struct {
 	GuildID snowflake.ID
 	UserID  snowflake.ID
 	RoleID  snowflake.ID
+}
+
+type Overwrite struct {
+	ChannelID  int64
+	TargetID   int64
+	TargetType int16
+	Allow      int64
+	Deny       int64
 }
 
 type Role struct {

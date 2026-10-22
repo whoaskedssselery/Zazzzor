@@ -134,3 +134,14 @@ WHERE roles.guild_id = @guild_id AND roles.id = new.id;
 
 -- name: DeleteRole :one
 DELETE FROM roles WHERE guild_id = @guild_id AND id = @id RETURNING *;
+
+-- name: MembersWithRoles :many
+-- Every member of the guild with the IDs of their non-@everyone roles.
+SELECT members.user_id,
+    coalesce(array_agg(member_roles.role_id ORDER BY member_roles.role_id)
+        FILTER (WHERE member_roles.role_id IS NOT NULL), '{}')::bigint[] AS role_ids
+FROM members
+LEFT JOIN member_roles ON member_roles.guild_id = members.guild_id AND member_roles.user_id = members.user_id
+WHERE members.guild_id = @guild_id
+GROUP BY members.user_id
+ORDER BY members.user_id;
