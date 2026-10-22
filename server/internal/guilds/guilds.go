@@ -270,6 +270,9 @@ type Directory interface {
 	GuildIDsOf(ctx context.Context, userID snowflake.ID) ([]snowflake.ID, error)
 	// Snapshot returns the guild with its roles and members, or ErrNotFound.
 	Snapshot(ctx context.Context, guildID snowflake.ID) (GuildSnapshot, error)
+	// PeerIDs returns everyone sharing at least one guild with userID
+	// (userID too, if it is in any guild), ascending.
+	PeerIDs(ctx context.Context, userID snowflake.ID) ([]snowflake.ID, error)
 }
 
 var _ Directory = (*Service)(nil)
@@ -470,6 +473,15 @@ func (s *Service) GuildIDsOf(ctx context.Context, userID snowflake.ID) ([]snowfl
 	ids, err := s.q.GuildIDsOfUser(ctx, s.pool, userID)
 	if err != nil {
 		return nil, fmt.Errorf("guilds: list guilds: %w", err)
+	}
+	return ids, nil
+}
+
+// PeerIDs implements Directory.
+func (s *Service) PeerIDs(ctx context.Context, userID snowflake.ID) ([]snowflake.ID, error) {
+	ids, err := s.q.PeerIDs(ctx, s.pool, userID)
+	if err != nil {
+		return nil, fmt.Errorf("guilds: list peers: %w", err)
 	}
 	return ids, nil
 }

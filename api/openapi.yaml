@@ -36,6 +36,8 @@ tags:
     description: Messages of text channels, replies and typing.
   - name: invites
     description: Invite links to servers.
+  - name: gateway
+    description: Realtime events over WebSocket (protocol in `x-gateway`).
   - name: admin
     description: Instance administration, for the usernames in `ZAZZZOR_ADMIN_USERNAMES`.
 paths:
@@ -1814,6 +1816,33 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
+  /gateway:
+    get:
+      tags: [gateway]
+      operationId: connectGateway
+      summary: Realtime WebSocket gateway
+      description: |
+        WebSocket upgrade (`wss://<host>/api/v1/gateway`). The session cookie
+        authenticates the connection and the `Origin` header must be one of
+        the allowed origins; both are checked before the upgrade, so a
+        refusal is an ordinary problem+json response. After the upgrade the
+        protocol of the top-level `x-gateway` section applies: text frames
+        `{op, t?, s?, d}`, HELLO, READY, heartbeats, permission-filtered
+        events and close codes.
+      responses:
+        "101":
+          description: Switching Protocols; the connection is a WebSocket now.
+        "401":
+          description: "`unauthenticated`: no valid session cookie."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed`: missing or foreign `Origin`."
+          $ref: "#/components/responses/Problem"
+        "426":
+          description: "`upgrade_required`: not a WebSocket upgrade request."
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
 components:
   securitySchemes:
     cookieAuth:
@@ -2521,3 +2550,233 @@ components:
           type: string
           minLength: 1
           description: 1 to 4000 characters (Unicode code points) after trimming white space.
+    GatewayFrame:
+      type: object
+      additionalProperties: false
+      required: [op, d]
+      description: |
+        A server frame. `t` and `s` are present exactly on DISPATCH (op 0);
+        `s` counts the DISPATCH frames of the connection from 1.
+      properties:
+        op:
+          type: integer
+          enum: [0, 10, 11]
+          description: 0 DISPATCH, 10 HELLO, 11 HEARTBEAT_ACK.
+        t:
+          type: string
+          description: The event type (a key of `x-gateway.events`).
+        s:
+          type: integer
+          minimum: 1
+        d:
+          description: The payload; null for HEARTBEAT_ACK.
+    GatewayHello:
+      type: object
+      additionalProperties: false
+      required: [heartbeat_interval_ms]
+      properties:
+        heartbeat_interval_ms:
+          type: integer
+          minimum: 1
+          description: Send HEARTBEAT this often (30000); 45 s without one closes the connection with 4009.
+    GatewayReady:
+      type: object
+      additionalProperties: false
+      required: [user, guilds, presences]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        guilds:
+          type: array
+          items:
+            $ref: "#/components/schemas/GuildState"
+        presences:
+          type: array
+          description: Everyone online who shares a server with the user, the user included.
+          items:
+            $ref: "#/components/schemas/Presence"
+    GuildState:
+      type: object
+      additionalProperties: false
+      required: [guild, roles, channels, members, my_member]
+      description: A server as the receiving member sees it.
+      properties:
+        guild:
+          $ref: "#/components/schemas/Guild"
+        roles:
+          type: array
+          description: By position.
+          items:
+            $ref: "#/components/schemas/Role"
+        channels:
+          type: array
+          description: Only the channels the member may view, in display order.
+          items:
+            $ref: "#/components/schemas/Channel"
+        members:
+          type: array
+          maxItems: 1000
+          description: By user ID; at most the first 1000.
+          items:
+            $ref: "#/components/schemas/Member"
+        my_member:
+          $ref: "#/components/schemas/Member"
+    Presence:
+      type: object
+      additionalProperties: false
+      required: [user_id, status]
+      properties:
+        user_id:
+          $ref: "#/components/schemas/Snowflake"
+        status:
+          type: string
+          enum: [online, offline]
+    GuildDeleteEvent:
+      type: object
+      additionalProperties: false
+      required: [id]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+    MemberEvent:
+      type: object
+      additionalProperties: false
+      required: [guild_id, member]
+      properties:
+        guild_id:
+          $ref: "#/components/schemas/Snowflake"
+        member:
+          $ref: "#/components/schemas/Member"
+    MemberRemoveEvent:
+      type: object
+      additionalProperties: false
+      required: [guild_id, user]
+      properties:
+        guild_id:
+          $ref: "#/components/schemas/Snowflake"
+        user:
+          $ref: "#/components/schemas/User"
+    RoleEvent:
+      type: object
+      additionalProperties: false
+      required: [guild_id, role]
+      properties:
+        guild_id:
+          $ref: "#/components/schemas/Snowflake"
+        role:
+          $ref: "#/components/schemas/Role"
+    RoleDeleteEvent:
+      type: object
+      additionalProperties: false
+      required: [guild_id, role_id]
+      properties:
+        guild_id:
+          $ref: "#/components/schemas/Snowflake"
+        role_id:
+          $ref: "#/components/schemas/Snowflake"
+    MessageDeleteEvent:
+      type: object
+      additionalProperties: false
+      required: [id, channel_id, guild_id]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        channel_id:
+          $ref: "#/components/schemas/Snowflake"
+        guild_id:
+          $ref: "#/components/schemas/Snowflake"
+    TypingStartEvent:
+      type: object
+      additionalProperties: false
+      required: [channel_id, guild_id, user_id, timestamp]
+      properties:
+        channel_id:
+          $ref: "#/components/schemas/Snowflake"
+        guild_id:
+          $ref: "#/components/schemas/Snowflake"
+        user_id:
+          $ref: "#/components/schemas/Snowflake"
+        timestamp:
+          type: string
+          format: date-time
+# The realtime protocol of GET /gateway after the upgrade. Frames are JSON
+# text messages; their schemas are in components.schemas above.
+x-gateway:
+  path: /gateway
+  frame:
+    $ref: "#/components/schemas/GatewayFrame"
+  description: |
+    Server to client: `op 10 HELLO` first (`d`: GatewayHello), then
+    `op 0 DISPATCH` frames with the event type `t`, the per-connection
+    sequence number `s` (from 1) and the payload `d`; READY is always the
+    first DISPATCH (`s` = 1). `op 11 HEARTBEAT_ACK` (`d`: null) answers each
+    heartbeat.
+
+    Client to server: only `op 1 HEARTBEAT` (e.g. `{"op": 1, "d": null}`;
+    `d` is ignored). A binary frame, invalid JSON, any other op or a frame
+    over 4096 bytes closes the connection with 4002.
+
+    Events are filtered by permission when they are sent: a channel event
+    reaches only members with VIEW_CHANNEL in it at that moment, a server
+    event only its current members. GUILD_CREATE (to a member who joined)
+    and GUILD_SYNC (to every member after a role, member-role, channel or
+    overwrite change) carry the receiver's own GuildState. A member who
+    leaves gets GUILD_DELETE and nothing more from that server.
+
+    Presence: a user is `online` from their first connection and `offline`
+    5 seconds after their last one closed (a reconnection within that time
+    announces nothing). PRESENCE_UPDATE goes to everyone sharing a server
+    with the user, not to the user.
+  ops:
+    "0": DISPATCH
+    "1": HEARTBEAT
+    "10": HELLO
+    "11": HEARTBEAT_ACK
+  close_codes:
+    "4002": "decode_error: binary, invalid, unknown or oversized frame"
+    "4004": "authentication_failed: the session was revoked (logout, password change, account disabled)"
+    "4008": "overloaded: the server lost events (reconnect), or the connection fell more than 256 frames behind (a client that stopped reading may see only an abnormal closure)"
+    "4009": "session_timeout: no heartbeat for 45 seconds"
+    "1011": "internal_error: READY could not be built"
+    "1012": "service_restart: the server is stopping; reconnect"
+  events:
+    READY:
+      $ref: "#/components/schemas/GatewayReady"
+    GUILD_CREATE:
+      $ref: "#/components/schemas/GuildState"
+    GUILD_UPDATE:
+      $ref: "#/components/schemas/Guild"
+    GUILD_DELETE:
+      $ref: "#/components/schemas/GuildDeleteEvent"
+    GUILD_SYNC:
+      $ref: "#/components/schemas/GuildState"
+    GUILD_MEMBER_ADD:
+      $ref: "#/components/schemas/MemberEvent"
+    GUILD_MEMBER_UPDATE:
+      $ref: "#/components/schemas/MemberEvent"
+    GUILD_MEMBER_REMOVE:
+      $ref: "#/components/schemas/MemberRemoveEvent"
+    GUILD_ROLE_CREATE:
+      $ref: "#/components/schemas/RoleEvent"
+    GUILD_ROLE_UPDATE:
+      $ref: "#/components/schemas/RoleEvent"
+    GUILD_ROLE_DELETE:
+      $ref: "#/components/schemas/RoleDeleteEvent"
+    CHANNEL_CREATE:
+      $ref: "#/components/schemas/Channel"
+    CHANNEL_UPDATE:
+      $ref: "#/components/schemas/Channel"
+    CHANNEL_DELETE:
+      $ref: "#/components/schemas/Channel"
+    MESSAGE_CREATE:
+      $ref: "#/components/schemas/Message"
+    MESSAGE_UPDATE:
+      $ref: "#/components/schemas/Message"
+    MESSAGE_DELETE:
+      $ref: "#/components/schemas/MessageDeleteEvent"
+    TYPING_START:
+      $ref: "#/components/schemas/TypingStartEvent"
+    PRESENCE_UPDATE:
+      $ref: "#/components/schemas/Presence"
+    USER_UPDATE:
+      $ref: "#/components/schemas/User"

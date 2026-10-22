@@ -22,6 +22,7 @@ const contractPath = "api/openapi.yaml"
 
 type contract struct {
 	path   string
+	doc    *openapi3.T
 	router routers.Router
 }
 
@@ -54,7 +55,7 @@ func readContract() (*contract, error) {
 	if err != nil {
 		return nil, fmt.Errorf("route %s: %w", path, err)
 	}
-	return &contract{path: path, router: router}, nil
+	return &contract{path: path, doc: doc, router: router}, nil
 }
 
 // findContract walks up from the working directory (the package directory

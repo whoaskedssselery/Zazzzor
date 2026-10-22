@@ -25,30 +25,27 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/whoaskedssselery/zazzzor/server/internal/admin"
-	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
-	"github.com/whoaskedssselery/zazzzor/server/internal/channels"
+	"github.com/whoaskedssselery/zazzzor/server/internal/app"
 	"github.com/whoaskedssselery/zazzzor/server/internal/config"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
-	"github.com/whoaskedssselery/zazzzor/server/internal/files"
-	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
-	"github.com/whoaskedssselery/zazzzor/server/internal/invites"
-	"github.com/whoaskedssselery/zazzzor/server/internal/messages"
+	"github.com/whoaskedssselery/zazzzor/server/internal/gateway"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/db"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
-	"github.com/whoaskedssselery/zazzzor/server/internal/users"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
 var version = "dev"
 
 const (
-	shutdownTimeout    = 15 * time.Second
-	healthcheckTimeout = 3 * time.Second
-	startupDBTimeout   = 30 * time.Second
-	readyTimeout       = 2 * time.Second
-	readHeaderTimeout  = 10 * time.Second
-	idleTimeout        = 120 * time.Second
+	shutdownTimeout = 15 * time.Second
+	// gatewayShutdownTimeout bounds the wait for gateway connections to
+	// finish their close handshake.
+	gatewayShutdownTimeout = 5 * time.Second
+	healthcheckTimeout     = 3 * time.Second
+	startupDBTimeout       = 30 * time.Second
+	readyTimeout           = 2 * time.Second
+	readHeaderTimeout      = 10 * time.Second
+	idleTimeout            = 120 * time.Second
 )
 
 func main() {
@@ -134,12 +131,13 @@ func serve(ctx context.Context, logger *slog.Logger, cfg config.Config, pool *pg
 		Bus:     bus,
 	}
 	if pool != nil {
-		m, err := newModules(cfg, pool, snowflake.NewGenerator(0, time.Now), bus)
+		m, err := app.NewModules(cfg, pool, snowflake.NewGenerator(0, time.Now), bus)
 		if err != nil {
 			return err
 		}
 		deps.Ready = dbReady(pool)
 		deps.Modules = m
+		deps.Gateway = m.NewGateway(bus, cfg, logger, reg, gateway.Options{})
 	}
 	api := newServer(newRouter(deps), logger)
 
@@ -158,6 +156,15 @@ func serve(ctx context.Context, logger *slog.Logger, cfg config.Config, pool *pg
 	}
 
 	logger.Info("shutting down", "timeout", shutdownTimeout.String())
+	// Hijacked WebSockets are invisible to http.Server.Shutdown: the
+	// gateway closes them itself (1012), within a bounded wait.
+	if deps.Gateway != nil {
+		gwCtx, gwCancel := context.WithTimeout(context.WithoutCancel(ctx), gatewayShutdownTimeout)
+		if err := deps.Gateway.Close(gwCtx); err != nil {
+			logger.Warn("gateway connections still open at shutdown", "err", err.Error())
+		}
+		gwCancel()
+	}
 	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
 	defer cancel()
 	return errors.Join(runErr, api.Shutdown(shutdownCtx), metrics.Shutdown(shutdownCtx))
@@ -193,56 +200,6 @@ func openDatabase(ctx context.Context, url string) (*pgxpool.Pool, error) {
 		return nil, err
 	}
 	return pool, nil
-}
-
-// modules are the domain modules served by the API.
-type modules struct {
-	Auth     *auth.Service
-	Users    *users.Service
-	Guilds   *guilds.Service
-	Channels *channels.Service
-	Invites  *invites.Service
-	Messages *messages.Service
-	Admin    *admin.Service
-	Files    *files.Disk
-}
-
-// newModules wires the domain modules to the configuration and to each
-// other. Images live under cfg.DataDir, which is created if missing.
-func newModules(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator, pub events.Publisher) (*modules, error) {
-	disk, err := files.NewDisk(cfg.DataDir)
-	if err != nil {
-		return nil, err
-	}
-	// auth asks the admin settings on every registration.
-	settings := admin.NewSettings(pool)
-	authSvc := auth.NewService(auth.Options{
-		Pool:             pool,
-		IDs:              ids,
-		Publisher:        pub,
-		AdminUsernames:   cfg.AdminUsernames,
-		CookieSecure:     cfg.CookieSecure,
-		TrustedProxies:   cfg.TrustedProxies,
-		RegistrationOpen: settings.RegistrationOpen,
-	})
-	// guilds runs the channels bootstrapper inside guild creation; channels
-	// reads guilds through its exported reads, invites both; messages asks
-	// channels what a member may do.
-	guildSvc := guilds.NewService(guilds.Options{Pool: pool, IDs: ids, Users: authSvc, Files: disk, Publisher: pub,
-		Hooks: guilds.Hooks{Channels: channels.NewBootstrapper(ids, nil), Overwrites: channels.NewCleaner()}})
-	channelSvc := channels.NewService(channels.Options{Pool: pool, IDs: ids, Guilds: guildSvc, Publisher: pub})
-	messageSvc := messages.NewService(messages.Options{Pool: pool, IDs: ids, Channels: channelSvc, Users: authSvc,
-		Publisher: pub})
-	return &modules{
-		Auth:     authSvc,
-		Users:    users.NewService(users.Options{Accounts: authSvc, Files: disk, Publisher: pub}),
-		Guilds:   guildSvc,
-		Channels: channelSvc,
-		Invites:  invites.NewService(invites.Options{Pool: pool, Channels: channelSvc, Guilds: guildSvc, Users: authSvc}),
-		Messages: messageSvc,
-		Admin:    admin.NewService(settings, authSvc),
-		Files:    disk,
-	}, nil
 }
 
 // pinger is the part of a pool readiness needs.

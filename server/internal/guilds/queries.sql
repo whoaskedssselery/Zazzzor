@@ -28,6 +28,14 @@ ORDER BY guilds.id;
 -- name: GuildIDsOfUser :many
 SELECT guild_id FROM members WHERE user_id = @user_id ORDER BY guild_id;
 
+-- name: PeerIDs :many
+-- Everyone sharing at least one guild with user_id (user_id included when
+-- it is in any guild), ascending.
+SELECT DISTINCT other.user_id FROM members AS mine
+JOIN members AS other ON other.guild_id = mine.guild_id
+WHERE mine.user_id = @user_id
+ORDER BY other.user_id;
+
 -- name: RenameGuild :one
 UPDATE guilds SET name = @name WHERE id = @id RETURNING *;
 

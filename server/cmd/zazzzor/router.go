@@ -15,17 +15,11 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/whoaskedssselery/zazzzor/server/internal/admin"
-	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
-	"github.com/whoaskedssselery/zazzzor/server/internal/channels"
+	"github.com/whoaskedssselery/zazzzor/server/internal/app"
 	"github.com/whoaskedssselery/zazzzor/server/internal/config"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
-	"github.com/whoaskedssselery/zazzzor/server/internal/files"
-	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
-	"github.com/whoaskedssselery/zazzzor/server/internal/invites"
-	"github.com/whoaskedssselery/zazzzor/server/internal/messages"
+	"github.com/whoaskedssselery/zazzzor/server/internal/gateway"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
-	"github.com/whoaskedssselery/zazzzor/server/internal/users"
 )
 
 type routerDeps struct {
@@ -36,7 +30,9 @@ type routerDeps struct {
 	Bus *events.Bus
 	// Modules serve the domain routes; nil leaves them out (tests without a
 	// database).
-	Modules *modules
+	Modules *app.Modules
+	// Gateway serves /api/v1/gateway; nil leaves it out.
+	Gateway *gateway.Gateway
 	// Ready reports whether the server can take traffic (e.g. the database
 	// answers). nil means always ready.
 	Ready func(context.Context) error
@@ -82,19 +78,8 @@ func newRouter(d routerDeps) http.Handler {
 			return nil
 		}))
 
-		if m := d.Modules; m != nil {
-			// Public images need no session lookup.
-			files.Mount(r, m.Files)
-			r.Group(func(r chi.Router) {
-				r.Use(auth.Middleware(m.Auth))
-				auth.Mount(r, m.Auth)
-				users.Mount(r, m.Users)
-				admin.Mount(r, m.Admin)
-				guilds.Mount(r, m.Guilds)
-				channels.Mount(r, m.Channels)
-				invites.Mount(r, m.Invites)
-				messages.Mount(r, m.Messages)
-			})
+		if d.Modules != nil {
+			d.Modules.Routes(r, d.Gateway)
 		}
 	})
 	return r

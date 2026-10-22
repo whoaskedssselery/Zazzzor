@@ -736,3 +736,38 @@ func TestAccessForOtherModules(t *testing.T) {
 		t.Fatalf("LockGuild of a missing guild: %v", err)
 	}
 }
+
+func TestPeerIDs(t *testing.T) {
+	e := newEnv(t)
+	alice, au := e.user("alice")
+	_, bu := e.user("bob")
+	carol, cu := e.user("carol")
+	_, du := e.user("dave")
+	g1 := createGuild(t, alice, "first")
+	e.join(g1.id(t), bu.id(t))
+	g2 := createGuild(t, carol, "second")
+	e.join(g2.id(t), bu.id(t))
+	ctx := t.Context()
+
+	// bob shares a guild with everyone but dave; each peer appears once.
+	ids, err := e.svc.PeerIDs(ctx, bu.id(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []snowflake.ID{au.id(t), bu.id(t), cu.id(t)}
+	slices.Sort(want)
+	if !slices.Equal(ids, want) {
+		t.Fatalf("PeerIDs(bob) = %v, want %v", ids, want)
+	}
+	if ids, _ = e.svc.PeerIDs(ctx, au.id(t)); !slices.Equal(ids, sorted(au.id(t), bu.id(t))) {
+		t.Fatalf("PeerIDs(alice) = %v", ids)
+	}
+	if ids, _ = e.svc.PeerIDs(ctx, du.id(t)); len(ids) != 0 {
+		t.Fatalf("PeerIDs(dave, in no guild) = %v", ids)
+	}
+}
+
+func sorted(ids ...snowflake.ID) []snowflake.ID {
+	slices.Sort(ids)
+	return ids
+}

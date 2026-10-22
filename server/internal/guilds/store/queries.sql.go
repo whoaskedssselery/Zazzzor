@@ -583,6 +583,35 @@ func (q *Queries) MembersWithRoles(ctx context.Context, db DBTX, guildID snowfla
 	return items, nil
 }
 
+const peerIDs = `-- name: PeerIDs :many
+SELECT DISTINCT other.user_id FROM members AS mine
+JOIN members AS other ON other.guild_id = mine.guild_id
+WHERE mine.user_id = $1
+ORDER BY other.user_id
+`
+
+// Everyone sharing at least one guild with user_id (user_id included when
+// it is in any guild), ascending.
+func (q *Queries) PeerIDs(ctx context.Context, db DBTX, userID snowflake.ID) ([]snowflake.ID, error) {
+	rows, err := db.Query(ctx, peerIDs, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []snowflake.ID
+	for rows.Next() {
+		var user_id snowflake.ID
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const removeMemberRoles = `-- name: RemoveMemberRoles :exec
 DELETE FROM member_roles
 WHERE guild_id = $1 AND user_id = $2 AND role_id = ANY($3::bigint[])

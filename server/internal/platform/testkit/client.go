@@ -149,3 +149,10 @@ func truncate(b []byte, n int) []byte {
 	}
 	return append(b[:n:n], "..."...)
 }
+
+// URL is the base URL of the test server (https://127.0.0.1:port).
+func (c *Client) URL() string { return c.base }
+
+// HTTPClient is the client with the cookie jar, e.g. for a WebSocket dial
+// that must carry the session cookie.
+func (c *Client) HTTPClient() *http.Client { return c.client }

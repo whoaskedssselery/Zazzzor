@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -11,8 +12,10 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/whoaskedssselery/zazzzor/server/internal/app"
 	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
+	"github.com/whoaskedssselery/zazzzor/server/internal/gateway"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/testkit"
@@ -53,16 +56,24 @@ func newModulesRouter(t *testing.T, deadlines httpx.DeadlineOptions) (http.Handl
 	reg := prometheus.NewRegistry()
 	bus := events.NewBus(reg)
 	t.Cleanup(bus.Close)
-	m, err := newModules(cfg, testkit.Postgres(t), snowflake.NewGenerator(0, time.Now), bus)
+	m, err := app.NewModules(cfg, testkit.Postgres(t), snowflake.NewGenerator(0, time.Now), bus)
 	if err != nil {
 		t.Fatal(err)
 	}
+	logger := slog.New(slog.NewJSONHandler(logs, nil))
+	gw := m.NewGateway(bus, cfg, logger, reg, gateway.Options{})
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = gw.Close(ctx)
+	})
 	return newRouter(routerDeps{
 		Config:    cfg,
-		Logger:    slog.New(slog.NewJSONHandler(logs, nil)),
+		Logger:    logger,
 		Metrics:   newHTTPMetrics(reg),
 		Bus:       bus,
 		Modules:   m,
+		Gateway:   gw,
 		Deadlines: deadlines,
 	}), logs
 }
