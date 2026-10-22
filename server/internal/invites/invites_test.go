@@ -161,6 +161,7 @@ func TestInviteConcurrentJoinMaxUsesOne(t *testing.T) {
 	b, _ := e.user("carol")
 	g, ch := newGuild(t, owner, "home")
 	inv := createInvite(t, owner, ch.ID, map[string]any{"max_uses": 1})
+	warmPool(t, e, 4)
 
 	var (
 		wg    sync.WaitGroup

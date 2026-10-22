@@ -228,3 +228,22 @@ func listInvites(t *testing.T, c *testkit.Client, g guildBody) []inviteBody {
 func join(c *testkit.Client, code string) *testkit.Response {
 	return c.Do(http.MethodPost, "/api/v1/invites/"+code, nil)
 }
+
+// warmPool opens n pool connections one after another and returns them to
+// the pool idle, so a concurrency test measures the race it is about and
+// not connection setup: in the Docker race runner, simultaneous dials
+// through host.docker.internal are now and then refused.
+func warmPool(t *testing.T, e *env, n int) {
+	t.Helper()
+	conns := make([]*pgxpool.Conn, 0, n)
+	for range n {
+		c, err := e.pool.Acquire(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		conns = append(conns, c)
+	}
+	for _, c := range conns {
+		c.Release()
+	}
+}
