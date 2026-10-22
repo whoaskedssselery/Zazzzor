@@ -32,6 +32,8 @@ tags:
     description: Servers, their members and roles.
   - name: channels
     description: Channels, categories and their permission overwrites.
+  - name: messages
+    description: Messages of text channels, replies and typing.
   - name: invites
     description: Invite links to servers.
   - name: admin
@@ -1426,6 +1428,214 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
+  /channels/{channel_id}/messages:
+    get:
+      tags: [messages]
+      operationId: listMessages
+      summary: Message history of a channel
+      description: |
+        Needs `VIEW_CHANNEL` and `READ_MESSAGE_HISTORY` in the channel.
+        Without `before` and `after`, or with `before`, the newest messages
+        (older than `before`) come first; with `after`, the oldest messages
+        newer than it come first. `before` and `after` together are refused.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+        - name: before
+          in: query
+          description: Only messages with an ID below this one, newest first.
+          schema:
+            $ref: "#/components/schemas/Snowflake"
+        - name: after
+          in: query
+          description: Only messages with an ID above this one, oldest first.
+          schema:
+            $ref: "#/components/schemas/Snowflake"
+        - name: limit
+          in: query
+          description: Page size, 1 to 100 (default 50).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: A page of messages, without `nonce`.
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 100
+                items:
+                  $ref: "#/components/schemas/Message"
+        "400":
+          description: "`validation_failed`: bad `before`, `after` or `limit`, or both `before` and `after`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`missing_permission`: no `READ_MESSAGE_HISTORY`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such channel, or the caller may not view it."
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+    post:
+      tags: [messages]
+      operationId: createMessage
+      summary: Send a message
+      description: |
+        Needs `SEND_MESSAGES` in a text channel. `content` is trimmed of
+        white space at both ends and must then be 1 to 4000 characters
+        (Unicode code points) with at least one visible character (not only
+        spaces, zero-width or other format characters, separators or
+        combining marks). `reply_to_id` must be a message of the same
+        channel. `nonce` (at most 64 characters) is echoed in the response
+        and in `MESSAGE_CREATE` but not stored. Announced as
+        `MESSAGE_CREATE` to the members who can view the channel. Limited
+        to 5 per second (bursts of 10) per user.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMessageRequest"
+      responses:
+        "201":
+          description: The new message, with `nonce` if one was sent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "400":
+          description: |
+            `invalid_body`, `body_too_large`, `validation_failed` (with
+            `errors`) or `not_a_text_channel`.
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such channel, or the caller may not view it."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /channels/{channel_id}/messages/{message_id}:
+    patch:
+      tags: [messages]
+      operationId: updateMessage
+      summary: Edit a message
+      description: |
+        Only the author may, while they can view the channel. `content`
+        follows the rules of sending; `edited_at` is set to the server's
+        time. The same content again changes nothing and announces nothing;
+        otherwise announced as `MESSAGE_UPDATE`. Edits and deletions share
+        a limit of 10 per second (bursts of 20) per user.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+        - $ref: "#/components/parameters/MessageID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMessageRequest"
+      responses:
+        "200":
+          description: The message.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "400":
+          description: "`invalid_body`, `body_too_large` or `validation_failed` (with `errors`)."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission` (not the author)."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such channel (or the caller may not view it), or no such message in it."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [messages]
+      operationId: deleteMessage
+      summary: Delete a message
+      description: |
+        Its author or a member with `MANAGE_MESSAGES` in the channel may,
+        while they can view it. Replies to it keep `reply_to_id` and get
+        `referenced_message: null`. Announced as `MESSAGE_DELETE` with
+        `{id, channel_id, guild_id}`. Shares the edit limit.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+        - $ref: "#/components/parameters/MessageID"
+      responses:
+        "204":
+          description: The message is gone.
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such channel (or the caller may not view it), or no such message in it."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /channels/{channel_id}/typing:
+    post:
+      tags: [messages]
+      operationId: triggerTyping
+      summary: Show that the caller is typing
+      description: |
+        Needs `SEND_MESSAGES` in a text channel. Announced as `TYPING_START`
+        (`{channel_id, guild_id, user_id, timestamp}`) to the members who
+        can view the channel, except the caller. At most once per 3 seconds
+        per user and channel; calls in between succeed without announcing
+        anything.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      responses:
+        "204":
+          description: Noted.
+        "400":
+          description: "`not_a_text_channel`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such channel, or the caller may not view it."
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
   /channels/{channel_id}/invites:
     post:
       tags: [invites]
@@ -1658,6 +1868,12 @@ components:
       in: path
       required: true
       description: The role or member the overwrite is for.
+      schema:
+        $ref: "#/components/schemas/Snowflake"
+    MessageID:
+      name: message_id
+      in: path
+      required: true
       schema:
         $ref: "#/components/schemas/Snowflake"
     InviteCode:
@@ -2215,3 +2431,88 @@ components:
           type: [string, "null"]
           format: date-time
           description: Null when it never expires.
+    MessageStub:
+      type: object
+      additionalProperties: false
+      required: [id, author, content]
+      description: The message a reply answers.
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        author:
+          description: Null when the account of the author no longer exists.
+          oneOf:
+            - $ref: "#/components/schemas/User"
+            - type: "null"
+        content:
+          type: string
+          minLength: 1
+          maxLength: 4000
+    Message:
+      type: object
+      additionalProperties: false
+      required: [id, channel_id, guild_id, author, content, created_at, edited_at, reply_to_id, referenced_message]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        channel_id:
+          $ref: "#/components/schemas/Snowflake"
+        guild_id:
+          $ref: "#/components/schemas/Snowflake"
+        author:
+          description: Null when the account of the author no longer exists.
+          oneOf:
+            - $ref: "#/components/schemas/User"
+            - type: "null"
+        content:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          description: 1 to 4000 characters (Unicode code points), trimmed.
+        created_at:
+          type: string
+          format: date-time
+        edited_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the content last changed; null if never.
+        reply_to_id:
+          description: The message this one answers, kept after that one is deleted.
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
+        referenced_message:
+          description: The message this one answers; null when not a reply or the original is deleted.
+          oneOf:
+            - $ref: "#/components/schemas/MessageStub"
+            - type: "null"
+        nonce:
+          type: string
+          maxLength: 64
+          description: Only in the response to sending and in `MESSAGE_CREATE`, when the client sent one.
+    CreateMessageRequest:
+      type: object
+      additionalProperties: false
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          description: 1 to 4000 characters (Unicode code points) after trimming white space.
+        reply_to_id:
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
+        nonce:
+          type: string
+          maxLength: 64
+          description: Client tag to match the response and the event to the request; not stored.
+    UpdateMessageRequest:
+      type: object
+      additionalProperties: false
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          description: 1 to 4000 characters (Unicode code points) after trimming white space.

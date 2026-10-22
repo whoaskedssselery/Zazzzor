@@ -183,3 +183,31 @@ func TestChannelAndInviteRoutesWired(t *testing.T) {
 		t.Fatalf("join = %d: %s", resp.Status, resp.Body)
 	}
 }
+
+// Messages are served by the production wiring.
+func TestMessageRoutesWired(t *testing.T) {
+	h, _ := newAuthRouter(t)
+	c := testkit.NewClient(t, h)
+	if resp := c.Do(http.MethodPost, "/api/v1/auth/register",
+		map[string]string{"username": "alice", "password": "password123"}); resp.Status != http.StatusCreated {
+		t.Fatalf("register = %d", resp.Status)
+	}
+	resp := c.Do(http.MethodPost, "/api/v1/guilds", map[string]string{"name": "home"})
+	var g struct {
+		ID string `json:"id"`
+	}
+	resp.JSON(&g)
+	resp = c.Do(http.MethodGet, "/api/v1/guilds/"+g.ID+"/channels", nil)
+	var cs []struct {
+		ID string `json:"id"`
+	}
+	resp.JSON(&cs)
+	path := "/api/v1/channels/" + cs[1].ID + "/messages"
+	if resp = c.Do(http.MethodPost, path, map[string]string{"content": "hello"}); resp.Status != http.StatusCreated {
+		t.Fatalf("send = %d: %s", resp.Status, resp.Body)
+	}
+	resp = c.Do(http.MethodGet, path, nil)
+	if resp.Status != http.StatusOK || !strings.Contains(string(resp.Body), `"content":"hello"`) {
+		t.Fatalf("history = %d: %s", resp.Status, resp.Body)
+	}
+}

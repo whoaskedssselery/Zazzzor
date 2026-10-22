@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
 
@@ -58,6 +59,16 @@ type MemberRole struct {
 	GuildID int64
 	UserID  int64
 	RoleID  int64
+}
+
+type Message struct {
+	ID        int64
+	ChannelID int64
+	AuthorID  pgtype.Int8
+	Content   string
+	ReplyToID pgtype.Int8
+	EditedAt  *time.Time
+	CreatedAt time.Time
 }
 
 type Overwrite struct {

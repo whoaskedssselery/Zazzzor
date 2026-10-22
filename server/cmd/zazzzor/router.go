@@ -23,6 +23,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/files"
 	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
 	"github.com/whoaskedssselery/zazzzor/server/internal/invites"
+	"github.com/whoaskedssselery/zazzzor/server/internal/messages"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
 	"github.com/whoaskedssselery/zazzzor/server/internal/users"
 )
@@ -92,6 +93,7 @@ func newRouter(d routerDeps) http.Handler {
 				guilds.Mount(r, m.Guilds)
 				channels.Mount(r, m.Channels)
 				invites.Mount(r, m.Invites)
+				messages.Mount(r, m.Messages)
 			})
 		}
 	})

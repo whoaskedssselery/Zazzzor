@@ -61,6 +61,16 @@ type MemberRole struct {
 	RoleID  int64
 }
 
+type Message struct {
+	ID        int64
+	ChannelID int64
+	AuthorID  pgtype.Int8
+	Content   string
+	ReplyToID pgtype.Int8
+	EditedAt  *time.Time
+	CreatedAt time.Time
+}
+
 type Overwrite struct {
 	ChannelID  int64
 	TargetID   int64
