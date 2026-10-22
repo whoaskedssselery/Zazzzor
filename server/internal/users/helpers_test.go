@@ -76,7 +76,9 @@ func newEnv(t *testing.T, opts ...func(*users.Options)) *env {
 	if e.disk, err = files.NewDisk(e.dir); err != nil {
 		t.Fatal(err)
 	}
-	o := users.Options{Accounts: e.auth, Files: e.disk, Publisher: e.pub}
+	o := users.Options{Accounts: e.auth, Files: e.disk, Publisher: e.pub,
+		// Most tests write the profile more often than the real limit allows.
+		ProfileLimiter: ratelimit.New(rate.Inf, 1, time.Minute)}
 	for _, opt := range opts {
 		opt(&o)
 	}

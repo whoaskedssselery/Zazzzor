@@ -29,6 +29,14 @@ var (
 	passwordTTL   = 30 * time.Minute
 )
 
+// Profile writes per user (display name and avatar together): 10 per 10
+// minutes.
+var (
+	profileRate  = rate.Every(time.Minute)
+	profileBurst = 10
+	profileTTL   = 20 * time.Minute
+)
+
 // Options configures a Service. Accounts and Files are required.
 type Options struct {
 	Accounts  auth.Accounts
@@ -37,14 +45,18 @@ type Options struct {
 	// PasswordLimiter limits password changes per user; nil takes the
 	// default (5 per 15 minutes).
 	PasswordLimiter *ratelimit.Limiter
+	// ProfileLimiter limits profile writes per user (PATCH @me, PUT and
+	// DELETE avatar together); nil takes the default (10 per 10 minutes).
+	ProfileLimiter *ratelimit.Limiter
 }
 
 // Service implements the profile operations.
 type Service struct {
-	accounts  auth.Accounts
-	files     files.Store
-	pub       events.Publisher
-	pwLimiter *ratelimit.Limiter
+	accounts       auth.Accounts
+	files          files.Store
+	pub            events.Publisher
+	pwLimiter      *ratelimit.Limiter
+	profileLimiter *ratelimit.Limiter
 	// avatarLocks serialize the avatar changes of one user (striped by
 	// ID), so that a replaced file is never deleted after a concurrent
 	// upload of the same image made it current again.
@@ -53,9 +65,13 @@ type Service struct {
 
 // NewService builds a Service from o.
 func NewService(o Options) *Service {
-	s := &Service{accounts: o.Accounts, files: o.Files, pub: o.Publisher, pwLimiter: o.PasswordLimiter}
+	s := &Service{accounts: o.Accounts, files: o.Files, pub: o.Publisher, pwLimiter: o.PasswordLimiter,
+		profileLimiter: o.ProfileLimiter}
 	if s.pwLimiter == nil {
 		s.pwLimiter = ratelimit.New(passwordRate, passwordBurst, passwordTTL)
+	}
+	if s.profileLimiter == nil {
+		s.profileLimiter = ratelimit.New(profileRate, profileBurst, profileTTL)
 	}
 	return s
 }
@@ -108,21 +124,29 @@ func (s *Service) ChangePassword(ctx context.Context, userID, sessionID snowflak
 }
 
 // SetAvatar stores image (the uploaded bytes) as the user's avatar and
-// announces the change. The replaced image file is deleted once the account
-// points at the new one; failing that is only logged.
+// announces the change. Once the file is written the account update runs to
+// the end even if the client goes away, so file and account stay in step:
+// the replaced file is deleted after the update, and on a failed update
+// the new file is (unless it is the current avatar already). Failed
+// deletions are only logged.
 func (s *Service) SetAvatar(ctx context.Context, userID snowflake.ID, image []byte) (auth.User, error) {
 	mu := s.avatarLock(userID)
 	mu.Lock()
 	defer mu.Unlock()
 
+	before, err := s.accounts.GetUser(ctx, userID)
+	if err != nil {
+		return auth.User{}, fmt.Errorf("users: load user: %w", err)
+	}
 	hash, err := s.files.SaveImage(ctx, files.KindAvatar, userID, bytes.NewReader(image))
 	if err != nil {
 		return auth.User{}, err
 	}
-	// On failure the new file stays: it may be the current avatar already
-	// (same image), and an orphan costs only disk space.
-	u, prev, err := s.accounts.SetAvatar(ctx, userID, &hash)
+	u, prev, err := s.accounts.SetAvatar(context.WithoutCancel(ctx), userID, &hash)
 	if err != nil {
+		if before.AvatarHash == nil || *before.AvatarHash != hash {
+			s.dropFile(ctx, userID, &hash)
+		}
 		return auth.User{}, fmt.Errorf("users: set avatar: %w", err)
 	}
 	if prev == nil || *prev != hash {

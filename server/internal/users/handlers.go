@@ -39,10 +39,22 @@ func Mount(r chi.Router, s *Service) {
 	r.Group(func(r chi.Router) {
 		r.Use(auth.Require, noStore)
 		r.Get("/users/@me", httpx.Wrap(handleMe))
-		r.Patch("/users/@me", httpx.Wrap(s.handlePatchMe))
+		r.With(s.limitProfileWrites).Patch("/users/@me", httpx.Wrap(s.handlePatchMe))
 		r.Post("/users/@me/password", httpx.Wrap(s.handlePassword))
-		r.Put("/users/@me/avatar", httpx.Wrap(s.handlePutAvatar))
-		r.Delete("/users/@me/avatar", httpx.Wrap(s.handleDeleteAvatar))
+		r.With(s.limitProfileWrites).Put("/users/@me/avatar", httpx.Wrap(s.handlePutAvatar))
+		r.With(s.limitProfileWrites).Delete("/users/@me/avatar", httpx.Wrap(s.handleDeleteAvatar))
+	})
+}
+
+// limitProfileWrites charges the per-user profile-write limit (shared by
+// the display name and avatar routes) before any of the body is read.
+func (s *Service) limitProfileWrites(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if ok, retry := s.profileLimiter.Allow(currentUser(r).ID.String()); !ok {
+			httpx.WriteProblem(w, httpx.TooManyRequests(retry))
+			return
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 
