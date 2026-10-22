@@ -2,16 +2,19 @@ package files
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/upload"
 )
 
 // Mount registers the public image routes on r:
@@ -73,4 +76,23 @@ func (d *Disk) serve(kind Kind) httpx.Handler {
 		_, _ = io.Copy(w, f)
 		return nil
 	}
+}
+
+// busyRetryAfter is the Retry-After of 503 server_busy.
+const busyRetryAfter = 5 * time.Second
+
+// ToProblem maps the errors of SaveImage to their HTTP problem
+// (unsupported_image, file_too_large, server_busy); any other error is
+// returned unchanged.
+func ToProblem(err error) error {
+	switch {
+	case errors.Is(err, ErrUnsupportedImage):
+		return httpx.BadRequest("unsupported_image", fmt.Sprintf(
+			"the file must be a PNG, JPEG, WebP or GIF image of at most %d pixels on a side", MaxDimension))
+	case errors.Is(err, ErrTooLarge):
+		return upload.TooLarge(MaxImageBytes)
+	case errors.Is(err, ErrBusy):
+		return httpx.ServiceUnavailableRetryAfter("server_busy", busyRetryAfter)
+	}
+	return err
 }
