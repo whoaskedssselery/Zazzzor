@@ -42,6 +42,22 @@
 		reverse_proxy 127.0.0.1:7880
 	}
 
+	# Zazzzor API, published by compose on 127.0.0.1 only. reverse_proxy
+	# passes the WebSocket upgrade of /api/v1/gateway through and sets no read
+	# timeout, so long-lived connections stay open. Incoming X-Forwarded-For
+	# from clients is replaced, so the API sees the real client address.
+	handle /api/* {
+		header {
+			X-Content-Type-Options nosniff
+			Referrer-Policy no-referrer
+		}
+		# JSON is compressed; images under /api/v1/files are already
+		# compressed and the gateway is a WebSocket.
+		@compressible not path /api/v1/files/* /api/v1/gateway
+		encode @compressible zstd gzip
+		reverse_proxy 127.0.0.1:{$ZAZZZOR_API_PORT}
+	}
+
 	handle {
 		respond 404
 	}

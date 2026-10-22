@@ -23,8 +23,9 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/db"
 )
 
-// PostgresImage is the PostgreSQL image tests run against. Keep it equal to
-// the image in deploy/docker-compose.yml.
+// PostgresImage is the PostgreSQL image tests run against. Keep its tag equal
+// to POSTGRES_VERSION in deploy/.env.example (and deploy/.env.ci), which
+// deploy/docker-compose.yml runs as postgres:${POSTGRES_VERSION}.
 const PostgresImage = "postgres:18.6-alpine"
 
 // Label marks every container testkit starts, so stray ones can be found

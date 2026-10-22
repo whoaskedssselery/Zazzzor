@@ -42,6 +42,7 @@ env_value() {
 https_port="$(env_value ZAZZZOR_HTTPS_PORT)"
 tcp_port="$(env_value LIVEKIT_TCP_PORT)"
 udp_port="$(env_value LIVEKIT_UDP_PORT)"
+api_port="$(env_value ZAZZZOR_API_PORT)"
 
 busy=0
 
@@ -65,9 +66,12 @@ check "$https_port" tcp
 check 7880 tcp
 check "$tcp_port" tcp
 check "$udp_port" udp
+# API Zazzzor (compose публикует его только на 127.0.0.1, но занятый порт на
+# любом адресе тоже помешает).
+check "$api_port" tcp
 
 if [[ "$busy" -ne 0 ]]; then
-  echo "Освободите порты или поменяйте их в $env_file (7880 менять нельзя)."
+  echo "Освободите порты или поменяйте их в $env_file (7880 менять нельзя; для API — ZAZZZOR_API_PORT)."
   exit 1
 fi
 
