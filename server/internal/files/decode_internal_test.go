@@ -3,6 +3,7 @@ package files
 import (
 	"bytes"
 	"compress/zlib"
+	"context"
 	"encoding/binary"
 	"errors"
 	"hash/crc32"
@@ -14,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 )
 
 // segment is a JPEG marker segment with its length field.
@@ -162,8 +164,10 @@ func TestWorstCaseImagesFitBudget(t *testing.T) {
 	}
 	d := newTestDisk(t)
 	for name, src := range map[string][]byte{
-		"progressive YCbCr 4096x4096":     progressiveJPEG(4096, 4096, 3, 1),
-		"16-bit interlaced png 4096x4096": interlaced16PNG(t, 4096, 4096),
+		"progressive YCbCr 4096x4096":               progressiveJPEG(4096, 4096, 3, 1),
+		"16-bit interlaced png 4096x4096":           interlaced16PNG(t, 4096, 4096),
+		"16-bit gray+tRNS png 4096x4096":            gray16TRNSPNG(t, 4096, 4096, false),
+		"16-bit gray+tRNS interlaced png 4096x4096": gray16TRNSPNG(t, 4096, 4096, true),
 	} {
 		info, err := inspect(src)
 		if err != nil {
@@ -294,7 +298,24 @@ func pngChunk(typ string, data []byte) []byte {
 // writes neither interlacing nor, for this input, the worst pixel format).
 func interlaced16PNG(t *testing.T, w, h int) []byte {
 	t.Helper()
-	passes := [7][4]int{{0, 0, 8, 8}, {4, 0, 8, 8}, {0, 4, 4, 8}, {2, 0, 4, 4}, {0, 2, 2, 4}, {1, 0, 2, 2}, {0, 1, 1, 2}}
+	return rawPNG(t, w, h, 16, 6, 8, true, nil)
+}
+
+// gray16TRNSPNG is a w×h 16-bit grayscale PNG with a tRNS chunk, which Go
+// decodes to NRGBA64 although DecodeConfig reports Gray16.
+func gray16TRNSPNG(t *testing.T, w, h int, interlaced bool) []byte {
+	t.Helper()
+	return rawPNG(t, w, h, 16, 0, 2, interlaced, pngChunk("tRNS", []byte{0, 0}))
+}
+
+// rawPNG writes a PNG of all-zero pixels by hand: bpp bytes per pixel,
+// optional Adam7 interlacing and extra chunks placed before IDAT.
+func rawPNG(t *testing.T, w, h int, depth, colorType byte, bpp int, interlaced bool, extra []byte) []byte {
+	t.Helper()
+	passes := [][4]int{{0, 0, 1, 1}}
+	if interlaced {
+		passes = [][4]int{{0, 0, 8, 8}, {4, 0, 8, 8}, {0, 4, 4, 8}, {2, 0, 4, 4}, {0, 2, 2, 4}, {1, 0, 2, 2}, {0, 1, 1, 2}}
+	}
 	var raw bytes.Buffer
 	zw := zlib.NewWriter(&raw)
 	for _, p := range passes {
@@ -303,7 +324,7 @@ func interlaced16PNG(t *testing.T, w, h int) []byte {
 		if pw <= 0 || ph <= 0 {
 			continue
 		}
-		row := make([]byte, 1+pw*8) // filter 0, transparent black
+		row := make([]byte, 1+pw*bpp) // filter 0, zero pixels
 		for range ph {
 			if _, err := zw.Write(row); err != nil {
 				t.Fatal(err)
@@ -313,9 +334,14 @@ func interlaced16PNG(t *testing.T, w, h int) []byte {
 	if err := zw.Close(); err != nil {
 		t.Fatal(err)
 	}
-	ihdr := pngIHDR(uint32(w), uint32(h), 16, 6, 1) //nolint:gosec // G115: test sizes
+	var ilace byte
+	if interlaced {
+		ilace = 1
+	}
+	ihdr := pngIHDR(uint32(w), uint32(h), depth, colorType, ilace) //nolint:gosec // G115: test sizes
 	var out bytes.Buffer
 	out.Write(ihdr)
+	out.Write(extra)
 	out.Write(pngChunk("IDAT", raw.Bytes()))
 	out.Write(pngChunk("IEND", nil))
 	return out.Bytes()
@@ -339,6 +365,12 @@ func TestWeightEstimate(t *testing.T) {
 			100*50*4 + 256*50*32},
 		{"png 16-bit interlaced 100x50", imageInfo{format: "image/png", pngInterlaced: true,
 			cfg: image.Config{Width: 100, Height: 50, ColorModel: color.RGBA64Model}}, 100*50*8*2 + 256*50*32},
+		{"png gray+tRNS 100x50", imageInfo{format: "image/png", pngTRNS: true, cfg: image.Config{Width: 100, Height: 50, ColorModel: color.GrayModel}},
+			100*50*4 + 256*50*32},
+		{"png gray16+tRNS interlaced 100x50", imageInfo{format: "image/png", pngTRNS: true, pngInterlaced: true,
+			cfg: image.Config{Width: 100, Height: 50, ColorModel: color.Gray16Model}}, 100*50*8*2 + 256*50*32},
+		{"png gray16 100x50", imageInfo{format: "image/png", cfg: image.Config{Width: 100, Height: 50, ColorModel: color.Gray16Model}},
+			100*50*2 + 256*50*32},
 		{"png gray 100x50", imageInfo{format: "image/png", cfg: image.Config{Width: 100, Height: 50, ColorModel: color.GrayModel}},
 			100*50 + 256*50*32},
 		{"png paletted 100x50", imageInfo{format: "image/png", cfg: image.Config{Width: 100, Height: 50, ColorModel: color.Palette{color.Black}}},
@@ -396,5 +428,60 @@ func TestScanJPEG(t *testing.T) {
 		if o := exifOrientation(tiff); o != 1 {
 			t.Errorf("exifOrientation(%q) = %d", tiff, o)
 		}
+	}
+}
+
+func TestInspectFindsPNGTransparency(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		src              []byte
+		trns, interlaced bool
+	}{
+		{"gray16+tRNS", gray16TRNSPNG(t, 8, 8, false), true, false},
+		{"gray16+tRNS interlaced", gray16TRNSPNG(t, 8, 8, true), true, true},
+		{"rgba16 interlaced", interlaced16PNG(t, 8, 8), false, true},
+		{"gray8", rawPNG(t, 8, 8, 8, 0, 1, false, nil), false, false},
+		// A tRNS after IDAT is not a valid transparency chunk; Go fails it.
+		{"tRNS after IDAT is ignored", append(rawPNG(t, 8, 8, 8, 0, 1, false, nil), pngChunk("tRNS", []byte{0, 0})...), false, false},
+	} {
+		info, err := inspect(tc.src)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if info.pngTRNS != tc.trns || info.pngInterlaced != tc.interlaced {
+			t.Errorf("%s: tRNS %v interlaced %v, want %v %v", tc.name, info.pngTRNS, info.pngInterlaced, tc.trns, tc.interlaced)
+		}
+	}
+}
+
+func TestDecodeSlotsCapConcurrency(t *testing.T) {
+	if d := newTestDisk(t); d.maxDecodes != runtime.GOMAXPROCS(0) {
+		t.Fatalf("maxDecodes = %d, want GOMAXPROCS %d", d.maxDecodes, runtime.GOMAXPROCS(0))
+	}
+	d, err := newDisk(t.TempDir(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.wait = 100 * time.Millisecond
+	src := progressiveJPEG(32, 32, 3, 1)
+	// Hold the only slot: the next decode waits, then gives up busy.
+	if err := d.slots.Acquire(t.Context(), 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.SaveImage(t.Context(), KindAvatar, 1, bytes.NewReader(src)); !errors.Is(err, ErrBusy) {
+		t.Fatalf("with the slot taken: err = %v, want ErrBusy", err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := d.SaveImage(ctx, KindAvatar, 1, bytes.NewReader(src)); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled while waiting: err = %v, want context.Canceled", err)
+	}
+	d.slots.Release(1)
+	if _, err := d.SaveImage(t.Context(), KindAvatar, 1, bytes.NewReader(src)); err != nil {
+		t.Fatalf("with the slot free: %v", err)
+	}
+	// Slots and memory were both given back after each attempt.
+	if !d.slots.TryAcquire(1) || !d.mem.TryAcquire(decodeBudget) {
+		t.Fatal("a decode attempt leaked its reservation")
 	}
 }

@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"time"
 
 	"golang.org/x/sync/semaphore"
@@ -71,6 +72,12 @@ type Disk struct {
 	// mem reserves the estimated decode memory of each image (budget
 	// decodeBudget), so concurrent uploads cannot exhaust it together.
 	mem *semaphore.Weighted
+	// slots caps concurrent decodes at maxDecodes (GOMAXPROCS), so slow
+	// generic resize paths cannot oversubscribe the CPU.
+	slots      *semaphore.Weighted
+	maxDecodes int
+	// wait bounds how long a decode waits for a slot and memory together.
+	wait time.Duration
 }
 
 var _ Store = (*Disk)(nil)
@@ -78,12 +85,24 @@ var _ Store = (*Disk)(nil)
 // decodeWait is how long SaveImage waits for decode memory before ErrBusy.
 const decodeWait = 10 * time.Second
 
-// NewDisk returns a Disk storing under root, creating root if needed.
+// NewDisk returns a Disk storing under root, creating root if needed. At
+// most runtime.GOMAXPROCS(0) images are decoded at once.
 func NewDisk(root string) (*Disk, error) {
+	return newDisk(root, runtime.GOMAXPROCS(0))
+}
+
+func newDisk(root string, maxDecodes int) (*Disk, error) {
 	if err := os.MkdirAll(root, dirPerm); err != nil {
 		return nil, fmt.Errorf("files: create %s: %w", root, err)
 	}
-	return &Disk{root: root, mem: semaphore.NewWeighted(decodeBudget)}, nil
+	maxDecodes = max(maxDecodes, 1)
+	return &Disk{
+		root:       root,
+		mem:        semaphore.NewWeighted(decodeBudget),
+		slots:      semaphore.NewWeighted(int64(maxDecodes)),
+		maxDecodes: maxDecodes,
+		wait:       decodeWait,
+	}, nil
 }
 
 // path builds the location of an image. Callers have validated kind and
@@ -123,7 +142,7 @@ func (d *Disk) SaveImage(ctx context.Context, kind Kind, ownerID snowflake.ID, r
 		return "", err
 	}
 	out, hash, err := render(ctx, raw, info)
-	d.mem.Release(weight)
+	d.release(weight)
 	if err != nil {
 		return "", err
 	}
@@ -198,16 +217,30 @@ func (d *Disk) open(kind Kind, ownerID snowflake.ID, hash string) (*os.File, err
 	return os.Open(d.path(kind, ownerID, hash)) //nolint:gosec // G304: validated components only.
 }
 
-// acquire reserves n bytes of decode memory, waiting at most decodeWait
-// (then ErrBusy) or until ctx is done.
+// acquire takes a decode slot and reserves n bytes of decode memory,
+// waiting at most d.wait for both together (then ErrBusy) or until ctx is
+// done. On error nothing stays reserved.
 func (d *Disk) acquire(ctx context.Context, n int64) error {
-	waitCtx, cancel := context.WithTimeout(ctx, decodeWait)
+	waitCtx, cancel := context.WithTimeout(ctx, d.wait)
 	defer cancel()
-	if err := d.mem.Acquire(waitCtx, n); err != nil {
+	busy := func() error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 		return ErrBusy
 	}
+	if err := d.slots.Acquire(waitCtx, 1); err != nil {
+		return busy()
+	}
+	if err := d.mem.Acquire(waitCtx, n); err != nil {
+		d.slots.Release(1)
+		return busy()
+	}
 	return nil
+}
+
+// release gives back what acquire took.
+func (d *Disk) release(n int64) {
+	d.mem.Release(n)
+	d.slots.Release(1)
 }

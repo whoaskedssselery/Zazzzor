@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"image"
@@ -56,6 +57,8 @@ type imageInfo struct {
 	jpeg   jpegFacts // JPEG only
 	// pngInterlaced is the Adam7 flag of a PNG.
 	pngInterlaced bool
+	// pngTRNS: a tRNS chunk comes before the first IDAT.
+	pngTRNS bool
 }
 
 func unsupported(format string, args ...any) error {
@@ -89,9 +92,7 @@ func inspect(raw []byte) (imageInfo, error) {
 			return info, unsupported("more than %d scans", maxJPEGScans)
 		}
 	case "image/png":
-		// IHDR: signature (8), length (4), type (4), then width, height,
-		// depth, colour type, compression, filter, interlace (byte 28).
-		info.pngInterlaced = len(raw) > 28 && raw[28] == 1
+		info.pngInterlaced, info.pngTRNS = scanPNG(raw)
 	}
 	return info, nil
 }
@@ -107,7 +108,8 @@ const weightOverhead = MaxImageBytes + 4<<20
 //     CMYK image is decoded to YCbCr plus black, then converted), plus 4
 //     bytes per pixel per component of coefficients when progressive; sizes
 //     padded to whole MCUs.
-//   - PNG: bytes per pixel of the decoded type (8 for 16-bit RGBA), twice
+//   - PNG: bytes per pixel of the decoded type (8 for 16-bit RGBA, and
+//     for 16-bit grayscale with tRNS), twice
 //     for interlaced images (each Adam7 pass is decoded separately).
 //   - GIF, WebP: 4 bytes per pixel, twice.
 //
@@ -125,7 +127,7 @@ func (i imageInfo) weight() int64 {
 			decode += comps * pw * ph * 4
 		}
 	case "image/png":
-		decode = w * h * pngBytesPerPixel(i.cfg.ColorModel)
+		decode = w * h * pngBytesPerPixel(i.cfg.ColorModel, i.pngTRNS)
 		if i.pngInterlaced {
 			decode *= 2
 		}
@@ -136,11 +138,20 @@ func (i imageInfo) weight() int64 {
 	return decode + scratch + int64(OutputSize*OutputSize*4) + weightOverhead
 }
 
-func pngBytesPerPixel(m color.Model) int64 {
+// pngBytesPerPixel is the size of the pixel type png.Decode allocates.
+// DecodeConfig reports the colour model from IHDR alone, but grayscale with
+// a tRNS chunk is decoded to NRGBA (4 bytes) or NRGBA64 (8 bytes).
+func pngBytesPerPixel(m color.Model, trns bool) int64 {
 	switch m {
 	case color.GrayModel:
+		if trns {
+			return 4
+		}
 		return 1
 	case color.Gray16Model:
+		if trns {
+			return 8
+		}
 		return 2
 	case color.RGBA64Model, color.NRGBA64Model:
 		return 8
@@ -231,4 +242,30 @@ func orient(img *image.RGBA, orientation int) *image.RGBA {
 		}
 	}
 	return out
+}
+
+// scanPNG walks the chunks of a PNG up to the first IDAT (linear in the
+// file size) and reports the Adam7 flag from IHDR and whether a tRNS chunk
+// is present. Only chunks before IDAT count: that is where png.Decode
+// accepts tRNS. A truncated walk reports what it saw.
+func scanPNG(b []byte) (interlaced, trns bool) {
+	i := 8 // signature
+	for i+8 <= len(b) {
+		n := int(binary.BigEndian.Uint32(b[i:]))
+		typ := string(b[i+4 : i+8])
+		if n < 0 || n > len(b)-i-12 {
+			return interlaced, trns
+		}
+		data := b[i+8 : i+8+n]
+		switch typ {
+		case "IHDR":
+			interlaced = len(data) >= 13 && data[12] == 1
+		case "tRNS":
+			trns = true
+		case "IDAT", "IEND":
+			return interlaced, trns
+		}
+		i += 12 + n // length, type, data, CRC
+	}
+	return interlaced, trns
 }
