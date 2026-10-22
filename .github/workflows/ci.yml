@@ -49,6 +49,22 @@ jobs:
       - name: go test (race; testcontainers use the runner's Docker)
         run: go test -race -count=1 ./...
 
+  image:
+    name: Server image (docker build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Builds the image deploy/docker-compose.yml runs; nothing is pushed.
+      - name: docker build server/Dockerfile
+        run: docker build -f server/Dockerfile --build-arg VERSION="${GITHUB_SHA::12}" -t zazzzor-api:ci server
+      - name: The binary runs in the image
+        run: docker run --rm zazzzor-api:ci --version
+      - name: Compose config is valid with the fake CI values
+        run: docker compose --env-file deploy/.env.ci -f deploy/docker-compose.yml config --quiet
+
   web:
     name: Web packages (test, build)
     runs-on: ubuntu-latest

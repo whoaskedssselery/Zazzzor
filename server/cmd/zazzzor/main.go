@@ -5,6 +5,7 @@
 //	zazzzor              run the server (configured through ZAZZZOR_* env)
 //	zazzzor --version    print the version
 //	zazzzor healthcheck  exit 0 if GET /api/v1/readyz on the local port is 200
+//	zazzzor smoke <url>  end-to-end check of a running API (see smoke.go)
 package main
 
 import (
@@ -60,8 +61,10 @@ func run(args []string, env func(string) string, stdout, stderr io.Writer) int {
 			return 0
 		case "healthcheck":
 			return healthcheck(env, stderr)
+		case "smoke":
+			return smokeCommand(args[1:], env, stdout, stderr)
 		default:
-			_, _ = fmt.Fprintf(stderr, "unknown command %q; usage: zazzzor [--version | healthcheck]\n", args[0])
+			_, _ = fmt.Fprintf(stderr, "unknown command %q; usage: zazzzor [--version | healthcheck | smoke <base_url>]\n", args[0])
 			return 2
 		}
 	}
