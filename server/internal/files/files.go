@@ -18,6 +18,8 @@ import (
 	"regexp"
 	"time"
 
+	"golang.org/x/sync/semaphore"
+
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
 
@@ -66,24 +68,22 @@ const (
 // Disk is a Store on the local file system.
 type Disk struct {
 	root string
-	sem  chan struct{} // bounds concurrent decodes (memory)
+	// mem reserves the estimated decode memory of each image (budget
+	// decodeBudget), so concurrent uploads cannot exhaust it together.
+	mem *semaphore.Weighted
 }
 
 var _ Store = (*Disk)(nil)
 
-// decodeWait is how long SaveImage waits for a decode slot before ErrBusy.
+// decodeWait is how long SaveImage waits for decode memory before ErrBusy.
 const decodeWait = 10 * time.Second
-
-// maxConcurrentDecodes bounds how many images are decoded at once: a 40 MP
-// image needs up to 160 MB while it is processed.
-const maxConcurrentDecodes = 2
 
 // NewDisk returns a Disk storing under root, creating root if needed.
 func NewDisk(root string) (*Disk, error) {
 	if err := os.MkdirAll(root, dirPerm); err != nil {
 		return nil, fmt.Errorf("files: create %s: %w", root, err)
 	}
-	return &Disk{root: root, sem: make(chan struct{}, maxConcurrentDecodes)}, nil
+	return &Disk{root: root, mem: semaphore.NewWeighted(decodeBudget)}, nil
 }
 
 // path builds the location of an image. Callers have validated kind and
@@ -111,11 +111,19 @@ func (d *Disk) SaveImage(ctx context.Context, kind Kind, ownerID snowflake.ID, r
 		return "", ErrTooLarge
 	}
 
-	if err = d.acquire(ctx); err != nil {
+	info, err := inspect(raw)
+	if err != nil {
 		return "", err
 	}
-	out, hash, err := normalize(raw)
-	<-d.sem
+	weight := info.weight()
+	if weight > decodeBudget {
+		return "", unsupported("needs %d MiB to decode", weight>>20)
+	}
+	if err = d.acquire(ctx, weight); err != nil {
+		return "", err
+	}
+	out, hash, err := render(ctx, raw, info)
+	d.mem.Release(weight)
 	if err != nil {
 		return "", err
 	}
@@ -190,16 +198,16 @@ func (d *Disk) open(kind Kind, ownerID snowflake.ID, hash string) (*os.File, err
 	return os.Open(d.path(kind, ownerID, hash)) //nolint:gosec // G304: validated components only.
 }
 
-// acquire takes a decode slot, waiting at most decodeWait.
-func (d *Disk) acquire(ctx context.Context) error {
-	t := time.NewTimer(decodeWait)
-	defer t.Stop()
-	select {
-	case d.sem <- struct{}{}:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-t.C:
+// acquire reserves n bytes of decode memory, waiting at most decodeWait
+// (then ErrBusy) or until ctx is done.
+func (d *Disk) acquire(ctx context.Context, n int64) error {
+	waitCtx, cancel := context.WithTimeout(ctx, decodeWait)
+	defer cancel()
+	if err := d.mem.Acquire(waitCtx, n); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return ErrBusy
 	}
+	return nil
 }
