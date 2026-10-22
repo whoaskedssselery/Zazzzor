@@ -13,11 +13,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"golang.org/x/time/rate"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
 	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/db"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/ratelimit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
@@ -107,6 +109,21 @@ func TestGuildLimitPerUser(t *testing.T) {
 	g2 := createGuild(t, other, "bob's second")
 	if err := e.svc.Join(t.Context(), g2.id(t), u.id(t)); !errors.Is(err, guilds.ErrTooManyGuilds) {
 		t.Fatalf("join past the limit: %v", err)
+	}
+
+	// At the cap, joining a guild one is already in is still a no-op, not
+	// an error (an invite used twice).
+	if err := e.svc.Join(t.Context(), g.id(t), u.id(t)); err != nil {
+		t.Fatalf("re-join at the limit: %v", err)
+	}
+	var added bool
+	err := db.InTx(t.Context(), e.pool, func(tx pgx.Tx) error {
+		var addErr error
+		added, addErr = e.svc.AddMember(t.Context(), tx, g.id(t), u.id(t))
+		return addErr
+	})
+	if err != nil || added {
+		t.Fatalf("AddMember of a member at the limit = %v, %v; want false, nil", added, err)
 	}
 }
 

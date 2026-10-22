@@ -112,10 +112,22 @@ func (s *Service) CreateGuild(ctx context.Context, owner auth.User, name string)
 
 // AddMember adds userID to guildID inside tx (for invites), enforcing the
 // per-user guild limit. It reports false when the user already was a
-// member, ErrNotFound when the guild is gone. After commit, call
-// AnnounceJoin.
+// member (even at the limit), ErrNotFound when the guild is gone. After
+// commit, call AnnounceJoin.
 func (s *Service) AddMember(ctx context.Context, tx pgx.Tx, guildID, userID snowflake.ID) (bool, error) {
-	if err := s.checkGuildLimit(ctx, tx, userID); err != nil {
+	// The per-user lock also serializes this check against a concurrent
+	// join of the same user.
+	if err := s.q.LockUserGuilds(ctx, tx, int64(userID)); err != nil {
+		return false, fmt.Errorf("guilds: lock user: %w", err)
+	}
+	member, err := s.q.IsMember(ctx, tx, store.IsMemberParams{GuildID: guildID, UserID: userID})
+	if err != nil {
+		return false, fmt.Errorf("guilds: check member: %w", err)
+	}
+	if member {
+		return false, nil
+	}
+	if err = s.checkGuildLimit(ctx, tx, userID); err != nil {
 		return false, err
 	}
 	n, err := s.q.AddMember(ctx, tx, store.AddMemberParams{GuildID: guildID, UserID: userID, JoinedAt: s.now()})
