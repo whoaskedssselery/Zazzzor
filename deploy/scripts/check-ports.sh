@@ -42,7 +42,11 @@ env_value() {
 https_port="$(env_value ZAZZZOR_HTTPS_PORT)"
 tcp_port="$(env_value LIVEKIT_TCP_PORT)"
 udp_port="$(env_value LIVEKIT_UDP_PORT)"
-api_port="$(env_value ZAZZZOR_API_PORT)"
+# Необязательна (как и в compose): в .env этапа 1.1 её нет — тогда 8080.
+api_port=8080
+if grep -qE '^[[:space:]]*ZAZZZOR_API_PORT=' "$env_file"; then
+  api_port="$(env_value ZAZZZOR_API_PORT)"
+fi
 
 busy=0
 

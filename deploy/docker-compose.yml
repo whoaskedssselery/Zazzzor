@@ -26,9 +26,10 @@ services:
     volumes:
       - caddy_data:/data
       - caddy_config:/config
+    # Not on api: the connectivity page must come up even if the api build
+    # fails or Postgres never gets healthy; until then /api/* answers 502.
     depends_on:
       - livekit
-      - api
     mem_limit: 256m
     logging: *logging
     restart: unless-stopped

@@ -263,7 +263,9 @@ sudo ss -lntup | grep -E ':(443|7880|7881|7882|8080)\b'
 Веб-клиента пока нет, поэтому регистрация — через `curl` прямо в API на
 сервере (порт `ZAZZZOR_API_PORT`, по умолчанию 8080). Заголовок `Origin`
 обязателен и должен быть `https://<ваш ZAZZZOR_DOMAIN>`. Пароль — от 8 до 128
-символов, без `"` и `\`; команда `read` спрашивает его, не сохраняя в истории:
+символов, без `"` и `\`. Команда `read` спрашивает его, не сохраняя в
+истории, а `printf` (встроенная команда bash) отдаёт его `curl` через stdin,
+поэтому пароля нет в списке процессов:
 
 ```bash
 API=http://127.0.0.1:8080
@@ -271,9 +273,9 @@ ORIGIN=https://zazzzor.duckdns.org
 LOGIN=ivan
 read -rsp 'Пароль: ' PASS; echo
 
-curl -sS -o /dev/null -w '%{http_code}\n' -X POST "$API/api/v1/auth/register" \
-  -H "Origin: $ORIGIN" -H 'Content-Type: application/json' \
-  -d "{\"username\":\"$LOGIN\",\"password\":\"$PASS\"}"
+printf '{"username":"%s","password":"%s"}' "$LOGIN" "$PASS" |
+  curl -sS -o /dev/null -w '%{http_code}\n' -X POST "$API/api/v1/auth/register" \
+    -H "Origin: $ORIGIN" -H 'Content-Type: application/json' --data-binary @-
 ```
 
 Ответ `201` — аккаунт создан.
@@ -283,9 +285,10 @@ curl -sS -o /dev/null -w '%{http_code}\n' -X POST "$API/api/v1/auth/register" \
 сессии терминала:
 
 ```bash
-SESSION=$(curl -sS -D - -o /dev/null -X POST "$API/api/v1/auth/login" \
-  -H "Origin: $ORIGIN" -H 'Content-Type: application/json' \
-  -d "{\"username\":\"$LOGIN\",\"password\":\"$PASS\"}" | grep -io 'zz_session=[^;]*')
+SESSION=$(printf '{"username":"%s","password":"%s"}' "$LOGIN" "$PASS" |
+  curl -sS -D - -o /dev/null -X POST "$API/api/v1/auth/login" \
+    -H "Origin: $ORIGIN" -H 'Content-Type: application/json' --data-binary @- |
+  grep -io 'zz_session=[^;]*')
 
 curl -sS -X PATCH "$API/api/v1/admin/settings" \
   -H "Origin: $ORIGIN" -H "Cookie: $SESSION" -H 'Content-Type: application/json' \
@@ -332,25 +335,27 @@ ZAZZZOR_VERSION=$(git describe --tags --always) docker compose -f deploy/docker-
 Ручная резервная копия (полные автоматические бэкапы появятся на этапе 1.5):
 
 ```bash
+# Образ Postgres, который уже запущен в стеке (тег из deploy/.env), —
+# в нём есть tar, ничего нового скачивать не нужно.
+PG_IMAGE=postgres:$(grep -E '^POSTGRES_VERSION=' deploy/.env | cut -d= -f2)
 mkdir -p ~/zazzzor-backup
 docker compose -f deploy/docker-compose.yml exec -T postgres \
   pg_dump -U zazzzor -d zazzzor -Fc > ~/zazzzor-backup/zazzzor.dump
-docker run --rm -v zazzzor_apidata:/data:ro postgres:18.6-alpine \
+docker run --rm -v zazzzor_apidata:/data:ro "$PG_IMAGE" \
   tar czf - -C /data . > ~/zazzzor-backup/apidata.tar.gz
 ```
 
-(для архива картинок используется уже скачанный образ Postgres; если вы
-меняли `POSTGRES_VERSION`, подставьте свой тег). Храните копию не на этом же
-диске.
+Храните копию не на этом же диске.
 
 Восстановление (API на время останавливается):
 
 ```bash
+PG_IMAGE=postgres:$(grep -E '^POSTGRES_VERSION=' deploy/.env | cut -d= -f2)
 docker compose -f deploy/docker-compose.yml stop api
 docker compose -f deploy/docker-compose.yml exec -T postgres \
   pg_restore -U zazzzor -d zazzzor --clean --if-exists < ~/zazzzor-backup/zazzzor.dump
-docker run --rm -i -v zazzzor_apidata:/data postgres:18.6-alpine \
-  sh -c 'rm -rf /data/* && tar xzf - -C /data' < ~/zazzzor-backup/apidata.tar.gz
+docker run --rm -i -v zazzzor_apidata:/data "$PG_IMAGE" \
+  sh -c 'find /data -mindepth 1 -delete && tar xzf - -C /data' < ~/zazzzor-backup/apidata.tar.gz
 docker compose -f deploy/docker-compose.yml start api
 ```
 
