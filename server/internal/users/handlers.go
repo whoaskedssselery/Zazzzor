@@ -20,7 +20,7 @@ import (
 //	GET, PATCH /users/@me; POST /users/@me/password; PUT, DELETE /users/@me/avatar
 func Mount(r chi.Router, s *Service) {
 	r.Group(func(r chi.Router) {
-		r.Use(auth.Require, noStore)
+		r.Use(auth.Require, httpx.NoStore)
 		r.Get("/users/@me", httpx.Wrap(handleMe))
 		r.With(s.limitProfileWrites).Patch("/users/@me", httpx.Wrap(s.handlePatchMe))
 		r.Post("/users/@me/password", httpx.Wrap(s.handlePassword))
@@ -33,7 +33,7 @@ func Mount(r chi.Router, s *Service) {
 // the display name and avatar routes) before any of the body is read.
 func (s *Service) limitProfileWrites(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if ok, retry := s.profileLimiter.Allow(currentUser(r).ID.String()); !ok {
+		if ok, retry := s.profileLimiter.Allow(auth.CurrentUser(r).ID.String()); !ok {
 			httpx.WriteProblem(w, httpx.TooManyRequests(retry))
 			return
 		}
@@ -41,20 +41,8 @@ func (s *Service) limitProfileWrites(next http.Handler) http.Handler {
 	})
 }
 
-func noStore(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-store")
-		next.ServeHTTP(w, r)
-	})
-}
-
-func currentUser(r *http.Request) auth.User {
-	u, _ := auth.FromContext(r.Context()) // auth.Require ran
-	return u
-}
-
 func handleMe(w http.ResponseWriter, r *http.Request) error {
-	httpx.JSON(w, http.StatusOK, currentUser(r).Public())
+	httpx.JSON(w, http.StatusOK, auth.CurrentUser(r).Public())
 	return nil
 }
 
@@ -72,7 +60,7 @@ func (s *Service) handlePatchMe(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	u := currentUser(r)
+	u := auth.CurrentUser(r)
 	if req.DisplayName != nil {
 		var dn string
 		if bytes.Equal(req.DisplayName, []byte("null")) || json.Unmarshal(req.DisplayName, &dn) != nil {
@@ -97,7 +85,7 @@ func (s *Service) handlePassword(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	sessionID, _ := auth.SessionFromContext(r.Context())
-	err = s.ChangePassword(r.Context(), currentUser(r).ID, sessionID, req.CurrentPassword, req.NewPassword)
+	err = s.ChangePassword(r.Context(), auth.CurrentUser(r).ID, sessionID, req.CurrentPassword, req.NewPassword)
 	if errors.Is(err, ErrWrongPassword) {
 		return fieldError("current_password", "is incorrect")
 	}
@@ -114,7 +102,7 @@ func (s *Service) handlePutAvatar(w http.ResponseWriter, r *http.Request) error 
 	if err != nil {
 		return err
 	}
-	u, err := s.SetAvatar(r.Context(), currentUser(r).ID, data)
+	u, err := s.SetAvatar(r.Context(), auth.CurrentUser(r).ID, data)
 	if err != nil {
 		return auth.ToProblem(files.ToProblem(err))
 	}
@@ -123,7 +111,7 @@ func (s *Service) handlePutAvatar(w http.ResponseWriter, r *http.Request) error 
 }
 
 func (s *Service) handleDeleteAvatar(w http.ResponseWriter, r *http.Request) error {
-	u, err := s.ClearAvatar(r.Context(), currentUser(r).ID)
+	u, err := s.ClearAvatar(r.Context(), auth.CurrentUser(r).ID)
 	if err != nil {
 		return auth.ToProblem(err)
 	}

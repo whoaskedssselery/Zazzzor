@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/ratelimit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
 
@@ -65,6 +66,27 @@ func Require(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// CurrentUser returns the signed-in user of a request that passed Require.
+func CurrentUser(r *http.Request) User {
+	u, _ := FromContext(r.Context())
+	return u
+}
+
+// LimitPerUser charges l once per request, keyed by the signed-in user,
+// before the handler reads any of the body; it must run after Require. A
+// refused request is answered 429 rate_limited.
+func LimitPerUser(l *ratelimit.Limiter) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if ok, retry := l.Allow(CurrentUser(r).ID.String()); !ok {
+				httpx.WriteProblem(w, httpx.TooManyRequests(retry))
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // FromContext returns the user Middleware stored for this request.

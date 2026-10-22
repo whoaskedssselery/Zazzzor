@@ -12,7 +12,6 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/files"
 	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
-	"github.com/whoaskedssselery/zazzzor/server/internal/platform/ratelimit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/upload"
 )
@@ -32,8 +31,8 @@ const (
 //	GET, POST, PATCH /guilds/{guild_id}/roles; PATCH, DELETE /guilds/{guild_id}/roles/{role_id}
 func Mount(r chi.Router, s *Service) {
 	r.Group(func(r chi.Router) {
-		r.Use(auth.Require, noStore)
-		writes := r.With(limit(s.writeLimiter))
+		r.Use(auth.Require, httpx.NoStore)
+		writes := r.With(auth.LimitPerUser(s.writeLimiter))
 
 		r.Post("/guilds", httpx.Wrap(s.handleCreate))
 		r.Get("/users/@me/guilds", httpx.Wrap(s.handleList))
@@ -55,41 +54,6 @@ func Mount(r chi.Router, s *Service) {
 	})
 }
 
-// limit charges l per user before any of the body is read.
-func limit(l *ratelimit.Limiter) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if ok, retry := l.Allow(currentUser(r).ID.String()); !ok {
-				httpx.WriteProblem(w, httpx.TooManyRequests(retry))
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
-	}
-}
-
-func noStore(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-store")
-		next.ServeHTTP(w, r)
-	})
-}
-
-func currentUser(r *http.Request) auth.User {
-	u, _ := auth.FromContext(r.Context()) // auth.Require ran
-	return u
-}
-
-// pathID parses a canonical snowflake path parameter; anything else is 404.
-func pathID(r *http.Request, name string) (snowflake.ID, error) {
-	raw := chi.URLParam(r, name)
-	id, err := snowflake.Parse(raw)
-	if err != nil || id <= 0 || id.String() != raw {
-		return 0, httpx.NotFound()
-	}
-	return id, nil
-}
-
 func fail(err error) error { return auth.ToProblem(ToProblem(err)) }
 
 type createGuildRequest struct {
@@ -101,7 +65,7 @@ func (s *Service) handleCreate(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	snap, err := s.CreateGuild(r.Context(), currentUser(r), req.Name)
+	snap, err := s.CreateGuild(r.Context(), auth.CurrentUser(r), req.Name)
 	if err != nil {
 		return fail(err)
 	}
@@ -110,7 +74,7 @@ func (s *Service) handleCreate(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (s *Service) handleList(w http.ResponseWriter, r *http.Request) error {
-	gs, err := s.GuildsOf(r.Context(), currentUser(r).ID)
+	gs, err := s.GuildsOf(r.Context(), auth.CurrentUser(r).ID)
 	if err != nil {
 		return fail(err)
 	}
@@ -123,11 +87,11 @@ func (s *Service) handleList(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (s *Service) handleLeave(w http.ResponseWriter, r *http.Request) error {
-	id, err := pathID(r, "guild_id")
+	id, err := httpx.PathID(r, "guild_id")
 	if err != nil {
 		return err
 	}
-	if err = s.Leave(r.Context(), id, currentUser(r)); err != nil {
+	if err = s.Leave(r.Context(), id, auth.CurrentUser(r)); err != nil {
 		return fail(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -135,11 +99,11 @@ func (s *Service) handleLeave(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (s *Service) handleGet(w http.ResponseWriter, r *http.Request) error {
-	id, err := pathID(r, "guild_id")
+	id, err := httpx.PathID(r, "guild_id")
 	if err != nil {
 		return err
 	}
-	g, err := s.Guild(r.Context(), id, currentUser(r).ID)
+	g, err := s.Guild(r.Context(), id, auth.CurrentUser(r).ID)
 	if err != nil {
 		return fail(err)
 	}
@@ -152,7 +116,7 @@ type patchGuildRequest struct {
 }
 
 func (s *Service) handlePatch(w http.ResponseWriter, r *http.Request) error {
-	id, err := pathID(r, "guild_id")
+	id, err := httpx.PathID(r, "guild_id")
 	if err != nil {
 		return err
 	}
@@ -160,7 +124,7 @@ func (s *Service) handlePatch(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	actor := currentUser(r).ID
+	actor := auth.CurrentUser(r).ID
 	var g Guild
 	if req.Name != nil {
 		g, err = s.Rename(r.Context(), id, actor, *req.Name)
@@ -178,11 +142,11 @@ func (s *Service) handlePatch(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (s *Service) handleDelete(w http.ResponseWriter, r *http.Request) error {
-	id, err := pathID(r, "guild_id")
+	id, err := httpx.PathID(r, "guild_id")
 	if err != nil {
 		return err
 	}
-	if err = s.DeleteGuild(r.Context(), id, currentUser(r).ID); err != nil {
+	if err = s.DeleteGuild(r.Context(), id, auth.CurrentUser(r).ID); err != nil {
 		return fail(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -190,11 +154,11 @@ func (s *Service) handleDelete(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (s *Service) handlePutIcon(w http.ResponseWriter, r *http.Request) error {
-	id, err := pathID(r, "guild_id")
+	id, err := httpx.PathID(r, "guild_id")
 	if err != nil {
 		return err
 	}
-	actor := currentUser(r).ID
+	actor := auth.CurrentUser(r).ID
 	// Refuse before reading a large body the actor may not upload.
 	if err = s.CheckManageGuild(r.Context(), id, actor); err != nil {
 		return fail(err)
@@ -213,7 +177,7 @@ func (s *Service) handlePutIcon(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (s *Service) handleMembers(w http.ResponseWriter, r *http.Request) error {
-	id, err := pathID(r, "guild_id")
+	id, err := httpx.PathID(r, "guild_id")
 	if err != nil {
 		return err
 	}
@@ -230,7 +194,7 @@ func (s *Service) handleMembers(w http.ResponseWriter, r *http.Request) error {
 			return fail(invalid("limit", "must be an integer from 1 to 1000"))
 		}
 	}
-	ms, err := s.Members(r.Context(), id, currentUser(r).ID, after, lim)
+	ms, err := s.Members(r.Context(), id, auth.CurrentUser(r).ID, after, lim)
 	if err != nil {
 		return fail(err)
 	}
@@ -249,11 +213,11 @@ type patchMemberRequest struct {
 }
 
 func (s *Service) handlePatchMember(w http.ResponseWriter, r *http.Request) error {
-	id, err := pathID(r, "guild_id")
+	id, err := httpx.PathID(r, "guild_id")
 	if err != nil {
 		return err
 	}
-	target, err := pathID(r, "user_id")
+	target, err := httpx.PathID(r, "user_id")
 	if err != nil {
 		return err
 	}
@@ -273,7 +237,7 @@ func (s *Service) handlePatchMember(w http.ResponseWriter, r *http.Request) erro
 		}
 		f.Nick = &nick
 	}
-	m, err := s.UpdateMember(r.Context(), id, target, currentUser(r).ID, f)
+	m, err := s.UpdateMember(r.Context(), id, target, auth.CurrentUser(r).ID, f)
 	if err != nil {
 		return fail(err)
 	}
@@ -290,11 +254,11 @@ func publicRoles(rs []Role) []PublicRole {
 }
 
 func (s *Service) handleRoles(w http.ResponseWriter, r *http.Request) error {
-	id, err := pathID(r, "guild_id")
+	id, err := httpx.PathID(r, "guild_id")
 	if err != nil {
 		return err
 	}
-	rs, err := s.Roles(r.Context(), id, currentUser(r).ID)
+	rs, err := s.Roles(r.Context(), id, auth.CurrentUser(r).ID)
 	if err != nil {
 		return fail(err)
 	}
@@ -315,7 +279,7 @@ func (q roleRequest) fields() RoleFields {
 }
 
 func (s *Service) handleCreateRole(w http.ResponseWriter, r *http.Request) error {
-	id, err := pathID(r, "guild_id")
+	id, err := httpx.PathID(r, "guild_id")
 	if err != nil {
 		return err
 	}
@@ -323,7 +287,7 @@ func (s *Service) handleCreateRole(w http.ResponseWriter, r *http.Request) error
 	if err != nil {
 		return err
 	}
-	role, err := s.CreateRole(r.Context(), id, currentUser(r).ID, req.fields())
+	role, err := s.CreateRole(r.Context(), id, auth.CurrentUser(r).ID, req.fields())
 	if err != nil {
 		return fail(err)
 	}
@@ -332,11 +296,11 @@ func (s *Service) handleCreateRole(w http.ResponseWriter, r *http.Request) error
 }
 
 func (s *Service) handlePatchRole(w http.ResponseWriter, r *http.Request) error {
-	id, err := pathID(r, "guild_id")
+	id, err := httpx.PathID(r, "guild_id")
 	if err != nil {
 		return err
 	}
-	roleID, err := pathID(r, "role_id")
+	roleID, err := httpx.PathID(r, "role_id")
 	if err != nil {
 		return err
 	}
@@ -344,7 +308,7 @@ func (s *Service) handlePatchRole(w http.ResponseWriter, r *http.Request) error 
 	if err != nil {
 		return err
 	}
-	role, err := s.UpdateRole(r.Context(), id, roleID, currentUser(r).ID, req.fields())
+	role, err := s.UpdateRole(r.Context(), id, roleID, auth.CurrentUser(r).ID, req.fields())
 	if err != nil {
 		return fail(err)
 	}
@@ -358,7 +322,7 @@ type rolePositionRequest struct {
 }
 
 func (s *Service) handleReorderRoles(w http.ResponseWriter, r *http.Request) error {
-	id, err := pathID(r, "guild_id")
+	id, err := httpx.PathID(r, "guild_id")
 	if err != nil {
 		return err
 	}
@@ -370,7 +334,7 @@ func (s *Service) handleReorderRoles(w http.ResponseWriter, r *http.Request) err
 	for i, m := range req {
 		moves[i] = RolePosition(m)
 	}
-	rs, err := s.ReorderRoles(r.Context(), id, currentUser(r).ID, moves)
+	rs, err := s.ReorderRoles(r.Context(), id, auth.CurrentUser(r).ID, moves)
 	if err != nil {
 		return fail(err)
 	}
@@ -379,15 +343,15 @@ func (s *Service) handleReorderRoles(w http.ResponseWriter, r *http.Request) err
 }
 
 func (s *Service) handleDeleteRole(w http.ResponseWriter, r *http.Request) error {
-	id, err := pathID(r, "guild_id")
+	id, err := httpx.PathID(r, "guild_id")
 	if err != nil {
 		return err
 	}
-	roleID, err := pathID(r, "role_id")
+	roleID, err := httpx.PathID(r, "role_id")
 	if err != nil {
 		return err
 	}
-	if err = s.DeleteRole(r.Context(), id, roleID, currentUser(r).ID); err != nil {
+	if err = s.DeleteRole(r.Context(), id, roleID, auth.CurrentUser(r).ID); err != nil {
 		return fail(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
