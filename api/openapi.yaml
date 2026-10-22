@@ -28,6 +28,8 @@ tags:
     description: Profile of the signed-in user.
   - name: files
     description: Stored images (avatars, server icons).
+  - name: guilds
+    description: Servers, their members and roles.
   - name: admin
     description: Instance administration, for the usernames in `ZAZZZOR_ADMIN_USERNAMES`.
 paths:
@@ -546,6 +548,542 @@ paths:
           $ref: "#/components/responses/Problem"
         "500":
           $ref: "#/components/responses/Problem"
+  /guilds:
+    post:
+      tags: [guilds]
+      operationId: createGuild
+      summary: Create a server
+      description: |
+        Creates a server owned by the caller, who becomes its first member.
+        It gets the `@everyone` role (ID equal to the server's, position 0)
+        with the default permissions. `name` is trimmed and must then be 2
+        to 100 characters with a visible character and no control or
+        bidirectional control characters. A user can be in at most 100
+        servers (`400 too_many_guilds`). Announced as `GUILD_CREATE` to the
+        creator. Limited to 5 creations per hour per user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGuildRequest"
+      responses:
+        "201":
+          description: The new server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Guild"
+        "400":
+          description: "`invalid_body`, `body_too_large`, `validation_failed` (with `errors`) or `too_many_guilds`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed`."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /users/@me/guilds:
+    get:
+      tags: [guilds]
+      operationId: listMyGuilds
+      summary: The servers of the signed-in user
+      description: |
+        All servers the user is a member of, ascending by ID. Not paginated:
+        a user is in at most 100 servers.
+      responses:
+        "200":
+          description: The servers.
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 100
+                items:
+                  $ref: "#/components/schemas/Guild"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /users/@me/guilds/{guild_id}:
+    delete:
+      tags: [guilds]
+      operationId: leaveGuild
+      summary: Leave a server
+      description: |
+        The owner cannot leave (`400 owner_cannot_leave`); they delete the
+        server instead. The remaining members get `GUILD_MEMBER_REMOVE`,
+        the user `GUILD_DELETE`. Counts against the write limit (30 per
+        minute per user, shared by every server, role and member write).
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+      responses:
+        "204":
+          description: The user left the server.
+        "400":
+          description: "`owner_cannot_leave`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /guilds/{guild_id}:
+    get:
+      tags: [guilds]
+      operationId: getGuild
+      summary: A server
+      description: Only for members; to anyone else the server does not exist.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+      responses:
+        "200":
+          description: The server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Guild"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+    patch:
+      tags: [guilds]
+      operationId: updateGuild
+      summary: Change a server
+      description: |
+        Needs `MANAGE_GUILD`. `name` follows the rules of creation. A change
+        is announced as `GUILD_UPDATE` to the members. Counts against the
+        write limit.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateGuildRequest"
+      responses:
+        "200":
+          description: The server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Guild"
+        "400":
+          description: "`invalid_body`, `body_too_large` or `validation_failed` (with `errors`)."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [guilds]
+      operationId: deleteGuild
+      summary: Delete a server
+      description: |
+        Only the owner may; other members, administrators included, get
+        `403 missing_permission`. Everything in the server is deleted and
+        every member gets `GUILD_DELETE`. Counts against the write limit.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+      responses:
+        "204":
+          description: The server is gone.
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /guilds/{guild_id}/icon:
+    put:
+      tags: [guilds]
+      operationId: setGuildIcon
+      summary: Upload a server icon
+      description: |
+        Needs `MANAGE_GUILD`. `multipart/form-data` with the image in the
+        part `file`, under the same rules as an avatar (PNG, JPEG, WebP or
+        GIF, at most 4 MiB and 4096 pixels on a side, stored as a 256x256
+        PNG). The upload may take up to 120 seconds. A change is announced
+        as `GUILD_UPDATE`. Counts against the write limit.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/AvatarUpload"
+      responses:
+        "200":
+          description: The server with its new `icon_url`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Guild"
+        "400":
+          description: "`unsupported_image`, `invalid_body` (malformed multipart) or `validation_failed` (no `file` part)."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "413":
+          description: "`file_too_large`: the file is over 4 MiB."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`: the body is not multipart/form-data."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/ImagesBusy"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /guilds/{guild_id}/members:
+    get:
+      tags: [guilds]
+      operationId: listGuildMembers
+      summary: Members of a server
+      description: Ascending by user ID, a page at a time; pass the last `user.id` as `after` for the next page.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+        - name: after
+          in: query
+          description: Only members with a user ID above this one.
+          schema:
+            $ref: "#/components/schemas/Snowflake"
+        - name: limit
+          in: query
+          description: Page size, 1 to 1000 (default 100).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+      responses:
+        "200":
+          description: A page of members.
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 1000
+                items:
+                  $ref: "#/components/schemas/Member"
+        "400":
+          description: "`validation_failed`: bad `after` or `limit`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /guilds/{guild_id}/members/{user_id}:
+    patch:
+      tags: [guilds]
+      operationId: updateGuildMember
+      summary: Change a member
+      description: |
+        `nick`: one's own needs `CHANGE_NICKNAME`; another member's needs
+        `MANAGE_NICKNAMES` and a higher rank than theirs (never the owner).
+        It is trimmed and must then be 1 to 32 characters with a visible
+        character and no control or bidirectional control characters;
+        `null` or `""` clears it. `roles` replaces the member's roles (IDs
+        of this server, without `@everyone`): needs `MANAGE_ROLES`, and
+        every role added or removed must be below the caller's highest role
+        (the owner may change anyone's roles, their own included). The
+        change is announced as `GUILD_MEMBER_UPDATE`, a change of roles
+        also as `GUILD_SYNC`. Counts against the write limit.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+        - $ref: "#/components/parameters/UserID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMemberRequest"
+      responses:
+        "200":
+          description: The member.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Member"
+        "400":
+          description: "`invalid_body`, `body_too_large` or `validation_failed` (with `errors`)."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server or member, or the caller is not a member."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /guilds/{guild_id}/roles:
+    get:
+      tags: [guilds]
+      operationId: listGuildRoles
+      summary: Roles of a server
+      description: Ascending by position; `@everyone` comes first at position 0.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+      responses:
+        "200":
+          description: The roles.
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 250
+                items:
+                  $ref: "#/components/schemas/Role"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+    post:
+      tags: [guilds]
+      operationId: createGuildRole
+      summary: Create a role
+      description: |
+        Needs `MANAGE_ROLES`, and the caller must hold every permission the
+        role grants (owners and administrators may grant any). The role is
+        put right above `@everyone` (position 1); the others move up. At
+        most 250 roles per server, `@everyone` included
+        (`400 too_many_roles`). `name` is trimmed, 1 to 100 characters, with
+        a visible character and no control or bidirectional control
+        characters. Omitted fields default to no permissions, color 0 and
+        false. Announced as `GUILD_ROLE_CREATE` and `GUILD_SYNC`. Counts
+        against the write limit.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRoleRequest"
+      responses:
+        "201":
+          description: The new role.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Role"
+        "400":
+          description: |
+            `invalid_body` (also for a `permissions` value that is not a
+            decimal string), `body_too_large`, `validation_failed` (with
+            `errors`; also for unknown permission bits) or `too_many_roles`.
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    patch:
+      tags: [guilds]
+      operationId: reorderGuildRoles
+      summary: Reorder roles
+      description: |
+        Moves each listed role to its `position`; the other roles keep their
+        order around them, and all end up at the positions 1..n (a position
+        past the end means last). `@everyone` cannot be moved. Needs
+        `MANAGE_ROLES`; every role whose position changes must be below the
+        caller's highest role before and after the move. Announced as
+        `GUILD_ROLE_UPDATE` for every moved role and `GUILD_SYNC`. Counts
+        against the write limit.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              maxItems: 250
+              items:
+                $ref: "#/components/schemas/RolePosition"
+      responses:
+        "200":
+          description: All roles, by position.
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 250
+                items:
+                  $ref: "#/components/schemas/Role"
+        "400":
+          description: "`invalid_body`, `body_too_large` or `validation_failed` (`@everyone`, unknown role, duplicate role or position, position below 1)."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /guilds/{guild_id}/roles/{role_id}:
+    patch:
+      tags: [guilds]
+      operationId: updateGuildRole
+      summary: Change a role
+      description: |
+        Changes the fields that are present. Needs `MANAGE_ROLES` and a
+        highest role above this one (the owner may change any role); the
+        caller must hold every permission bit that changes. Of `@everyone`
+        only `permissions` can change. Announced as `GUILD_ROLE_UPDATE` and
+        `GUILD_SYNC`. Counts against the write limit.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+        - $ref: "#/components/parameters/RoleID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRoleRequest"
+      responses:
+        "200":
+          description: The role.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Role"
+        "400":
+          description: "`invalid_body`, `body_too_large` or `validation_failed` (with `errors`)."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server or role, or not a member."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [guilds]
+      operationId: deleteGuildRole
+      summary: Delete a role
+      description: |
+        Needs `MANAGE_ROLES` and a highest role above this one. `@everyone`
+        cannot be deleted (`400 cannot_delete_everyone`). The roles above
+        move down one position. Announced as `GUILD_ROLE_DELETE` and
+        `GUILD_SYNC`. Counts against the write limit.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+        - $ref: "#/components/parameters/RoleID"
+      responses:
+        "204":
+          description: The role is gone.
+        "400":
+          description: "`cannot_delete_everyone`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server or role, or not a member."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
 components:
   securitySchemes:
     cookieAuth:
@@ -570,6 +1108,18 @@ components:
   parameters:
     UserID:
       name: user_id
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Snowflake"
+    GuildID:
+      name: guild_id
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Snowflake"
+    RoleID:
+      name: role_id
       in: path
       required: true
       schema:
@@ -805,3 +1355,153 @@ components:
           type: string
           pattern: "^[A-Za-z0-9]{16}$"
           description: Shown once; the user should change it after signing in.
+    Permission:
+      type: string
+      pattern: "^(0|[1-9][0-9]{0,19})$"
+      description: |
+        Permission bit mask as a decimal string; the bits are numbered as in
+        Discord (e.g. `ADMINISTRATOR` = 8, `MANAGE_ROLES` = 268435456).
+        Bits the server does not define are refused when set.
+      examples: ["268435456"]
+    Guild:
+      type: object
+      additionalProperties: false
+      required: [id, name, icon_url, owner_id, created_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        icon_url:
+          type: [string, "null"]
+          pattern: '^/api/v1/files/icons/[0-9]{1,19}/[0-9a-f]{16}\.png$'
+          description: Path of the icon image, or null when the server has none.
+        owner_id:
+          $ref: "#/components/schemas/Snowflake"
+        created_at:
+          type: string
+          format: date-time
+    Member:
+      type: object
+      additionalProperties: false
+      required: [user, nick, roles, joined_at]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        nick:
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 32
+        roles:
+          type: array
+          description: IDs of the member's roles, without `@everyone`.
+          items:
+            $ref: "#/components/schemas/Snowflake"
+        joined_at:
+          type: string
+          format: date-time
+    Role:
+      type: object
+      additionalProperties: false
+      required: [id, name, color, position, permissions, hoist, mentionable]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        color:
+          type: integer
+          minimum: 0
+          maximum: 16777215
+          description: RGB color; 0 means none.
+        position:
+          type: integer
+          minimum: 0
+          description: 0 for `@everyone`, the others 1..n; higher outranks lower.
+        permissions:
+          $ref: "#/components/schemas/Permission"
+        hoist:
+          type: boolean
+          description: Members are listed separately under this role.
+        mentionable:
+          type: boolean
+    CreateGuildRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+    UpdateGuildRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+    UpdateMemberRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        nick:
+          type: [string, "null"]
+          maxLength: 32
+        roles:
+          type: array
+          maxItems: 250
+          items:
+            $ref: "#/components/schemas/Snowflake"
+    CreateRoleRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        permissions:
+          $ref: "#/components/schemas/Permission"
+        color:
+          type: integer
+          minimum: 0
+          maximum: 16777215
+        hoist:
+          type: boolean
+        mentionable:
+          type: boolean
+    UpdateRoleRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        permissions:
+          $ref: "#/components/schemas/Permission"
+        color:
+          type: integer
+          minimum: 0
+          maximum: 16777215
+        hoist:
+          type: boolean
+        mentionable:
+          type: boolean
+    RolePosition:
+      type: object
+      additionalProperties: false
+      required: [id, position]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        position:
+          type: integer
+          minimum: 1

@@ -126,3 +126,20 @@ func TestAvatarUploadOutlivesBodyDeadline(t *testing.T) {
 		t.Fatalf("slow JSON body = %d, want the deadline to cut it", s)
 	}
 }
+
+// The guild routes are served by the production wiring.
+func TestGuildRoutesWired(t *testing.T) {
+	h, _ := newAuthRouter(t)
+	c := testkit.NewClient(t, h)
+	if resp := c.Do(http.MethodPost, "/api/v1/auth/register",
+		map[string]string{"username": "alice", "password": "password123"}); resp.Status != http.StatusCreated {
+		t.Fatalf("register = %d", resp.Status)
+	}
+	if resp := c.Do(http.MethodPost, "/api/v1/guilds", map[string]string{"name": "home"}); resp.Status != http.StatusCreated {
+		t.Fatalf("create guild = %d: %s", resp.Status, resp.Body)
+	}
+	resp := c.Do(http.MethodGet, "/api/v1/users/@me/guilds", nil)
+	if resp.Status != http.StatusOK || !strings.Contains(string(resp.Body), `"name":"home"`) {
+		t.Fatalf("my guilds = %d: %s", resp.Status, resp.Body)
+	}
+}

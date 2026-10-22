@@ -9,9 +9,42 @@ import (
 	"time"
 )
 
+type Guild struct {
+	ID        int64
+	Name      string
+	IconHash  *string
+	OwnerID   int64
+	CreatedAt time.Time
+}
+
 type Instance struct {
 	ID               bool
 	RegistrationOpen bool
+}
+
+type Member struct {
+	GuildID  int64
+	UserID   int64
+	Nick     *string
+	JoinedAt time.Time
+}
+
+type MemberRole struct {
+	GuildID int64
+	UserID  int64
+	RoleID  int64
+}
+
+type Role struct {
+	ID          int64
+	GuildID     int64
+	Name        string
+	Color       int32
+	Position    int32
+	Permissions int64
+	Hoist       bool
+	Mentionable bool
+	CreatedAt   time.Time
 }
 
 type Session struct {

@@ -20,6 +20,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/config"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/files"
+	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
 	"github.com/whoaskedssselery/zazzzor/server/internal/users"
 )
@@ -86,6 +87,7 @@ func newRouter(d routerDeps) http.Handler {
 				auth.Mount(r, m.Auth)
 				users.Mount(r, m.Users)
 				admin.Mount(r, m.Admin)
+				guilds.Mount(r, m.Guilds)
 			})
 		}
 	})

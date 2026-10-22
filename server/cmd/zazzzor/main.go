@@ -30,6 +30,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/config"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/files"
+	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/db"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 	"github.com/whoaskedssselery/zazzzor/server/internal/users"
@@ -193,10 +194,11 @@ func openDatabase(ctx context.Context, url string) (*pgxpool.Pool, error) {
 
 // modules are the domain modules served by the API.
 type modules struct {
-	Auth  *auth.Service
-	Users *users.Service
-	Admin *admin.Service
-	Files *files.Disk
+	Auth   *auth.Service
+	Users  *users.Service
+	Guilds *guilds.Service
+	Admin  *admin.Service
+	Files  *files.Disk
 }
 
 // newModules wires the domain modules to the configuration and to each
@@ -218,10 +220,11 @@ func newModules(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator,
 		RegistrationOpen: settings.RegistrationOpen,
 	})
 	return &modules{
-		Auth:  authSvc,
-		Users: users.NewService(users.Options{Accounts: authSvc, Files: disk, Publisher: pub}),
-		Admin: admin.NewService(settings, authSvc),
-		Files: disk,
+		Auth:   authSvc,
+		Users:  users.NewService(users.Options{Accounts: authSvc, Files: disk, Publisher: pub}),
+		Guilds: guilds.NewService(guilds.Options{Pool: pool, IDs: ids, Users: authSvc, Files: disk, Publisher: pub}),
+		Admin:  admin.NewService(settings, authSvc),
+		Files:  disk,
 	}, nil
 }
 
