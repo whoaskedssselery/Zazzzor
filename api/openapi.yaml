@@ -1491,9 +1491,10 @@ paths:
         white space at both ends and must then be 1 to 4000 characters
         (Unicode code points) with at least one visible character (not only
         spaces, zero-width or other format characters, separators or
-        combining marks). `reply_to_id` must be a message of the same
-        channel. `nonce` (at most 64 characters) is echoed in the response
-        and in `MESSAGE_CREATE` but not stored. Announced as
+        combining marks). A reply also needs `READ_MESSAGE_HISTORY`;
+        `reply_to_id` must be a message of the same channel. `nonce` (at
+        most 64 characters) is echoed in the response and in
+        `MESSAGE_CREATE` but not stored. Announced as
         `MESSAGE_CREATE` to the members who can view the channel. Limited
         to 5 per second (bursts of 10) per user.
       parameters:
@@ -1538,8 +1539,9 @@ paths:
       operationId: updateMessage
       summary: Edit a message
       description: |
-        Only the author may, while they can view the channel. `content`
-        follows the rules of sending; `edited_at` is set to the server's
+        Only the author may, while they can view the channel. Without
+        `READ_MESSAGE_HISTORY`, messages of others are `404 not_found`.
+        `content` follows the rules of sending; `edited_at` is set to the server's
         time. The same content again changes nothing and announces nothing;
         otherwise announced as `MESSAGE_UPDATE`. Edits and deletions share
         a limit of 10 per second (bursts of 20) per user.
@@ -1584,7 +1586,8 @@ paths:
       summary: Delete a message
       description: |
         Its author or a member with `MANAGE_MESSAGES` in the channel may,
-        while they can view it. Replies to it keep `reply_to_id` and get
+        while they can view it. Without `READ_MESSAGE_HISTORY`, messages of
+        others are `404 not_found`. Replies to it keep `reply_to_id` and get
         `referenced_message: null`. Announced as `MESSAGE_DELETE` with
         `{id, channel_id, guild_id}`. Shares the edit limit.
       parameters:
@@ -1616,7 +1619,7 @@ paths:
         (`{channel_id, guild_id, user_id, timestamp}`) to the members who
         can view the channel, except the caller. At most once per 3 seconds
         per user and channel; calls in between succeed without announcing
-        anything.
+        anything. Limited to 5 calls per second (bursts of 10) per user.
       parameters:
         - $ref: "#/components/parameters/ChannelID"
       responses:
@@ -1634,6 +1637,8 @@ paths:
         "404":
           description: "`not_found`: no such channel, or the caller may not view it."
           $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
   /channels/{channel_id}/invites:

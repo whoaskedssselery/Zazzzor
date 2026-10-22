@@ -56,7 +56,7 @@ func TestCreateAndListMessages(t *testing.T) {
 	}
 
 	for _, q := range []string{"?limit=101", "?limit=0", "?limit=x", "?limit=", "?before=0123", "?before=x",
-		"?after=-1", "?after=0", "?before=" + m2.ID + "&after=" + m1.ID} {
+		"?limit=+5", "?limit=%2B5", "?limit=007", "?limit=-0", "?limit=5.0", "?after=-1", "?after=0", "?before=" + m2.ID + "&after=" + m1.ID} {
 		problemOf(t, alice.Do(http.MethodGet, messagesPath(general.ID)+q, nil), http.StatusBadRequest, "validation_failed")
 	}
 }
@@ -113,7 +113,7 @@ func TestSendRequiresPermission(t *testing.T) {
 	bobC, bob := e.user("bob")
 	g, general, _ := newGuild(t, alice, "home")
 	e.join(g, bob)
-	post(t, alice, general.ID, "hello")
+	hello := post(t, alice, general.ID, "hello")
 
 	denyEveryone(t, alice, g, general.ID, permissions.SendMessages)
 	problemOf(t, send(bobC, general.ID, map[string]any{"content": "hi"}), http.StatusForbidden, "missing_permission")
@@ -126,7 +126,20 @@ func TestSendRequiresPermission(t *testing.T) {
 
 	denyEveryone(t, alice, g, general.ID, permissions.ReadMessageHistory)
 	problemOf(t, bobC.Do(http.MethodGet, messagesPath(general.ID), nil), http.StatusForbidden, "missing_permission")
-	post(t, bobC, general.ID, "hi")
+	own := post(t, bobC, general.ID, "hi")
+	// A reply would show the original: refused, whether it exists or not.
+	for _, replyTo := range []string{hello.ID, "123"} {
+		problemOf(t, send(bobC, general.ID, map[string]any{"content": "re", "reply_to_id": replyTo}),
+			http.StatusForbidden, "missing_permission")
+	}
+	// Without the history only his own messages exist for bob.
+	for _, id := range []string{hello.ID, "123"} {
+		problemOf(t, bobC.Do(http.MethodPatch, messagePath(general.ID, id), map[string]any{"content": "x"}),
+			http.StatusNotFound, "not_found")
+		problemOf(t, bobC.Do(http.MethodDelete, messagePath(general.ID, id), nil), http.StatusNotFound, "not_found")
+	}
+	expect(t, bobC.Do(http.MethodPatch, messagePath(general.ID, own.ID), map[string]any{"content": "hi!"}), http.StatusOK)
+	expect(t, bobC.Do(http.MethodDelete, messagePath(general.ID, own.ID), nil), http.StatusNoContent)
 }
 
 // TestHiddenChannelMessages404 is the messages part of
@@ -490,4 +503,33 @@ func payloadOf(t *testing.T, ev events.Event) map[string]any {
 		t.Fatal(err)
 	}
 	return out
+}
+
+// A message whose author's account is gone (author_id set null) shows
+// author null, in history and as a replied-to stub.
+func TestDeletedAuthorIsNull(t *testing.T) {
+	e := newEnv(t)
+	alice, _ := e.user("alice")
+	bobC, bob := e.user("bob")
+	g, general, _ := newGuild(t, alice, "home")
+	e.join(g, bob)
+	orig := post(t, bobC, general.ID, "question")
+	resp := send(alice, general.ID, map[string]any{"content": "answer", "reply_to_id": orig.ID})
+	expect(t, resp, http.StatusCreated)
+	// There is no account deletion API; remove the row directly.
+	if _, err := e.pool.Exec(t.Context(), "DELETE FROM users WHERE id = $1", parseID(t, bob.ID)); err != nil {
+		t.Fatal(err)
+	}
+
+	got := list(t, alice, general.ID, "")
+	if len(got) != 2 || got[1].ID != orig.ID || got[1].Author != nil || got[1].Content != "question" {
+		t.Fatalf("original = %+v", got)
+	}
+	ref := got[0].ReferencedMessage
+	if got[0].Author == nil || ref == nil || ref.ID != orig.ID || ref.Author != nil || ref.Content != "question" {
+		t.Fatalf("reply = %+v (ref %+v)", got[0], ref)
+	}
+	if !strings.Contains(string(alice.Do(http.MethodGet, messagesPath(general.ID), nil).Body), `"author":null`) {
+		t.Fatal("author is not encoded as null")
+	}
 }

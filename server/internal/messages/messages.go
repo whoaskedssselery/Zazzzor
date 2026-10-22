@@ -50,8 +50,12 @@ var (
 	writeRate  = rate.Limit(10)
 	writeBurst = 20
 	writeTTL   = time.Minute
-	// Typing: one per TypingInterval per (user, channel).
-	typingTTL = time.Minute
+	// Typing calls: 5 per second, bursts of 10; of those, one per
+	// TypingInterval per (user, channel) is announced.
+	typingCallRate  = rate.Limit(5)
+	typingCallBurst = 10
+	typingCallTTL   = time.Minute
+	typingTTL       = time.Minute
 )
 
 // Errors returned by Service. ToProblem maps them to HTTP problems.
@@ -230,6 +234,9 @@ type Options struct {
 	// TypingLimiter throttles typing notices per user and channel; nil
 	// takes the default (one per TypingInterval).
 	TypingLimiter *ratelimit.Limiter
+	// TypingCallLimiter limits typing calls per user; nil takes the default
+	// (5 per second, bursts of 10).
+	TypingCallLimiter *ratelimit.Limiter
 }
 
 // Service implements messages.
@@ -244,13 +251,14 @@ type Service struct {
 	sendLimiter   *ratelimit.Limiter
 	writeLimiter  *ratelimit.Limiter
 	typingLimiter *ratelimit.Limiter
+	typingCalls   *ratelimit.Limiter
 }
 
 // NewService builds a Service from o.
 func NewService(o Options) *Service {
 	s := &Service{pool: o.Pool, q: store.New(), ids: o.IDs, channels: o.Channels, users: o.Users,
 		pub: o.Publisher, now: o.Now, sendLimiter: o.SendLimiter, writeLimiter: o.WriteLimiter,
-		typingLimiter: o.TypingLimiter}
+		typingLimiter: o.TypingLimiter, typingCalls: o.TypingCallLimiter}
 	if s.now == nil {
 		s.now = time.Now
 	}
@@ -262,6 +270,9 @@ func NewService(o Options) *Service {
 	}
 	if s.typingLimiter == nil {
 		s.typingLimiter = ratelimit.New(rate.Every(TypingInterval), 1, typingTTL)
+	}
+	if s.typingCalls == nil {
+		s.typingCalls = ratelimit.New(typingCallRate, typingCallBurst, typingCallTTL)
 	}
 	return s
 }

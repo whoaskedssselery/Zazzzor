@@ -199,10 +199,20 @@ func TestMessageRoutesWired(t *testing.T) {
 	resp.JSON(&g)
 	resp = c.Do(http.MethodGet, "/api/v1/guilds/"+g.ID+"/channels", nil)
 	var cs []struct {
-		ID string `json:"id"`
+		ID   string `json:"id"`
+		Type int    `json:"type"`
 	}
 	resp.JSON(&cs)
-	path := "/api/v1/channels/" + cs[1].ID + "/messages"
+	var textID string
+	for _, ch := range cs {
+		if ch.Type == 0 {
+			textID = ch.ID
+		}
+	}
+	if textID == "" {
+		t.Fatalf("no text channel: %s", resp.Body)
+	}
+	path := "/api/v1/channels/" + textID + "/messages"
 	if resp = c.Do(http.MethodPost, path, map[string]string{"content": "hello"}); resp.Status != http.StatusCreated {
 		t.Fatalf("send = %d: %s", resp.Status, resp.Body)
 	}

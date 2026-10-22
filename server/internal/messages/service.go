@@ -166,12 +166,18 @@ type CreateFields struct {
 }
 
 // Create sends a message to a text channel; userID needs SEND_MESSAGES
-// there. A reply must answer a message of the same channel. The message is
+// there, and READ_MESSAGE_HISTORY for a reply, which must answer a message
+// of the same channel. The message is
 // announced as MESSAGE_CREATE with the nonce, which is not stored.
 func (s *Service) Create(ctx context.Context, channelID, userID snowflake.ID, f CreateFields) (Message, error) {
-	_, guildID, err := s.access(ctx, userID, channelID, permissions.SendMessages)
+	p, guildID, err := s.access(ctx, userID, channelID, permissions.SendMessages)
 	if err != nil {
 		return Message{}, err
+	}
+	// A reply shows the original: only for those who may read the history,
+	// checked before its existence so the answer cannot probe for messages.
+	if f.ReplyToID != nil && !p.Has(permissions.ReadMessageHistory) {
+		return Message{}, ErrMissingPerm
 	}
 	if err = s.requireText(ctx, channelID); err != nil {
 		return Message{}, err
@@ -225,15 +231,30 @@ func authoredBy(row store.Message, userID snowflake.ID) bool {
 	return row.AuthorID != nil && *row.AuthorID == userID
 }
 
+// loadFor loads a message for userID, who holds p in the channel. Without
+// READ_MESSAGE_HISTORY only their own messages exist for them, so a missing
+// message and someone else's look the same (ErrNotFound).
+func (s *Service) loadFor(ctx context.Context, p permissions.Permission, channelID, messageID, userID snowflake.ID) (store.Message, error) {
+	row, err := s.load(ctx, channelID, messageID)
+	if err != nil {
+		return store.Message{}, err
+	}
+	if !authoredBy(row, userID) && !p.Has(permissions.ReadMessageHistory) {
+		return store.Message{}, ErrNotFound
+	}
+	return row, nil
+}
+
 // Edit replaces the content of userID's own message; edited_at comes from
 // the database clock. The same content again changes nothing and announces
-// nothing; a change is announced as MESSAGE_UPDATE.
+// nothing; a change is announced as MESSAGE_UPDATE. Without
+// READ_MESSAGE_HISTORY someone else's message is ErrNotFound.
 func (s *Service) Edit(ctx context.Context, channelID, messageID, userID snowflake.ID, content string) (Message, error) {
-	_, guildID, err := s.access(ctx, userID, channelID, permissions.ViewChannel)
+	p, guildID, err := s.access(ctx, userID, channelID, permissions.ViewChannel)
 	if err != nil {
 		return Message{}, err
 	}
-	row, err := s.load(ctx, channelID, messageID)
+	row, err := s.loadFor(ctx, p, channelID, messageID, userID)
 	if err != nil {
 		return Message{}, err
 	}
@@ -269,13 +290,14 @@ func (s *Service) Edit(ctx context.Context, channelID, messageID, userID snowfla
 }
 
 // Delete deletes a message; its author or a member with MANAGE_MESSAGES in
-// the channel may. Announced as MESSAGE_DELETE.
+// the channel may (one without READ_MESSAGE_HISTORY gets ErrNotFound for
+// someone else's). Announced as MESSAGE_DELETE.
 func (s *Service) Delete(ctx context.Context, channelID, messageID, userID snowflake.ID) error {
 	p, guildID, err := s.access(ctx, userID, channelID, permissions.ViewChannel)
 	if err != nil {
 		return err
 	}
-	row, err := s.load(ctx, channelID, messageID)
+	row, err := s.loadFor(ctx, p, channelID, messageID, userID)
 	if err != nil {
 		return err
 	}
@@ -297,17 +319,18 @@ func (s *Service) Delete(ctx context.Context, channelID, messageID, userID snowf
 // Typing announces that userID is typing in a text channel to everyone else
 // who can view it; userID needs SEND_MESSAGES there. Calls within
 // TypingInterval of the last announced one for the same user and channel
-// succeed silently.
+// succeed silently, before the channel type is even checked.
 func (s *Service) Typing(ctx context.Context, channelID, userID snowflake.ID) error {
 	_, guildID, err := s.access(ctx, userID, channelID, permissions.SendMessages)
 	if err != nil {
 		return err
 	}
-	if err = s.requireText(ctx, channelID); err != nil {
-		return err
-	}
+	// Throttled before the channel type is read, so repeats cost no query.
 	if ok, _ := s.typingLimiter.Allow(userID.String() + ":" + channelID.String()); !ok {
 		return nil
+	}
+	if err = s.requireText(ctx, channelID); err != nil {
+		return err
 	}
 	s.publish(ctx, events.Event{Type: events.TypingStart, Audience: channelAudience(guildID, channelID),
 		ExcludeUserID: userID,

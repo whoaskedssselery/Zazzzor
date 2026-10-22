@@ -23,12 +23,13 @@ func Mount(r chi.Router, s *Service) {
 		r.Use(auth.Require, httpx.NoStore)
 		sends := r.With(auth.LimitPerUser(s.sendLimiter))
 		writes := r.With(auth.LimitPerUser(s.writeLimiter))
+		typing := r.With(auth.LimitPerUser(s.typingCalls))
 
 		r.Get("/channels/{channel_id}/messages", httpx.Wrap(s.handleList))
 		sends.Post("/channels/{channel_id}/messages", httpx.Wrap(s.handleCreate))
 		writes.Patch("/channels/{channel_id}/messages/{message_id}", httpx.Wrap(s.handleEdit))
 		writes.Delete("/channels/{channel_id}/messages/{message_id}", httpx.Wrap(s.handleDelete))
-		r.Post("/channels/{channel_id}/typing", httpx.Wrap(s.handleTyping))
+		typing.Post("/channels/{channel_id}/typing", httpx.Wrap(s.handleTyping))
 	})
 }
 
@@ -69,8 +70,10 @@ func parsePage(r *http.Request) (Page, error) {
 		return Page{}, err
 	}
 	if q := r.URL.Query(); q.Has("limit") {
-		pg.Limit, err = strconv.Atoi(q.Get("limit"))
-		if err != nil || pg.Limit < 1 || pg.Limit > MaxLimit {
+		raw := q.Get("limit")
+		pg.Limit, err = strconv.Atoi(raw)
+		// Only the canonical form: no sign, no leading zeros.
+		if err != nil || strconv.Itoa(pg.Limit) != raw || pg.Limit < 1 || pg.Limit > MaxLimit {
 			return Page{}, invalid("limit", fmt.Sprintf("must be from 1 to %d", MaxLimit))
 		}
 	}
