@@ -26,6 +26,19 @@ VALUES (@id, @user_id, @token_hash, @created_at, @created_at, @expires_at, @user
 -- name: DeleteExpiredUserSessions :exec
 DELETE FROM sessions WHERE user_id = @user_id AND expires_at <= @now;
 
+-- name: LockUserSessions :exec
+-- Serializes the session cap of one user across concurrent sign-ins.
+SELECT 1 FROM users WHERE id = @user_id FOR NO KEY UPDATE;
+
+-- name: DeleteSessionsBeyond :many
+-- Keeps the newest @keep sessions of the user.
+DELETE FROM sessions AS s WHERE s.id IN (
+    SELECT k.id FROM sessions AS k WHERE k.user_id = sqlc.arg(user_id)::bigint
+    ORDER BY k.created_at DESC, k.id DESC
+    OFFSET sqlc.arg(keep)::bigint
+)
+RETURNING s.id;
+
 -- name: SessionByTokenHash :one
 -- Only live sessions of enabled accounts authenticate.
 SELECT sessions.id AS session_id, sessions.last_used_at, sessions.expires_at, sqlc.embed(users)

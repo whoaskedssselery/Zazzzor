@@ -131,6 +131,41 @@ func (q *Queries) DeleteSession(ctx context.Context, db DBTX, id snowflake.ID) (
 	return user_id, err
 }
 
+const deleteSessionsBeyond = `-- name: DeleteSessionsBeyond :many
+DELETE FROM sessions AS s WHERE s.id IN (
+    SELECT k.id FROM sessions AS k WHERE k.user_id = $1::bigint
+    ORDER BY k.created_at DESC, k.id DESC
+    OFFSET $2::bigint
+)
+RETURNING s.id
+`
+
+type DeleteSessionsBeyondParams struct {
+	UserID int64
+	Keep   int64
+}
+
+// Keeps the newest @keep sessions of the user.
+func (q *Queries) DeleteSessionsBeyond(ctx context.Context, db DBTX, arg DeleteSessionsBeyondParams) ([]snowflake.ID, error) {
+	rows, err := db.Query(ctx, deleteSessionsBeyond, arg.UserID, arg.Keep)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []snowflake.ID
+	for rows.Next() {
+		var id snowflake.ID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const deleteUserSessions = `-- name: DeleteUserSessions :many
 DELETE FROM sessions WHERE user_id = $1 RETURNING id
 `
@@ -197,6 +232,16 @@ func (q *Queries) EnableUser(ctx context.Context, db DBTX, id snowflake.ID) (Use
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const lockUserSessions = `-- name: LockUserSessions :exec
+SELECT 1 FROM users WHERE id = $1 FOR NO KEY UPDATE
+`
+
+// Serializes the session cap of one user across concurrent sign-ins.
+func (q *Queries) LockUserSessions(ctx context.Context, db DBTX, userID snowflake.ID) error {
+	_, err := db.Exec(ctx, lockUserSessions, userID)
+	return err
 }
 
 const replaceAvatarHash = `-- name: ReplaceAvatarHash :one

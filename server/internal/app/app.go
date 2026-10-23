@@ -5,10 +5,12 @@ package app
 
 import (
 	"log/slog"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/time/rate"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/admin"
 	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
@@ -21,8 +23,16 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/invites"
 	"github.com/whoaskedssselery/zazzzor/server/internal/messages"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/ratelimit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 	"github.com/whoaskedssselery/zazzzor/server/internal/users"
+)
+
+// Reads (GET) per signed-in user: 120 per minute, burst 60.
+var (
+	readRate  = rate.Every(time.Minute / 120)
+	readBurst = 60
+	readTTL   = 2 * time.Minute
 )
 
 // Modules are the domain modules served by the API.
@@ -35,6 +45,9 @@ type Modules struct {
 	Messages *messages.Service
 	Admin    *admin.Service
 	Files    *files.Disk
+	// ReadLimiter limits the GETs of each signed-in user (auth.LimitReads);
+	// NewModules sets the default, 120 per minute with a burst of 60.
+	ReadLimiter *ratelimit.Limiter
 }
 
 // NewModules wires the domain modules to the configuration and to each
@@ -64,25 +77,31 @@ func NewModules(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator,
 	messageSvc := messages.NewService(messages.Options{Pool: pool, IDs: ids, Channels: channelSvc, Users: authSvc,
 		Publisher: pub})
 	return &Modules{
-		Auth:     authSvc,
-		Users:    users.NewService(users.Options{Accounts: authSvc, Files: disk, Publisher: pub}),
-		Guilds:   guildSvc,
-		Channels: channelSvc,
-		Invites:  invites.NewService(invites.Options{Pool: pool, Channels: channelSvc, Guilds: guildSvc, Users: authSvc}),
-		Messages: messageSvc,
-		Admin:    admin.NewService(settings, authSvc),
-		Files:    disk,
+		Auth:        authSvc,
+		Users:       users.NewService(users.Options{Accounts: authSvc, Files: disk, Publisher: pub}),
+		Guilds:      guildSvc,
+		Channels:    channelSvc,
+		Invites:     invites.NewService(invites.Options{Pool: pool, Channels: channelSvc, Guilds: guildSvc, Users: authSvc}),
+		Messages:    messageSvc,
+		Admin:       admin.NewService(admin.Options{Settings: settings, Accounts: authSvc}),
+		Files:       disk,
+		ReadLimiter: ratelimit.New(readRate, readBurst, readTTL),
 	}, nil
 }
 
 // NewGateway starts the gateway over the modules and bus. opts carries the
-// tuning (timeouts, buffers); its dependency fields are set here.
+// tuning (timeouts, buffers, limits); its dependency fields are set here,
+// except Guilds and Channels when the caller set them (tests wrap them).
 func (m *Modules) NewGateway(bus *events.Bus, cfg config.Config, logger *slog.Logger, reg prometheus.Registerer,
 	opts gateway.Options,
 ) *gateway.Gateway {
 	opts.Auth = m.Auth
-	opts.Guilds = m.Guilds
-	opts.Channels = m.Channels
+	if opts.Guilds == nil {
+		opts.Guilds = m.Guilds
+	}
+	if opts.Channels == nil {
+		opts.Channels = m.Channels
+	}
 	opts.Bus = bus
 	opts.AllowedOrigins = cfg.AllowedOrigins
 	opts.TrustedProxies = cfg.TrustedProxies
@@ -101,7 +120,7 @@ func (m *Modules) Routes(r chi.Router, gw *gateway.Gateway) {
 		r.With(httpx.WithoutDeadlines).Get("/gateway", gw.ServeHTTP)
 	}
 	r.Group(func(r chi.Router) {
-		r.Use(auth.Middleware(m.Auth))
+		r.Use(auth.Middleware(m.Auth), auth.LimitReads(m.ReadLimiter))
 		auth.Mount(r, m.Auth)
 		users.Mount(r, m.Users)
 		admin.Mount(r, m.Admin)

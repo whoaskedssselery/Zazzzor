@@ -14,13 +14,16 @@ import (
 // Mount registers the admin endpoints on r, which must already run
 // auth.Middleware:
 //
-//	GET, PATCH /admin/settings
+//	GET, PATCH /admin/settings; GET /admin/users?username=
 //	POST /admin/users/{user_id}/password-reset, /disable, /enable
+//
+// Every request counts against the administrator's admin limit.
 func Mount(r chi.Router, s *Service) {
 	r.Group(func(r chi.Router) {
-		r.Use(auth.Require, requireAdmin)
+		r.Use(auth.Require, requireAdmin, auth.LimitPerUser(s.limiter))
 		r.Get("/admin/settings", httpx.Wrap(s.handleGetSettings))
 		r.Patch("/admin/settings", httpx.Wrap(s.handlePatchSettings))
+		r.Get("/admin/users", httpx.Wrap(s.handleFindUser))
 		r.Post("/admin/users/{user_id}/password-reset", httpx.Wrap(s.handlePasswordReset))
 		r.Post("/admin/users/{user_id}/disable", httpx.Wrap(s.handleSetDisabled(true)))
 		r.Post("/admin/users/{user_id}/enable", httpx.Wrap(s.handleSetDisabled(false)))
@@ -74,14 +77,35 @@ func (s *Service) handlePatchSettings(w http.ResponseWriter, r *http.Request) er
 	return nil
 }
 
-// targetID is the {user_id} of the path; anything that is not an ID is a
-// user that does not exist.
-func targetID(r *http.Request) (snowflake.ID, error) {
-	id, err := snowflake.Parse(chi.URLParam(r, "user_id"))
-	if err != nil || id <= 0 {
-		return 0, httpx.NotFound()
+// adminUserBody is the JSON form of an account for administrators (schema
+// AdminUser).
+type adminUserBody struct {
+	ID          snowflake.ID `json:"id"`
+	Username    string       `json:"username"`
+	DisplayName string       `json:"display_name"`
+	Disabled    bool         `json:"disabled"`
+	CreatedAt   string       `json:"created_at"`
+}
+
+func (s *Service) handleFindUser(w http.ResponseWriter, r *http.Request) error {
+	name := r.URL.Query().Get("username")
+	if name == "" {
+		return httpx.BadRequest("validation_failed", "some fields are invalid",
+			httpx.FieldError{Field: "username", Message: "is required"})
 	}
-	return id, nil
+	u, err := s.FindUser(r.Context(), name)
+	if err != nil {
+		return auth.ToProblem(err)
+	}
+	httpx.JSON(w, http.StatusOK, adminUserBody{ID: u.ID, Username: u.Username, DisplayName: u.DisplayName,
+		Disabled: u.DisabledAt != nil, CreatedAt: httpx.FormatTime(u.CreatedAt)})
+	return nil
+}
+
+// targetID is the {user_id} of the path; anything that is not a canonical
+// ID is a user that does not exist.
+func targetID(r *http.Request) (snowflake.ID, error) {
+	return httpx.PathID(r, "user_id")
 }
 
 type temporaryPasswordBody struct {

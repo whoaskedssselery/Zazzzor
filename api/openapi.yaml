@@ -12,6 +12,10 @@ info:
     must carry an `Origin` header from the instance's allowed origins,
     otherwise they are refused with `403 origin_not_allowed`.
 
+    Every GET of a signed-in user counts against a per-user read limit
+    (120 per minute, burst 60), answered `429 rate_limited` with
+    `Retry-After` past it (the gateway upgrade has limits of its own).
+
     Any operation that reads the database may answer `503 server_busy` with
     a `Retry-After` header when no database connection frees up within 5
     seconds (the server is overloaded); retry after that many seconds.
@@ -195,8 +199,9 @@ paths:
         - {}
       summary: Sign out
       description: |
-        Deletes the current session, if any, and clears the cookie. Always
-        204, also without a session.
+        Deletes the current session, if any, and clears the cookie: 204,
+        also without a session. Limited to 30 per minute per client
+        address (IPv4, or IPv6 /64).
       responses:
         "204":
           description: Signed out.
@@ -208,6 +213,8 @@ paths:
         "403":
           description: "`origin_not_allowed`."
           $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
   /users/@me:
@@ -225,6 +232,8 @@ paths:
         "401":
           description: "`unauthenticated`: no valid session."
           $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
     patch:
@@ -433,7 +442,10 @@ paths:
       tags: [admin]
       operationId: getInstanceSettings
       summary: Instance settings
-      description: Only for instance administrators (`ZAZZZOR_ADMIN_USERNAMES`), like every `/admin` operation.
+      description: |
+        Only for instance administrators (`ZAZZZOR_ADMIN_USERNAMES`), like every
+        `/admin` operation. All `/admin` requests of one administrator
+        together are limited to 30 per minute.
       responses:
         "200":
           description: The current settings.
@@ -447,6 +459,8 @@ paths:
         "403":
           description: "`admin_only`."
           $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
     patch:
@@ -481,6 +495,46 @@ paths:
         "415":
           description: "`unsupported_media_type`."
           $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /admin/users:
+    get:
+      tags: [admin]
+      operationId: findUser
+      summary: Find a user by username
+      description: |
+        Looks an account up by its exact username (compared
+        case-insensitively, as usernames are stored lower-cased), to get
+        the ID the other `/admin/users` operations take.
+      parameters:
+        - name: username
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+        "400":
+          description: "`validation_failed`: no `username`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`admin_only`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no account has that username."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
   /admin/users/{user_id}/password-reset:
@@ -511,6 +565,8 @@ paths:
           $ref: "#/components/responses/Problem"
         "503":
           $ref: "#/components/responses/ServerBusy"
+        "429":
+          $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
   /admin/users/{user_id}/disable:
@@ -539,6 +595,8 @@ paths:
         "404":
           description: "`not_found`: no such user."
           $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
   /admin/users/{user_id}/enable:
@@ -561,6 +619,8 @@ paths:
         "404":
           description: "`not_found`: no such user."
           $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
   /guilds:
@@ -626,6 +686,8 @@ paths:
         "401":
           description: "`unauthenticated`."
           $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
   /users/@me/guilds/{guild_id}:
@@ -682,6 +744,8 @@ paths:
         "404":
           description: "`not_found`: no such server, or not a member."
           $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
     patch:
@@ -842,6 +906,8 @@ paths:
         "404":
           description: "`not_found`: no such server, or not a member."
           $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
   /guilds/{guild_id}/members/{user_id}:
@@ -919,6 +985,8 @@ paths:
         "404":
           description: "`not_found`: no such server, or not a member."
           $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
     post:
@@ -1130,6 +1198,8 @@ paths:
         "404":
           description: "`not_found`: no such server, or not a member."
           $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
     post:
@@ -1269,6 +1339,8 @@ paths:
         "404":
           description: "`not_found`: no such channel, or the caller may not view it."
           $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
     patch:
@@ -1489,6 +1561,8 @@ paths:
         "404":
           description: "`not_found`: no such channel, or the caller may not view it."
           $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
     post:
@@ -1723,6 +1797,8 @@ paths:
         "404":
           description: "`not_found`: no such server, or not a member."
           $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
   /invites/{code}:
@@ -2178,6 +2254,24 @@ components:
       properties:
         registration_open:
           type: boolean
+    AdminUser:
+      type: object
+      additionalProperties: false
+      required: [id, username, display_name, disabled, created_at]
+      description: An account as administrators see it.
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        username:
+          type: string
+        display_name:
+          type: string
+        disabled:
+          type: boolean
+          description: The account is disabled and cannot sign in.
+        created_at:
+          type: string
+          format: date-time
     TemporaryPassword:
       type: object
       additionalProperties: false
@@ -2805,7 +2899,7 @@ x-gateway:
   close_codes:
     "4002": "decode_error: binary, invalid, unknown or oversized frame"
     "4004": "authentication_failed: the session was revoked (logout, password change, account disabled)"
-    "4008": "overloaded: the server lost events (reconnect), or the connection fell more than 256 frames behind (a client that stopped reading may see only an abnormal closure)"
+    "4008": "overloaded: the server lost events or could not deliver an event of a server the client holds (reconnect to resync), or the connection fell more than 256 frames behind (a client that stopped reading may see only an abnormal closure)"
     "4009": "session_timeout: no heartbeat for 45 seconds"
     "1011": "internal_error: READY could not be built"
     "1012": "service_restart: the server is stopping; reconnect"

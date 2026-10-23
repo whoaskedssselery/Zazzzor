@@ -84,6 +84,9 @@ func (s *Service) handleLogin(w http.ResponseWriter, r *http.Request) error {
 
 func (s *Service) handleLogout(w http.ResponseWriter, r *http.Request) error {
 	w.Header().Set("Cache-Control", "no-store")
+	if ok, retry := s.logoutLimiter.Allow(s.clientKey(r)); !ok {
+		return httpx.TooManyRequests(retry)
+	}
 	if id, ok := SessionFromContext(r.Context()); ok {
 		if err := s.RevokeSession(r.Context(), id); err != nil {
 			return err

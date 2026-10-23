@@ -101,3 +101,27 @@ func SessionFromContext(ctx context.Context) (snowflake.ID, bool) {
 	id, ok := ctx.Value(sessionKey).(snowflake.ID)
 	return id, ok
 }
+
+// LimitReads charges l once per GET or HEAD request of a signed-in user,
+// keyed by the user, like LimitPerUser; anonymous requests and other
+// methods pass uncharged. It must run after Middleware.
+func LimitReads(l *ratelimit.Limiter) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet && r.Method != http.MethodHead {
+				next.ServeHTTP(w, r)
+				return
+			}
+			u, ok := FromContext(r.Context())
+			if !ok {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if ok, retry := l.Allow(u.ID.String()); !ok {
+				httpx.WriteProblem(w, httpx.TooManyRequests(retry))
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}

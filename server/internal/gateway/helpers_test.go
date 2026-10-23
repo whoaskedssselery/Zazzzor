@@ -41,9 +41,18 @@ type env struct {
 	gw  *gateway.Gateway
 	reg *prometheus.Registry
 	h   http.Handler
+	// failsDispatch: the test makes dispatches fail on purpose.
+	failsDispatch bool
 }
 
 func newEnv(t *testing.T, opts gateway.Options) *env {
+	t.Helper()
+	return newEnvWith(t, opts, nil)
+}
+
+// newEnvWith is newEnv with a hook that may change the gateway options
+// once the modules exist (e.g. wrap its dependencies).
+func newEnvWith(t *testing.T, opts gateway.Options, hook func(*app.Modules, *gateway.Options)) *env {
 	t.Helper()
 	cfg, err := config.Load(func(k string) string {
 		return map[string]string{
@@ -69,6 +78,10 @@ func newEnv(t *testing.T, opts gateway.Options) *env {
 	if opts.IPUpgradeLimiter == nil {
 		opts.IPUpgradeLimiter = ratelimit.New(rate.Inf, 1, time.Minute)
 	}
+	e.m.ReadLimiter = ratelimit.New(rate.Inf, 1, time.Minute)
+	if hook != nil {
+		hook(e.m, &opts)
+	}
 	logger := slog.New(slog.DiscardHandler)
 	e.gw = e.m.NewGateway(e.bus, cfg, logger, e.reg, opts)
 	t.Cleanup(func() {
@@ -77,8 +90,9 @@ func newEnv(t *testing.T, opts gateway.Options) *env {
 		if err := e.gw.Close(ctx); err != nil {
 			t.Errorf("gateway close: %v", err)
 		}
-		// Nothing in these tests should fail to resolve, a shutdown included.
-		if n := e.metric("zazzzor_gateway_dispatch_errors_total", ""); n != 0 {
+		// Nothing in these tests should fail to resolve, a shutdown included,
+		// unless the test makes it fail.
+		if n := e.metric("zazzzor_gateway_dispatch_errors_total", ""); n != 0 && !e.failsDispatch {
 			t.Errorf("dispatch errors = %v", n)
 		}
 	})

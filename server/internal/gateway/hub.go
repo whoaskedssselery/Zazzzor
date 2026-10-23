@@ -64,7 +64,9 @@ func (g *Gateway) consume(ch <-chan events.Event) bool {
 
 // dispatch delivers one event to the connections of its recipients,
 // resolved now from the database. A failed resolution is logged (without
-// detail to anyone) and drops the event.
+// detail to anyone) and drops the event; for a guild event the connections
+// that hold the guild, or that needed its state, are closed with 4008 so
+// their clients reconnect and resync instead of silently missing it.
 func (g *Gateway) dispatch(e events.Event) {
 	if g.ctx.Err() != nil {
 		return // shutting down
@@ -82,7 +84,9 @@ func (g *Gateway) dispatch(e events.Event) {
 
 	recipients, err := g.recipients(ctx, e)
 	if err != nil {
-		g.dropped(e, err)
+		if g.dropped(e, err) {
+			g.resync(e.Audience.GuildID)
+		}
 		return
 	}
 	perRecipient := e.Type == events.GuildCreate || e.Type == events.GuildSync ||
@@ -110,12 +114,16 @@ func (g *Gateway) dispatch(e events.Event) {
 			if errors.Is(stErr, errNotInGuild) {
 				continue // not a member (any more): no state to send
 			}
-			if stErr != nil {
-				g.dropped(e, stErr)
-				continue
+			if stErr == nil {
+				d, stErr = json.Marshal(st)
 			}
-			if d, stErr = json.Marshal(st); stErr != nil {
-				g.dropped(e, stErr)
+			if stErr != nil {
+				// This member needed the state: let it resync.
+				if g.dropped(e, stErr) {
+					for _, c := range cs {
+						c.closeWith(CloseOverloaded)
+					}
+				}
 				continue
 			}
 		} else {
@@ -129,6 +137,14 @@ func (g *Gateway) dispatch(e events.Event) {
 		}
 		for _, c := range cs {
 			c.enqueue(outgoing{op: OpDispatch, t: e.Type, d: d})
+			switch e.Type {
+			case events.GuildCreate:
+				c.hold(guildID)
+			case events.GuildDelete:
+				if p, ok := e.Payload.(guilds.GuildDeletePayload); ok {
+					c.release(p.ID)
+				}
+			}
 		}
 	}
 	switch e.Type {
@@ -172,7 +188,9 @@ func (g *Gateway) leavePresence(ctx context.Context, e events.Event, members []s
 	}
 	peers, err := g.opts.Guilds.PeerIDs(ctx, gone)
 	if err != nil {
-		g.dropped(e, err)
+		if g.dropped(e, err) {
+			g.resync(e.Audience.GuildID)
+		}
 		return
 	}
 	var parted []snowflake.ID
@@ -206,12 +224,36 @@ func (g *Gateway) sendPresence(p Presence, to []snowflake.ID, exclude snowflake.
 	}
 }
 
-func (g *Gateway) dropped(e events.Event, err error) {
+// dropped counts and logs an event (or a per-recipient payload) that could
+// not be delivered. While the gateway shuts down it does nothing and
+// reports false: the query was cancelled by Close, which is not a failure.
+func (g *Gateway) dropped(e events.Event, err error) bool {
 	if g.ctx.Err() != nil {
-		return // the query was cancelled by Close: not a failure
+		return false
 	}
 	g.m.dispatchErrors.Inc()
 	g.log.Error("gateway dispatch", "type", e.Type, "err", err.Error())
+	return true
+}
+
+// resync closes with 4008 every connection holding the state of guildID
+// (none for 0): it missed an event of the guild, and reconnecting gives it
+// a fresh READY.
+func (g *Gateway) resync(guildID snowflake.ID) {
+	if guildID == 0 {
+		return
+	}
+	g.mu.Lock()
+	var cs []*conn
+	for c := range g.conns {
+		if c.holds(guildID) {
+			cs = append(cs, c)
+		}
+	}
+	g.mu.Unlock()
+	for _, c := range cs {
+		c.closeWith(CloseOverloaded)
+	}
 }
 
 // recipients resolves the audience of e to user IDs (ExcludeUserID is

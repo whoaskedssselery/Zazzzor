@@ -46,6 +46,12 @@ type conn struct {
 	// abort skips the close handshake (a peer that stopped reading).
 	abort atomic.Bool
 
+	// held are the guilds whose state this client got (READY, GUILD_CREATE)
+	// and still keeps (no GUILD_DELETE since); a guild event that cannot be
+	// delivered closes the connections holding it, so they resync.
+	heldMu sync.Mutex
+	held   map[snowflake.ID]struct{}
+
 	seq int64 // run only
 	// online: counted in presence (guarded by Gateway.mu).
 	online bool
@@ -184,6 +190,11 @@ func (c *conn) sendReady() bool {
 		c.closeWith(closeInternal)
 		return true
 	}
+	ids := make([]snowflake.ID, len(ready.Guilds))
+	for i, st := range ready.Guilds {
+		ids[i] = st.Guild.ID
+	}
+	c.hold(ids...)
 	d, err := json.Marshal(ready)
 	if err != nil {
 		c.g.log.Error("gateway encode ready", "err", err.Error())
@@ -245,4 +256,30 @@ func (c *conn) readLoop() {
 		default: // one is pending already
 		}
 	}
+}
+
+// hold records that the client got the state of the guilds ids.
+func (c *conn) hold(ids ...snowflake.ID) {
+	c.heldMu.Lock()
+	defer c.heldMu.Unlock()
+	if c.held == nil {
+		c.held = make(map[snowflake.ID]struct{}, len(ids))
+	}
+	for _, id := range ids {
+		c.held[id] = struct{}{}
+	}
+}
+
+// release records that the client dropped the guild id (GUILD_DELETE).
+func (c *conn) release(id snowflake.ID) {
+	c.heldMu.Lock()
+	defer c.heldMu.Unlock()
+	delete(c.held, id)
+}
+
+func (c *conn) holds(id snowflake.ID) bool {
+	c.heldMu.Lock()
+	defer c.heldMu.Unlock()
+	_, ok := c.held[id]
+	return ok
 }

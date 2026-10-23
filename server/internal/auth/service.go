@@ -157,6 +157,11 @@ var (
 	loginFailRate  = rate.Every(15 * time.Minute / 10)
 	loginFailBurst = 10
 	loginFailTTL   = 30 * time.Minute
+
+	// Logouts per client IP: 30 per minute.
+	logoutRate  = rate.Every(time.Minute / 30)
+	logoutBurst = 30
+	logoutTTL   = 2 * time.Minute
 )
 
 // Options configures a Service. Pool and IDs are required.
@@ -180,7 +185,17 @@ type Options struct {
 	// LoginFailureLimiter counts failed logins per username; nil takes the
 	// default (10 per 15 min).
 	LoginFailureLimiter *ratelimit.Limiter
+	// LogoutLimiter limits logouts per client address; nil takes the
+	// default (30 per minute).
+	LogoutLimiter *ratelimit.Limiter
+	// MaxSessions caps the sessions of one user: a new session past it
+	// evicts the oldest ones. Zero takes DefaultMaxSessions.
+	MaxSessions int
 }
+
+// DefaultMaxSessions is how many sessions one user may have; signing in once
+// more signs the oldest session out.
+const DefaultMaxSessions = 50
 
 // Service implements registration, login and sessions.
 type Service struct {
@@ -196,6 +211,8 @@ type Service struct {
 	loginLimiter     *ratelimit.Limiter
 	registerLimiter  *ratelimit.Limiter
 	loginFailures    *ratelimit.Limiter
+	logoutLimiter    *ratelimit.Limiter
+	maxSessions      int
 	verify           func(ctx context.Context, pw, encoded string) (ok, needsRehash bool, err error)
 }
 
@@ -214,6 +231,8 @@ func NewService(o Options) *Service {
 		loginLimiter:     o.LoginLimiter,
 		registerLimiter:  o.RegisterLimiter,
 		loginFailures:    o.LoginFailureLimiter,
+		logoutLimiter:    o.LogoutLimiter,
+		maxSessions:      o.MaxSessions,
 		verify:           VerifyPassword,
 	}
 	for _, name := range o.AdminUsernames {
@@ -230,6 +249,12 @@ func NewService(o Options) *Service {
 	}
 	if s.loginFailures == nil {
 		s.loginFailures = ratelimit.New(loginFailRate, loginFailBurst, loginFailTTL)
+	}
+	if s.logoutLimiter == nil {
+		s.logoutLimiter = ratelimit.New(logoutRate, logoutBurst, logoutTTL)
+	}
+	if s.maxSessions <= 0 {
+		s.maxSessions = DefaultMaxSessions
 	}
 	_ = dummyHash() // ready before the first login
 	return s
@@ -366,8 +391,11 @@ func (s *Service) register(ctx context.Context, v validRegistration, meta Sessio
 		return User{}, "", err
 	}
 	now := s.now()
-	var row store.User
-	var token string
+	var (
+		row     store.User
+		token   string
+		evicted []snowflake.ID
+	)
 	err = db.InTx(ctx, s.pool, func(tx pgx.Tx) error {
 		var txErr error
 		row, txErr = s.q.CreateUser(ctx, tx, store.CreateUserParams{
@@ -383,12 +411,13 @@ func (s *Service) register(ctx context.Context, v validRegistration, meta Sessio
 		if txErr != nil {
 			return fmt.Errorf("auth: create user: %w", txErr)
 		}
-		token, txErr = s.createSession(ctx, tx, row.ID, meta, now)
+		token, evicted, txErr = s.createSession(ctx, tx, row.ID, meta, now)
 		return txErr
 	})
 	if err != nil {
 		return User{}, "", err
 	}
+	s.publishRevoked(ctx, row.ID, evicted)
 	return s.toUser(row), token, nil
 }
 
@@ -451,10 +480,19 @@ func (s *Service) login(ctx context.Context, username, password string, meta Ses
 	if rehash {
 		s.upgradeHash(ctx, row.ID, password)
 	}
-	token, err := s.createSession(ctx, s.pool, row.ID, meta, s.now())
+	var (
+		token   string
+		evicted []snowflake.ID
+	)
+	err = db.InTx(ctx, s.pool, func(tx pgx.Tx) error {
+		var txErr error
+		token, evicted, txErr = s.createSession(ctx, tx, row.ID, meta, s.now())
+		return txErr
+	})
 	if err != nil {
 		return User{}, "", err
 	}
+	s.publishRevoked(ctx, row.ID, evicted)
 	return s.toUser(row), token, nil
 }
 
@@ -470,13 +508,19 @@ func (s *Service) upgradeHash(ctx context.Context, userID snowflake.ID, password
 	}
 }
 
-func (s *Service) createSession(ctx context.Context, tx store.DBTX, userID snowflake.ID, meta SessionMeta, now time.Time) (string, error) {
+// createSession opens a session inside tx. Past maxSessions it evicts the
+// oldest sessions of the user, returning their IDs for the caller to
+// announce once tx has committed.
+func (s *Service) createSession(ctx context.Context, tx pgx.Tx, userID snowflake.ID, meta SessionMeta, now time.Time) (string, []snowflake.ID, error) {
 	token, hash, err := newToken()
 	if err != nil {
-		return "", err
+		return "", nil, err
+	}
+	if err = s.q.LockUserSessions(ctx, tx, userID); err != nil {
+		return "", nil, fmt.Errorf("auth: lock sessions: %w", err)
 	}
 	if err = s.q.DeleteExpiredUserSessions(ctx, tx, store.DeleteExpiredUserSessionsParams{UserID: userID, Now: now}); err != nil {
-		return "", fmt.Errorf("auth: purge expired sessions: %w", err)
+		return "", nil, fmt.Errorf("auth: purge expired sessions: %w", err)
 	}
 	var ua *string
 	if meta.UserAgent != "" {
@@ -498,9 +542,14 @@ func (s *Service) createSession(ctx context.Context, tx store.DBTX, userID snowf
 		Ip:        ip,
 	})
 	if err != nil {
-		return "", fmt.Errorf("auth: create session: %w", err)
+		return "", nil, fmt.Errorf("auth: create session: %w", err)
 	}
-	return token, nil
+	evicted, err := s.q.DeleteSessionsBeyond(ctx, tx,
+		store.DeleteSessionsBeyondParams{UserID: int64(userID), Keep: int64(s.maxSessions)})
+	if err != nil {
+		return "", nil, fmt.Errorf("auth: evict old sessions: %w", err)
+	}
+	return token, evicted, nil
 }
 
 type session struct {
@@ -589,6 +638,24 @@ func (s *Service) publishRevoked(ctx context.Context, userID snowflake.ID, ids [
 		Audience: events.Audience{Kind: events.AudienceUsers, UserIDs: []snowflake.ID{userID}},
 		Payload:  events.SessionRevokedPayload{UserID: userID, SessionIDs: ids},
 	})
+}
+
+// GetUserByUsername returns the account with that username (compared like
+// at login: case-insensitively), or ErrUserNotFound, also for a string that
+// cannot be a username.
+func (s *Service) GetUserByUsername(ctx context.Context, username string) (User, error) {
+	name, ok := normalizeUsername(username)
+	if !ok {
+		return User{}, ErrUserNotFound
+	}
+	row, err := s.q.UserByUsername(ctx, s.pool, name)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return User{}, ErrUserNotFound
+	}
+	if err != nil {
+		return User{}, fmt.Errorf("auth: load user: %w", err)
+	}
+	return s.toUser(row), nil
 }
 
 // GetUser returns one account or ErrUserNotFound.

@@ -58,7 +58,7 @@ type env struct {
 
 // newEnv wires auth, users and admin like the server does: the registration
 // switch of auth reads the admin settings. "boss" is the administrator.
-func newEnv(t *testing.T) *env {
+func newEnv(t *testing.T, opts ...func(*admin.Options)) *env {
 	t.Helper()
 	e := &env{t: t, pub: &recordingPublisher{}}
 	pool := testkit.Postgres(t)
@@ -77,7 +77,11 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	usersSvc := users.NewService(users.Options{Accounts: authSvc, Files: disk, Publisher: e.pub})
-	adminSvc := admin.NewService(settings, authSvc)
+	o := admin.Options{Settings: settings, Accounts: authSvc, Limiter: ratelimit.New(rate.Inf, 1, time.Minute)}
+	for _, opt := range opts {
+		opt(&o)
+	}
+	adminSvc := admin.NewService(o)
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	r := chi.NewRouter()
@@ -305,5 +309,72 @@ func TestDisabledUserCannotLogin(t *testing.T) {
 	for _, op := range []string{"/disable", "/enable"} {
 		expect(t, boss.Do(http.MethodPost, "/api/v1/admin/users/424242"+op, nil), http.StatusNotFound, "not_found")
 		expect(t, boss.Do(http.MethodPost, "/api/v1/admin/users/x"+op, nil), http.StatusNotFound, "not_found")
+	}
+}
+
+func TestAdminFindsUserByUsername(t *testing.T) {
+	e := newEnv(t)
+	boss := e.client()
+	register(t, boss, "boss", "password123")
+	alice := e.client()
+	aliceID := register(t, alice, "alice", "password123")
+	type adminUser struct {
+		ID          string `json:"id"`
+		Username    string `json:"username"`
+		DisplayName string `json:"display_name"`
+		Disabled    bool   `json:"disabled"`
+		CreatedAt   string `json:"created_at"`
+	}
+	find := func(name string) adminUser {
+		t.Helper()
+		resp := boss.Do(http.MethodGet, "/api/v1/admin/users?username="+name, nil)
+		expect(t, resp, http.StatusOK, "")
+		var u adminUser
+		resp.JSON(&u)
+		return u
+	}
+	u := find("alice")
+	if u.ID != aliceID.String() || u.Username != "alice" || u.DisplayName != "alice" || u.Disabled || u.CreatedAt == "" {
+		t.Fatalf("alice = %+v", u)
+	}
+	expect(t, alice.Do(http.MethodGet, "/api/v1/admin/users?username=alice", nil), http.StatusForbidden, "admin_only")
+	// Usernames are stored lower-cased; the lookup is exact otherwise.
+	if u := find("ALICE"); u.ID != aliceID.String() {
+		t.Fatalf("ALICE = %+v", u)
+	}
+	expect(t, boss.Do(http.MethodPost, "/api/v1/admin/users/"+aliceID.String()+"/disable", nil), http.StatusNoContent, "")
+	if u := find("alice"); !u.Disabled {
+		t.Fatalf("after disabling: %+v", u)
+	}
+	for _, name := range []string{"alic", "nobody", "not%20valid"} {
+		expect(t, boss.Do(http.MethodGet, "/api/v1/admin/users?username="+name, nil), http.StatusNotFound, "not_found")
+	}
+	expect(t, boss.Do(http.MethodGet, "/api/v1/admin/users", nil), http.StatusBadRequest, "validation_failed")
+}
+
+// TestAdminUserIDsAreCanonical: an ID written any other way than the
+// server writes it (leading zeros, a sign) addresses no user.
+func TestAdminUserIDsAreCanonical(t *testing.T) {
+	e := newEnv(t)
+	boss := e.client()
+	register(t, boss, "boss", "password123")
+	alice := e.client()
+	aliceID := register(t, alice, "alice", "password123")
+	for _, id := range []string{"0" + aliceID.String(), "+" + aliceID.String()} {
+		expect(t, boss.Do(http.MethodPost, "/api/v1/admin/users/"+id+"/disable", nil), http.StatusNotFound, "not_found")
+	}
+	expect(t, alice.Do(http.MethodGet, "/api/v1/users/@me", nil), http.StatusOK, "")
+}
+
+func TestAdminRateLimited(t *testing.T) {
+	e := newEnv(t, func(o *admin.Options) { o.Limiter = ratelimit.New(rate.Every(time.Hour), 2, time.Hour) })
+	boss := e.client()
+	register(t, boss, "boss", "password123")
+	expect(t, boss.Do(http.MethodGet, "/api/v1/admin/settings", nil), http.StatusOK, "")
+	expect(t, boss.Do(http.MethodGet, "/api/v1/admin/users?username=boss", nil), http.StatusOK, "")
+	resp := boss.Do(http.MethodPost, "/api/v1/admin/users/42/enable", nil)
+	expect(t, resp, http.StatusTooManyRequests, "rate_limited")
+	if resp.Header.Get("Retry-After") == "" {
+		t.Fatal("429 without Retry-After")
 	}
 }

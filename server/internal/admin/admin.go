@@ -10,11 +10,14 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/time/rate"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/admin/store"
 	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/ratelimit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
 
@@ -52,21 +55,49 @@ func (s *Settings) SetRegistrationOpen(ctx context.Context, open bool) (bool, er
 
 // Accounts is what admin needs from the auth module.
 type Accounts interface {
+	GetUserByUsername(ctx context.Context, username string) (auth.User, error)
 	ResetPassword(ctx context.Context, userID snowflake.ID, next string) error
 	SetDisabled(ctx context.Context, userID snowflake.ID, disabled bool) (auth.User, error)
 }
 
 var _ Accounts = (*auth.Service)(nil)
 
+// Admin requests per administrator, all routes together: 30 per minute.
+var (
+	adminRate  = rate.Every(time.Minute / 30)
+	adminBurst = 30
+	adminTTL   = 2 * time.Minute
+)
+
+// Options configures a Service. Settings and Accounts are required.
+type Options struct {
+	Settings *Settings
+	Accounts Accounts
+	// Limiter limits the admin requests of each administrator; nil takes
+	// the default (30 per minute).
+	Limiter *ratelimit.Limiter
+}
+
 // Service implements the admin operations.
 type Service struct {
 	settings *Settings
 	accounts Accounts
+	limiter  *ratelimit.Limiter
 }
 
-// NewService builds a Service.
-func NewService(settings *Settings, accounts Accounts) *Service {
-	return &Service{settings: settings, accounts: accounts}
+// NewService builds a Service from o.
+func NewService(o Options) *Service {
+	s := &Service{settings: o.Settings, accounts: o.Accounts, limiter: o.Limiter}
+	if s.limiter == nil {
+		s.limiter = ratelimit.New(adminRate, adminBurst, adminTTL)
+	}
+	return s
+}
+
+// FindUser returns the account with that username (case-insensitively),
+// or auth.ErrUserNotFound.
+func (s *Service) FindUser(ctx context.Context, username string) (auth.User, error) {
+	return s.accounts.GetUserByUsername(ctx, username)
 }
 
 // ErrCannotDisableSelf is returned when an administrator tries to disable
