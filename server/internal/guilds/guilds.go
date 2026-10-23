@@ -312,6 +312,9 @@ type Hooks struct {
 // Users is what guilds needs from the auth module.
 type Users interface {
 	UsersByIDs(ctx context.Context, ids []snowflake.ID) ([]auth.User, error)
+	// UsersByIDsIn reads the accounts through dbtx: the transaction a guild
+	// read holds, so it never waits for a second pool connection.
+	UsersByIDsIn(ctx context.Context, dbtx auth.DB, ids []snowflake.ID) ([]auth.User, error)
 }
 
 var _ Users = (auth.Accounts)(nil)
@@ -546,7 +549,7 @@ func (s *Service) members(ctx context.Context, db store.DBTX, guildID snowflake.
 	for _, r := range roleRows {
 		roles[r.UserID] = append(roles[r.UserID], r.RoleID)
 	}
-	users, err := s.users.UsersByIDs(ctx, ids)
+	users, err := s.users.UsersByIDsIn(ctx, db, ids)
 	if err != nil {
 		return nil, err
 	}

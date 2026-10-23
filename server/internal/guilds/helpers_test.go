@@ -110,7 +110,13 @@ func unlimited() *ratelimit.Limiter { return ratelimit.New(rate.Inf, 1, time.Min
 
 func newEnv(t *testing.T, opts ...func(*guilds.Options)) *env {
 	t.Helper()
-	e := &env{t: t, pool: testkit.Postgres(t), dir: t.TempDir(), bus: events.NewBus(nil), hook: &channelsHook{}}
+	return newEnvOn(t, testkit.Postgres(t), opts...)
+}
+
+// newEnvOn is newEnv over a given pool (e.g. a deliberately small one).
+func newEnvOn(t *testing.T, pool *pgxpool.Pool, opts ...func(*guilds.Options)) *env {
+	t.Helper()
+	e := &env{t: t, pool: pool, dir: t.TempDir(), bus: events.NewBus(nil), hook: &channelsHook{}}
 	t.Cleanup(e.bus.Close)
 	e.pub = &recorder{bus: e.bus}
 	ids := snowflake.NewGenerator(0, time.Now)

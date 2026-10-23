@@ -2,8 +2,10 @@ package httpx_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -136,5 +138,27 @@ func TestJSONWritesBody(t *testing.T) {
 	}
 	if got := strings.TrimSpace(rec.Body.String()); got != `{"status":"ok"}` {
 		t.Errorf("body = %s", got)
+	}
+}
+
+// TestWrapTimedOutIsBusy: a deadline that ran out while the request itself
+// is still alive (the database pool's acquire timeout) is 503 busy with a
+// Retry-After, not 500.
+func TestWrapTimedOutIsBusy(t *testing.T) {
+	h := httpx.Wrap(func(http.ResponseWriter, *http.Request) error {
+		return fmt.Errorf("guilds: load guild: %w", context.DeadlineExceeded)
+	})
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	req = req.WithContext(httpx.WithLogger(req.Context(), slog.New(slog.DiscardHandler)))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+	if p := decodeProblem(t, rec); p.Code != "server_busy" {
+		t.Errorf("code = %q, want server_busy", p.Code)
+	}
+	if rec.Header().Get("Retry-After") == "" {
+		t.Error("no Retry-After")
 	}
 }

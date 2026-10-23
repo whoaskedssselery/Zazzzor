@@ -131,6 +131,8 @@ func (u User) Public() PublicUser {
 type Accounts interface {
 	GetUser(ctx context.Context, userID snowflake.ID) (User, error)
 	UsersByIDs(ctx context.Context, ids []snowflake.ID) ([]User, error)
+	// UsersByIDsIn reads through dbtx (a transaction the caller holds).
+	UsersByIDsIn(ctx context.Context, dbtx DB, ids []snowflake.ID) ([]User, error)
 	UpdateProfile(ctx context.Context, userID snowflake.ID, displayName string) (User, error)
 	// SetAvatar sets (hash = 16 lower-case hex digits) or clears (nil) the
 	// avatar and returns the hash it replaced (nil if there was none).
@@ -604,6 +606,17 @@ func (s *Service) GetUser(ctx context.Context, userID snowflake.ID) (User, error
 // UsersByIDs returns the existing accounts among ids, ordered by ID, each
 // once.
 func (s *Service) UsersByIDs(ctx context.Context, ids []snowflake.ID) ([]User, error) {
+	return s.UsersByIDsIn(ctx, s.pool, ids)
+}
+
+// DB is a database handle account reads can run through: the pool or a
+// transaction of another module. A caller holding a transaction must pass
+// it, never let the read take a second connection from the pool: callers
+// that each hold one connection and wait for another wedge the pool.
+type DB = store.DBTX
+
+// UsersByIDsIn is UsersByIDs read through dbtx.
+func (s *Service) UsersByIDsIn(ctx context.Context, dbtx DB, ids []snowflake.ID) ([]User, error) {
 	if len(ids) == 0 {
 		return []User{}, nil
 	}
@@ -611,7 +624,7 @@ func (s *Service) UsersByIDs(ctx context.Context, ids []snowflake.ID) ([]User, e
 	for i, id := range ids {
 		raw[i] = int64(id)
 	}
-	rows, err := s.q.UsersByIDs(ctx, s.pool, raw)
+	rows, err := s.q.UsersByIDs(ctx, dbtx, raw)
 	if err != nil {
 		return nil, fmt.Errorf("auth: load users: %w", err)
 	}

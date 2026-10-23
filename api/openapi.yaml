@@ -11,6 +11,10 @@ info:
     State-changing requests (POST, PUT, PATCH, DELETE) and WebSocket upgrades
     must carry an `Origin` header from the instance's allowed origins,
     otherwise they are refused with `403 origin_not_allowed`.
+
+    Any operation that reads the database may answer `503 server_busy` with
+    a `Retry-After` header when no database connection frees up within 5
+    seconds (the server is overloaded); retry after that many seconds.
   license:
     name: Apache-2.0
     identifier: Apache-2.0

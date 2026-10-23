@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
@@ -38,10 +39,9 @@ func Middleware(s *Service) func(http.Handler) http.Handler {
 				return
 			}
 			if err != nil {
-				// Not "logged out": the database failed. Do not let the
-				// client mistake it for a 401.
-				httpx.LoggerFrom(ctx).ErrorContext(ctx, "authenticate request", "err", err.Error())
-				httpx.WriteProblem(w, httpx.Internal())
+				// Not "logged out": the database failed or is busy. Do
+				// not let the client mistake it for a 401.
+				httpx.WriteError(w, r, fmt.Errorf("authenticate request: %w", err))
 				return
 			}
 			renewed, err := s.renew(ctx, sess)

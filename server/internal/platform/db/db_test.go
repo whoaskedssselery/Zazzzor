@@ -3,10 +3,12 @@ package db_test
 import (
 	"context"
 	"errors"
+	"net/url"
 	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -230,4 +232,66 @@ func countScratch(t *testing.T, pool *pgxpool.Pool) int {
 		t.Fatal(err)
 	}
 	return n
+}
+
+func withParam(t *testing.T, raw, key, value string) string {
+	t.Helper()
+	u, err := url.Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := u.Query()
+	q.Set(key, value)
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+func TestOpenSizesPool(t *testing.T) {
+	pool, err := db.Open(t.Context(), testkit.PostgresURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if got := pool.Config().MaxConns; got != db.DefaultMaxConns {
+		t.Fatalf("MaxConns = %d, want the default %d", got, db.DefaultMaxConns)
+	}
+
+	small, err := db.Open(t.Context(), withParam(t, testkit.PostgresURL(t), "pool_max_conns", "3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer small.Close()
+	if got := small.Config().MaxConns; got != 3 {
+		t.Fatalf("MaxConns = %d, want 3 from pool_max_conns", got)
+	}
+}
+
+// TestAcquireIsBounded: when every connection is taken, a query waits at
+// most the acquire timeout and fails with context.DeadlineExceeded, even if
+// its own context has no deadline.
+func TestAcquireIsBounded(t *testing.T) {
+	pool, err := db.OpenWith(t.Context(), withParam(t, testkit.PostgresURL(t), "pool_max_conns", "1"),
+		db.Options{AcquireTimeout: 200 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	held, err := pool.Acquire(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	_, err = pool.Exec(context.Background(), "SELECT 1")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Exec on a full pool = %v, want context.DeadlineExceeded", err)
+	}
+	if d := time.Since(start); d > 3*time.Second {
+		t.Fatalf("Exec waited %s, want about the acquire timeout", d)
+	}
+	held.Release()
+	// Once a connection is free again, queries run normally, and the
+	// timeout does not cut a query that got its connection in time.
+	if _, err := pool.Exec(context.Background(), "SELECT pg_sleep(0.4)"); err != nil {
+		t.Fatalf("Exec after release: %v", err)
+	}
 }
