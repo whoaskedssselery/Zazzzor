@@ -2,7 +2,6 @@ package auth
 
 import (
 	"net/http"
-	"net/netip"
 
 	"github.com/go-chi/chi/v5"
 
@@ -30,17 +29,8 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
-// clientKey is the rate-limit key of the request: an IPv4 client address, or
-// the /64 of an IPv6 one (one subscriber usually holds a whole /64, so per
-// address limits would be trivial to dodge). Zones are dropped and
-// IPv4-mapped addresses count as IPv4.
-func (s *Service) clientKey(r *http.Request) string {
-	a := httpx.ClientIP(r, s.trusted).WithZone("").Unmap()
-	if !a.Is6() {
-		return a.String()
-	}
-	return netip.PrefixFrom(a, 64).Masked().String()
-}
+// clientKey is the rate-limit key of the request (httpx.ClientKey).
+func (s *Service) clientKey(r *http.Request) string { return httpx.ClientKey(r, s.trusted) }
 
 func (s *Service) sessionMeta(r *http.Request) SessionMeta {
 	return SessionMeta{UserAgent: r.UserAgent(), IP: httpx.ClientIP(r, s.trusted).WithZone("")}

@@ -85,6 +85,7 @@ func (m *Modules) NewGateway(bus *events.Bus, cfg config.Config, logger *slog.Lo
 	opts.Channels = m.Channels
 	opts.Bus = bus
 	opts.AllowedOrigins = cfg.AllowedOrigins
+	opts.TrustedProxies = cfg.TrustedProxies
 	opts.Logger = logger
 	opts.Registerer = reg
 	return gateway.New(opts)

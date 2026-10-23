@@ -56,3 +56,15 @@ func isTrusted(a netip.Addr, trusted []netip.Prefix) bool {
 	}
 	return false
 }
+
+// ClientKey is the per-client rate-limit key of r: the IPv4 client address,
+// or the /64 of an IPv6 one (one subscriber usually holds a whole /64, so
+// per-address limits would be trivial to dodge). Zones are dropped and
+// IPv4-mapped addresses count as IPv4.
+func ClientKey(r *http.Request, trusted []netip.Prefix) string {
+	a := ClientIP(r, trusted).WithZone("").Unmap()
+	if !a.Is6() {
+		return a.String()
+	}
+	return netip.PrefixFrom(a, 64).Masked().String()
+}

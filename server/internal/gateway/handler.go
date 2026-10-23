@@ -3,20 +3,24 @@ package gateway
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"slices"
 	"sync"
 	"time"
 
 	"github.com/coder/websocket"
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/time/rate"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
 	"github.com/whoaskedssselery/zazzzor/server/internal/channels"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/ratelimit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
 
@@ -56,7 +60,35 @@ type Options struct {
 	SendBuffer int
 	// BusBuffer is the dispatcher's subscription buffer; default 1024.
 	BusBuffer int
+
+	// TrustedProxies decide whether X-Forwarded-For names the client, for
+	// the per-address upgrade limit.
+	TrustedProxies []netip.Prefix
+	// MaxConnsPerUser caps one user's open connections; default
+	// DefaultMaxConnsPerUser.
+	MaxConnsPerUser int
+	// MaxConns caps all open connections; default DefaultMaxConns.
+	MaxConns int
+	// UserUpgradeLimiter limits upgrades per user; nil takes the default
+	// (10 per minute, burst 5).
+	UserUpgradeLimiter *ratelimit.Limiter
+	// IPUpgradeLimiter limits upgrade attempts per client address (IPv6:
+	// per /64), counted before the session is checked; nil takes the
+	// default (30 per minute, burst 10).
+	IPUpgradeLimiter *ratelimit.Limiter
 }
+
+// Default upgrade limits.
+var (
+	userUpgradeRate  = rate.Every(time.Minute / 10)
+	userUpgradeBurst = 5
+	ipUpgradeRate    = rate.Every(time.Minute / 30)
+	ipUpgradeBurst   = 10
+	upgradeLimitTTL  = 10 * time.Minute
+)
+
+// busyRetryAfter is the Retry-After of 503 server_busy at the global cap.
+const busyRetryAfter = 10 * time.Second
 
 // Gateway serves /gateway and dispatches events. Create it with New and
 // stop it with Close.
@@ -67,12 +99,16 @@ type Gateway struct {
 	ctx    context.Context // cancelled by Close; bounds dispatch queries
 	cancel context.CancelFunc
 
-	mu       sync.Mutex
-	closed   bool
-	conns    map[*conn]struct{}
-	unsub    func()
-	presence presence
-	connWG   sync.WaitGroup
+	mu     sync.Mutex
+	closed bool
+	conns  map[*conn]struct{}
+	// reserved counts the connections admitted (upgrading or live), in
+	// all and per user; see reserve.
+	reserved     int
+	reservedUser map[snowflake.ID]int
+	unsub        func()
+	presence     presence
+	connWG       sync.WaitGroup
 
 	dispatchDone chan struct{}
 }
@@ -124,6 +160,19 @@ func New(o Options) *Gateway {
 	if o.BusBuffer <= 0 {
 		o.BusBuffer = DefaultBusBuffer
 	}
+	if o.MaxConnsPerUser <= 0 {
+		o.MaxConnsPerUser = DefaultMaxConnsPerUser
+	}
+	if o.MaxConns <= 0 {
+		o.MaxConns = DefaultMaxConns
+	}
+	if o.UserUpgradeLimiter == nil {
+		o.UserUpgradeLimiter = ratelimit.New(userUpgradeRate, userUpgradeBurst, upgradeLimitTTL)
+	}
+	if o.IPUpgradeLimiter == nil {
+		o.IPUpgradeLimiter = ratelimit.New(ipUpgradeRate, ipUpgradeBurst, upgradeLimitTTL)
+	}
+	o.TrustedProxies = slices.Clone(o.TrustedProxies)
 	o.AllowedOrigins = slices.Clone(o.AllowedOrigins)
 	log := o.Logger
 	if log == nil {
@@ -131,21 +180,29 @@ func New(o Options) *Gateway {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	g := &Gateway{opts: o, log: log, m: newMetrics(o.Registerer), ctx: ctx, cancel: cancel,
-		conns: make(map[*conn]struct{}), presence: newPresence(), dispatchDone: make(chan struct{})}
+		conns: make(map[*conn]struct{}), reservedUser: make(map[snowflake.ID]int), presence: newPresence(), dispatchDone: make(chan struct{})}
 	ch, unsub := o.Bus.Subscribe(o.BusBuffer)
 	g.unsub = unsub
 	go g.dispatchLoop(ch)
 	return g
 }
 
-// ServeHTTP checks the Origin (403) and the session cookie (401) before it
-// upgrades; both refusals are problem+json responses. It returns as soon as
-// the connection is upgraded (the request is logged as 101); the connection
-// lives on in its own goroutines. The route must be wrapped in
-// httpx.WithoutDeadlines: the gateway bounds every read and write itself.
+// ServeHTTP checks, in this order, the Origin (403 origin_not_allowed), the
+// per-address upgrade limit (429 rate_limited), the session cookie (401
+// unauthenticated), the per-user upgrade limit (429 rate_limited), the
+// per-user connection cap (429 too_many_connections) and the global one
+// (503 server_busy) before it upgrades; every refusal is a problem+json
+// response. It returns as soon as the connection is upgraded (the request
+// is logged as 101); the connection lives on in its own goroutines. The
+// route must be wrapped in httpx.WithoutDeadlines: the gateway bounds every
+// read and write itself.
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !httpx.OriginAllowed(g.opts.AllowedOrigins, r) {
 		httpx.WriteProblem(w, httpx.Forbidden("origin_not_allowed"))
+		return
+	}
+	if ok, retry := g.opts.IPUpgradeLimiter.Allow(httpx.ClientKey(r, g.opts.TrustedProxies)); !ok {
+		httpx.WriteProblem(w, httpx.TooManyRequests(retry))
 		return
 	}
 	ck, err := r.Cookie(auth.CookieName)
@@ -160,10 +217,23 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		httpx.LoggerFrom(ctx).ErrorContext(ctx, "gateway authenticate", "err", err.Error())
-		httpx.WriteProblem(w, httpx.Internal())
+		httpx.WriteError(w, r, fmt.Errorf("gateway authenticate: %w", err))
 		return
 	}
+	if ok, retry := g.opts.UserUpgradeLimiter.Allow(user.ID.String()); !ok {
+		httpx.WriteProblem(w, httpx.TooManyRequests(retry))
+		return
+	}
+	if p := g.reserve(user.ID); p != nil {
+		httpx.WriteProblem(w, p)
+		return
+	}
+	upgraded := false
+	defer func() {
+		if !upgraded {
+			g.unreserve(user.ID)
+		}
+	}()
 	if !httpx.IsWebSocketUpgrade(r) {
 		httpx.WriteProblem(w, &httpx.Problem{Status: http.StatusUpgradeRequired, Code: "upgrade_required",
 			Title: http.StatusText(http.StatusUpgradeRequired)})
@@ -187,7 +257,42 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		go func() { _ = ws.Close(CloseServiceRestart, closeReasons[CloseServiceRestart]) }()
 		return
 	}
-	go c.run() //nolint:contextcheck // the connection outlives the request; it has contexts of its own
+	upgraded = true // unregister gives the reservation back
+	go c.run()      //nolint:contextcheck // the connection outlives the request; it has contexts of its own
+}
+
+// reserve admits one more connection of userID, or returns why not: the
+// user's cap (429 too_many_connections) or the global one (503
+// server_busy). The reservation spans the upgrade, so concurrent
+// handshakes cannot overshoot; unreserve (or unregister, once the
+// connection is live) gives it back.
+func (g *Gateway) reserve(userID snowflake.ID) *httpx.Problem {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.reservedUser[userID] >= g.opts.MaxConnsPerUser {
+		return &httpx.Problem{Status: http.StatusTooManyRequests, Code: "too_many_connections",
+			Title:  http.StatusText(http.StatusTooManyRequests),
+			Detail: fmt.Sprintf("at most %d gateway connections per user", g.opts.MaxConnsPerUser)}
+	}
+	if g.reserved >= g.opts.MaxConns {
+		return httpx.ServiceUnavailableRetryAfter("server_busy", busyRetryAfter)
+	}
+	g.reserved++
+	g.reservedUser[userID]++
+	return nil
+}
+
+func (g *Gateway) unreserve(userID snowflake.ID) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.unreserveLocked(userID)
+}
+
+func (g *Gateway) unreserveLocked(userID snowflake.ID) {
+	g.reserved--
+	if g.reservedUser[userID]--; g.reservedUser[userID] <= 0 {
+		delete(g.reservedUser, userID)
+	}
 }
 
 // register adds c to the live connections; false once
@@ -221,6 +326,7 @@ func (g *Gateway) unregister(c *conn) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	delete(g.conns, c)
+	g.unreserveLocked(c.user.ID)
 	g.m.connections.Dec()
 	if c.online {
 		g.presenceDisconnected(c.user.ID)

@@ -14,6 +14,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/time/rate"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/app"
 	"github.com/whoaskedssselery/zazzzor/server/internal/config"
@@ -21,6 +22,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/gateway"
 	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/ratelimit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/testkit"
 )
@@ -58,6 +60,14 @@ func newEnv(t *testing.T, opts gateway.Options) *env {
 	t.Cleanup(e.bus.Close)
 	if e.m, err = app.NewModules(cfg, testkit.Postgres(t), snowflake.NewGenerator(0, time.Now), e.bus); err != nil {
 		t.Fatal(err)
+	}
+	// Tests dial often from one address and user; the limit tests pass
+	// their own limiters.
+	if opts.UserUpgradeLimiter == nil {
+		opts.UserUpgradeLimiter = ratelimit.New(rate.Inf, 1, time.Minute)
+	}
+	if opts.IPUpgradeLimiter == nil {
+		opts.IPUpgradeLimiter = ratelimit.New(rate.Inf, 1, time.Minute)
 	}
 	logger := slog.New(slog.DiscardHandler)
 	e.gw = e.m.NewGateway(e.bus, cfg, logger, e.reg, opts)

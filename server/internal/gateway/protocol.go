@@ -69,6 +69,11 @@ const (
 	DefaultSendBuffer = 256
 	// DefaultBusBuffer is how many events may wait for the dispatcher.
 	DefaultBusBuffer = 1024
+	// DefaultMaxConnsPerUser caps the open connections of one user (429
+	// too_many_connections past it).
+	DefaultMaxConnsPerUser = 10
+	// DefaultMaxConns caps all open connections (503 server_busy past it).
+	DefaultMaxConns = 500
 	// MaxFrameBytes is the largest client frame; a larger one is 4002.
 	MaxFrameBytes = 4096
 	// MaxMembers caps the members of a GuildState.
