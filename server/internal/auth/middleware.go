@@ -1,0 +1,131 @@
+package auth
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/ratelimit"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
+)
+
+type ctxKey int
+
+const (
+	userKey ctxKey = iota
+	sessionKey
+)
+
+// Middleware resolves the session cookie and, when it is valid, stores the
+// user and session ID in the request context (see FromContext). Requests
+// without a valid session pass through anonymous; Require rejects them where
+// a session is needed. A session last renewed a day or more ago is renewed
+// and its cookie re-sent; a failed renewal is logged and the request goes
+// on.
+func Middleware(s *Service) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ck, err := r.Cookie(CookieName)
+			if err != nil || ck.Value == "" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			ctx := r.Context()
+			sess, err := s.lookup(ctx, ck.Value)
+			if errors.Is(err, ErrUnauthenticated) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if err != nil {
+				// Not "logged out": the database failed or is busy. Do
+				// not let the client mistake it for a 401.
+				httpx.WriteError(w, r, fmt.Errorf("authenticate request: %w", err))
+				return
+			}
+			renewed, err := s.renew(ctx, sess)
+			if err != nil {
+				httpx.LoggerFrom(ctx).WarnContext(ctx, "renew session", "session_id", sess.id.String(), "err", err.Error())
+			} else if renewed {
+				s.setSessionCookie(w, ck.Value)
+			}
+			ctx = context.WithValue(ctx, userKey, sess.user)
+			ctx = context.WithValue(ctx, sessionKey, sess.id)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+// Require answers 401 unauthenticated unless Middleware found a session.
+func Require(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := FromContext(r.Context()); !ok {
+			httpx.WriteProblem(w, httpx.Unauthorized("unauthenticated"))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// CurrentUser returns the signed-in user of a request that passed Require.
+func CurrentUser(r *http.Request) User {
+	u, _ := FromContext(r.Context())
+	return u
+}
+
+// LimitPerUser charges l once per request, keyed by the signed-in user,
+// before the handler reads any of the body; it must run after Require. A
+// refused request is answered 429 rate_limited.
+func LimitPerUser(l *ratelimit.Limiter) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if ok, retry := l.Allow(CurrentUser(r).ID.String()); !ok {
+				httpx.WriteProblem(w, httpx.TooManyRequests(retry))
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// FromContext returns the user Middleware stored for this request.
+func FromContext(ctx context.Context) (User, bool) {
+	u, ok := ctx.Value(userKey).(User)
+	return u, ok
+}
+
+// SessionFromContext returns the ID of the session that authenticated this
+// request.
+func SessionFromContext(ctx context.Context) (snowflake.ID, bool) {
+	id, ok := ctx.Value(sessionKey).(snowflake.ID)
+	return id, ok
+}
+
+// LimitReads charges l once per GET or HEAD request of a signed-in user,
+// keyed by the user, like LimitPerUser; anonymous requests and other
+// methods pass uncharged. It must run after Middleware.
+func LimitReads(l *ratelimit.Limiter) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet && r.Method != http.MethodHead {
+				next.ServeHTTP(w, r)
+				return
+			}
+			u, ok := FromContext(r.Context())
+			if !ok {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if ok, retry := l.Allow(u.ID.String()); !ok {
+				httpx.WriteProblem(w, httpx.TooManyRequests(retry))
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// UserKey is the signed-in user of a request that passed Require as a
+// limiter key.
+func UserKey(r *http.Request) string { return CurrentUser(r).ID.String() }

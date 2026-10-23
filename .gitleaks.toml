@@ -1,0 +1,7 @@
+# gitleaks configuration: the default ruleset plus a narrow allowlist.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "RFC 6455 sample Sec-WebSocket-Key nonce (base64 of 'the sample nonce') used by gateway tests"
+regexes = ['''^dGhlIHNhbXBsZSBub25jZQ==$''']

@@ -1,0 +1,159 @@
+# sqlc: go tool sqlc generate (run from server/); CI runs `go tool sqlc diff`.
+# Each module adds an entry: queries in internal/<module>/queries.sql,
+# generated code in internal/<module>/store/. The schema is the goose
+# migrations (sqlc ignores the Down sections).
+version: "2"
+
+# Shared Go type mappings; every module's entry references them.
+overrides:
+  go:
+    overrides:
+      - db_type: timestamptz
+        go_type: time.Time
+      - db_type: timestamptz
+        nullable: true
+        go_type:
+          type: time.Time
+          pointer: true
+      - db_type: inet
+        nullable: true
+        go_type:
+          import: net/netip
+          type: Addr
+          pointer: true
+      - db_type: text
+        nullable: true
+        go_type:
+          type: string
+          pointer: true
+
+sql:
+  - engine: postgresql
+    schema: internal/platform/db/migrations
+    queries: internal/auth/queries.sql
+    gen:
+      go:
+        package: store
+        out: internal/auth/store
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: true
+        overrides:
+          - column: users.id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: sessions.id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: sessions.user_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+  - engine: postgresql
+    schema: internal/platform/db/migrations
+    queries: internal/admin/queries.sql
+    gen:
+      go:
+        package: store
+        out: internal/admin/store
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: true
+  - engine: postgresql
+    schema: internal/platform/db/migrations
+    queries: internal/guilds/queries.sql
+    gen:
+      go:
+        package: store
+        out: internal/guilds/store
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: true
+        overrides:
+          - column: guilds.id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: guilds.owner_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: members.guild_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: members.user_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: roles.id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: roles.guild_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: member_roles.guild_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: member_roles.user_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: member_roles.role_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: guild_bans.guild_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: guild_bans.user_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: guild_bans.created_by
+            go_type:
+              import: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake
+              type: ID
+              pointer: true
+            nullable: true
+  - engine: postgresql
+    schema: internal/platform/db/migrations
+    queries: internal/channels/queries.sql
+    gen:
+      go:
+        package: store
+        out: internal/channels/store
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: true
+        overrides:
+          - column: channels.id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: channels.guild_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: channels.parent_id
+            go_type:
+              import: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake
+              type: ID
+              pointer: true
+            nullable: true
+          - column: overwrites.channel_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: overwrites.target_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+  - engine: postgresql
+    schema: internal/platform/db/migrations
+    queries: internal/invites/queries.sql
+    gen:
+      go:
+        package: store
+        out: internal/invites/store
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: true
+        overrides:
+          - column: invites.guild_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: invites.channel_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: invites.inviter_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+  - engine: postgresql
+    schema: internal/platform/db/migrations
+    queries: internal/messages/queries.sql
+    gen:
+      go:
+        package: store
+        out: internal/messages/store
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: true
+        overrides:
+          - column: messages.id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: messages.channel_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: messages.author_id
+            go_type:
+              import: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake
+              type: ID
+              pointer: true
+            nullable: true
+          - column: messages.reply_to_id
+            go_type:
+              import: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake
+              type: ID
+              pointer: true
+            nullable: true

@@ -1,0 +1,3167 @@
+openapi: 3.1.0
+info:
+  title: Zazzzor API
+  version: 0.1.0
+  summary: REST API of a self-hosted Zazzzor instance.
+  description: |
+    All IDs and permission masks are JSON strings. Field names are snake_case;
+    timestamps are RFC 3339 UTC with milliseconds. Errors are
+    `application/problem+json` (RFC 7807) with a stable machine `code`.
+
+    State-changing requests (POST, PUT, PATCH, DELETE) and WebSocket upgrades
+    must carry an `Origin` header from the instance's allowed origins,
+    otherwise they are refused with `403 origin_not_allowed`.
+
+    Every GET of a signed-in user counts against a per-user read limit
+    (120 per minute, burst 60), answered `429 rate_limited` with
+    `Retry-After` past it (the gateway upgrade has limits of its own).
+
+    Any operation that reads the database may answer `503 server_busy` with
+    a `Retry-After` header when no database connection frees up within 5
+    seconds (the server is overloaded); retry after that many seconds.
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+  - url: /api/v1
+# Every operation requires a session unless it declares `security: []`.
+security:
+  - cookieAuth: []
+tags:
+  - name: health
+    description: Liveness and readiness probes.
+  - name: auth
+    description: Registration, login and cookie sessions.
+  - name: users
+    description: Profile of the signed-in user.
+  - name: files
+    description: Stored images (avatars, server icons).
+  - name: guilds
+    description: Servers, their members and roles.
+  - name: channels
+    description: Channels, categories and their permission overwrites.
+  - name: messages
+    description: Messages of text channels, replies and typing.
+  - name: invites
+    description: Invite links to servers.
+  - name: gateway
+    description: Realtime events over WebSocket (protocol in `x-gateway`).
+  - name: admin
+    description: Instance administration, for the usernames in `ZAZZZOR_ADMIN_USERNAMES`.
+paths:
+  /healthz:
+    get:
+      tags: [health]
+      operationId: getHealthz
+      security: []
+      summary: Liveness probe
+      description: Returns 200 while the process is able to serve HTTP.
+      responses:
+        "200":
+          description: The process is alive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Status"
+        "4XX":
+          $ref: "#/components/responses/Problem"
+        "5XX":
+          $ref: "#/components/responses/Problem"
+  /readyz:
+    get:
+      tags: [health]
+      operationId: getReadyz
+      security: []
+      summary: Readiness probe
+      description: |
+        Returns 200 when the server can take traffic: its database answers a
+        ping within 2 seconds. Otherwise returns 503 `not_ready`.
+      responses:
+        "200":
+          description: The server is ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Status"
+        "503":
+          description: The server is not ready (`not_ready`).
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "4XX":
+          $ref: "#/components/responses/Problem"
+        "5XX":
+          $ref: "#/components/responses/Problem"
+  /auth/register:
+    post:
+      tags: [auth]
+      operationId: register
+      security: []
+      summary: Create an account
+      description: |
+        Creates an account and signs it in: the response sets the `zz_session`
+        cookie. The username is stored lower-cased and is unique regardless
+        of case. `display_name` defaults to the username as typed.
+
+        Limited to 3 well-formed requests per hour per client (IPv4 address
+        or IPv6 /64); requests
+        rejected with 400 do not count.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: The account was created and a session opened.
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/SessionCookie"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: "`invalid_body`, `body_too_large` or `validation_failed` (with `errors`)."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `registration_closed`."
+          $ref: "#/components/responses/Problem"
+        "409":
+          description: "`username_taken`."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`: the body is not application/json."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/ServerBusy"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      security: []
+      summary: Sign in
+      description: |
+        Checks the credentials and opens a session (sets `zz_session`). An
+        unknown username and a wrong password give the same
+        `401 invalid_credentials`. `403 account_disabled` is returned only
+        for the right password of a disabled account.
+
+        Limited to 10 attempts per minute per client (IPv4 address or IPv6
+        /64), and to 10 failed attempts per 15 minutes per username from any
+        client; past that even the right password gets `429`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Signed in.
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/SessionCookie"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: "`invalid_body` or `body_too_large`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`invalid_credentials`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `account_disabled`."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/ServerBusy"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      security:
+        - cookieAuth: []
+        - {}
+      summary: Sign out
+      description: |
+        Deletes the current session, if any, and clears the cookie: 204,
+        also without a session. Limited to 30 per minute per client
+        address (IPv4, or IPv6 /64).
+      responses:
+        "204":
+          description: Signed out.
+          headers:
+            Set-Cookie:
+              description: "`zz_session` with `Max-Age=0`."
+              schema:
+                type: string
+        "403":
+          description: "`origin_not_allowed`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /users/@me:
+    get:
+      tags: [users]
+      operationId: getCurrentUser
+      summary: The signed-in user
+      responses:
+        "200":
+          description: The account of the session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: "`unauthenticated`: no valid session."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    patch:
+      tags: [users]
+      operationId: updateCurrentUser
+      summary: Change the profile
+      description: |
+        Changes the fields that are present; an empty object changes nothing.
+        `display_name` is trimmed and must then be 1 to 32 characters with a
+        visible character and no control or bidirectional control characters.
+        A change is announced as `USER_UPDATE` to the user and everyone
+        sharing a server with them.
+
+        Profile writes (this operation and the avatar PUT and DELETE) share a
+        limit of 10 per 10 minutes per user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+      responses:
+        "200":
+          description: The updated account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: "`invalid_body`, `body_too_large` or `validation_failed` (with `errors`)."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed`."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /users/@me/password:
+    post:
+      tags: [users]
+      operationId: changePassword
+      summary: Change the password
+      description: |
+        Checks `current_password`, sets `new_password` and signs out every
+        other session of the user; the session making the request stays.
+        A wrong `current_password` is `400 validation_failed` with an error
+        on that field (not 401: the session itself is fine).
+
+        Limited to 5 requests per 15 minutes per user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+      responses:
+        "204":
+          description: The password was changed.
+        "400":
+          description: "`invalid_body`, `body_too_large` or `validation_failed` (with `errors` on `current_password` or `new_password`)."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed`."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/ServerBusy"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /users/@me/avatar:
+    put:
+      tags: [users]
+      operationId: setAvatar
+      summary: Upload an avatar
+      description: |
+        `multipart/form-data` with the image in the part `file`: PNG, JPEG,
+        WebP or GIF (first frame), at most 4 MiB and 4096 pixels on a side
+        (4096x4096 = 16 Mi pixels in all). JPEG EXIF orientation is applied
+        and a JPEG may have at most 100 scans. Images that would need more than
+        256 MiB to decode (e.g. a progressive JPEG or a 16-bit interlaced PNG
+        near the size cap) are refused with `unsupported_image`. The type is
+        detected from the content; the
+        file name and the part's Content-Type are ignored. The image is cut
+        to a centred square, scaled to 256x256 and stored as PNG without
+        metadata; the same image always gets the same `avatar_url`. The
+        upload may take up to 120 seconds. A change is announced as
+        `USER_UPDATE`. Counts against the profile-write limit (10 per 10
+        minutes per user, shared with `PATCH /users/@me`). A user may have
+        at most 2 uploads (avatars and icons) in flight; a third is refused
+        `429 rate_limited` before its body is read.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/AvatarUpload"
+      responses:
+        "200":
+          description: The account with its new `avatar_url`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: |
+            `unsupported_image` (not a supported image, unreadable, too
+            many pixels or scans, or too much memory needed to decode), `invalid_body` (malformed multipart) or
+            `validation_failed` (no `file` part).
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed`."
+          $ref: "#/components/responses/Problem"
+        "413":
+          description: "`file_too_large`: the file is over 4 MiB."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`: the body is not multipart/form-data."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/ImagesBusy"
+        "500":
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [users]
+      operationId: deleteAvatar
+      summary: Remove the avatar
+      description: |
+        Clears the avatar (a no-op without one). A change is announced as
+        `USER_UPDATE`. Counts against the profile-write limit.
+      responses:
+        "200":
+          description: The account with `avatar_url` null.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /files/avatars/{user_id}/{hash}.png:
+    get:
+      tags: [files]
+      operationId: getAvatarFile
+      security: []
+      summary: An avatar image
+      description: The content behind a URL never changes, so it may be cached forever.
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+        - $ref: "#/components/parameters/FileHash"
+      responses:
+        "200":
+          $ref: "#/components/responses/ImageFile"
+        "404":
+          description: "`not_found`: no such file (also for malformed IDs or hashes)."
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /files/icons/{guild_id}/{hash}.png:
+    get:
+      tags: [files]
+      operationId: getGuildIconFile
+      security: []
+      summary: A server icon image
+      description: The content behind a URL never changes, so it may be cached forever.
+      parameters:
+        - name: guild_id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/Snowflake"
+        - $ref: "#/components/parameters/FileHash"
+      responses:
+        "200":
+          $ref: "#/components/responses/ImageFile"
+        "404":
+          description: "`not_found`: no such file (also for malformed IDs or hashes)."
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /admin/settings:
+    get:
+      tags: [admin]
+      operationId: getInstanceSettings
+      summary: Instance settings
+      description: |
+        Only for instance administrators (`ZAZZZOR_ADMIN_USERNAMES`), like every
+        `/admin` operation. All `/admin` requests of one administrator
+        together are limited to 30 per minute.
+      responses:
+        "200":
+          description: The current settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstanceSettings"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`admin_only`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    patch:
+      tags: [admin]
+      operationId: updateInstanceSettings
+      summary: Change instance settings
+      description: |
+        Changes the fields that are present. With `registration_open` false,
+        `POST /auth/register` answers `403 registration_closed`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateInstanceSettingsRequest"
+      responses:
+        "200":
+          description: The settings after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstanceSettings"
+        "400":
+          description: "`invalid_body` or `body_too_large`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `admin_only`."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /admin/users:
+    get:
+      tags: [admin]
+      operationId: findUser
+      summary: Find a user by username
+      description: |
+        Looks an account up by its exact username (compared
+        case-insensitively, as usernames are stored lower-cased), to get
+        the ID the other `/admin/users` operations take.
+      parameters:
+        - name: username
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+        "400":
+          description: "`validation_failed`: no `username`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`admin_only`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no account has that username."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /admin/users/{user_id}/password-reset:
+    post:
+      tags: [admin]
+      operationId: resetUserPassword
+      summary: Reset a user's password
+      description: |
+        Replaces the password with a random 16-character one, returned only
+        in this response, and signs out every session of the user.
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+      responses:
+        "200":
+          description: The temporary password.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemporaryPassword"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `admin_only`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such user."
+          $ref: "#/components/responses/Problem"
+        "503":
+          $ref: "#/components/responses/ServerBusy"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /admin/users/{user_id}/disable:
+    post:
+      tags: [admin]
+      operationId: disableUser
+      summary: Disable an account
+      description: |
+        The user is signed out everywhere and cannot sign in (`403
+        account_disabled`) until enabled again. Idempotent. Administrators
+        cannot disable themselves.
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+      responses:
+        "204":
+          description: The account is disabled.
+        "400":
+          description: "`cannot_disable_self`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `admin_only`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such user."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /admin/users/{user_id}/enable:
+    post:
+      tags: [admin]
+      operationId: enableUser
+      summary: Enable an account
+      description: Lets a disabled account sign in again. Idempotent.
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+      responses:
+        "204":
+          description: The account is enabled.
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `admin_only`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such user."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /guilds:
+    post:
+      tags: [guilds]
+      operationId: createGuild
+      summary: Create a server
+      description: |
+        Creates a server owned by the caller, who becomes its first member.
+        It gets the `@everyone` role (ID equal to the server's, position 0)
+        with the default permissions. `name` is trimmed and must then be 2
+        to 100 characters with a visible character and no control or
+        bidirectional control characters. A user can be in at most 100
+        servers (`400 too_many_guilds`). Announced as `GUILD_CREATE` to the
+        creator. Limited to 5 creations per hour per user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGuildRequest"
+      responses:
+        "201":
+          description: The new server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Guild"
+        "400":
+          description: "`invalid_body`, `body_too_large`, `validation_failed` (with `errors`) or `too_many_guilds`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed`."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /users/@me/guilds:
+    get:
+      tags: [guilds]
+      operationId: listMyGuilds
+      summary: The servers of the signed-in user
+      description: |
+        All servers the user is a member of, ascending by ID. Not paginated:
+        a user is in at most 100 servers.
+      responses:
+        "200":
+          description: The servers.
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 100
+                items:
+                  $ref: "#/components/schemas/Guild"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /users/@me/guilds/{guild_id}:
+    delete:
+      tags: [guilds]
+      operationId: leaveGuild
+      summary: Leave a server
+      description: |
+        The owner cannot leave (`400 owner_cannot_leave`); they delete the
+        server instead. The remaining members get `GUILD_MEMBER_REMOVE`,
+        the user `GUILD_DELETE`. The user's channel overwrites in the
+        server are deleted, so rejoining does not restore them. Counts
+        against the write limit (30 per minute per user, shared by every
+        server, role and member write).
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+      responses:
+        "204":
+          description: The user left the server.
+        "400":
+          description: "`owner_cannot_leave`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /guilds/{guild_id}:
+    get:
+      tags: [guilds]
+      operationId: getGuild
+      summary: A server
+      description: Only for members; to anyone else the server does not exist.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+      responses:
+        "200":
+          description: The server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Guild"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    patch:
+      tags: [guilds]
+      operationId: updateGuild
+      summary: Change a server
+      description: |
+        Needs `MANAGE_GUILD`. `name` follows the rules of creation. A change
+        is announced as `GUILD_UPDATE` to the members. Counts against the
+        write limit.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateGuildRequest"
+      responses:
+        "200":
+          description: The server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Guild"
+        "400":
+          description: "`invalid_body`, `body_too_large` or `validation_failed` (with `errors`)."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [guilds]
+      operationId: deleteGuild
+      summary: Delete a server
+      description: |
+        Only the owner may; other members, administrators included, get
+        `403 missing_permission`. Everything in the server is deleted and
+        every member gets `GUILD_DELETE`. Counts against the write limit.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+      responses:
+        "204":
+          description: The server is gone.
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /guilds/{guild_id}/icon:
+    put:
+      tags: [guilds]
+      operationId: setGuildIcon
+      summary: Upload a server icon
+      description: |
+        Needs `MANAGE_GUILD`. `multipart/form-data` with the image in the
+        part `file`, under the same rules as an avatar (PNG, JPEG, WebP or
+        GIF, at most 4 MiB and 4096 pixels on a side, stored as a 256x256
+        PNG). The upload may take up to 120 seconds. A change is announced
+        as `GUILD_UPDATE`. Counts against the write limit. A user may have
+        at most 2 uploads (avatars and icons) in flight; a third is refused
+        `429 rate_limited` before its body is read.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/AvatarUpload"
+      responses:
+        "200":
+          description: The server with its new `icon_url`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Guild"
+        "400":
+          description: "`unsupported_image`, `invalid_body` (malformed multipart) or `validation_failed` (no `file` part)."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "413":
+          description: "`file_too_large`: the file is over 4 MiB."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`: the body is not multipart/form-data."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/ImagesBusy"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /guilds/{guild_id}/members:
+    get:
+      tags: [guilds]
+      operationId: listGuildMembers
+      summary: Members of a server
+      description: Ascending by user ID, a page at a time; pass the last `user.id` as `after` for the next page.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+        - name: after
+          in: query
+          description: Only members with a user ID above this one.
+          schema:
+            $ref: "#/components/schemas/Snowflake"
+        - name: limit
+          in: query
+          description: Page size, 1 to 1000 (default 100).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+      responses:
+        "200":
+          description: A page of members.
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 1000
+                items:
+                  $ref: "#/components/schemas/Member"
+        "400":
+          description: "`validation_failed`: bad `after` or `limit`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /guilds/{guild_id}/members/{user_id}:
+    patch:
+      tags: [guilds]
+      operationId: updateGuildMember
+      summary: Change a member
+      description: |
+        `nick`: one's own needs `CHANGE_NICKNAME`; another member's needs
+        `MANAGE_NICKNAMES` and a higher rank than theirs (never the owner).
+        It is trimmed and must then be 1 to 32 characters with a visible
+        character and no control or bidirectional control characters;
+        `null` or `""` clears it. `roles` replaces the member's roles (IDs
+        of this server, without `@everyone`): needs `MANAGE_ROLES`, and
+        every role added or removed must be below the caller's highest role
+        (the owner may change anyone's roles, their own included). The
+        change is announced as `GUILD_MEMBER_UPDATE`, a change of roles
+        also as `GUILD_SYNC`. Counts against the write limit.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+        - $ref: "#/components/parameters/UserID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMemberRequest"
+      responses:
+        "200":
+          description: The member.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Member"
+        "400":
+          description: "`invalid_body`, `body_too_large` or `validation_failed` (with `errors`)."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server or member, or the caller is not a member."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [guilds]
+      operationId: kickGuildMember
+      summary: Kick a member
+      description: |
+        Removes the member from the server; they may rejoin with an
+        invite. Needs `KICK_MEMBERS`, and the target must rank strictly
+        below the caller (by their highest role; the owner ranks above
+        everyone, and `ADMINISTRATOR` does not lift the rule): the owner
+        cannot be kicked (`403 role_hierarchy`), and nobody can kick
+        themself (`400 cannot_target_self`; to leave, use
+        `DELETE /users/@me/guilds/{guild_id}`). The member's channel
+        overwrites in the server are deleted. The remaining members get
+        `GUILD_MEMBER_REMOVE`, the kicked user `GUILD_DELETE` and nothing
+        more from the server. Counts against the write limit.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+        - $ref: "#/components/parameters/UserID"
+      responses:
+        "204":
+          description: The member was removed.
+        "400":
+          description: "`cannot_target_self`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed`, `missing_permission` or `role_hierarchy`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server or member, or the caller is not a member."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /guilds/{guild_id}/bans:
+    get:
+      tags: [guilds]
+      operationId: listGuildBans
+      summary: List the bans of a server
+      description: Needs `BAN_MEMBERS`. Oldest first, at most 1000.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+      responses:
+        "200":
+          description: The bans.
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 1000
+                items:
+                  $ref: "#/components/schemas/Ban"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /guilds/{guild_id}/bans/{user_id}:
+    get:
+      tags: [guilds]
+      operationId: getGuildBan
+      summary: Get the ban of a user
+      description: Needs `BAN_MEMBERS`.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+        - $ref: "#/components/parameters/UserID"
+      responses:
+        "200":
+          description: The ban.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ban"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: the user is not banned, no such server, or the caller is not a member."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    put:
+      tags: [guilds]
+      operationId: banGuildMember
+      summary: Ban a user
+      description: |
+        Bans an existing account from the server, member or not; a member
+        is removed in the same transaction, as by a kick (their overwrites
+        are deleted, the remaining members get `GUILD_MEMBER_REMOVE`, the
+        user `GUILD_DELETE`). A banned user cannot join until unbanned:
+        accepting an invite is `403 banned` and takes no use. Needs
+        `BAN_MEMBERS`; a member target must rank strictly below the caller
+        as for a kick (`403 role_hierarchy`, the owner never), and nobody
+        can ban themself (`400 cannot_target_self`). The body is optional.
+        `reason` is trimmed and must then be at most 512 characters with a
+        visible character and no control characters other than line
+        breaks, nor bidirectional control characters; `null`, `""` or
+        blank is no reason. Banning a banned user changes nothing, its
+        reason included. A new ban is announced as `GUILD_BAN_ADD`, only
+        to the members holding `BAN_MEMBERS`. Counts against the write
+        limit.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+        - $ref: "#/components/parameters/UserID"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BanRequest"
+      responses:
+        "204":
+          description: The user is banned.
+        "400":
+          description: "`cannot_target_self`, `invalid_body`, `body_too_large` or `validation_failed` (with `errors`)."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed`, `missing_permission` or `role_hierarchy`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such account or server, or the caller is not a member."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [guilds]
+      operationId: unbanGuildMember
+      summary: Lift a ban
+      description: |
+        Needs `BAN_MEMBERS`. Announced as `GUILD_BAN_REMOVE`, only to the
+        members holding `BAN_MEMBERS`. Counts against the write limit.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+        - $ref: "#/components/parameters/UserID"
+      responses:
+        "204":
+          description: The ban is lifted.
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: the user is not banned, no such server, or the caller is not a member."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /guilds/{guild_id}/roles:
+    get:
+      tags: [guilds]
+      operationId: listGuildRoles
+      summary: Roles of a server
+      description: Ascending by position; `@everyone` comes first at position 0.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+      responses:
+        "200":
+          description: The roles.
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 250
+                items:
+                  $ref: "#/components/schemas/Role"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    post:
+      tags: [guilds]
+      operationId: createGuildRole
+      summary: Create a role
+      description: |
+        Needs `MANAGE_ROLES`, and the caller must hold every permission the
+        role grants (owners and administrators may grant any). The role is
+        put right above `@everyone` (position 1); the others move up. At
+        most 250 roles per server, `@everyone` included
+        (`400 too_many_roles`). `name` is trimmed, 1 to 100 characters, with
+        a visible character and no control or bidirectional control
+        characters. Omitted fields default to no permissions, color 0 and
+        false. Announced as `GUILD_ROLE_CREATE` and `GUILD_SYNC`. Counts
+        against the write limit.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRoleRequest"
+      responses:
+        "201":
+          description: The new role.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Role"
+        "400":
+          description: |
+            `invalid_body` (also for a `permissions` value that is not a
+            decimal string), `body_too_large`, `validation_failed` (with
+            `errors`; also for unknown permission bits) or `too_many_roles`.
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    patch:
+      tags: [guilds]
+      operationId: reorderGuildRoles
+      summary: Reorder roles
+      description: |
+        Moves each listed role to its `position`; the other roles keep their
+        order around them, and all end up at the positions 1..n (a position
+        past the end means last). `@everyone` cannot be moved. Needs
+        `MANAGE_ROLES`; every role whose position changes must be below the
+        caller's highest role before and after the move. Announced as
+        `GUILD_ROLE_UPDATE` for every moved role and `GUILD_SYNC`. Counts
+        against the write limit.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              maxItems: 250
+              items:
+                $ref: "#/components/schemas/RolePosition"
+      responses:
+        "200":
+          description: All roles, by position.
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 250
+                items:
+                  $ref: "#/components/schemas/Role"
+        "400":
+          description: "`invalid_body`, `body_too_large` or `validation_failed` (`@everyone`, unknown role, duplicate role or position, position below 1)."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /guilds/{guild_id}/roles/{role_id}:
+    patch:
+      tags: [guilds]
+      operationId: updateGuildRole
+      summary: Change a role
+      description: |
+        Changes the fields that are present. Needs `MANAGE_ROLES` and a
+        highest role above this one (the owner may change any role); the
+        caller must hold every permission bit that changes. Of `@everyone`
+        only `permissions` can change. Announced as `GUILD_ROLE_UPDATE` and
+        `GUILD_SYNC`. Counts against the write limit.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+        - $ref: "#/components/parameters/RoleID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRoleRequest"
+      responses:
+        "200":
+          description: The role.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Role"
+        "400":
+          description: "`invalid_body`, `body_too_large` or `validation_failed` (with `errors`)."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server or role, or not a member."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [guilds]
+      operationId: deleteGuildRole
+      summary: Delete a role
+      description: |
+        Needs `MANAGE_ROLES` and a highest role above this one. `@everyone`
+        cannot be deleted (`400 cannot_delete_everyone`). The roles above
+        move down one position and the role's channel overwrites are
+        deleted. Announced as `GUILD_ROLE_DELETE` and `GUILD_SYNC`. Counts
+        against the write limit.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+        - $ref: "#/components/parameters/RoleID"
+      responses:
+        "204":
+          description: The role is gone.
+        "400":
+          description: "`cannot_delete_everyone`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server or role, or not a member."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /guilds/{guild_id}/channels:
+    get:
+      tags: [channels]
+      operationId: listGuildChannels
+      summary: Channels of a server
+      description: |
+        The channels and categories the caller may view (`VIEW_CHANNEL`), in
+        display order: the top level by position, each category followed by
+        its channels by position. Not paginated: a server has at most 500
+        channels.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+      responses:
+        "200":
+          description: The visible channels.
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 500
+                items:
+                  $ref: "#/components/schemas/Channel"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    post:
+      tags: [channels]
+      operationId: createGuildChannel
+      summary: Create a channel or category
+      description: |
+        Needs `MANAGE_CHANNELS` in the server. `name` is trimmed and must
+        then be 1 to 100 characters with a visible character and no control
+        or bidirectional control characters. `topic` (text channels only)
+        is trimmed, at most 1024 characters, may span lines and has no
+        other control or bidirectional control characters; blank means
+        none. `parent_id` must be a category of this server the caller can
+        see; a category has no parent. The channel goes last in its parent
+        (or the top level); in a category it starts synced with it. At most
+        500 channels per server, categories included
+        (`400 too_many_channels`). Announced as `CHANNEL_CREATE` to the
+        members who can view it. Counts against the channel write limit
+        (30 per minute per user, shared by every channel and overwrite
+        write).
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChannelRequest"
+      responses:
+        "201":
+          description: The new channel.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+        "400":
+          description: "`invalid_body`, `body_too_large`, `validation_failed` (with `errors`) or `too_many_channels`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    patch:
+      tags: [channels]
+      operationId: reorderGuildChannels
+      summary: Reorder and move channels
+      description: |
+        Moves each listed channel to `position` within its parent, or
+        within `parent_id` when given (`null`: the top level). The other
+        channels keep their order around them and every parent (the top
+        level being one) is renumbered densely to the positions 0..n-1:
+        gaps in the requested positions are accepted and closed, a position
+        past the end means last, while a channel listed twice, a position
+        listed twice in one parent and a negative position are refused.
+        Every listed channel and parent must be one the caller can see,
+        parents must be categories of this server, and a category stays at
+        the top level. A synced channel that changes parent keeps the
+        overwrites it had as its own and stops being synced, so a move
+        never changes who can see it; only `sync_permissions` re-syncs.
+        Needs
+        `MANAGE_CHANNELS` in the server. Announced as `CHANNEL_UPDATE` for
+        every channel that moved and, when a parent changed, `GUILD_SYNC`.
+        Counts against the channel write limit.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              maxItems: 500
+              items:
+                $ref: "#/components/schemas/ChannelPosition"
+      responses:
+        "200":
+          description: The channels the caller can see, in display order.
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 500
+                items:
+                  $ref: "#/components/schemas/Channel"
+        "400":
+          description: |
+            `invalid_body`, `body_too_large` or `validation_failed` (unknown
+            channel or parent, a channel or a position listed twice in one
+            parent, a negative or missing position, a category in a category).
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /channels/{channel_id}:
+    get:
+      tags: [channels]
+      operationId: getChannel
+      summary: A channel
+      description: Only for members who may view it; to anyone else it does not exist.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      responses:
+        "200":
+          description: The channel.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such channel, or the caller may not view it."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    patch:
+      tags: [channels]
+      operationId: updateChannel
+      summary: Change a channel
+      description: |
+        Changes the fields that are present. Needs `MANAGE_CHANNELS` in the
+        channel; `sync_permissions` also needs `MANAGE_ROLES` there.
+        `name` and `topic` follow the rules of creation (`topic: null`
+        clears it). `parent_id` moves the channel to the end of that
+        category (`null`: of the top level), under the rules of reordering:
+        a synced channel keeps its overwrites as its own and is no longer
+        synced. `sync_permissions: true` replaces the channel's overwrites
+        with a copy of its category's and keeps following them; it is
+        authorized like setting each overwrite that changes (every changed
+        bit held by the caller, every changed role target below the
+        caller's highest role). `false` keeps the current ones as the
+        channel's own. Announced as `CHANNEL_UPDATE` for
+        every channel that changed and, when the parent or the sync
+        changed, `GUILD_SYNC`. Counts against the channel write limit.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateChannelRequest"
+      responses:
+        "200":
+          description: The channel.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+        "400":
+          description: "`invalid_body`, `body_too_large` or `validation_failed` (with `errors`)."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such channel, or the caller may not view it."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [channels]
+      operationId: deleteChannel
+      summary: Delete a channel or category
+      description: |
+        Needs `MANAGE_CHANNELS` in the channel. The channels of a deleted
+        category move to the end of the top level, keeping its overwrites
+        as their own if they were synced. Its invites are deleted with it.
+        Announced as `CHANNEL_DELETE` to the members who could view it, and
+        `CHANNEL_UPDATE` for every channel that moved. Counts against the
+        channel write limit.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      responses:
+        "204":
+          description: The channel is gone.
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such channel, or the caller may not view it."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /channels/{channel_id}/permissions/{target_id}:
+    put:
+      tags: [channels]
+      operationId: putChannelOverwrite
+      summary: Set a permission overwrite
+      description: |
+        Sets the allow/deny pair of a role of this server (`type` 0;
+        `@everyone` has the server's ID) or a member (`type` 1) in the
+        channel. Needs `MANAGE_ROLES` in the channel, every bit that
+        changes in `allow` or `deny` must be one the caller holds in the
+        server (owners and administrators may change any), and a target
+        role must be below the caller's highest role (except for the
+        owner). A member target has no rank check, as in Discord.
+        `ADMINISTRATOR`, unknown bits and a bit in both masks are
+        refused. A synced channel stops being synced: it keeps its
+        category's overwrites as its own, with this change. Announced as
+        `CHANNEL_UPDATE` and `GUILD_SYNC`. Counts against the channel write
+        limit.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+        - $ref: "#/components/parameters/TargetID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OverwriteRequest"
+      responses:
+        "200":
+          description: The channel with its overwrites.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+        "400":
+          description: |
+            `invalid_body` (also for a mask that is not a decimal string),
+            `body_too_large` or `validation_failed` (with `errors`).
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such channel (or the caller may not view it), or the target is not a role or member of this server."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [channels]
+      operationId: deleteChannelOverwrite
+      summary: Remove a permission overwrite
+      description: |
+        Removes the overwrite of the target under the rules of setting one
+        (every bit it held counts as changed). Removing one that is not
+        there changes nothing; one of a deleted role or a former member can
+        always be removed. Announced as `CHANNEL_UPDATE` and `GUILD_SYNC`
+        when something changed. Counts against the channel write limit.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+        - $ref: "#/components/parameters/TargetID"
+      responses:
+        "204":
+          description: The overwrite is gone.
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such channel, or the caller may not view it."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /channels/{channel_id}/messages:
+    get:
+      tags: [messages]
+      operationId: listMessages
+      summary: Message history of a channel
+      description: |
+        Needs `VIEW_CHANNEL` and `READ_MESSAGE_HISTORY` in the channel.
+        Without `before` and `after`, or with `before`, the newest messages
+        (older than `before`) come first; with `after`, the oldest messages
+        newer than it come first. `before` and `after` together are refused.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+        - name: before
+          in: query
+          description: Only messages with an ID below this one, newest first.
+          schema:
+            $ref: "#/components/schemas/Snowflake"
+        - name: after
+          in: query
+          description: Only messages with an ID above this one, oldest first.
+          schema:
+            $ref: "#/components/schemas/Snowflake"
+        - name: limit
+          in: query
+          description: Page size, 1 to 100 (default 50).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: A page of messages, without `nonce`.
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 100
+                items:
+                  $ref: "#/components/schemas/Message"
+        "400":
+          description: "`validation_failed`: bad `before`, `after` or `limit`, or both `before` and `after`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`missing_permission`: no `READ_MESSAGE_HISTORY`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such channel, or the caller may not view it."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    post:
+      tags: [messages]
+      operationId: createMessage
+      summary: Send a message
+      description: |
+        Needs `SEND_MESSAGES` in a text channel. `content` is trimmed of
+        white space at both ends and must then be 1 to 4000 characters
+        (Unicode code points) with at least one visible character (not only
+        spaces, zero-width or other format characters, separators or
+        combining marks). A reply also needs `READ_MESSAGE_HISTORY`;
+        `reply_to_id` must be a message of the same channel. `nonce` (at
+        most 64 characters) is echoed in the response and in
+        `MESSAGE_CREATE` but not stored. Announced as
+        `MESSAGE_CREATE` to the members who can view the channel. Limited
+        to 5 per second (bursts of 10) per user.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMessageRequest"
+      responses:
+        "201":
+          description: The new message, with `nonce` if one was sent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "400":
+          description: |
+            `invalid_body`, `body_too_large`, `validation_failed` (with
+            `errors`) or `not_a_text_channel`.
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such channel, or the caller may not view it."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /channels/{channel_id}/messages/{message_id}:
+    patch:
+      tags: [messages]
+      operationId: updateMessage
+      summary: Edit a message
+      description: |
+        Only the author may, while they can view the channel. Without
+        `READ_MESSAGE_HISTORY`, messages of others are `404 not_found`.
+        `content` follows the rules of sending; `edited_at` is set to the server's
+        time. The same content again changes nothing and announces nothing;
+        otherwise announced as `MESSAGE_UPDATE`. Edits and deletions share
+        a limit of 10 per second (bursts of 20) per user.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+        - $ref: "#/components/parameters/MessageID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMessageRequest"
+      responses:
+        "200":
+          description: The message.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "400":
+          description: "`invalid_body`, `body_too_large` or `validation_failed` (with `errors`)."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission` (not the author)."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such channel (or the caller may not view it), or no such message in it."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [messages]
+      operationId: deleteMessage
+      summary: Delete a message
+      description: |
+        Its author or a member with `MANAGE_MESSAGES` in the channel may,
+        while they can view it. Without `READ_MESSAGE_HISTORY`, messages of
+        others are `404 not_found`. Replies to it keep `reply_to_id` and get
+        `referenced_message: null`. Announced as `MESSAGE_DELETE` with
+        `{id, channel_id, guild_id}`. Shares the edit limit.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+        - $ref: "#/components/parameters/MessageID"
+      responses:
+        "204":
+          description: The message is gone.
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such channel (or the caller may not view it), or no such message in it."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /channels/{channel_id}/typing:
+    post:
+      tags: [messages]
+      operationId: triggerTyping
+      summary: Show that the caller is typing
+      description: |
+        Needs `SEND_MESSAGES` in a text channel. Announced as `TYPING_START`
+        (`{channel_id, guild_id, user_id, timestamp}`) to the members who
+        can view the channel, except the caller. At most once per 3 seconds
+        per user and channel; calls in between succeed without announcing
+        anything. Limited to 5 calls per second (bursts of 10) per user.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      responses:
+        "204":
+          description: Noted.
+        "400":
+          description: "`not_a_text_channel`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such channel, or the caller may not view it."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /channels/{channel_id}/invites:
+    post:
+      tags: [invites]
+      operationId: createInvite
+      summary: Create an invite
+      description: |
+        Needs `CREATE_INVITE` in the channel. The code is 8 random base62
+        characters. `max_age_seconds` 0 means it never expires (default
+        604800, a week); `max_uses` 0 means unlimited (the default).
+        Limited to 20 creations per hour per user.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInviteRequest"
+      responses:
+        "201":
+          description: The new invite.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invite"
+        "400":
+          description: "`invalid_body`, `body_too_large` or `validation_failed` (with `errors`)."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such channel, or the caller may not view it."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /guilds/{guild_id}/invites:
+    get:
+      tags: [invites]
+      operationId: listGuildInvites
+      summary: Invites of a server
+      description: |
+        Needs `MANAGE_GUILD`. Newest first, at most 1000, expired and used
+        up ones included; only invites to channels the caller can see.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+      responses:
+        "200":
+          description: The invites.
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 1000
+                items:
+                  $ref: "#/components/schemas/Invite"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /invites/{code}:
+    get:
+      tags: [invites]
+      operationId: previewInvite
+      summary: Preview an invite
+      description: |
+        What the invite leads to, for any signed-in user; `channel` is the
+        channel its creator chose, shown by name even to non-members. An
+        unknown or
+        malformed code is `404 not_found`. Previews, joins and deletions by
+        code share a limit of 30 per minute per user, so codes cannot be
+        guessed by trying.
+      parameters:
+        - $ref: "#/components/parameters/InviteCode"
+      responses:
+        "200":
+          description: The invite.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invite"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such invite."
+          $ref: "#/components/responses/Problem"
+        "410":
+          description: "`invite_expired` or `invite_exhausted` (every use is taken)."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    post:
+      tags: [invites]
+      operationId: joinInvite
+      summary: Join a server through an invite
+      description: |
+        Makes the caller a member and takes one use, atomically: of
+        concurrent joins with the last use left exactly one succeeds. A
+        member already in the server gets it back without taking a use,
+        whatever the invite's state. Announced as `GUILD_MEMBER_ADD` to the
+        members and `GUILD_CREATE` to the new member. A user can be in at
+        most 100 servers (`400 too_many_guilds`). A user banned from the
+        server is refused (`403 banned`) without taking a use. Shares the
+        by-code limit.
+      parameters:
+        - $ref: "#/components/parameters/InviteCode"
+      responses:
+        "200":
+          description: The server joined.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Guild"
+        "400":
+          description: "`too_many_guilds`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `banned` (the caller is banned from the server)."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such invite."
+          $ref: "#/components/responses/Problem"
+        "410":
+          description: "`invite_expired` or `invite_exhausted`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [invites]
+      operationId: deleteInvite
+      summary: Delete an invite
+      description: |
+        Its creator or a member with `MANAGE_GUILD` may; to anyone outside
+        the server it does not exist. Shares the by-code limit.
+      parameters:
+        - $ref: "#/components/parameters/InviteCode"
+      responses:
+        "204":
+          description: The invite is gone.
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such invite, or not a member of its server."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /gateway:
+    get:
+      tags: [gateway]
+      operationId: connectGateway
+      summary: Realtime WebSocket gateway
+      description: |
+        WebSocket upgrade (`wss://<host>/api/v1/gateway`). The session cookie
+        authenticates the connection and the `Origin` header must be one of
+        the allowed origins; both are checked before the upgrade, so a
+        refusal is an ordinary problem+json response. After the upgrade the
+        protocol of the top-level `x-gateway` section applies: text frames
+        `{op, t?, s?, d}`, HELLO, READY, heartbeats, permission-filtered
+        events and close codes.
+
+        The checks run in this order: `Origin` (403); upgrade attempts per
+        client address, IPv4 or IPv6 /64, counted before the session is
+        looked at (30 per minute, burst 10; 429 `rate_limited`); the session
+        (401); upgrades per user (10 per minute, burst 5; 429
+        `rate_limited`); open connections of the user (at most 10; 429
+        `too_many_connections`); open connections in all (at most 500; 503
+        `server_busy`); finally the upgrade headers (426).
+      responses:
+        "101":
+          description: Switching Protocols; the connection is a WebSocket now.
+        "401":
+          description: "`unauthenticated`: no valid session cookie."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed`: missing or foreign `Origin`."
+          $ref: "#/components/responses/Problem"
+        "426":
+          description: "`upgrade_required`: not a WebSocket upgrade request."
+          $ref: "#/components/responses/Problem"
+        "429":
+          description: |
+            `rate_limited`: too many upgrades from this address or this user;
+            retry after `Retry-After` seconds. `too_many_connections`: the
+            user already has 10 gateway connections open; close one first
+            (no `Retry-After`).
+            Clients retry with jittered exponential backoff (see `x-gateway`),
+            never sooner than `Retry-After`.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying (with `rate_limited`).
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+        "503":
+          description: |
+            `server_busy`: the server has 500 gateway connections open, or its
+            database is overloaded. Retry after `Retry-After` seconds.
+            Clients retry with jittered exponential backoff (see `x-gateway`),
+            never sooner than `Retry-After`.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              required: true
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: zz_session
+      description: |
+        Opaque session token set by the login endpoint (HttpOnly, Secure,
+        SameSite=Lax). Any response to a request made with a valid session
+        may carry `Set-Cookie: zz_session=...` with the same token: the
+        session is renewed for 30 more days at most once a day when used
+        (sliding expiry). Clients must accept it on every operation.
+  headers:
+    SessionCookie:
+      description: |
+        `zz_session=<token>; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax`.
+        The token is 32 random bytes, base64url; the server stores only its
+        SHA-256. The session lasts 30 days from its last renewal and is
+        renewed (cookie re-sent) at most once a day when used.
+      schema:
+        type: string
+  parameters:
+    UserID:
+      name: user_id
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Snowflake"
+    GuildID:
+      name: guild_id
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Snowflake"
+    RoleID:
+      name: role_id
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Snowflake"
+    FileHash:
+      name: hash
+      in: path
+      required: true
+      description: First 16 hex digits of the SHA-256 of the stored PNG.
+      schema:
+        type: string
+        pattern: "^[0-9a-f]{16}$"
+    ChannelID:
+      name: channel_id
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Snowflake"
+    TargetID:
+      name: target_id
+      in: path
+      required: true
+      description: The role or member the overwrite is for.
+      schema:
+        $ref: "#/components/schemas/Snowflake"
+    MessageID:
+      name: message_id
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Snowflake"
+    InviteCode:
+      name: code
+      in: path
+      required: true
+      description: 8 base62 characters; anything else is `404 not_found`.
+      schema:
+        type: string
+  responses:
+    ImageFile:
+      description: |
+        The PNG image. Sent with `Cache-Control: public, max-age=31536000,
+        immutable`, `X-Content-Type-Options: nosniff` and
+        `Content-Security-Policy: default-src 'none'; sandbox`.
+      headers:
+        Cache-Control:
+          required: true
+          schema:
+            type: string
+            const: "public, max-age=31536000, immutable"
+      content:
+        image/png: {}
+    ImagesBusy:
+      description: |
+        `server_busy`: too many uploads are in flight (8 at once, refused
+        before the body is read) or too many images are being decoded at once.
+        Retry after `Retry-After` seconds.
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying.
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Problem:
+      description: An error, described as RFC 7807 problem details.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    ServerBusy:
+      description: |
+        `server_busy`: every password-hashing slot stayed taken for 3 seconds.
+        Retry after `Retry-After` seconds (5).
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying.
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    RateLimited:
+      description: |
+        `rate_limited`: too many requests from this client (per IPv4 address
+        or IPv6 /64) or this user (where the operation says so), or, on login, too many failed attempts for this
+        username (10 per 15 minutes from any address). Retry after
+        `Retry-After` seconds.
+      headers:
+        Retry-After:
+          description: Seconds until the next request may succeed.
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+  schemas:
+    Snowflake:
+      type: string
+      pattern: "^[0-9]{1,19}$"
+      description: |
+        64-bit snowflake ID as a decimal string (41 bits of milliseconds since
+        2026-01-01T00:00:00Z, 10 bits of worker, 12 bits of sequence). Kept a
+        string so JavaScript clients never lose precision.
+      examples: ["1234567890123456789"]
+    Status:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          const: ok
+    FieldError:
+      type: object
+      additionalProperties: false
+      required: [field, message]
+      properties:
+        field:
+          type: string
+          description: Request field (snake_case, dotted for nesting) that failed validation.
+        message:
+          type: string
+    Problem:
+      type: object
+      additionalProperties: false
+      required: [type, title, status, code]
+      properties:
+        type:
+          type: string
+          pattern: "^urn:zazzzor:error:[a-z0-9_]+$"
+          examples: ["urn:zazzzor:error:missing_permission"]
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+        code:
+          type: string
+          pattern: "^[a-z0-9_]+$"
+          description: Stable machine-readable error code.
+          examples: [missing_permission]
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/FieldError"
+    User:
+      type: object
+      additionalProperties: false
+      required: [id, username, display_name, avatar_url, created_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        username:
+          type: string
+          pattern: "^[a-z0-9_.]{2,32}$"
+          description: Unique login name, lower-case.
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 32
+        avatar_url:
+          type: [string, "null"]
+          pattern: '^/api/v1/files/avatars/[0-9]{1,19}/[0-9a-f]{16}\.png$'
+          description: Path of the avatar image, or null when the user has none.
+        created_at:
+          type: string
+          format: date-time
+          examples: ["2026-10-21T12:00:00.000Z"]
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          pattern: "^[A-Za-z0-9_.]{2,32}$"
+          description: Latin letters, digits, `_` and `.`; stored lower-cased.
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+          description: 8 to 128 characters (Unicode code points).
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 32
+          description: 1 to 32 characters after trimming spaces; defaults to the username as typed.
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          description: Case-insensitive.
+        password:
+          type: string
+    UpdateUserRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 32
+    ChangePasswordRequest:
+      type: object
+      additionalProperties: false
+      required: [current_password, new_password]
+      properties:
+        current_password:
+          type: string
+        new_password:
+          type: string
+          minLength: 8
+          maxLength: 128
+          description: 8 to 128 characters (Unicode code points).
+    AvatarUpload:
+      type: object
+      required: [file]
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          description: PNG, JPEG, WebP or GIF, at most 4 MiB.
+    InstanceSettings:
+      type: object
+      additionalProperties: false
+      required: [registration_open]
+      properties:
+        registration_open:
+          type: boolean
+          description: Whether new accounts may register.
+    UpdateInstanceSettingsRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        registration_open:
+          type: boolean
+    AdminUser:
+      type: object
+      additionalProperties: false
+      required: [id, username, display_name, disabled, created_at]
+      description: An account as administrators see it.
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        username:
+          type: string
+        display_name:
+          type: string
+        disabled:
+          type: boolean
+          description: The account is disabled and cannot sign in.
+        created_at:
+          type: string
+          format: date-time
+    TemporaryPassword:
+      type: object
+      additionalProperties: false
+      required: [temporary_password]
+      properties:
+        temporary_password:
+          type: string
+          pattern: "^[A-Za-z0-9]{16}$"
+          description: Shown once; the user should change it after signing in.
+    Permission:
+      type: string
+      pattern: "^(0|[1-9][0-9]{0,19})$"
+      description: |
+        Permission bit mask as a decimal string; the bits are numbered as in
+        Discord (e.g. `ADMINISTRATOR` = 8, `MANAGE_ROLES` = 268435456).
+        Bits the server does not define are refused when set.
+      examples: ["268435456"]
+    Guild:
+      type: object
+      additionalProperties: false
+      required: [id, name, icon_url, owner_id, created_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        icon_url:
+          type: [string, "null"]
+          pattern: '^/api/v1/files/icons/[0-9]{1,19}/[0-9a-f]{16}\.png$'
+          description: Path of the icon image, or null when the server has none.
+        owner_id:
+          $ref: "#/components/schemas/Snowflake"
+        created_at:
+          type: string
+          format: date-time
+    Member:
+      type: object
+      additionalProperties: false
+      required: [user, nick, roles, joined_at]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        nick:
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 32
+        roles:
+          type: array
+          description: IDs of the member's roles, without `@everyone`.
+          items:
+            $ref: "#/components/schemas/Snowflake"
+        joined_at:
+          type: string
+          format: date-time
+    Role:
+      type: object
+      additionalProperties: false
+      required: [id, name, color, position, permissions, hoist, mentionable]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        color:
+          type: integer
+          minimum: 0
+          maximum: 16777215
+          description: RGB color; 0 means none.
+        position:
+          type: integer
+          minimum: 0
+          description: 0 for `@everyone`, the others 1..n; higher outranks lower.
+        permissions:
+          $ref: "#/components/schemas/Permission"
+        hoist:
+          type: boolean
+          description: Members are listed separately under this role.
+        mentionable:
+          type: boolean
+    CreateGuildRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+    UpdateGuildRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+    UpdateMemberRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        nick:
+          type: [string, "null"]
+          maxLength: 32
+        roles:
+          type: array
+          maxItems: 250
+          items:
+            $ref: "#/components/schemas/Snowflake"
+    CreateRoleRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        permissions:
+          $ref: "#/components/schemas/Permission"
+        color:
+          type: integer
+          minimum: 0
+          maximum: 16777215
+        hoist:
+          type: boolean
+        mentionable:
+          type: boolean
+    UpdateRoleRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        permissions:
+          $ref: "#/components/schemas/Permission"
+        color:
+          type: integer
+          minimum: 0
+          maximum: 16777215
+        hoist:
+          type: boolean
+        mentionable:
+          type: boolean
+    RolePosition:
+      type: object
+      additionalProperties: false
+      required: [id, position]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        position:
+          type: integer
+          minimum: 1
+    ChannelType:
+      type: integer
+      enum: [0, 2, 4]
+      description: 0 text, 2 voice, 4 category.
+    Overwrite:
+      type: object
+      additionalProperties: false
+      required: [id, type, allow, deny]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        type:
+          type: integer
+          enum: [0, 1]
+          description: 0 a role (`@everyone` has the server's ID), 1 a member.
+        allow:
+          $ref: "#/components/schemas/Permission"
+        deny:
+          $ref: "#/components/schemas/Permission"
+    Channel:
+      type: object
+      additionalProperties: false
+      required: [id, guild_id, type, name, topic, parent_id, position, permission_synced, permission_overwrites]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        guild_id:
+          $ref: "#/components/schemas/Snowflake"
+        type:
+          $ref: "#/components/schemas/ChannelType"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        topic:
+          type: [string, "null"]
+          maxLength: 1024
+        parent_id:
+          description: The category of the channel; null at the top level (always for a category).
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
+        position:
+          type: integer
+          minimum: 0
+          description: Dense (0..n-1) within the parent; the top level is one scope.
+        permission_synced:
+          type: boolean
+          description: The overwrites are the category's and follow it.
+        permission_overwrites:
+          type: array
+          description: The overwrites in effect (the category's when synced), by target ID.
+          items:
+            $ref: "#/components/schemas/Overwrite"
+    CreateChannelRequest:
+      type: object
+      additionalProperties: false
+      required: [name, type]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        type:
+          $ref: "#/components/schemas/ChannelType"
+        parent_id:
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
+        topic:
+          type: [string, "null"]
+          maxLength: 1024
+    UpdateChannelRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        topic:
+          type: [string, "null"]
+          maxLength: 1024
+        parent_id:
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
+        sync_permissions:
+          type: boolean
+    ChannelPosition:
+      type: object
+      additionalProperties: false
+      required: [id, position]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        position:
+          type: integer
+          minimum: 0
+        parent_id:
+          description: The new parent; null for the top level; absent keeps the parent.
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
+    OverwriteRequest:
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type:
+          type: integer
+          enum: [0, 1]
+        allow:
+          $ref: "#/components/schemas/Permission"
+        deny:
+          $ref: "#/components/schemas/Permission"
+    CreateInviteRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        max_age_seconds:
+          type: integer
+          minimum: 0
+          maximum: 2592000
+          default: 604800
+          description: Lifetime in seconds; 0 means it never expires.
+        max_uses:
+          type: integer
+          minimum: 0
+          maximum: 100
+          default: 0
+          description: How many joins it allows; 0 means unlimited.
+    Invite:
+      type: object
+      additionalProperties: false
+      required: [code, guild, channel, inviter, uses, max_uses, expires_at]
+      properties:
+        code:
+          type: string
+          pattern: "^[0-9A-Za-z]{8}$"
+        guild:
+          type: object
+          additionalProperties: false
+          required: [id, name, icon_url]
+          properties:
+            id:
+              $ref: "#/components/schemas/Snowflake"
+            name:
+              type: string
+            icon_url:
+              type: [string, "null"]
+              pattern: '^/api/v1/files/icons/[0-9]{1,19}/[0-9a-f]{16}\.png$'
+        channel:
+          type: object
+          additionalProperties: false
+          required: [id, name]
+          properties:
+            id:
+              $ref: "#/components/schemas/Snowflake"
+            name:
+              type: string
+        inviter:
+          $ref: "#/components/schemas/User"
+        uses:
+          type: integer
+          minimum: 0
+        max_uses:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: 0 means unlimited.
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: Null when it never expires.
+    MessageStub:
+      type: object
+      additionalProperties: false
+      required: [id, author, content]
+      description: The message a reply answers.
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        author:
+          description: Null when the account of the author no longer exists.
+          oneOf:
+            - $ref: "#/components/schemas/User"
+            - type: "null"
+        content:
+          type: string
+          minLength: 1
+          maxLength: 4000
+    Message:
+      type: object
+      additionalProperties: false
+      required: [id, channel_id, guild_id, author, content, created_at, edited_at, reply_to_id, referenced_message]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        channel_id:
+          $ref: "#/components/schemas/Snowflake"
+        guild_id:
+          $ref: "#/components/schemas/Snowflake"
+        author:
+          description: Null when the account of the author no longer exists.
+          oneOf:
+            - $ref: "#/components/schemas/User"
+            - type: "null"
+        content:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          description: 1 to 4000 characters (Unicode code points), trimmed.
+        created_at:
+          type: string
+          format: date-time
+        edited_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the content last changed; null if never.
+        reply_to_id:
+          description: The message this one answers, kept after that one is deleted.
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
+        referenced_message:
+          description: The message this one answers; null when not a reply or the original is deleted.
+          oneOf:
+            - $ref: "#/components/schemas/MessageStub"
+            - type: "null"
+        nonce:
+          type: string
+          maxLength: 64
+          description: Only in the response to sending and in `MESSAGE_CREATE`, when the client sent one.
+    CreateMessageRequest:
+      type: object
+      additionalProperties: false
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          description: 1 to 4000 characters (Unicode code points) after trimming white space.
+        reply_to_id:
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
+        nonce:
+          type: string
+          maxLength: 64
+          description: Client tag to match the response and the event to the request; not stored.
+    UpdateMessageRequest:
+      type: object
+      additionalProperties: false
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          description: 1 to 4000 characters (Unicode code points) after trimming white space.
+    GatewayFrame:
+      type: object
+      additionalProperties: false
+      required: [op, d]
+      description: |
+        A server frame. `t` and `s` are present exactly on DISPATCH (op 0);
+        `s` counts the DISPATCH frames of the connection from 1.
+      properties:
+        op:
+          type: integer
+          enum: [0, 10, 11]
+          description: 0 DISPATCH, 10 HELLO, 11 HEARTBEAT_ACK.
+        t:
+          type: string
+          description: The event type (a key of `x-gateway.events`).
+        s:
+          type: integer
+          minimum: 1
+        d:
+          description: The payload; null for HEARTBEAT_ACK.
+    GatewayHello:
+      type: object
+      additionalProperties: false
+      required: [heartbeat_interval_ms]
+      properties:
+        heartbeat_interval_ms:
+          type: integer
+          minimum: 1
+          description: Send HEARTBEAT this often (30000); 45 s without one closes the connection with 4009.
+    GatewayReady:
+      type: object
+      additionalProperties: false
+      required: [user, guilds, presences]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        guilds:
+          type: array
+          items:
+            $ref: "#/components/schemas/GuildState"
+        presences:
+          type: array
+          description: Everyone online who shares a server with the user, the user included.
+          items:
+            $ref: "#/components/schemas/Presence"
+    GuildState:
+      type: object
+      additionalProperties: false
+      required: [guild, roles, channels, members, my_member, presences]
+      description: A server as the receiving member sees it.
+      properties:
+        guild:
+          $ref: "#/components/schemas/Guild"
+        roles:
+          type: array
+          description: By position.
+          items:
+            $ref: "#/components/schemas/Role"
+        channels:
+          type: array
+          description: Only the channels the member may view, in display order.
+          items:
+            $ref: "#/components/schemas/Channel"
+        members:
+          type: array
+          maxItems: 1000
+          description: By user ID; at most the first 1000.
+          items:
+            $ref: "#/components/schemas/Member"
+        my_member:
+          $ref: "#/components/schemas/Member"
+        presences:
+          type: array
+          description: |
+            The online members of the server (the receiver included), all of
+            them, not capped like `members`.
+          items:
+            $ref: "#/components/schemas/Presence"
+    Presence:
+      type: object
+      additionalProperties: false
+      required: [user_id, status]
+      properties:
+        user_id:
+          $ref: "#/components/schemas/Snowflake"
+        status:
+          type: string
+          enum: [online, offline]
+    GuildDeleteEvent:
+      type: object
+      additionalProperties: false
+      required: [id]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+    MemberEvent:
+      type: object
+      additionalProperties: false
+      required: [guild_id, member]
+      properties:
+        guild_id:
+          $ref: "#/components/schemas/Snowflake"
+        member:
+          $ref: "#/components/schemas/Member"
+    Ban:
+      type: object
+      additionalProperties: false
+      required: [user, reason, created_at]
+      properties:
+        user:
+          description: Null only while the account is being removed (its bans go with it).
+          oneOf:
+            - $ref: "#/components/schemas/User"
+            - type: "null"
+        reason:
+          type: [string, "null"]
+          maxLength: 512
+        created_at:
+          type: string
+          format: date-time
+    BanRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        reason:
+          type: [string, "null"]
+    MemberRemoveEvent:
+      description: The payload of GUILD_MEMBER_REMOVE, GUILD_BAN_ADD and GUILD_BAN_REMOVE.
+      type: object
+      additionalProperties: false
+      required: [guild_id, user]
+      properties:
+        guild_id:
+          $ref: "#/components/schemas/Snowflake"
+        user:
+          $ref: "#/components/schemas/User"
+    RoleEvent:
+      type: object
+      additionalProperties: false
+      required: [guild_id, role]
+      properties:
+        guild_id:
+          $ref: "#/components/schemas/Snowflake"
+        role:
+          $ref: "#/components/schemas/Role"
+    RoleDeleteEvent:
+      type: object
+      additionalProperties: false
+      required: [guild_id, role_id]
+      properties:
+        guild_id:
+          $ref: "#/components/schemas/Snowflake"
+        role_id:
+          $ref: "#/components/schemas/Snowflake"
+    MessageDeleteEvent:
+      type: object
+      additionalProperties: false
+      required: [id, channel_id, guild_id]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        channel_id:
+          $ref: "#/components/schemas/Snowflake"
+        guild_id:
+          $ref: "#/components/schemas/Snowflake"
+    TypingStartEvent:
+      type: object
+      additionalProperties: false
+      required: [channel_id, guild_id, user_id, timestamp]
+      properties:
+        channel_id:
+          $ref: "#/components/schemas/Snowflake"
+        guild_id:
+          $ref: "#/components/schemas/Snowflake"
+        user_id:
+          $ref: "#/components/schemas/Snowflake"
+        timestamp:
+          type: string
+          format: date-time
+# The realtime protocol of GET /gateway after the upgrade. Frames are JSON
+# text messages; their schemas are in components.schemas above.
+x-gateway:
+  path: /gateway
+  frame:
+    $ref: "#/components/schemas/GatewayFrame"
+  description: |
+    Server to client: `op 10 HELLO` first (`d`: GatewayHello), then
+    `op 0 DISPATCH` frames with the event type `t`, the per-connection
+    sequence number `s` (from 1) and the payload `d`; READY is always the
+    first DISPATCH (`s` = 1). `op 11 HEARTBEAT_ACK` (`d`: null) answers each
+    heartbeat.
+
+    Client to server: only `op 1 HEARTBEAT` (e.g. `{"op": 1, "d": null}`;
+    `d` is ignored). A binary frame, invalid JSON, any other op or a frame
+    over 4096 bytes closes the connection with 4002.
+
+    Events are filtered by permission when they are sent: a channel event
+    reaches only members with VIEW_CHANNEL in it at that moment, a server
+    event only its current members. GUILD_CREATE (to a member who joined)
+    and GUILD_SYNC (to every member after a role, member-role, channel or
+    overwrite change) carry the receiver's own GuildState. A member who
+    leaves, is kicked or is banned gets GUILD_DELETE once and nothing more
+    from that server. GUILD_BAN_ADD and GUILD_BAN_REMOVE reach only the
+    members who hold BAN_MEMBERS when they are sent.
+
+    Reconnecting: after any close (1006 included) or a refused upgrade,
+    clients reconnect with jittered exponential backoff (e.g. a random
+    delay between 0 and min(30 s, 1 s x 2^attempt), reset after a READY),
+    and never sooner than a `Retry-After` the upgrade response carried.
+    Reconnecting at once in a loop only meets the upgrade limits.
+
+    Recipients are resolved when an event is sent, not when it happened: an
+    event published right around a permission or membership change may or
+    may not reach a member whose access changed with it (the GUILD_SYNC
+    that follows the change is authoritative). Events published while the
+    connection is being set up are sent after READY and may already be
+    reflected in it, so clients must apply every event idempotently:
+    upsert or delete by ID, never append blindly.
+
+    Presence: a user is `online` from their first connection and `offline`
+    5 seconds after their last one closed (a reconnection within that time
+    announces nothing). PRESENCE_UPDATE goes to everyone sharing a server
+    with the user, not to the user. Every GuildState (READY, GUILD_CREATE,
+    GUILD_SYNC) lists the online members of its server in `presences`.
+    After GUILD_MEMBER_ADD of an online user the other members get
+    PRESENCE_UPDATE online for them (possibly a repeat, so apply it
+    idempotently); the new member learns the others from GUILD_CREATE.
+    After GUILD_MEMBER_REMOVE the members who no longer share any server
+    with the removed user get PRESENCE_UPDATE offline for them (if they
+    were online), and the removed user gets PRESENCE_UPDATE offline for each
+    of those members who is online. After GUILD_DELETE of a deleted server
+    its former members who no longer share any server see each other go
+    offline the same way.
+  ops:
+    "0": DISPATCH
+    "1": HEARTBEAT
+    "10": HELLO
+    "11": HEARTBEAT_ACK
+  close_codes:
+    "4002": "decode_error: binary, invalid, unknown or oversized frame"
+    "4004": "authentication_failed: the session was revoked (logout, password change, account disabled)"
+    "4008": "overloaded: the server lost events or could not deliver an event of a server the client holds (reconnect to resync), or the connection fell more than 256 frames behind (a client that stopped reading may see only an abnormal closure)"
+    "4009": "session_timeout: no heartbeat for 45 seconds"
+    "1011": "internal_error: READY could not be built"
+    "1012": "service_restart: the server is stopping; reconnect"
+  events:
+    READY:
+      $ref: "#/components/schemas/GatewayReady"
+    GUILD_CREATE:
+      $ref: "#/components/schemas/GuildState"
+    GUILD_UPDATE:
+      $ref: "#/components/schemas/Guild"
+    GUILD_DELETE:
+      $ref: "#/components/schemas/GuildDeleteEvent"
+    GUILD_SYNC:
+      $ref: "#/components/schemas/GuildState"
+    GUILD_MEMBER_ADD:
+      $ref: "#/components/schemas/MemberEvent"
+    GUILD_MEMBER_UPDATE:
+      $ref: "#/components/schemas/MemberEvent"
+    GUILD_MEMBER_REMOVE:
+      $ref: "#/components/schemas/MemberRemoveEvent"
+    GUILD_BAN_ADD:
+      $ref: "#/components/schemas/MemberRemoveEvent"
+    GUILD_BAN_REMOVE:
+      $ref: "#/components/schemas/MemberRemoveEvent"
+    GUILD_ROLE_CREATE:
+      $ref: "#/components/schemas/RoleEvent"
+    GUILD_ROLE_UPDATE:
+      $ref: "#/components/schemas/RoleEvent"
+    GUILD_ROLE_DELETE:
+      $ref: "#/components/schemas/RoleDeleteEvent"
+    CHANNEL_CREATE:
+      $ref: "#/components/schemas/Channel"
+    CHANNEL_UPDATE:
+      $ref: "#/components/schemas/Channel"
+    CHANNEL_DELETE:
+      $ref: "#/components/schemas/Channel"
+    MESSAGE_CREATE:
+      $ref: "#/components/schemas/Message"
+    MESSAGE_UPDATE:
+      $ref: "#/components/schemas/Message"
+    MESSAGE_DELETE:
+      $ref: "#/components/schemas/MessageDeleteEvent"
+    TYPING_START:
+      $ref: "#/components/schemas/TypingStartEvent"
+    PRESENCE_UPDATE:
+      $ref: "#/components/schemas/Presence"
+    USER_UPDATE:
+      $ref: "#/components/schemas/User"

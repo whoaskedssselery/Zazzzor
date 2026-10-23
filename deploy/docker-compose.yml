@@ -22,9 +22,12 @@ services:
       ZAZZZOR_HTTPS_PORT: ${ZAZZZOR_HTTPS_PORT:?заполните ZAZZZOR_HTTPS_PORT в deploy/.env (обычно 443)}
       ACME_EMAIL: ${ACME_EMAIL:?заполните ACME_EMAIL в deploy/.env - ваша почта для Let's Encrypt}
       DUCKDNS_TOKEN: ${DUCKDNS_TOKEN:?заполните DUCKDNS_TOKEN в deploy/.env - токен со страницы duckdns.org}
+      ZAZZZOR_API_PORT: ${ZAZZZOR_API_PORT:-8080}
     volumes:
       - caddy_data:/data
       - caddy_config:/config
+    # Not on api: the connectivity page must come up even if the api build
+    # fails or Postgres never gets healthy; until then /api/* answers 502.
     depends_on:
       - livekit
     mem_limit: 256m
@@ -71,6 +74,100 @@ services:
     logging: *logging
     restart: unless-stopped
 
+  postgres:
+    image: postgres:${POSTGRES_VERSION:?заполните POSTGRES_VERSION в deploy/.env (см. deploy/.env.example)}
+    environment:
+      POSTGRES_USER: zazzzor
+      POSTGRES_DB: zazzzor
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?заполните POSTGRES_PASSWORD в deploy/.env - результат openssl rand -hex 24}
+    # PostgreSQL 18+ images keep data under /var/lib/postgresql/<major>/,
+    # so the volume goes on the parent directory.
+    volumes:
+      - pgdata:/var/lib/postgresql
+    networks:
+      - db
+    # Over TCP, not the socket: during the first initialisation the image runs
+    # a temporary server on the socket only, which must not count as ready.
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "zazzzor", "-d", "zazzzor"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+      start_interval: 2s
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256m
+    mem_limit: 1g
+    logging: *logging
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ../server
+      args:
+        VERSION: ${ZAZZZOR_VERSION:-dev}
+    image: zazzzor-api:local
+    environment:
+      # Hex password (see .env.example), so it needs no URL escaping.
+      ZAZZZOR_DATABASE_URL: postgres://zazzzor:${POSTGRES_PASSWORD}@postgres:5432/zazzzor?sslmode=disable
+      # Browsers omit :443 in Origin, so both forms are allowed: the bare
+      # domain and the domain with the public port (ZAZZZOR_PUBLIC_PORT, else
+      # ZAZZZOR_HTTPS_PORT). Smoke checks use the first one.
+      ZAZZZOR_ALLOWED_ORIGINS: https://${ZAZZZOR_DOMAIN},https://${ZAZZZOR_DOMAIN}:${ZAZZZOR_PUBLIC_PORT:-${ZAZZZOR_HTTPS_PORT}}
+      # Caddy (host network) reaches the published port through the gateway
+      # of the api bridge network; default Docker bridges are in 172.16.0.0/12.
+      # See deploy/README.md, «Сеть и адреса клиентов».
+      ZAZZZOR_TRUSTED_PROXIES: ${ZAZZZOR_TRUSTED_PROXIES:-172.16.0.0/12,127.0.0.1/32}
+      ZAZZZOR_ADMIN_USERNAMES: ${ZAZZZOR_ADMIN_USERNAMES:-}
+      ZAZZZOR_DATA_DIR: /data
+      # Below mem_limit, so the Go GC works harder before the kernel kills it.
+      # The server caps its load-dependent allocations (image decodes, password
+      # hashes, upload bodies) at 576 MiB in all; see the budget in
+      # server/internal/platform/upload/upload.go.
+      GOMEMLIMIT: 768MiB
+    # Only on the host's loopback, for Caddy. The metrics port (9090) is not
+    # published at all.
+    ports:
+      - "127.0.0.1:${ZAZZZOR_API_PORT:-8080}:8080"
+    networks:
+      - db
+      - api
+    volumes:
+      - apidata:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/zazzzor", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+      start_interval: 2s
+    # The server drains connections for up to 15 s on SIGTERM.
+    stop_grace_period: 20s
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    logging: *logging
+    restart: unless-stopped
+
+networks:
+  # Only postgres and api: no route out, no ports, unreachable from other
+  # containers on the host.
+  db:
+    internal: true
+  # api only, for its port on 127.0.0.1 (an internal network cannot publish).
+  api:
+
 volumes:
   caddy_data:
   caddy_config:
+  pgdata:
+  apidata:

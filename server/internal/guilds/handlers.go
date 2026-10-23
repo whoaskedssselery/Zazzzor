@@ -1,0 +1,454 @@
+package guilds
+
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"strconv"
+
+	"github.com/go-chi/chi/v5"
+
+	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
+	"github.com/whoaskedssselery/zazzzor/server/internal/files"
+	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/upload"
+)
+
+// Paging of GET /guilds/{id}/members.
+const (
+	defaultMembersLimit = 100
+	maxMembersLimit     = 1000
+)
+
+// Mount registers the guild endpoints on r, which must already run
+// auth.Middleware:
+//
+//	POST /guilds; GET /users/@me/guilds; DELETE /users/@me/guilds/{guild_id}
+//	GET, PATCH, DELETE /guilds/{guild_id}; PUT /guilds/{guild_id}/icon
+//	GET /guilds/{guild_id}/members; PATCH, DELETE (kick) /guilds/{guild_id}/members/{user_id}
+//	GET /guilds/{guild_id}/bans; GET, PUT, DELETE /guilds/{guild_id}/bans/{user_id}
+//	GET, POST, PATCH /guilds/{guild_id}/roles; PATCH, DELETE /guilds/{guild_id}/roles/{role_id}
+func Mount(r chi.Router, s *Service) {
+	r.Group(func(r chi.Router) {
+		r.Use(auth.Require, httpx.NoStore)
+		writes := r.With(auth.LimitPerUser(s.writeLimiter))
+
+		r.Post("/guilds", httpx.Wrap(s.handleCreate))
+		r.Get("/users/@me/guilds", httpx.Wrap(s.handleList))
+		writes.Delete("/users/@me/guilds/{guild_id}", httpx.Wrap(s.handleLeave))
+
+		r.Get("/guilds/{guild_id}", httpx.Wrap(s.handleGet))
+		writes.Patch("/guilds/{guild_id}", httpx.Wrap(s.handlePatch))
+		writes.Delete("/guilds/{guild_id}", httpx.Wrap(s.handleDelete))
+		writes.With(upload.Limit(auth.UserKey)).Put("/guilds/{guild_id}/icon", httpx.Wrap(s.handlePutIcon))
+
+		r.Get("/guilds/{guild_id}/members", httpx.Wrap(s.handleMembers))
+		writes.Patch("/guilds/{guild_id}/members/{user_id}", httpx.Wrap(s.handlePatchMember))
+		writes.Delete("/guilds/{guild_id}/members/{user_id}", httpx.Wrap(s.handleKick))
+
+		r.Get("/guilds/{guild_id}/bans", httpx.Wrap(s.handleBans))
+		r.Get("/guilds/{guild_id}/bans/{user_id}", httpx.Wrap(s.handleGetBan))
+		writes.Put("/guilds/{guild_id}/bans/{user_id}", httpx.Wrap(s.handlePutBan))
+		writes.Delete("/guilds/{guild_id}/bans/{user_id}", httpx.Wrap(s.handleUnban))
+
+		r.Get("/guilds/{guild_id}/roles", httpx.Wrap(s.handleRoles))
+		writes.Post("/guilds/{guild_id}/roles", httpx.Wrap(s.handleCreateRole))
+		writes.Patch("/guilds/{guild_id}/roles", httpx.Wrap(s.handleReorderRoles))
+		writes.Patch("/guilds/{guild_id}/roles/{role_id}", httpx.Wrap(s.handlePatchRole))
+		writes.Delete("/guilds/{guild_id}/roles/{role_id}", httpx.Wrap(s.handleDeleteRole))
+	})
+}
+
+func fail(err error) error { return auth.ToProblem(ToProblem(err)) }
+
+type createGuildRequest struct {
+	Name string `json:"name"`
+}
+
+func (s *Service) handleCreate(w http.ResponseWriter, r *http.Request) error {
+	req, err := httpx.Decode[createGuildRequest](r)
+	if err != nil {
+		return err
+	}
+	snap, err := s.CreateGuild(r.Context(), auth.CurrentUser(r), req.Name)
+	if err != nil {
+		return fail(err)
+	}
+	httpx.JSON(w, http.StatusCreated, snap.Guild.Public())
+	return nil
+}
+
+func (s *Service) handleList(w http.ResponseWriter, r *http.Request) error {
+	gs, err := s.GuildsOf(r.Context(), auth.CurrentUser(r).ID)
+	if err != nil {
+		return fail(err)
+	}
+	out := make([]PublicGuild, len(gs))
+	for i, g := range gs {
+		out[i] = g.Public()
+	}
+	httpx.JSON(w, http.StatusOK, out)
+	return nil
+}
+
+func (s *Service) handleLeave(w http.ResponseWriter, r *http.Request) error {
+	id, err := httpx.PathID(r, "guild_id")
+	if err != nil {
+		return err
+	}
+	if err = s.Leave(r.Context(), id, auth.CurrentUser(r)); err != nil {
+		return fail(err)
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (s *Service) handleGet(w http.ResponseWriter, r *http.Request) error {
+	id, err := httpx.PathID(r, "guild_id")
+	if err != nil {
+		return err
+	}
+	g, err := s.Guild(r.Context(), id, auth.CurrentUser(r).ID)
+	if err != nil {
+		return fail(err)
+	}
+	httpx.JSON(w, http.StatusOK, g.Public())
+	return nil
+}
+
+type patchGuildRequest struct {
+	Name *string `json:"name"`
+}
+
+func (s *Service) handlePatch(w http.ResponseWriter, r *http.Request) error {
+	id, err := httpx.PathID(r, "guild_id")
+	if err != nil {
+		return err
+	}
+	req, err := httpx.Decode[patchGuildRequest](r)
+	if err != nil {
+		return err
+	}
+	actor := auth.CurrentUser(r).ID
+	var g Guild
+	if req.Name != nil {
+		g, err = s.Rename(r.Context(), id, actor, *req.Name)
+	} else {
+		// Nothing to change, but the permission still applies.
+		if err = s.CheckManageGuild(r.Context(), id, actor); err == nil {
+			g, err = s.Guild(r.Context(), id, actor)
+		}
+	}
+	if err != nil {
+		return fail(err)
+	}
+	httpx.JSON(w, http.StatusOK, g.Public())
+	return nil
+}
+
+func (s *Service) handleDelete(w http.ResponseWriter, r *http.Request) error {
+	id, err := httpx.PathID(r, "guild_id")
+	if err != nil {
+		return err
+	}
+	if err = s.DeleteGuild(r.Context(), id, auth.CurrentUser(r).ID); err != nil {
+		return fail(err)
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (s *Service) handlePutIcon(w http.ResponseWriter, r *http.Request) error {
+	id, err := httpx.PathID(r, "guild_id")
+	if err != nil {
+		return err
+	}
+	actor := auth.CurrentUser(r).ID
+	// Refuse before reading a large body the actor may not upload.
+	if err = s.CheckManageGuild(r.Context(), id, actor); err != nil {
+		return fail(err)
+	}
+	upload.ExtendDeadlines(w)
+	data, err := upload.ReadFile(w, r, "file", files.MaxImageBytes)
+	if err != nil {
+		return err
+	}
+	g, err := s.SetIcon(r.Context(), id, actor, data)
+	if err != nil {
+		return fail(err)
+	}
+	httpx.JSON(w, http.StatusOK, g.Public())
+	return nil
+}
+
+func (s *Service) handleMembers(w http.ResponseWriter, r *http.Request) error {
+	id, err := httpx.PathID(r, "guild_id")
+	if err != nil {
+		return err
+	}
+	q := r.URL.Query()
+	var after snowflake.ID
+	if raw := q.Get("after"); raw != "" {
+		if after, err = snowflake.Parse(raw); err != nil || after < 0 {
+			return fail(invalid("after", "must be a user ID"))
+		}
+	}
+	lim := defaultMembersLimit
+	if raw := q.Get("limit"); raw != "" {
+		if lim, err = strconv.Atoi(raw); err != nil || lim < 1 || lim > maxMembersLimit {
+			return fail(invalid("limit", "must be an integer from 1 to 1000"))
+		}
+	}
+	ms, err := s.Members(r.Context(), id, auth.CurrentUser(r).ID, after, lim)
+	if err != nil {
+		return fail(err)
+	}
+	out := make([]PublicMember, len(ms))
+	for i, m := range ms {
+		out[i] = m.Public()
+	}
+	httpx.JSON(w, http.StatusOK, out)
+	return nil
+}
+
+// patchMemberRequest keeps nick raw to tell absent from null.
+type patchMemberRequest struct {
+	Nick  json.RawMessage `json:"nick"`
+	Roles *[]snowflake.ID `json:"roles"`
+}
+
+func (s *Service) handlePatchMember(w http.ResponseWriter, r *http.Request) error {
+	id, err := httpx.PathID(r, "guild_id")
+	if err != nil {
+		return err
+	}
+	target, err := httpx.PathID(r, "user_id")
+	if err != nil {
+		return err
+	}
+	req, err := httpx.Decode[patchMemberRequest](r)
+	if err != nil {
+		return err
+	}
+	f := MemberFields{Roles: req.Roles}
+	if req.Nick != nil {
+		var nick *string
+		if !bytes.Equal(req.Nick, []byte("null")) {
+			var n string
+			if json.Unmarshal(req.Nick, &n) != nil {
+				return fail(invalid("nick", "must be a string or null"))
+			}
+			nick = &n
+		}
+		f.Nick = &nick
+	}
+	m, err := s.UpdateMember(r.Context(), id, target, auth.CurrentUser(r).ID, f)
+	if err != nil {
+		return fail(err)
+	}
+	httpx.JSON(w, http.StatusOK, m.Public())
+	return nil
+}
+
+func publicRoles(rs []Role) []PublicRole {
+	out := make([]PublicRole, len(rs))
+	for i, r := range rs {
+		out[i] = r.Public()
+	}
+	return out
+}
+
+func (s *Service) handleRoles(w http.ResponseWriter, r *http.Request) error {
+	id, err := httpx.PathID(r, "guild_id")
+	if err != nil {
+		return err
+	}
+	rs, err := s.Roles(r.Context(), id, auth.CurrentUser(r).ID)
+	if err != nil {
+		return fail(err)
+	}
+	httpx.JSON(w, http.StatusOK, publicRoles(rs))
+	return nil
+}
+
+type roleRequest struct {
+	Name        *string                 `json:"name"`
+	Permissions *permissions.Permission `json:"permissions"`
+	Color       *int                    `json:"color"`
+	Hoist       *bool                   `json:"hoist"`
+	Mentionable *bool                   `json:"mentionable"`
+}
+
+func (q roleRequest) fields() RoleFields {
+	return RoleFields(q)
+}
+
+func (s *Service) handleCreateRole(w http.ResponseWriter, r *http.Request) error {
+	id, err := httpx.PathID(r, "guild_id")
+	if err != nil {
+		return err
+	}
+	req, err := httpx.Decode[roleRequest](r)
+	if err != nil {
+		return err
+	}
+	role, err := s.CreateRole(r.Context(), id, auth.CurrentUser(r).ID, req.fields())
+	if err != nil {
+		return fail(err)
+	}
+	httpx.JSON(w, http.StatusCreated, role.Public())
+	return nil
+}
+
+func (s *Service) handlePatchRole(w http.ResponseWriter, r *http.Request) error {
+	id, err := httpx.PathID(r, "guild_id")
+	if err != nil {
+		return err
+	}
+	roleID, err := httpx.PathID(r, "role_id")
+	if err != nil {
+		return err
+	}
+	req, err := httpx.Decode[roleRequest](r)
+	if err != nil {
+		return err
+	}
+	role, err := s.UpdateRole(r.Context(), id, roleID, auth.CurrentUser(r).ID, req.fields())
+	if err != nil {
+		return fail(err)
+	}
+	httpx.JSON(w, http.StatusOK, role.Public())
+	return nil
+}
+
+type rolePositionRequest struct {
+	ID       snowflake.ID `json:"id"`
+	Position int          `json:"position"`
+}
+
+func (s *Service) handleReorderRoles(w http.ResponseWriter, r *http.Request) error {
+	id, err := httpx.PathID(r, "guild_id")
+	if err != nil {
+		return err
+	}
+	req, err := httpx.Decode[[]rolePositionRequest](r)
+	if err != nil {
+		return err
+	}
+	moves := make([]RolePosition, len(req))
+	for i, m := range req {
+		moves[i] = RolePosition(m)
+	}
+	rs, err := s.ReorderRoles(r.Context(), id, auth.CurrentUser(r).ID, moves)
+	if err != nil {
+		return fail(err)
+	}
+	httpx.JSON(w, http.StatusOK, publicRoles(rs))
+	return nil
+}
+
+func (s *Service) handleDeleteRole(w http.ResponseWriter, r *http.Request) error {
+	id, err := httpx.PathID(r, "guild_id")
+	if err != nil {
+		return err
+	}
+	roleID, err := httpx.PathID(r, "role_id")
+	if err != nil {
+		return err
+	}
+	if err = s.DeleteRole(r.Context(), id, roleID, auth.CurrentUser(r).ID); err != nil {
+		return fail(err)
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+// guildAndUser reads the guild_id and user_id path parameters.
+func guildAndUser(r *http.Request) (guildID, userID snowflake.ID, err error) {
+	if guildID, err = httpx.PathID(r, "guild_id"); err != nil {
+		return 0, 0, err
+	}
+	if userID, err = httpx.PathID(r, "user_id"); err != nil {
+		return 0, 0, err
+	}
+	return guildID, userID, nil
+}
+
+func (s *Service) handleKick(w http.ResponseWriter, r *http.Request) error {
+	id, target, err := guildAndUser(r)
+	if err != nil {
+		return err
+	}
+	if err = s.Kick(r.Context(), id, target, auth.CurrentUser(r).ID); err != nil {
+		return fail(err)
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (s *Service) handleBans(w http.ResponseWriter, r *http.Request) error {
+	id, err := httpx.PathID(r, "guild_id")
+	if err != nil {
+		return err
+	}
+	bans, err := s.Bans(r.Context(), id, auth.CurrentUser(r).ID)
+	if err != nil {
+		return fail(err)
+	}
+	out := make([]PublicBan, len(bans))
+	for i, b := range bans {
+		out[i] = b.Public()
+	}
+	httpx.JSON(w, http.StatusOK, out)
+	return nil
+}
+
+func (s *Service) handleGetBan(w http.ResponseWriter, r *http.Request) error {
+	id, target, err := guildAndUser(r)
+	if err != nil {
+		return err
+	}
+	b, err := s.BanOf(r.Context(), id, target, auth.CurrentUser(r).ID)
+	if err != nil {
+		return fail(err)
+	}
+	httpx.JSON(w, http.StatusOK, b.Public())
+	return nil
+}
+
+type banRequest struct {
+	Reason *string `json:"reason"`
+}
+
+func (s *Service) handlePutBan(w http.ResponseWriter, r *http.Request) error {
+	id, target, err := guildAndUser(r)
+	if err != nil {
+		return err
+	}
+	var req banRequest
+	// The body is optional: none at all is a ban without a reason.
+	if r.ContentLength != 0 || r.Header.Get("Content-Type") != "" {
+		if req, err = httpx.Decode[banRequest](r); err != nil {
+			return err
+		}
+	}
+	if err = s.Ban(r.Context(), id, target, auth.CurrentUser(r).ID, req.Reason); err != nil {
+		return fail(err)
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (s *Service) handleUnban(w http.ResponseWriter, r *http.Request) error {
+	id, target, err := guildAndUser(r)
+	if err != nil {
+		return err
+	}
+	if err = s.Unban(r.Context(), id, target, auth.CurrentUser(r).ID); err != nil {
+		return fail(err)
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}

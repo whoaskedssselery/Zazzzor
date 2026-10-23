@@ -1,0 +1,168 @@
+package channels
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	"github.com/jackc/pgx/v5"
+
+	"github.com/whoaskedssselery/zazzzor/server/internal/channels/store"
+	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
+	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
+)
+
+// channelIn loads a channel with its effective overwrites through db (two
+// queries); a missing channel is ErrNotFound.
+func (s *Service) channelIn(ctx context.Context, db store.DBTX, channelID snowflake.ID) (Channel, error) {
+	row, err := s.q.ChannelByID(ctx, db, channelID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Channel{}, ErrNotFound
+	}
+	if err != nil {
+		return Channel{}, fmt.Errorf("channels: load channel: %w", err)
+	}
+	c := toChannel(row)
+	from := c.ID
+	if c.PermissionSynced && c.ParentID != nil {
+		from = *c.ParentID
+	}
+	ows, err := s.q.OverwritesOf(ctx, db, []int64{int64(from)})
+	if err != nil {
+		return Channel{}, fmt.Errorf("channels: load overwrites: %w", err)
+	}
+	c.Overwrites = make([]permissions.Overwrite, len(ows))
+	for i, o := range ows {
+		c.Overwrites[i] = toOverwrite(o)
+	}
+	return c, nil
+}
+
+// Lookup returns a channel without any permission check (for invite
+// previews); a missing channel is ErrNotFound.
+func (s *Service) Lookup(ctx context.Context, channelID snowflake.ID) (Channel, error) {
+	return s.channelIn(ctx, s.pool, channelID)
+}
+
+// viewable loads the channel and userID's permissions in it; a non-member
+// or a channel userID may not view is ErrNotFound.
+func (s *Service) viewable(ctx context.Context, db store.DBTX, userID, channelID snowflake.ID) (Channel, permissions.Permission, error) {
+	c, err := s.channelIn(ctx, db, channelID)
+	if err != nil {
+		return Channel{}, 0, err
+	}
+	sub, err := s.guilds.SubjectIn(ctx, db, c.GuildID, userID)
+	if errors.Is(err, guilds.ErrNotMember) {
+		return Channel{}, 0, ErrNotFound
+	}
+	if err != nil {
+		return Channel{}, 0, err
+	}
+	p := permissions.InChannel(sub, c.Overwrites)
+	if !p.Has(permissions.ViewChannel) {
+		return Channel{}, 0, ErrNotFound
+	}
+	return c, p, nil
+}
+
+// Permissions implements Resolver.
+func (s *Service) Permissions(ctx context.Context, userID, channelID snowflake.ID) (permissions.Permission, snowflake.ID, error) {
+	var (
+		c Channel
+		p permissions.Permission
+	)
+	err := s.read(ctx, func(tx pgx.Tx) error {
+		var err error
+		c, p, err = s.viewable(ctx, tx, userID, channelID)
+		return err
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+	return p, c.GuildID, nil
+}
+
+// Channel returns a channel userID may view, else ErrNotFound.
+func (s *Service) Channel(ctx context.Context, userID, channelID snowflake.ID) (Channel, error) {
+	var c Channel
+	err := s.read(ctx, func(tx pgx.Tx) error {
+		var err error
+		c, _, err = s.viewable(ctx, tx, userID, channelID)
+		return err
+	})
+	if err != nil {
+		return Channel{}, err
+	}
+	return c, nil
+}
+
+// VisibleChannels implements Resolver.
+func (s *Service) VisibleChannels(ctx context.Context, userID, guildID snowflake.ID) ([]Channel, error) {
+	var out []Channel
+	err := s.read(ctx, func(tx pgx.Tx) error {
+		sub, err := s.guilds.SubjectIn(ctx, tx, guildID, userID)
+		if err != nil {
+			return err
+		}
+		l, err := s.loadLayout(ctx, tx, guildID)
+		if err != nil {
+			return err
+		}
+		out = l.visibleTo(sub)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// visibleTo returns the channels sub may view, in display order.
+func (l *layout) visibleTo(sub permissions.Subject) []Channel {
+	out := []Channel{}
+	for _, n := range l.sorted() {
+		if l.canView(sub, n) {
+			out = append(out, l.view(n))
+		}
+	}
+	return out
+}
+
+// Viewers implements Resolver: it loads the channel, its overwrites and the
+// whole guild's roles once and computes every member in memory.
+func (s *Service) Viewers(ctx context.Context, channelID snowflake.ID) ([]snowflake.ID, error) {
+	var out []snowflake.ID
+	err := s.read(ctx, func(tx pgx.Tx) error {
+		c, err := s.channelIn(ctx, tx, channelID)
+		if err != nil {
+			return err
+		}
+		a, err := s.guilds.AccessIn(ctx, tx, c.GuildID)
+		if errors.Is(err, guilds.ErrNotFound) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		out = viewers(a, c.Overwrites)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// viewers returns the members of a who may view a channel with the given
+// effective overwrites, ascending.
+func viewers(a guilds.Access, ows []permissions.Overwrite) []snowflake.ID {
+	out := []snowflake.ID{}
+	for _, id := range a.MemberIDs() {
+		sub, _ := a.Subject(id)
+		if permissions.InChannel(sub, ows).Has(permissions.ViewChannel) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
