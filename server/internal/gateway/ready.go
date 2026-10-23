@@ -44,6 +44,15 @@ func (g *Gateway) guildState(ctx context.Context, userID, guildID snowflake.ID) 
 	for j, c := range visible {
 		st.Channels[j] = c.Public()
 	}
+	memberIDs := make([]snowflake.ID, len(snap.Members))
+	for j, m := range snap.Members {
+		memberIDs[j] = m.User.ID
+	}
+	online := g.onlineAmong(memberIDs)
+	st.Presences = make([]Presence, len(online))
+	for j, id := range online {
+		st.Presences[j] = Presence{UserID: id, Status: StatusOnline}
+	}
 	return st, nil
 }
 

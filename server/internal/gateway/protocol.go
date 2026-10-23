@@ -108,13 +108,15 @@ type Presence struct {
 
 // GuildState is a guild as one member sees it: the payload of GUILD_CREATE
 // and GUILD_SYNC and an entry of READY. Channels are only those the member
-// may view; members are capped at MaxMembers.
+// may view; members are capped at MaxMembers, presences are not.
 type GuildState struct {
 	Guild    guilds.PublicGuild       `json:"guild"`
 	Roles    []guilds.PublicRole      `json:"roles"`
 	Channels []channels.PublicChannel `json:"channels"`
 	Members  []guilds.PublicMember    `json:"members"`
 	MyMember guilds.PublicMember      `json:"my_member"`
+	// Presences are the guild's online members (the receiver included).
+	Presences []Presence `json:"presences"`
 }
 
 // Ready is the payload of READY.

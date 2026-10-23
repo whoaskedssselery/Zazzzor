@@ -131,6 +131,79 @@ func (g *Gateway) dispatch(e events.Event) {
 			c.enqueue(outgoing{op: OpDispatch, t: e.Type, d: d})
 		}
 	}
+	switch e.Type {
+	case events.GuildMemberAdd:
+		g.joinPresence(e, recipients, conns)
+	case events.GuildMemberRemove:
+		g.leavePresence(ctx, e, recipients, conns)
+	}
+}
+
+// joinPresence follows GUILD_MEMBER_ADD: if the new member is online, the
+// other members are told so. Those who already shared a server with them
+// knew it; for them the update is a harmless repeat. The new member learns
+// who is online from the presences of their GUILD_CREATE.
+func (g *Gateway) joinPresence(e events.Event, members []snowflake.ID, conns map[snowflake.ID][]*conn) {
+	p, ok := e.Payload.(guilds.MemberPayload)
+	if !ok {
+		return
+	}
+	joiner := p.Member.User.ID
+	if len(g.onlineAmong([]snowflake.ID{joiner})) == 0 {
+		return
+	}
+	g.sendPresence(Presence{UserID: joiner, Status: StatusOnline}, members, joiner, conns)
+}
+
+// leavePresence follows GUILD_MEMBER_REMOVE (the removal has committed):
+// the remaining members who share no server with the removed user any more
+// see them offline if they were online, and the removed user sees those of
+// them who are online go offline. Members still sharing a server hear
+// nothing.
+func (g *Gateway) leavePresence(ctx context.Context, e events.Event, members []snowflake.ID, conns map[snowflake.ID][]*conn) {
+	p, ok := e.Payload.(guilds.MemberRemovePayload)
+	if !ok {
+		return
+	}
+	gone := p.User.ID
+	removedOnline := len(g.onlineAmong([]snowflake.ID{gone})) == 1
+	if !removedOnline && len(conns[gone]) == 0 {
+		return // nothing to say to anyone
+	}
+	peers, err := g.opts.Guilds.PeerIDs(ctx, gone)
+	if err != nil {
+		g.dropped(e, err)
+		return
+	}
+	var parted []snowflake.ID
+	for _, id := range members {
+		if id != gone && !slices.Contains(peers, id) {
+			parted = append(parted, id)
+		}
+	}
+	if removedOnline {
+		g.sendPresence(Presence{UserID: gone, Status: StatusOffline}, parted, gone, conns)
+	}
+	for _, id := range g.onlineAmong(parted) {
+		g.sendPresence(Presence{UserID: id, Status: StatusOffline}, []snowflake.ID{gone}, id, conns)
+	}
+}
+
+// sendPresence queues PRESENCE_UPDATE p to the connections of to, except
+// those of exclude.
+func (g *Gateway) sendPresence(p Presence, to []snowflake.ID, exclude snowflake.ID, conns map[snowflake.ID][]*conn) {
+	d, err := json.Marshal(p)
+	if err != nil {
+		return // two plain fields: cannot happen
+	}
+	for _, uid := range to {
+		if uid == exclude {
+			continue
+		}
+		for _, c := range conns[uid] {
+			c.enqueue(outgoing{op: OpDispatch, t: events.PresenceUpdate, d: d})
+		}
+	}
 }
 
 func (g *Gateway) dropped(e events.Event, err error) {

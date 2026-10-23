@@ -490,10 +490,11 @@ type (
 		Presences []presenceBody   `json:"presences"`
 	}
 	guildStateBody struct {
-		Guild    guildBody     `json:"guild"`
-		Channels []channelBody `json:"channels"`
-		Members  []memberBody  `json:"members"`
-		MyMember memberBody    `json:"my_member"`
+		Guild     guildBody      `json:"guild"`
+		Channels  []channelBody  `json:"channels"`
+		Members   []memberBody   `json:"members"`
+		MyMember  memberBody     `json:"my_member"`
+		Presences []presenceBody `json:"presences"`
 	}
 	memberBody struct {
 		User userBody `json:"user"`

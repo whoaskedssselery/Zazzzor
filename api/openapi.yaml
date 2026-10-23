@@ -2645,7 +2645,7 @@ components:
     GuildState:
       type: object
       additionalProperties: false
-      required: [guild, roles, channels, members, my_member]
+      required: [guild, roles, channels, members, my_member, presences]
       description: A server as the receiving member sees it.
       properties:
         guild:
@@ -2668,6 +2668,13 @@ components:
             $ref: "#/components/schemas/Member"
         my_member:
           $ref: "#/components/schemas/Member"
+        presences:
+          type: array
+          description: |
+            The online members of the server (the receiver included), all of
+            them, not capped like `members`.
+          items:
+            $ref: "#/components/schemas/Presence"
     Presence:
       type: object
       additionalProperties: false
@@ -2781,7 +2788,15 @@ x-gateway:
     Presence: a user is `online` from their first connection and `offline`
     5 seconds after their last one closed (a reconnection within that time
     announces nothing). PRESENCE_UPDATE goes to everyone sharing a server
-    with the user, not to the user.
+    with the user, not to the user. Every GuildState (READY, GUILD_CREATE,
+    GUILD_SYNC) lists the online members of its server in `presences`.
+    After GUILD_MEMBER_ADD of an online user the other members get
+    PRESENCE_UPDATE online for them (possibly a repeat, so apply it
+    idempotently); the new member learns the others from GUILD_CREATE.
+    After GUILD_MEMBER_REMOVE the members who no longer share any server
+    with the removed user get PRESENCE_UPDATE offline for them (if they
+    were online), and the removed user gets PRESENCE_UPDATE offline for each
+    of those members who is online.
   ops:
     "0": DISPATCH
     "1": HEARTBEAT
