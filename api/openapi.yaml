@@ -335,7 +335,9 @@ paths:
         metadata; the same image always gets the same `avatar_url`. The
         upload may take up to 120 seconds. A change is announced as
         `USER_UPDATE`. Counts against the profile-write limit (10 per 10
-        minutes per user, shared with `PATCH /users/@me`).
+        minutes per user, shared with `PATCH /users/@me`). A user may have
+        at most 2 uploads (avatars and icons) in flight; a third is refused
+        `429 rate_limited` before its body is read.
       requestBody:
         required: true
         content:
@@ -826,7 +828,9 @@ paths:
         part `file`, under the same rules as an avatar (PNG, JPEG, WebP or
         GIF, at most 4 MiB and 4096 pixels on a side, stored as a 256x256
         PNG). The upload may take up to 120 seconds. A change is announced
-        as `GUILD_UPDATE`. Counts against the write limit.
+        as `GUILD_UPDATE`. Counts against the write limit. A user may have
+        at most 2 uploads (avatars and icons) in flight; a third is refused
+        `429 rate_limited` before its body is read.
       parameters:
         - $ref: "#/components/parameters/GuildID"
       requestBody:
@@ -2114,6 +2118,8 @@ paths:
             retry after `Retry-After` seconds. `too_many_connections`: the
             user already has 10 gateway connections open; close one first
             (no `Retry-After`).
+            Clients retry with jittered exponential backoff (see `x-gateway`),
+            never sooner than `Retry-After`.
           headers:
             Retry-After:
               description: Seconds to wait before retrying (with `rate_limited`).
@@ -2130,6 +2136,8 @@ paths:
           description: |
             `server_busy`: the server has 500 gateway connections open, or its
             database is overloaded. Retry after `Retry-After` seconds.
+            Clients retry with jittered exponential backoff (see `x-gateway`),
+            never sooner than `Retry-After`.
           headers:
             Retry-After:
               description: Seconds to wait before retrying.
@@ -3071,6 +3079,12 @@ x-gateway:
     leaves, is kicked or is banned gets GUILD_DELETE once and nothing more
     from that server. GUILD_BAN_ADD and GUILD_BAN_REMOVE reach only the
     members who hold BAN_MEMBERS when they are sent.
+
+    Reconnecting: after any close (1006 included) or a refused upgrade,
+    clients reconnect with jittered exponential backoff (e.g. a random
+    delay between 0 and min(30 s, 1 s x 2^attempt), reset after a READY),
+    and never sooner than a `Retry-After` the upgrade response carried.
+    Reconnecting at once in a loop only meets the upgrade limits.
 
     Recipients are resolved when an event is sent, not when it happened: an
     event published right around a permission or membership change may or

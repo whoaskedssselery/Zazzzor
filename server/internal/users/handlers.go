@@ -24,7 +24,7 @@ func Mount(r chi.Router, s *Service) {
 		r.Get("/users/@me", httpx.Wrap(handleMe))
 		r.With(s.limitProfileWrites).Patch("/users/@me", httpx.Wrap(s.handlePatchMe))
 		r.Post("/users/@me/password", httpx.Wrap(s.handlePassword))
-		r.With(s.limitProfileWrites, upload.Limit).Put("/users/@me/avatar", httpx.Wrap(s.handlePutAvatar))
+		r.With(s.limitProfileWrites, upload.Limit(auth.UserKey)).Put("/users/@me/avatar", httpx.Wrap(s.handlePutAvatar))
 		r.With(s.limitProfileWrites).Delete("/users/@me/avatar", httpx.Wrap(s.handleDeleteAvatar))
 	})
 }

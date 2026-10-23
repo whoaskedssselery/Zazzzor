@@ -10,6 +10,7 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
@@ -107,37 +108,80 @@ func readError(err error, maxBytes int) error {
 const (
 	// MaxInFlight is how many upload requests may run at once.
 	MaxInFlight = 8
+	// MaxInFlightPerUser is how many of them one user may run at once.
+	MaxInFlightPerUser = 2
 	// SlotBytes is the memory one upload slot accounts for.
 	SlotBytes = 8 << 20
 	// busyRetryAfter is the Retry-After of an upload turned away.
 	busyRetryAfter = 5 * time.Second
 )
 
-// Gate bounds the upload requests in flight.
-type Gate struct{ slots chan struct{} }
+// Gate bounds the upload requests in flight, in all and per user, so that
+// one user's slow uploads cannot hold every slot.
+type Gate struct {
+	slots   chan struct{}
+	perUser int
 
-// NewGate returns a Gate letting n uploads run at once.
-func NewGate(n int) *Gate { return &Gate{slots: make(chan struct{}, max(n, 1))} }
+	mu       sync.Mutex
+	inFlight map[string]int // by user key; absent means 0
+}
 
-// Limit runs next while it holds a slot of g. Without a free slot the
-// request is answered 503 server_busy with a Retry-After at once, before
-// any of its body is read.
-func (g *Gate) Limit(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		select {
-		case g.slots <- struct{}{}:
-		default:
-			httpx.WriteProblem(w, httpx.ServiceUnavailableRetryAfter("server_busy", busyRetryAfter))
-			return
-		}
-		defer func() { <-g.slots }()
-		next.ServeHTTP(w, r)
-	})
+// NewGate returns a Gate letting n uploads run at once, at most perUser of
+// them for one user.
+func NewGate(n, perUser int) *Gate {
+	return &Gate{slots: make(chan struct{}, max(n, 1)), perUser: max(perUser, 1), inFlight: make(map[string]int)}
+}
+
+// Limit returns middleware running next while the request holds a slot of
+// g and one of its user's, the user named by key (a request that passed
+// authentication). Both are taken before any of the body is read. A user
+// already at their cap is answered 429 rate_limited, without a free global
+// slot the request is answered 503 server_busy; both carry a Retry-After.
+func (g *Gate) Limit(key func(*http.Request) string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user := key(r)
+			if !g.enter(user) {
+				httpx.WriteProblem(w, httpx.TooManyRequests(busyRetryAfter))
+				return
+			}
+			defer g.leave(user)
+			select {
+			case g.slots <- struct{}{}:
+			default:
+				httpx.WriteProblem(w, httpx.ServiceUnavailableRetryAfter("server_busy", busyRetryAfter))
+				return
+			}
+			defer func() { <-g.slots }()
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// enter counts an upload of user, unless they are at their cap.
+func (g *Gate) enter(user string) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.inFlight[user] >= g.perUser {
+		return false
+	}
+	g.inFlight[user]++
+	return true
+}
+
+func (g *Gate) leave(user string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.inFlight[user]--; g.inFlight[user] <= 0 {
+		delete(g.inFlight, user)
+	}
 }
 
 // bodies is the gate every upload route of the process shares.
-var bodies = NewGate(MaxInFlight)
+var bodies = NewGate(MaxInFlight, MaxInFlightPerUser)
 
-// Limit is the process-wide upload gate (MaxInFlight slots); mount it on
-// every route that reads an upload, after authentication and rate limits.
-func Limit(next http.Handler) http.Handler { return bodies.Limit(next) }
+// Limit is the process-wide upload gate (MaxInFlight slots, at most
+// MaxInFlightPerUser of them per user); mount it on every route that reads
+// an upload, after authentication and rate limits, with the key naming the
+// signed-in user (auth.UserKey).
+func Limit(key func(*http.Request) string) func(http.Handler) http.Handler { return bodies.Limit(key) }

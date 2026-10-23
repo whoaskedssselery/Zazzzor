@@ -125,3 +125,7 @@ func LimitReads(l *ratelimit.Limiter) func(http.Handler) http.Handler {
 		})
 	}
 }
+
+// UserKey is the signed-in user of a request that passed Require as a
+// limiter key.
+func UserKey(r *http.Request) string { return CurrentUser(r).ID.String() }

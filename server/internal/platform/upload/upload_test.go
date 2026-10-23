@@ -113,9 +113,9 @@ var crlf = string([]byte{13, 10})
 // away 503 server_busy with a Retry-After before its body is read; a freed
 // slot is usable again.
 func TestGateBoundsUploadsInFlight(t *testing.T) {
-	g := upload.NewGate(1)
+	g := upload.NewGate(1, 2)
 	entered, release := make(chan struct{}), make(chan struct{})
-	h := g.Limit(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	h := g.Limit(func(*http.Request) string { return "" })(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		entered <- struct{}{}
 		<-release
 		w.WriteHeader(http.StatusNoContent)
@@ -146,5 +146,84 @@ func TestGateBoundsUploadsInFlight(t *testing.T) {
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPut, "/", nil))
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("upload after release: status = %d, want 204", rec.Code)
+	}
+}
+
+// TestUploadPerUserCap: one user may have at most perUser uploads in
+// flight; the next is turned away 429 rate_limited with a Retry-After
+// before its body is read and without taking a global slot, so other users
+// still get in until the global slots run out.
+func TestUploadPerUserCap(t *testing.T) {
+	g := upload.NewGate(3, 2)
+	entered := make(chan string)
+	release := make(chan struct{})
+	h := g.Limit(func(r *http.Request) string { return r.Header.Get("X-User") })(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			entered <- r.Header.Get("X-User")
+			<-release
+			w.WriteHeader(http.StatusNoContent)
+		}))
+	req := func(user string) *http.Request {
+		r := httptest.NewRequest(http.MethodPut, "/", nil)
+		r.Header.Set("X-User", user)
+		return r
+	}
+	done := make(chan int, 3)
+	hold := func(user string) {
+		go func() {
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req(user))
+			done <- rec.Code
+		}()
+		if got := <-entered; got != user {
+			t.Fatalf("entered %q, want %q", got, user)
+		}
+	}
+	hold("alice")
+	hold("alice")
+	// refused serves a request that must be turned away at once.
+	refused := func(user string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		served := make(chan struct{})
+		go func() { h.ServeHTTP(rec, req(user)); close(served) }()
+		select {
+		case <-served:
+			return rec
+		case who := <-entered:
+			t.Fatalf("%s was let in", who)
+		}
+		return nil
+	}
+	t.Cleanup(func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	})
+
+	rec := refused("alice")
+	if rec.Code != http.StatusTooManyRequests || !strings.Contains(rec.Body.String(), `"rate_limited"`) ||
+		rec.Header().Get("Retry-After") == "" {
+		t.Fatalf("alice's third upload: %d %s, Retry-After %q", rec.Code, rec.Body.String(), rec.Header().Get("Retry-After"))
+	}
+	// The refusal took no global slot: bob gets the third one.
+	hold("bob")
+	rec = refused("carol")
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("carol with every slot taken: status = %d, want 503", rec.Code)
+	}
+
+	close(release)
+	for range 3 {
+		if code := <-done; code != http.StatusNoContent {
+			t.Fatalf("held upload: status = %d", code)
+		}
+	}
+	go func() { <-entered }()
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req("alice"))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("alice after release: status = %d, want 204", rec.Code)
 	}
 }
