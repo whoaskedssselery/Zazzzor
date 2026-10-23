@@ -21,6 +21,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -43,11 +44,17 @@ const (
 	// finish their close handshake.
 	gatewayShutdownTimeout = 5 * time.Second
 	healthcheckTimeout     = 3 * time.Second
-	startupDBTimeout       = 30 * time.Second
+	dbAttemptTimeout       = 5 * time.Second
+	migrateTimeout         = 60 * time.Second
+	maxDBRetryDelay        = 5 * time.Second
 	readyTimeout           = 2 * time.Second
 	readHeaderTimeout      = 10 * time.Second
 	idleTimeout            = 120 * time.Second
 )
+
+// startupDBTimeout bounds the wait for the database to come up at start-up
+// (Docker Swarm starts services in no particular order); tests shorten it.
+var startupDBTimeout = 60 * time.Second
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Getenv, os.Stdout, os.Stderr))
@@ -81,9 +88,10 @@ func run(args []string, env func(string) string, stdout, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// The schema must be current before any request is served; a database
-	// that is down or a migration that fails stops the start-up.
-	pool, err := openDatabase(ctx, cfg.DatabaseURL)
+	// The schema must be current before any request is served. A database
+	// that is still starting is waited for (Docker Swarm has no depends_on);
+	// one that stays down, or a migration that fails, stops the start-up.
+	pool, err := openDatabase(ctx, logger, cfg.DatabaseURL)
 	if err != nil {
 		logger.Error("open database", "err", err.Error())
 		return 1
@@ -190,19 +198,84 @@ func serveOn(s *http.Server, ln net.Listener) error {
 	return nil
 }
 
-// openDatabase connects to the database and applies pending migrations.
-func openDatabase(ctx context.Context, url string) (*pgxpool.Pool, error) {
-	ctx, cancel := context.WithTimeout(ctx, startupDBTimeout)
+// openDatabase connects to the database, waiting up to startupDBTimeout for
+// it to come up, and applies pending migrations.
+func openDatabase(ctx context.Context, logger *slog.Logger, url string) (*pgxpool.Pool, error) {
+	waitCtx, cancel := context.WithTimeout(ctx, startupDBTimeout)
 	defer cancel()
-	pool, err := db.Open(ctx, url)
+	pool, err := retryOpen(waitCtx, logger, func(ctx context.Context) (*pgxpool.Pool, error) {
+		ctx, cancel := context.WithTimeout(ctx, dbAttemptTimeout)
+		defer cancel()
+		return db.Open(ctx, url)
+	})
 	if err != nil {
 		return nil, err
 	}
-	if err := db.Migrate(ctx, pool); err != nil {
+	// Migrations get their own budget, whatever the wait above used up.
+	migrateCtx, cancelMigrate := context.WithTimeout(ctx, migrateTimeout)
+	defer cancelMigrate()
+	if err := db.Migrate(migrateCtx, pool); err != nil {
 		pool.Close()
 		return nil, err
 	}
 	return pool, nil
+}
+
+// dbRetryDelay is the pause before attempt n+1; tests shorten it.
+var dbRetryDelay = retryDelay
+
+// retryDelay doubles from 500 ms up to maxDBRetryDelay.
+func retryDelay(attempt int) time.Duration {
+	d := 500 * time.Millisecond << min(attempt-1, 4)
+	return min(d, maxDBRetryDelay)
+}
+
+// retryOpen calls open until it succeeds, fails for good (permanentDBError)
+// or ctx ends. In the last case it returns the last error that was not caused
+// by ctx ending, so the log names the real cause. db.Open errors never
+// contain the URL, so they are safe to log.
+func retryOpen[T any](ctx context.Context, logger *slog.Logger, open func(context.Context) (T, error)) (T, error) {
+	var zero T
+	var cause error
+	for attempt := 1; ; attempt++ {
+		v, err := open(ctx)
+		if err == nil {
+			return v, nil
+		}
+		if permanentDBError(err) {
+			return zero, err
+		}
+		if ctx.Err() == nil || cause == nil {
+			cause = err
+		}
+		if ctx.Err() != nil {
+			return zero, fmt.Errorf("database not ready after %s: %w", startupDBTimeout, cause)
+		}
+		delay := dbRetryDelay(attempt)
+		logger.Warn("database not ready, retrying", "attempt", attempt,
+			"retry_in", delay.String(), "err", err.Error())
+		select {
+		case <-ctx.Done():
+			return zero, fmt.Errorf("database not ready after %s: %w", startupDBTimeout, cause)
+		case <-time.After(delay):
+		}
+	}
+}
+
+// permanentDBError reports errors that waiting cannot fix: a malformed URL,
+// a wrong user or password, or a database that does not exist.
+func permanentDBError(err error) bool {
+	if errors.Is(err, db.ErrInvalidURL) {
+		return true
+	}
+	var pg *pgconn.PgError
+	if errors.As(err, &pg) {
+		switch pg.Code {
+		case "28P01", "28000", "3D000": // invalid_password, invalid_authorization_specification, invalid_catalog_name
+			return true
+		}
+	}
+	return false
 }
 
 // pinger is the part of a pool readiness needs.

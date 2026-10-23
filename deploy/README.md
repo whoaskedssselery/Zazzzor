@@ -23,6 +23,10 @@ Docker. Внутри стека:
 негде: без клиента это делается только через `curl`, как для администратора
 в разделе 10.
 
+Если на сервере используется Docker Swarm (`docker stack`), смотрите
+[раздел 15](#15-вариант-docker-swarm-docker-stack): разделы 1–7 общие, запуск и
+обслуживание — там.
+
 Все команды ниже выполняются **из корня репозитория** (каталог `zazzzor`).
 Если `docker` у вас требует `sudo`, добавляйте `sudo` перед командами
 `docker ...` и `bash deploy/scripts/...`.
@@ -481,6 +485,160 @@ ZAZZZOR_TRUSTED_PROXIES=172.16.0.0/12,127.0.0.1/32,192.168.0.0/20
 
 Это безопасно: к порту API, кроме Caddy, могут подключиться только процессы
 на самом сервере, снаружи он недоступен.
+
+## 15. Вариант: Docker Swarm (`docker stack`)
+
+Если на сервере сервисы уже живут в Docker Swarm, Zazzzor разворачивается
+стеком: файл `deploy/docker-stack.yml` и скрипт `deploy/scripts/stack.sh`.
+Разделы 1–7 (Docker, код, DuckDNS, `.env`, порты, роутер) те же. Вместо
+`docker compose` из разделов 8–13 используются команды ниже. Compose и стек
+одновременно не запускайте: они занимают одни и те же порты.
+
+### Чем стек отличается от compose
+
+Swarm не умеет публиковать порт только на `127.0.0.1`, а открывать API и базу
+наружу нельзя. Поэтому в стеке `postgres` и `api` работают в сети хоста и сами
+слушают только `127.0.0.1`:
+
+| Сервис | Где слушает |
+|---|---|
+| `caddy` | `ZAZZZOR_HTTPS_PORT` (443) на всех адресах |
+| `livekit` | 7881/tcp, 7882/udp на всех адресах; 7880 на `127.0.0.1` |
+| `api` | `127.0.0.1:${ZAZZZOR_API_PORT}` (8080), метрики `127.0.0.1:${ZAZZZOR_METRICS_PORT}` (9464) |
+| `postgres` | `127.0.0.1:${POSTGRES_PORT}` (55432, чтобы не встретиться с другим Postgres на 5432) |
+| `duckdns` | никуда, только исходящие запросы |
+
+Ещё отличия:
+- Swarm не собирает образы. Их собирает `stack.sh` на этом сервере, а все
+  сервисы привязаны к этому узлу. Тег образа — его содержимое, поэтому при
+  обновлении перезапускаются только сервисы, чей образ действительно
+  изменился (Caddy, например, не трогается, если менялся только код API).
+- `depends_on` в Swarm нет: API при старте сам ждёт базу до 60 секунд (в логах
+  `database not ready, retrying`), а если не дождался, Swarm перезапускает его.
+  Неверный пароль базы ждать бессмысленно — тогда API падает сразу.
+- `no-new-privileges` Swarm не поддерживает. Остальная защита API та же:
+  файловая система только для чтения, `cap_drop: ALL`, пользователь не root.
+- Метрики API (`127.0.0.1:9464/metrics`) и Postgres (`127.0.0.1:55432`)
+  доступны процессам на самом сервере (в compose они были только внутри сети
+  Docker). Снаружи и из обычных контейнеров их не видно, Postgres защищён
+  паролем (scram-sha-256).
+- Тома называются так же, как в compose (`zazzzor_pgdata` и т. д.). Чтобы
+  перейти с compose на стек, остановите compose **без** `-v`
+  (`docker compose -f deploy/docker-compose.yml down`) и разверните стек:
+  данные останутся. Имя стека не меняйте (`STACK_NAME`): у другого имени
+  другие тома, то есть пустая база.
+
+### Запуск
+
+Один раз включите Swarm, если он ещё не включён (`docker info` покажет
+`Swarm: active`):
+
+```bash
+docker swarm init
+```
+
+Если у сервера несколько сетевых адресов, Docker попросит указать один:
+`docker swarm init --advertise-addr <IP сервера в локальной сети>`.
+
+Проверка портов (раздел 6) в режиме Swarm проверяет ещё `POSTGRES_PORT` и
+`ZAZZZOR_METRICS_PORT`. До `docker swarm init` запускайте её с флагом
+`--stack`. Затем сборка и развёртывание (первая сборка — несколько минут):
+
+```bash
+bash deploy/scripts/stack.sh deploy
+```
+
+Скрипт читает `deploy/.env`, собирает образы `zazzzor-api` и `zazzzor-caddy`,
+выполняет `docker stack deploy` и ждёт, пока все сервисы запустятся и пройдут
+healthcheck. В конце печатает таблицу задач. У всех пяти должно быть
+`Running`.
+
+### Проверка
+
+```bash
+bash deploy/scripts/stack.sh ps
+```
+
+```bash
+docker ps --filter label=com.docker.stack.namespace=zazzzor --format 'table {{.Names}}\t{{.Status}}'
+```
+
+У `postgres` и `api` должно быть `(healthy)`. Остальные проверки — как в
+разделе 9: `bash deploy/scripts/smoke-api.sh` сам находит контейнер API стека,
+`sudo ss -lntup` должен показать 8080, 9464, 55432 и 7880 только на
+`127.0.0.1`.
+
+### Логи, обновление, остановка
+
+```bash
+bash deploy/scripts/stack.sh logs api
+```
+
+Вместо `api` — `caddy`, `livekit`, `postgres` или `duckdns`. Следить за логами
+в реальном времени: `bash deploy/scripts/stack.sh logs caddy --follow`.
+
+Обновление:
+
+```bash
+git pull && { diff deploy/.env.example deploy/.env; bash deploy/scripts/stack.sh deploy; }
+```
+
+Swarm по очереди заменяет изменившиеся сервисы (старая задача
+останавливается, затем запускается новая) и откатывает обновление, если новая
+версия не стартует. Миграции базы при этом не откатываются, поэтому они
+всегда совместимы с предыдущей версией. Изменения `.env` применяются тем же
+`deploy`.
+
+Старые образы остаются на диске. Предыдущий нужен для отката, остальные можно
+удалить по тегу (`docker image ls zazzzor-api`, `docker rmi zazzzor-api:<тег>`).
+`docker image prune -a` удалит и образ для отката, а заодно неиспользуемые
+образы других проектов.
+
+Остановить стек (тома с данными остаются; команда ждёт, пока всё
+остановится):
+
+```bash
+bash deploy/scripts/stack.sh rm
+```
+
+### Резервная копия и пароль базы в стеке
+
+```bash
+PG=$(docker ps -q --filter label=com.docker.swarm.service.name=zazzzor_postgres)
+PG_IMAGE=postgres:$(grep -E '^POSTGRES_VERSION=' deploy/.env | cut -d= -f2)
+mkdir -p ~/zazzzor-backup
+docker exec "$PG" pg_dump -U zazzzor -d zazzzor -Fc > ~/zazzzor-backup/zazzzor.dump
+docker run --rm -v zazzzor_apidata:/data:ro "$PG_IMAGE" \
+  tar czf - -C /data . > ~/zazzzor-backup/apidata.tar.gz
+```
+
+Восстановление: остановите API, восстановите, запустите снова.
+
+```bash
+PG=$(docker ps -q --filter label=com.docker.swarm.service.name=zazzzor_postgres)
+PG_IMAGE=postgres:$(grep -E '^POSTGRES_VERSION=' deploy/.env | cut -d= -f2)
+docker service scale zazzzor_api=0
+docker exec -i "$PG" pg_restore -U zazzzor -d zazzzor --clean --if-exists < ~/zazzzor-backup/zazzzor.dump
+docker run --rm -i -v zazzzor_apidata:/data "$PG_IMAGE" \
+  sh -c 'find /data -mindepth 1 -delete && tar xzf - -C /data' < ~/zazzzor-backup/apidata.tar.gz
+docker service scale zazzzor_api=1
+```
+
+Сменить `POSTGRES_PASSWORD`: сначала поменяйте пароль в самой базе, пока
+работает старая версия, и только потом разверните стек с новым `.env`. Если
+сначала сделать `deploy`, новый API не подключится, Swarm откатит его на
+старый пароль, а после смены пароля в базе API останется лежать. Порядок:
+впишите новый пароль в `deploy/.env`, затем
+
+```bash
+PG=$(docker ps -q --filter label=com.docker.swarm.service.name=zazzzor_postgres)
+NEWPW=$(grep -E '^POSTGRES_PASSWORD=' deploy/.env | cut -d= -f2) \
+  docker exec -e NEWPW "$PG" sh -c 'psql -U zazzzor -d zazzzor -c "ALTER USER zazzzor PASSWORD '\''$NEWPW'\''"'
+bash deploy/scripts/stack.sh deploy
+```
+
+`docker exec -e NEWPW` передаёт пароль через окружение, а не командной
+строкой, поэтому его не видно в списке процессов.
 
 ---
 
