@@ -64,6 +64,16 @@ jobs:
         run: docker run --rm zazzzor-api:ci --version
       - name: Compose config is valid with the fake CI values
         run: docker compose --env-file deploy/.env.ci -f deploy/docker-compose.yml config --quiet
+      # Renders deploy/docker-stack.yml the way stack.sh deploys it, and fails
+      # if any ${...} is left unexpanded (docker stack interpolates less than
+      # compose does).
+      - name: Swarm stack config is valid with the fake CI values
+        run: |
+          out="$(ENV_FILE=deploy/.env.ci ZAZZZOR_API_TAG=ci ZAZZZOR_CADDY_TAG=ci bash deploy/scripts/stack.sh config)"
+          if grep -n '\${' <<<"$out"; then
+            echo "::error::unexpanded variables in the rendered stack"
+            exit 1
+          fi
 
   web:
     name: Web packages (test, build)

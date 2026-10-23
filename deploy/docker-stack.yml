@@ -1,0 +1,198 @@
+# Zazzzor for Docker Swarm: `docker stack deploy`. Deploy it with
+# deploy/scripts/stack.sh, which builds the images, loads deploy/.env and
+# pins every service to this node (see deploy/README.md).
+#
+# Differences from docker-compose.yml, all forced by Swarm:
+# - The variable interpolation of docker stack mangles `${VAR:?message}` when
+#   the message contains a hyphen, so the messages here have none. It also
+#   lacks nested defaults and ${VAR:+...}: stack.sh computes those values.
+# - Swarm cannot publish a port on 127.0.0.1 only, so postgres and api use
+#   the host network and listen on loopback themselves. Caddy reaches the API
+#   on 127.0.0.1, so the API trusts X-Forwarded-For from 127.0.0.1 only.
+# - Swarm does not build images; stack.sh builds them and passes their
+#   content-derived tags, so a service is updated only when its image changes.
+# - depends_on is ignored: the API waits up to 60 s for Postgres at start-up,
+#   and the restart policy covers a longer outage.
+# - no-new-privileges (security_opt) is not supported by Swarm services.
+# - Local images and volumes exist on this node only, so every service is
+#   pinned to it (ZAZZZOR_NODE_ID).
+# - A failed update rolls back to the previous image. Migrations run forward
+#   only, so they must stay compatible with the previous release.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+x-deploy: &deploy
+  placement:
+    constraints:
+      - node.id == ${ZAZZZOR_NODE_ID:?запускайте через deploy/scripts/stack.sh}
+  restart_policy:
+    condition: any
+    delay: 5s
+  # Host-network ports cannot be bound twice: stop the old task first.
+  update_config:
+    order: stop-first
+    failure_action: rollback
+
+services:
+  caddy:
+    image: zazzzor-caddy:${ZAZZZOR_CADDY_TAG:?запускайте через deploy/scripts/stack.sh}
+    networks: [hostnet]
+    environment:
+      ZAZZZOR_DOMAIN: ${ZAZZZOR_DOMAIN:?заполните ZAZZZOR_DOMAIN в deploy/.env (см. deploy/.env.example)}
+      ZAZZZOR_HTTPS_PORT: ${ZAZZZOR_HTTPS_PORT:?заполните ZAZZZOR_HTTPS_PORT в deploy/.env (см. deploy/.env.example)}
+      ZAZZZOR_API_PORT: ${ZAZZZOR_API_PORT:-8080}
+      ACME_EMAIL: ${ACME_EMAIL:?заполните ACME_EMAIL в deploy/.env (см. deploy/.env.example)}
+      DUCKDNS_TOKEN: ${DUCKDNS_TOKEN:?заполните DUCKDNS_TOKEN в deploy/.env (см. deploy/.env.example)}
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    logging: *logging
+    deploy:
+      <<: *deploy
+      resources:
+        limits:
+          memory: 256M
+
+  livekit:
+    image: livekit/livekit-server:${LIVEKIT_VERSION:?заполните LIVEKIT_VERSION в deploy/.env (см. deploy/.env.example)}
+    networks: [hostnet]
+    environment:
+      LIVEKIT_CONFIG: |
+        port: 7880
+        bind_addresses:
+          - 127.0.0.1
+        rtc:
+          tcp_port: ${LIVEKIT_TCP_PORT:?заполните LIVEKIT_TCP_PORT в deploy/.env (см. deploy/.env.example)}
+          udp_port: ${LIVEKIT_UDP_PORT:?заполните LIVEKIT_UDP_PORT в deploy/.env (см. deploy/.env.example)}
+          # stack.sh sets it to false when LIVEKIT_NODE_IP is given (LiveKit 1.13
+          # lets STUN override node_ip), true otherwise.
+          use_external_ip: ${LIVEKIT_USE_EXTERNAL_IP:?запускайте через deploy/scripts/stack.sh}
+          node_ip: ${LIVEKIT_NODE_IP:-}
+          # Empty list = LiveKit's built-in STUN servers.
+          stun_servers: [${LIVEKIT_STUN_SERVERS:-}]
+        turn:
+          enabled: false
+        keys:
+          "${LIVEKIT_API_KEY:?заполните LIVEKIT_API_KEY в deploy/.env (см. deploy/.env.example)}": "${LIVEKIT_API_SECRET:?заполните LIVEKIT_API_SECRET в deploy/.env (см. deploy/.env.example)}"
+        logging:
+          level: info
+    logging: *logging
+    deploy:
+      <<: *deploy
+      resources:
+        limits:
+          memory: 1G
+
+  duckdns:
+    image: lscr.io/linuxserver/duckdns:${DUCKDNS_IMAGE_VERSION:?заполните DUCKDNS_IMAGE_VERSION в deploy/.env (см. deploy/.env.example)}
+    networks: [egress]
+    environment:
+      SUBDOMAINS: ${DUCKDNS_SUBDOMAIN:?заполните DUCKDNS_SUBDOMAIN в deploy/.env (см. deploy/.env.example)}
+      TOKEN: ${DUCKDNS_TOKEN}
+      UPDATE_IP: ipv4
+      LOG_FILE: "false"
+    logging: *logging
+    deploy:
+      <<: *deploy
+      resources:
+        limits:
+          memory: 64M
+
+  postgres:
+    image: postgres:${POSTGRES_VERSION:?заполните POSTGRES_VERSION в deploy/.env (см. deploy/.env.example)}
+    networks: [hostnet]
+    # Loopback only, on its own port, so it never meets another Postgres on
+    # the host (5432).
+    command: ["postgres", "-c", "listen_addresses=127.0.0.1", "-c", "port=${POSTGRES_PORT:-55432}"]
+    environment:
+      POSTGRES_USER: zazzzor
+      POSTGRES_DB: zazzzor
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?заполните POSTGRES_PASSWORD в deploy/.env (см. deploy/.env.example)}
+      PGPORT: ${POSTGRES_PORT:-55432}
+    # PostgreSQL 18+ images keep data under /var/lib/postgresql/<major>/,
+    # so the volume goes on the parent directory.
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - type: tmpfs
+        target: /dev/shm
+        tmpfs:
+          size: 268435456 # 256 MiB, as shm_size in docker-compose.yml
+    # Over TCP, not the socket: during the first initialisation the image runs
+    # a temporary server on the socket only, which must not count as ready.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p \"$$PGPORT\" -U zazzzor -d zazzzor"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+      start_interval: 2s
+    logging: *logging
+    deploy:
+      <<: *deploy
+      resources:
+        limits:
+          memory: 1G
+
+  api:
+    image: zazzzor-api:${ZAZZZOR_API_TAG:?запускайте через deploy/scripts/stack.sh}
+    networks: [hostnet]
+    environment:
+      # Loopback only: Caddy proxies to it, nothing else can reach it.
+      ZAZZZOR_HTTP_ADDR: 127.0.0.1:${ZAZZZOR_API_PORT:-8080}
+      ZAZZZOR_METRICS_ADDR: 127.0.0.1:${ZAZZZOR_METRICS_PORT:-9464}
+      # Hex password (see .env.example), so it needs no URL escaping.
+      ZAZZZOR_DATABASE_URL: postgres://zazzzor:${POSTGRES_PASSWORD}@127.0.0.1:${POSTGRES_PORT:-55432}/zazzzor?sslmode=disable
+      # Browsers omit :443 in Origin, so both forms are allowed (see
+      # docker-compose.yml). Smoke checks use the first one.
+      ZAZZZOR_ALLOWED_ORIGINS: https://${ZAZZZOR_DOMAIN},https://${ZAZZZOR_DOMAIN}:${ZAZZZOR_PUBLIC_PORT:?запускайте через deploy/scripts/stack.sh}
+      # Caddy shares the host network and connects from 127.0.0.1.
+      ZAZZZOR_TRUSTED_PROXIES: 127.0.0.1/32
+      ZAZZZOR_ADMIN_USERNAMES: ${ZAZZZOR_ADMIN_USERNAMES:-}
+      ZAZZZOR_DATA_DIR: /data
+      # Below the memory limit; see the budget in
+      # server/internal/platform/upload/upload.go.
+      GOMEMLIMIT: 768MiB
+    volumes:
+      - apidata:/data
+      - type: tmpfs
+        target: /tmp
+        tmpfs:
+          size: 67108864 # 64 MiB
+    healthcheck:
+      test: ["CMD", "/zazzzor", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+      start_interval: 2s
+    # The server drains connections for up to 15 s on SIGTERM.
+    stop_grace_period: 20s
+    read_only: true
+    cap_drop:
+      - ALL
+    logging: *logging
+    deploy:
+      <<: *deploy
+      resources:
+        limits:
+          memory: 1G
+
+networks:
+  hostnet:
+    external: true
+    name: host
+  # Outbound only (DuckDNS updates); no service publishes ports on it.
+  egress:
+    driver: overlay
+
+# Same names as the compose project (zazzzor_pgdata, ...), so moving from
+# docker compose to the stack keeps the data.
+volumes:
+  pgdata:
+  apidata:
+  caddy_data:
+  caddy_config:

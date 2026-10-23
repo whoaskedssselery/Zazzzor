@@ -1,11 +1,20 @@
 #!/usr/bin/env bash
 # Проверяет, что порты Zazzzor свободны на этой машине.
-# Использование: bash deploy/scripts/check-ports.sh [путь к .env]
-# По умолчанию читает deploy/.env. Запускайте ДО первого `docker compose up`
-# (после запуска эти порты, разумеется, заняты самим Zazzzor).
+# Использование: bash deploy/scripts/check-ports.sh [--stack] [путь к .env]
+# По умолчанию читает deploy/.env. Запускайте ДО первого запуска (после него
+# эти порты, разумеется, заняты самим Zazzzor). С --stack (или если Docker в
+# режиме Swarm) проверяет и порты, нужные только docker stack: метрики API и
+# Postgres на 127.0.0.1.
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+stack_mode=0
+if [[ "${1:-}" == --stack ]]; then
+  stack_mode=1
+  shift
+elif [[ "$(docker info --format "{{.Swarm.LocalNodeState}}" 2>/dev/null || true)" == active ]]; then
+  stack_mode=1
+fi
 env_file="${1:-$script_dir/../.env}"
 
 if [[ ! -f "$env_file" ]]; then
@@ -48,6 +57,17 @@ if grep -qE '^[[:space:]]*ZAZZZOR_API_PORT=' "$env_file"; then
   api_port="$(env_value ZAZZZOR_API_PORT)"
 fi
 
+# Только для docker stack (deploy/scripts/stack.sh): там API отдаёт метрики, а
+# Postgres слушает на 127.0.0.1 хоста. Необязательны, по умолчанию 9464 и 55432.
+metrics_port=9464
+if grep -qE "^[[:space:]]*ZAZZZOR_METRICS_PORT=" "$env_file"; then
+  metrics_port="$(env_value ZAZZZOR_METRICS_PORT)"
+fi
+postgres_port=55432
+if grep -qE "^[[:space:]]*POSTGRES_PORT=" "$env_file"; then
+  postgres_port="$(env_value POSTGRES_PORT)"
+fi
+
 busy=0
 
 # check <порт> <tcp|udp>
@@ -73,9 +93,13 @@ check "$udp_port" udp
 # API Zazzzor (compose публикует его только на 127.0.0.1, но занятый порт на
 # любом адресе тоже помешает).
 check "$api_port" tcp
+if [[ "$stack_mode" -eq 1 ]]; then
+  check "$metrics_port" tcp
+  check "$postgres_port" tcp
+fi
 
 if [[ "$busy" -ne 0 ]]; then
-  echo "Освободите порты или поменяйте их в $env_file (7880 менять нельзя; для API — ZAZZZOR_API_PORT)."
+  echo "Освободите порты или поменяйте их в $env_file (7880 менять нельзя; для API — ZAZZZOR_API_PORT, в docker stack ещё ZAZZZOR_METRICS_PORT и POSTGRES_PORT)."
   exit 1
 fi
 
