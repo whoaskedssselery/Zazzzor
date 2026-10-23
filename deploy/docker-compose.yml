@@ -122,7 +122,10 @@ services:
       ZAZZZOR_ADMIN_USERNAMES: ${ZAZZZOR_ADMIN_USERNAMES:-}
       ZAZZZOR_DATA_DIR: /data
       # Below mem_limit, so the Go GC works harder before the kernel kills it.
-      GOMEMLIMIT: 400MiB
+      # The server caps its load-dependent allocations (image decodes, password
+      # hashes, upload bodies) at 576 MiB in all; see the budget in
+      # server/internal/platform/upload/upload.go.
+      GOMEMLIMIT: 768MiB
     # Only on the host's loopback, for Caddy. The metrics port (9090) is not
     # published at all.
     ports:
@@ -151,7 +154,7 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-    mem_limit: 512m
+    mem_limit: 1g
     logging: *logging
     restart: unless-stopped
 

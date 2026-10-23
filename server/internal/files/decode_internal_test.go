@@ -156,15 +156,19 @@ func measureAlloc(f func()) uint64 {
 	return after.TotalAlloc - before.TotalAlloc
 }
 
-// The largest images within the caps go through, and the memory they take
-// stays below what was reserved for them.
+// The heaviest images within the caps either go through, taking no more
+// memory than was reserved for them, or, when their estimate exceeds the
+// whole decode budget, are refused before any pixel is decoded.
 func TestWorstCaseImagesFitBudget(t *testing.T) {
 	if testing.Short() {
 		t.Skip("allocates a few hundred MB")
 	}
 	d := newTestDisk(t)
+	fitted := 0
 	for name, src := range map[string][]byte{
+		"progressive YCbCr 3456x3456":               progressiveJPEG(3456, 3456, 3, 1),
 		"progressive YCbCr 4096x4096":               progressiveJPEG(4096, 4096, 3, 1),
+		"16-bit png 4096x4096":                      rawPNG(t, 4096, 4096, 16, 6, 8, false, nil),
 		"16-bit interlaced png 4096x4096":           interlaced16PNG(t, 4096, 4096),
 		"16-bit gray+tRNS png 4096x4096":            gray16TRNSPNG(t, 4096, 4096, false),
 		"16-bit gray+tRNS interlaced png 4096x4096": gray16TRNSPNG(t, 4096, 4096, true),
@@ -175,8 +179,12 @@ func TestWorstCaseImagesFitBudget(t *testing.T) {
 		}
 		w := info.weight()
 		if w > decodeBudget {
-			t.Fatalf("%s: weight %d over the budget %d", name, w, decodeBudget)
+			if _, err := d.SaveImage(t.Context(), KindAvatar, 1, bytes.NewReader(src)); !errors.Is(err, ErrUnsupportedImage) {
+				t.Fatalf("%s: weight %d MiB over the budget: err = %v, want ErrUnsupportedImage", name, w>>20, err)
+			}
+			continue
 		}
+		fitted++
 		var saveErr error
 		used := measureAlloc(func() {
 			_, saveErr = d.SaveImage(t.Context(), KindAvatar, 1, bytes.NewReader(src))
@@ -188,6 +196,9 @@ func TestWorstCaseImagesFitBudget(t *testing.T) {
 			t.Errorf("%s: allocated %d bytes, reserved only %d", name, used, w)
 		}
 		t.Logf("%s: weight %d MiB, allocated %d MiB", name, w>>20, used>>20)
+	}
+	if fitted < 2 {
+		t.Fatalf("only %d of the images fit the budget; the test lost its point", fitted)
 	}
 	// A progressive CMYK image of the maximum size cannot fit the budget.
 	if _, err := d.SaveImage(t.Context(), KindAvatar, 1, bytes.NewReader(progressiveJPEG(4096, 4096, 4, 1))); !errors.Is(err, ErrUnsupportedImage) {

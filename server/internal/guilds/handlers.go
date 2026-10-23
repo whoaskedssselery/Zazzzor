@@ -41,7 +41,7 @@ func Mount(r chi.Router, s *Service) {
 		r.Get("/guilds/{guild_id}", httpx.Wrap(s.handleGet))
 		writes.Patch("/guilds/{guild_id}", httpx.Wrap(s.handlePatch))
 		writes.Delete("/guilds/{guild_id}", httpx.Wrap(s.handleDelete))
-		writes.Put("/guilds/{guild_id}/icon", httpx.Wrap(s.handlePutIcon))
+		writes.With(upload.Limit).Put("/guilds/{guild_id}/icon", httpx.Wrap(s.handlePutIcon))
 
 		r.Get("/guilds/{guild_id}/members", httpx.Wrap(s.handleMembers))
 		writes.Patch("/guilds/{guild_id}/members/{user_id}", httpx.Wrap(s.handlePatchMember))

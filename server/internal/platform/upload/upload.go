@@ -89,3 +89,55 @@ func readError(err error, maxBytes int) error {
 	}
 	return httpx.BadRequest("invalid_body", "request body is not valid multipart/form-data")
 }
+
+// Memory budget of the API process. deploy/docker-compose.yml gives the api
+// container mem_limit 1g and GOMEMLIMIT 768MiB; the transient allocations
+// that scale with load are each capped so that together they stay well
+// below GOMEMLIMIT, leaving the rest for the heap of requests, gateway
+// buffers and the runtime:
+//
+//	image decodes   files.decodeBudget          256 MiB
+//	password hashes auth.maxConcurrentHashes    4 × 64 MiB = 256 MiB
+//	upload bodies   MaxInFlight × SlotBytes     8 × 8 MiB  =  64 MiB
+//	                                            total        576 MiB < 768 MiB
+//
+// An upload slot covers the body (at most 4 MiB, plus what io.ReadAll's
+// growth and the copy SaveImage reads may add) for as long as the request
+// runs, decode included; its decode memory is reserved separately.
+const (
+	// MaxInFlight is how many upload requests may run at once.
+	MaxInFlight = 8
+	// SlotBytes is the memory one upload slot accounts for.
+	SlotBytes = 8 << 20
+	// busyRetryAfter is the Retry-After of an upload turned away.
+	busyRetryAfter = 5 * time.Second
+)
+
+// Gate bounds the upload requests in flight.
+type Gate struct{ slots chan struct{} }
+
+// NewGate returns a Gate letting n uploads run at once.
+func NewGate(n int) *Gate { return &Gate{slots: make(chan struct{}, max(n, 1))} }
+
+// Limit runs next while it holds a slot of g. Without a free slot the
+// request is answered 503 server_busy with a Retry-After at once, before
+// any of its body is read.
+func (g *Gate) Limit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case g.slots <- struct{}{}:
+		default:
+			httpx.WriteProblem(w, httpx.ServiceUnavailableRetryAfter("server_busy", busyRetryAfter))
+			return
+		}
+		defer func() { <-g.slots }()
+		next.ServeHTTP(w, r)
+	})
+}
+
+// bodies is the gate every upload route of the process shares.
+var bodies = NewGate(MaxInFlight)
+
+// Limit is the process-wide upload gate (MaxInFlight slots); mount it on
+// every route that reads an upload, after authentication and rate limits.
+func Limit(next http.Handler) http.Handler { return bodies.Limit(next) }

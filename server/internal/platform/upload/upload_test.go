@@ -108,3 +108,43 @@ func TestTooLargeDetail(t *testing.T) {
 
 // crlf is the multipart line break.
 var crlf = string([]byte{13, 10})
+
+// TestGateBoundsUploadsInFlight: past the gate's slots an upload is turned
+// away 503 server_busy with a Retry-After before its body is read; a freed
+// slot is usable again.
+func TestGateBoundsUploadsInFlight(t *testing.T) {
+	g := upload.NewGate(1)
+	entered, release := make(chan struct{}), make(chan struct{})
+	h := g.Limit(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		entered <- struct{}{}
+		<-release
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	done := make(chan int)
+	go func() {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodPut, "/", nil))
+		done <- rec.Code
+	}()
+	<-entered
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPut, "/", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("second upload: status = %d, want 503", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"server_busy"`) || rec.Header().Get("Retry-After") == "" {
+		t.Fatalf("second upload: %s, Retry-After %q", rec.Body.String(), rec.Header().Get("Retry-After"))
+	}
+
+	close(release)
+	if code := <-done; code != http.StatusNoContent {
+		t.Fatalf("first upload: status = %d", code)
+	}
+	go func() { <-entered }()
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPut, "/", nil))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("upload after release: status = %d, want 204", rec.Code)
+	}
+}

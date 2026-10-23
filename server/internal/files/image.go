@@ -34,7 +34,8 @@ const (
 
 // decodeBudget is the memory all concurrent decodes together may reserve
 // (see imageInfo.weight). An image whose own estimate is larger is refused.
-const decodeBudget = 384 << 20
+// It is part of the process memory budget documented in package upload.
+const decodeBudget = 256 << 20
 
 type codec struct {
 	decodeConfig func(io.Reader) (image.Config, error)

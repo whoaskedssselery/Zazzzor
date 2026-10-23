@@ -36,7 +36,8 @@ const (
 	maxTime    = 16
 	maxThreads = 16
 
-	// maxConcurrentHashes caps simultaneous Argon2id runs (64 MiB each).
+	// maxConcurrentHashes caps simultaneous Argon2id runs (64 MiB each),
+	// part of the process memory budget documented in package upload.
 	maxConcurrentHashes = 4
 )
 

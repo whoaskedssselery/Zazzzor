@@ -317,7 +317,10 @@ paths:
         `multipart/form-data` with the image in the part `file`: PNG, JPEG,
         WebP or GIF (first frame), at most 4 MiB and 4096 pixels on a side
         (4096x4096 = 16 Mi pixels in all). JPEG EXIF orientation is applied
-        and a JPEG may have at most 100 scans. The type is detected from the content; the
+        and a JPEG may have at most 100 scans. Images that would need more than
+        256 MiB to decode (e.g. a progressive JPEG or a 16-bit interlaced PNG
+        near the size cap) are refused with `unsupported_image`. The type is
+        detected from the content; the
         file name and the part's Content-Type are ignored. The image is cut
         to a centred square, scaled to 256x256 and stored as PNG without
         metadata; the same image always gets the same `avatar_url`. The
@@ -1937,8 +1940,9 @@ components:
         image/png: {}
     ImagesBusy:
       description: |
-        `server_busy`: too many images are being processed at once. Retry
-        after `Retry-After` seconds.
+        `server_busy`: too many uploads are in flight (8 at once, refused
+        before the body is read) or too many images are being decoded at once.
+        Retry after `Retry-After` seconds.
       headers:
         Retry-After:
           description: Seconds to wait before retrying.
