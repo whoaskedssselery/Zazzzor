@@ -78,6 +78,28 @@ func (q *Queries) AllMembers(ctx context.Context, db DBTX, guildID snowflake.ID)
 	return items, nil
 }
 
+const banByID = `-- name: BanByID :one
+SELECT guild_id, user_id, reason, created_by, created_at FROM guild_bans WHERE guild_id = $1 AND user_id = $2
+`
+
+type BanByIDParams struct {
+	GuildID snowflake.ID
+	UserID  snowflake.ID
+}
+
+func (q *Queries) BanByID(ctx context.Context, db DBTX, arg BanByIDParams) (GuildBan, error) {
+	row := db.QueryRow(ctx, banByID, arg.GuildID, arg.UserID)
+	var i GuildBan
+	err := row.Scan(
+		&i.GuildID,
+		&i.UserID,
+		&i.Reason,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const closeRoleGap = `-- name: CloseRoleGap :exec
 UPDATE roles SET position = position - 1 WHERE guild_id = $1 AND position > $2
 `
@@ -113,6 +135,35 @@ func (q *Queries) CountUserGuilds(ctx context.Context, db DBTX, userID snowflake
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const createBan = `-- name: CreateBan :execrows
+INSERT INTO guild_bans (guild_id, user_id, reason, created_by, created_at)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT DO NOTHING
+`
+
+type CreateBanParams struct {
+	GuildID   snowflake.ID
+	UserID    snowflake.ID
+	Reason    *string
+	CreatedBy *snowflake.ID
+	CreatedAt time.Time
+}
+
+// Bans user_id; an existing ban is left as it is (no row).
+func (q *Queries) CreateBan(ctx context.Context, db DBTX, arg CreateBanParams) (int64, error) {
+	result, err := db.Exec(ctx, createBan,
+		arg.GuildID,
+		arg.UserID,
+		arg.Reason,
+		arg.CreatedBy,
+		arg.CreatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const createGuild = `-- name: CreateGuild :one
@@ -191,6 +242,23 @@ func (q *Queries) CreateRole(ctx context.Context, db DBTX, arg CreateRoleParams)
 	return i, err
 }
 
+const deleteBan = `-- name: DeleteBan :execrows
+DELETE FROM guild_bans WHERE guild_id = $1 AND user_id = $2
+`
+
+type DeleteBanParams struct {
+	GuildID snowflake.ID
+	UserID  snowflake.ID
+}
+
+func (q *Queries) DeleteBan(ctx context.Context, db DBTX, arg DeleteBanParams) (int64, error) {
+	result, err := db.Exec(ctx, deleteBan, arg.GuildID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteGuild = `-- name: DeleteGuild :one
 DELETE FROM guilds WHERE id = $1 RETURNING id, name, icon_hash, owner_id, created_at
 `
@@ -249,6 +317,41 @@ func (q *Queries) DeleteRole(ctx context.Context, db DBTX, arg DeleteRoleParams)
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const guildBans = `-- name: GuildBans :many
+SELECT guild_id, user_id, reason, created_by, created_at FROM guild_bans WHERE guild_id = $1 ORDER BY created_at, user_id LIMIT $2
+`
+
+type GuildBansParams struct {
+	GuildID snowflake.ID
+	Lim     int32
+}
+
+func (q *Queries) GuildBans(ctx context.Context, db DBTX, arg GuildBansParams) ([]GuildBan, error) {
+	rows, err := db.Query(ctx, guildBans, arg.GuildID, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GuildBan
+	for rows.Next() {
+		var i GuildBan
+		if err := rows.Scan(
+			&i.GuildID,
+			&i.UserID,
+			&i.Reason,
+			&i.CreatedBy,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const guildByID = `-- name: GuildByID :one
@@ -357,6 +460,22 @@ func (q *Queries) GuildsOfUser(ctx context.Context, db DBTX, userID snowflake.ID
 		return nil, err
 	}
 	return items, nil
+}
+
+const isBanned = `-- name: IsBanned :one
+SELECT EXISTS (SELECT 1 FROM guild_bans WHERE guild_id = $1 AND user_id = $2)
+`
+
+type IsBannedParams struct {
+	GuildID snowflake.ID
+	UserID  snowflake.ID
+}
+
+func (q *Queries) IsBanned(ctx context.Context, db DBTX, arg IsBannedParams) (bool, error) {
+	row := db.QueryRow(ctx, isBanned, arg.GuildID, arg.UserID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const isMember = `-- name: IsMember :one
@@ -787,6 +906,45 @@ type SetRolePositionsParams struct {
 func (q *Queries) SetRolePositions(ctx context.Context, db DBTX, arg SetRolePositionsParams) error {
 	_, err := db.Exec(ctx, setRolePositions, arg.GuildID, arg.Ids, arg.Positions)
 	return err
+}
+
+const sharedPeers = `-- name: SharedPeers :many
+SELECT DISTINCT mine.user_id, other.user_id AS peer_id FROM members AS mine
+JOIN members AS other ON other.guild_id = mine.guild_id
+WHERE mine.user_id = ANY($1::bigint[]) AND other.user_id = ANY($2::bigint[])
+ORDER BY mine.user_id, peer_id
+`
+
+type SharedPeersParams struct {
+	UserIds []int64
+	PeerIds []int64
+}
+
+type SharedPeersRow struct {
+	UserID snowflake.ID
+	PeerID snowflake.ID
+}
+
+// The pairs (user, peer) with user among user_ids and peer among peer_ids
+// that share at least one guild (a user is its own peer when in a guild).
+func (q *Queries) SharedPeers(ctx context.Context, db DBTX, arg SharedPeersParams) ([]SharedPeersRow, error) {
+	rows, err := db.Query(ctx, sharedPeers, arg.UserIds, arg.PeerIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SharedPeersRow
+	for rows.Next() {
+		var i SharedPeersRow
+		if err := rows.Scan(&i.UserID, &i.PeerID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const shiftRolesUp = `-- name: ShiftRolesUp :exec

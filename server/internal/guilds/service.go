@@ -111,7 +111,9 @@ func (s *Service) CreateGuild(ctx context.Context, owner auth.User, name string)
 }
 
 // AddMember adds userID to guildID inside tx (for invites), enforcing the
-// per-user guild limit. It reports false when the user already was a
+// per-user guild limit. A banned user is ErrBanned, checked under the
+// guild lock that bans take, so a ban racing the join never leaves a
+// banned member. It reports false when the user already was a
 // member (even at the limit), ErrNotFound when the guild is gone. After
 // commit, call AnnounceJoin.
 func (s *Service) AddMember(ctx context.Context, tx pgx.Tx, guildID, userID snowflake.ID) (bool, error) {
@@ -119,6 +121,20 @@ func (s *Service) AddMember(ctx context.Context, tx pgx.Tx, guildID, userID snow
 	// join of the same user.
 	if err := s.q.LockUserGuilds(ctx, tx, int64(userID)); err != nil {
 		return false, fmt.Errorf("guilds: lock user: %w", err)
+	}
+	err := s.lockGuild(ctx, tx, guildID)
+	if errors.Is(err, ErrNotMember) {
+		return false, ErrNotFound
+	}
+	if err != nil {
+		return false, err
+	}
+	banned, err := s.q.IsBanned(ctx, tx, store.IsBannedParams{GuildID: guildID, UserID: userID})
+	if err != nil {
+		return false, fmt.Errorf("guilds: check ban: %w", err)
+	}
+	if banned {
+		return false, ErrBanned
 	}
 	member, err := s.q.IsMember(ctx, tx, store.IsMemberParams{GuildID: guildID, UserID: userID})
 	if err != nil {
@@ -352,23 +368,12 @@ func (s *Service) Leave(ctx context.Context, guildID snowflake.ID, user auth.Use
 		if sub.OwnerID == user.ID {
 			return ErrOwnerCannotLeave
 		}
-		if _, err = s.q.DeleteMember(ctx, tx, store.DeleteMemberParams{GuildID: guildID, UserID: user.ID}); err != nil {
-			return fmt.Errorf("guilds: delete member: %w", err)
-		}
-		if err = s.overwrites.MemberRemoved(ctx, tx, guildID, user.ID); err != nil {
-			return fmt.Errorf("guilds: drop member overwrites: %w", err)
-		}
-		return nil
+		return s.removeMember(ctx, tx, guildID, user.ID)
 	})
 	if err != nil {
 		return err
 	}
-	s.publish(ctx, events.Event{Type: events.GuildMemberRemove,
-		Audience: events.Audience{Kind: events.AudienceGuild, GuildID: guildID},
-		Payload:  MemberRemovePayload{GuildID: guildID, User: user.Public()}})
-	s.publish(ctx, events.Event{Type: events.GuildDelete,
-		Audience: events.Audience{Kind: events.AudienceUsers, UserIDs: []snowflake.ID{user.ID}},
-		Payload:  GuildDeletePayload{ID: guildID}})
+	s.announceRemoval(ctx, guildID, user)
 	return nil
 }
 

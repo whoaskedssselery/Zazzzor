@@ -27,7 +27,8 @@ const (
 //
 //	POST /guilds; GET /users/@me/guilds; DELETE /users/@me/guilds/{guild_id}
 //	GET, PATCH, DELETE /guilds/{guild_id}; PUT /guilds/{guild_id}/icon
-//	GET /guilds/{guild_id}/members; PATCH /guilds/{guild_id}/members/{user_id}
+//	GET /guilds/{guild_id}/members; PATCH, DELETE (kick) /guilds/{guild_id}/members/{user_id}
+//	GET /guilds/{guild_id}/bans; GET, PUT, DELETE /guilds/{guild_id}/bans/{user_id}
 //	GET, POST, PATCH /guilds/{guild_id}/roles; PATCH, DELETE /guilds/{guild_id}/roles/{role_id}
 func Mount(r chi.Router, s *Service) {
 	r.Group(func(r chi.Router) {
@@ -45,6 +46,12 @@ func Mount(r chi.Router, s *Service) {
 
 		r.Get("/guilds/{guild_id}/members", httpx.Wrap(s.handleMembers))
 		writes.Patch("/guilds/{guild_id}/members/{user_id}", httpx.Wrap(s.handlePatchMember))
+		writes.Delete("/guilds/{guild_id}/members/{user_id}", httpx.Wrap(s.handleKick))
+
+		r.Get("/guilds/{guild_id}/bans", httpx.Wrap(s.handleBans))
+		r.Get("/guilds/{guild_id}/bans/{user_id}", httpx.Wrap(s.handleGetBan))
+		writes.Put("/guilds/{guild_id}/bans/{user_id}", httpx.Wrap(s.handlePutBan))
+		writes.Delete("/guilds/{guild_id}/bans/{user_id}", httpx.Wrap(s.handleUnban))
 
 		r.Get("/guilds/{guild_id}/roles", httpx.Wrap(s.handleRoles))
 		writes.Post("/guilds/{guild_id}/roles", httpx.Wrap(s.handleCreateRole))
@@ -352,6 +359,94 @@ func (s *Service) handleDeleteRole(w http.ResponseWriter, r *http.Request) error
 		return err
 	}
 	if err = s.DeleteRole(r.Context(), id, roleID, auth.CurrentUser(r).ID); err != nil {
+		return fail(err)
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+// guildAndUser reads the guild_id and user_id path parameters.
+func guildAndUser(r *http.Request) (guildID, userID snowflake.ID, err error) {
+	if guildID, err = httpx.PathID(r, "guild_id"); err != nil {
+		return 0, 0, err
+	}
+	if userID, err = httpx.PathID(r, "user_id"); err != nil {
+		return 0, 0, err
+	}
+	return guildID, userID, nil
+}
+
+func (s *Service) handleKick(w http.ResponseWriter, r *http.Request) error {
+	id, target, err := guildAndUser(r)
+	if err != nil {
+		return err
+	}
+	if err = s.Kick(r.Context(), id, target, auth.CurrentUser(r).ID); err != nil {
+		return fail(err)
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (s *Service) handleBans(w http.ResponseWriter, r *http.Request) error {
+	id, err := httpx.PathID(r, "guild_id")
+	if err != nil {
+		return err
+	}
+	bans, err := s.Bans(r.Context(), id, auth.CurrentUser(r).ID)
+	if err != nil {
+		return fail(err)
+	}
+	out := make([]PublicBan, len(bans))
+	for i, b := range bans {
+		out[i] = b.Public()
+	}
+	httpx.JSON(w, http.StatusOK, out)
+	return nil
+}
+
+func (s *Service) handleGetBan(w http.ResponseWriter, r *http.Request) error {
+	id, target, err := guildAndUser(r)
+	if err != nil {
+		return err
+	}
+	b, err := s.BanOf(r.Context(), id, target, auth.CurrentUser(r).ID)
+	if err != nil {
+		return fail(err)
+	}
+	httpx.JSON(w, http.StatusOK, b.Public())
+	return nil
+}
+
+type banRequest struct {
+	Reason *string `json:"reason"`
+}
+
+func (s *Service) handlePutBan(w http.ResponseWriter, r *http.Request) error {
+	id, target, err := guildAndUser(r)
+	if err != nil {
+		return err
+	}
+	var req banRequest
+	// The body is optional: none at all is a ban without a reason.
+	if r.ContentLength != 0 || r.Header.Get("Content-Type") != "" {
+		if req, err = httpx.Decode[banRequest](r); err != nil {
+			return err
+		}
+	}
+	if err = s.Ban(r.Context(), id, target, auth.CurrentUser(r).ID, req.Reason); err != nil {
+		return fail(err)
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (s *Service) handleUnban(w http.ResponseWriter, r *http.Request) error {
+	id, target, err := guildAndUser(r)
+	if err != nil {
+		return err
+	}
+	if err = s.Unban(r.Context(), id, target, auth.CurrentUser(r).ID); err != nil {
 		return fail(err)
 	}
 	w.WriteHeader(http.StatusNoContent)

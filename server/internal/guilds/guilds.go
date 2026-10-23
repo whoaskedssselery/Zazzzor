@@ -103,6 +103,12 @@ func ToProblem(err error) error {
 		return httpx.BadRequest("owner_cannot_leave", "the owner cannot leave their server; delete it instead")
 	case errors.Is(err, ErrEveryone):
 		return httpx.BadRequest("cannot_delete_everyone", "the @everyone role cannot be deleted")
+	case errors.Is(err, ErrCannotTargetSelf):
+		return httpx.BadRequest("cannot_target_self", "use DELETE /users/@me/guilds/{guild_id} to leave a server")
+	case errors.Is(err, ErrHierarchy):
+		return httpx.Forbidden("role_hierarchy")
+	case errors.Is(err, ErrBanned):
+		return httpx.Forbidden("banned")
 	}
 	return files.ToProblem(err)
 }
@@ -273,6 +279,13 @@ type Directory interface {
 	// PeerIDs returns everyone sharing at least one guild with userID
 	// (userID too, if it is in any guild), ascending.
 	PeerIDs(ctx context.Context, userID snowflake.ID) ([]snowflake.ID, error)
+	// SharedPeers returns, for each of userIDs in some guild, which of peerIDs
+	// share at least one guild with it (itself included when listed), in
+	// one query.
+	SharedPeers(ctx context.Context, userIDs, peerIDs []snowflake.ID) (map[snowflake.ID][]snowflake.ID, error)
+	// MemberIDsWith returns the members of guildID whose guild-level
+	// permissions hold need, ascending; none for a missing guild.
+	MemberIDsWith(ctx context.Context, guildID snowflake.ID, need permissions.Permission) ([]snowflake.ID, error)
 }
 
 var _ Directory = (*Service)(nil)
@@ -487,6 +500,49 @@ func (s *Service) PeerIDs(ctx context.Context, userID snowflake.ID) ([]snowflake
 		return nil, fmt.Errorf("guilds: list peers: %w", err)
 	}
 	return ids, nil
+}
+
+// SharedPeers implements Directory.
+func (s *Service) SharedPeers(ctx context.Context, userIDs, peerIDs []snowflake.ID) (map[snowflake.ID][]snowflake.ID, error) {
+	out := make(map[snowflake.ID][]snowflake.ID, len(userIDs))
+	if len(userIDs) == 0 || len(peerIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.q.SharedPeers(ctx, s.pool, store.SharedPeersParams{UserIds: ids64(userIDs), PeerIds: ids64(peerIDs)})
+	if err != nil {
+		return nil, fmt.Errorf("guilds: list shared peers: %w", err)
+	}
+	for _, r := range rows {
+		out[r.UserID] = append(out[r.UserID], r.PeerID)
+	}
+	return out, nil
+}
+
+// MemberIDsWith implements Directory. It reads the guild's access in one
+// repeatable-read transaction.
+func (s *Service) MemberIDsWith(ctx context.Context, guildID snowflake.ID, need permissions.Permission) ([]snowflake.ID, error) {
+	var out []snowflake.ID
+	err := pgx.BeginTxFunc(ctx, s.pool, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly},
+		func(tx pgx.Tx) error {
+			out = nil
+			a, err := s.AccessIn(ctx, tx, guildID)
+			if errors.Is(err, ErrNotFound) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			for _, id := range a.memberIDs {
+				if sub, ok := a.Subject(id); ok && permissions.Base(sub).Has(need) {
+					out = append(out, id)
+				}
+			}
+			return nil
+		})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // Snapshot implements Directory. It reads in one repeatable-read

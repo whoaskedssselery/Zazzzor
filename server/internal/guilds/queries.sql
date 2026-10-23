@@ -153,3 +153,29 @@ LEFT JOIN member_roles ON member_roles.guild_id = members.guild_id AND member_ro
 WHERE members.guild_id = @guild_id
 GROUP BY members.user_id
 ORDER BY members.user_id;
+
+-- name: CreateBan :execrows
+-- Bans user_id; an existing ban is left as it is (no row).
+INSERT INTO guild_bans (guild_id, user_id, reason, created_by, created_at)
+VALUES (@guild_id, @user_id, @reason, @created_by, @created_at)
+ON CONFLICT DO NOTHING;
+
+-- name: DeleteBan :execrows
+DELETE FROM guild_bans WHERE guild_id = @guild_id AND user_id = @user_id;
+
+-- name: IsBanned :one
+SELECT EXISTS (SELECT 1 FROM guild_bans WHERE guild_id = @guild_id AND user_id = @user_id);
+
+-- name: BanByID :one
+SELECT * FROM guild_bans WHERE guild_id = @guild_id AND user_id = @user_id;
+
+-- name: GuildBans :many
+SELECT * FROM guild_bans WHERE guild_id = @guild_id ORDER BY created_at, user_id LIMIT @lim;
+
+-- name: SharedPeers :many
+-- The pairs (user, peer) with user among user_ids and peer among peer_ids
+-- that share at least one guild (a user is its own peer when in a guild).
+SELECT DISTINCT mine.user_id, other.user_id AS peer_id FROM members AS mine
+JOIN members AS other ON other.guild_id = mine.guild_id
+WHERE mine.user_id = ANY(@user_ids::bigint[]) AND other.user_id = ANY(@peer_ids::bigint[])
+ORDER BY mine.user_id, peer_id;

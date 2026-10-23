@@ -13,6 +13,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/time/rate"
 
@@ -35,12 +36,13 @@ const wait = 5 * time.Second
 // env is the production wiring (app.NewModules, app.Routes, the gateway)
 // on a fresh database.
 type env struct {
-	t   *testing.T
-	m   *app.Modules
-	bus *events.Bus
-	gw  *gateway.Gateway
-	reg *prometheus.Registry
-	h   http.Handler
+	t    *testing.T
+	pool *pgxpool.Pool
+	m    *app.Modules
+	bus  *events.Bus
+	gw   *gateway.Gateway
+	reg  *prometheus.Registry
+	h    http.Handler
 	// failsDispatch: the test makes dispatches fail on purpose.
 	failsDispatch bool
 }
@@ -64,10 +66,10 @@ func newEnvWith(t *testing.T, opts gateway.Options, hook func(*app.Modules, *gat
 		t.Fatal(err)
 	}
 	cfg.DataDir = t.TempDir()
-	e := &env{t: t, reg: prometheus.NewRegistry()}
+	e := &env{t: t, pool: testkit.Postgres(t), reg: prometheus.NewRegistry()}
 	e.bus = events.NewBus(e.reg)
 	t.Cleanup(e.bus.Close)
-	if e.m, err = app.NewModules(cfg, testkit.Postgres(t), snowflake.NewGenerator(0, time.Now), e.bus); err != nil {
+	if e.m, err = app.NewModules(cfg, e.pool, snowflake.NewGenerator(0, time.Now), e.bus); err != nil {
 		t.Fatal(err)
 	}
 	// Tests dial often from one address and user; the limit tests pass

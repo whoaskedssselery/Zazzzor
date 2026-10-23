@@ -81,6 +81,16 @@ sql:
             go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
           - column: member_roles.role_id
             go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: guild_bans.guild_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: guild_bans.user_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: guild_bans.created_by
+            go_type:
+              import: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake
+              type: ID
+              pointer: true
+            nullable: true
   - engine: postgresql
     schema: internal/platform/db/migrations
     queries: internal/channels/queries.sql

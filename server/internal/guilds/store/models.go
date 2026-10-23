@@ -32,6 +32,14 @@ type Guild struct {
 	CreatedAt time.Time
 }
 
+type GuildBan struct {
+	GuildID   snowflake.ID
+	UserID    snowflake.ID
+	Reason    *string
+	CreatedBy *snowflake.ID
+	CreatedAt time.Time
+}
+
 type Instance struct {
 	ID               bool
 	RegistrationOpen bool

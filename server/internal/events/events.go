@@ -6,6 +6,7 @@ package events
 import (
 	"context"
 
+	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
 
@@ -19,6 +20,8 @@ const (
 	GuildMemberAdd    = "GUILD_MEMBER_ADD"
 	GuildMemberUpdate = "GUILD_MEMBER_UPDATE"
 	GuildMemberRemove = "GUILD_MEMBER_REMOVE"
+	GuildBanAdd       = "GUILD_BAN_ADD"
+	GuildBanRemove    = "GUILD_BAN_REMOVE"
 	GuildRoleCreate   = "GUILD_ROLE_CREATE"
 	GuildRoleUpdate   = "GUILD_ROLE_UPDATE"
 	GuildRoleDelete   = "GUILD_ROLE_DELETE"
@@ -54,6 +57,11 @@ const (
 	// AudiencePeers is UserIDs[0] and everyone sharing a guild with them; the
 	// gateway resolves it through guilds.Directory.
 	AudiencePeers
+	// AudienceGuildPermission is the members of GuildID whose guild-level
+	// permissions hold Permission when the event is sent (e.g. the
+	// moderators for bans); the gateway resolves it through
+	// guilds.Directory.
+	AudienceGuildPermission
 )
 
 // Audience selects the recipients of an event.
@@ -62,6 +70,8 @@ type Audience struct {
 	GuildID   snowflake.ID
 	ChannelID snowflake.ID
 	UserIDs   []snowflake.ID
+	// Permission is what AudienceGuildPermission requires.
+	Permission permissions.Permission
 }
 
 // Event is one thing that happened.

@@ -32,6 +32,14 @@ type Guild struct {
 	CreatedAt time.Time
 }
 
+type GuildBan struct {
+	GuildID   int64
+	UserID    int64
+	Reason    *string
+	CreatedBy pgtype.Int8
+	CreatedAt time.Time
+}
+
 type Instance struct {
 	ID               bool
 	RegistrationOpen bool

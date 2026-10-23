@@ -152,6 +152,8 @@ func (g *Gateway) dispatch(e events.Event) {
 		g.joinPresence(e, recipients, conns)
 	case events.GuildMemberRemove:
 		g.leavePresence(ctx, e, recipients, conns)
+	case events.GuildDelete:
+		g.deletePresence(ctx, e, recipients, conns)
 	}
 }
 
@@ -204,6 +206,40 @@ func (g *Gateway) leavePresence(ctx context.Context, e events.Event, members []s
 	}
 	for _, id := range g.onlineAmong(parted) {
 		g.sendPresence(Presence{UserID: id, Status: StatusOffline}, []snowflake.ID{gone}, id, conns)
+	}
+}
+
+// deletePresence follows a GUILD_DELETE sent to the former members of a
+// deleted guild (the deletion has committed): every pair of them that
+// shares no guild any more sees each other go offline, as far as they are
+// online and connected. A GUILD_DELETE to one user (who left or was
+// removed) has no pair; GUILD_MEMBER_REMOVE covers it. One query for the
+// whole guild.
+func (g *Gateway) deletePresence(ctx context.Context, e events.Event, formers []snowflake.ID, conns map[snowflake.ID][]*conn) {
+	if len(formers) < 2 {
+		return
+	}
+	online := g.onlineAmong(formers)
+	var listening []snowflake.ID
+	for _, id := range formers {
+		if len(conns[id]) > 0 {
+			listening = append(listening, id)
+		}
+	}
+	if len(online) == 0 || len(listening) == 0 {
+		return
+	}
+	shared, err := g.opts.Guilds.SharedPeers(ctx, listening, online)
+	if err != nil {
+		g.dropped(e, err) // the guild is gone: no connection holds it to resync
+		return
+	}
+	for _, to := range listening {
+		for _, id := range online {
+			if id != to && !slices.Contains(shared[to], id) {
+				g.sendPresence(Presence{UserID: id, Status: StatusOffline}, []snowflake.ID{to}, id, conns)
+			}
+		}
 	}
 }
 
@@ -271,6 +307,11 @@ func (g *Gateway) recipients(ctx context.Context, e events.Event) ([]snowflake.I
 		return ids, err
 	case events.AudienceUsers:
 		return a.UserIDs, nil
+	case events.AudienceGuildPermission:
+		if a.Permission == 0 {
+			return nil, errors.New("audience without permission")
+		}
+		return g.opts.Guilds.MemberIDsWith(ctx, a.GuildID, a.Permission)
 	case events.AudiencePeers:
 		if len(a.UserIDs) == 0 {
 			return nil, nil
