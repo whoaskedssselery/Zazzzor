@@ -27,6 +27,10 @@ const DefaultMaxConns = 16
 // busy, instead of hanging it until the client gives up.
 const DefaultAcquireTimeout = 5 * time.Second
 
+// ErrInvalidURL means the database URL does not parse. Its text never quotes
+// the URL, which may carry the password.
+var ErrInvalidURL = errors.New("db: invalid database URL")
+
 // Options tunes OpenWith; zero fields take the defaults.
 type Options struct {
 	// AcquireTimeout bounds the wait for a pool connection; default
@@ -45,7 +49,7 @@ func OpenWith(ctx context.Context, url string, o Options) (*pgxpool.Pool, error)
 	cfg, err := pgxpool.ParseConfig(url)
 	if err != nil {
 		// pgx's parse errors may quote the connection string.
-		return nil, errors.New("db: invalid database URL")
+		return nil, ErrInvalidURL
 	}
 	// ParseConfig consumes the parameter, so look for it in the URL itself.
 	if !strings.Contains(url, "pool_max_conns") {
