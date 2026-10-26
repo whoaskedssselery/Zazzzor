@@ -43,9 +43,12 @@ type fakeAPI struct {
 	register int    // status to answer registration with; 0 means 201
 	origin   string // Origin the gateway expects; empty means smokeTestOrigin
 
+	// closed, when set, gets the close code the gateway read, once its
+	// handler has it (the client may return before that).
+	closed chan websocket.StatusCode
+
 	mu         sync.Mutex
 	deleted    bool
-	closeCode  websocket.StatusCode
 	gatewayHit bool
 }
 
@@ -137,9 +140,9 @@ func (f *fakeAPI) serveGateway(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	_, _, err = c.Read(ctx)
-	f.mu.Lock()
-	f.closeCode = websocket.CloseStatus(err)
-	f.mu.Unlock()
+	if f.closed != nil {
+		f.closed <- websocket.CloseStatus(err)
+	}
 }
 
 func problem(w http.ResponseWriter, status int, code string) {
@@ -164,7 +167,7 @@ func runSmokeAgainst(t *testing.T, h http.Handler, opts smokeOptions) (code int,
 }
 
 func TestSmokeSucceeds(t *testing.T) {
-	f := &fakeAPI{t: t}
+	f := &fakeAPI{t: t, closed: make(chan websocket.StatusCode, 1)}
 	code, out, errOut := runSmokeAgainst(t, f, smokeOptions{})
 	if code != 0 {
 		t.Fatalf("exit = %d, stderr: %s", code, errOut)
@@ -176,12 +179,18 @@ func TestSmokeSucceeds(t *testing.T) {
 		t.Error("the session token leaked into the output")
 	}
 	f.mu.Lock()
-	defer f.mu.Unlock()
-	if !f.deleted {
+	deleted := f.deleted
+	f.mu.Unlock()
+	if !deleted {
 		t.Error("the smoke guild was not deleted")
 	}
-	if f.closeCode != websocket.StatusNormalClosure {
-		t.Errorf("gateway close code = %v, want 1000", f.closeCode)
+	select {
+	case code := <-f.closed:
+		if code != websocket.StatusNormalClosure {
+			t.Errorf("gateway close code = %v, want 1000", code)
+		}
+	case <-time.After(5 * time.Second):
+		t.Error("the gateway never saw the connection close")
 	}
 }
 
