@@ -861,9 +861,12 @@ export interface paths {
          *     combining marks). A reply also needs `READ_MESSAGE_HISTORY`;
          *     `reply_to_id` must be a message of the same channel. `nonce` (at
          *     most 64 characters) is echoed in the response and in
-         *     `MESSAGE_CREATE` but not stored. Announced as
-         *     `MESSAGE_CREATE` to the members who can view the channel. Limited
-         *     to 5 per second (bursts of 10) per user.
+         *     `MESSAGE_CREATE`, never in the history. For 10 minutes it stands
+         *     for the message sent with it, per author and channel: a retry with
+         *     the same `nonce` (say, after a lost response) gets that message back
+         *     as it is stored, with `201`, and nothing is sent or announced again.
+         *     Announced as `MESSAGE_CREATE` to the members who can view the
+         *     channel. Limited to 5 per second (bursts of 10) per user.
          */
         post: operations["createMessage"];
         delete?: never;
@@ -997,7 +1000,9 @@ export interface paths {
          *     concurrent joins with the last use left exactly one succeeds. A
          *     member already in the server gets it back without taking a use,
          *     whatever the invite's state. Announced as `GUILD_MEMBER_ADD` to the
-         *     members and `GUILD_CREATE` to the new member. A user can be in at
+         *     members and `GUILD_CREATE` to the new member (when the server cannot
+         *     read the new member back, `GUILD_SYNC` replaces `GUILD_MEMBER_ADD`).
+         *     A user can be in at
          *     most 100 servers (`400 too_many_guilds`). A user banned from the
          *     server is refused (`403 banned`) without taking a use. Shares the
          *     by-code limit.
@@ -1324,7 +1329,7 @@ export interface components {
             /** @description 1 to 4000 characters (Unicode code points) after trimming white space. */
             content: string;
             reply_to_id?: components["schemas"]["Snowflake"] | null;
-            /** @description Client tag to match the response and the event to the request; not stored. */
+            /** @description Client tag to match the response and the event to the request; a retry with it within 10 minutes returns the message already sent. */
             nonce?: string;
         };
         UpdateMessageRequest: {
