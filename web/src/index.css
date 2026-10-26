@@ -4,7 +4,7 @@
 
 /*
  * Tailwind's theme is replaced, not extended: only Zazzzor's tokens exist as
- * utilities (bg-chat, text-fg-muted, rounded-md, text-sm, shadow-overlay...), so
+ * utilities (bg-chat, text-fg-muted, rounded-md, text-sm, shadow-float...), so
  * a stray `bg-neutral-800` fails to style anything and shows up in review.
  */
 @theme {
@@ -78,12 +78,14 @@
   --color-offline: var(--status-offline);
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
+  --color-border-control: var(--border-control);
   --color-focus: var(--focus-ring);
   --color-on-avatar: var(--on-avatar);
   --color-on-guild: var(--on-guild);
   --color-switch-thumb: var(--switch-thumb);
 
-  --shadow-overlay: var(--elevation-overlay);
+  /* Not "overlay": a shadow named like a colour (bg-overlay) is ambiguous to tailwind-merge. */
+  --shadow-float: var(--elevation-overlay);
   --shadow-dialog: var(--elevation-dialog);
 }
 

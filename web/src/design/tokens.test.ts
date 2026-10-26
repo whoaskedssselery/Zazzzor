@@ -121,12 +121,19 @@ describe.each(["dark", "light"] as const)("%s theme tokens", (theme) => {
     expect([...themes[theme].keys()].sort()).toEqual([...other.keys()].sort());
   });
 
-  it("keeps presence dots and focus ring at 3:1 against the sidebar (non-text contrast)", () => {
-    for (const name of ["--status-online", "--status-offline", "--focus-ring"]) {
-      const ratio = contrast(parseColor(token(theme, name)), surface(theme, "--bg-sidebar"));
-      expect(ratio, `${name} is ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(3);
-    }
-  });
+  /** Non-text contrast (WCAG 1.4.11): boundaries and indicators reach 3:1 on the surfaces they sit on. */
+  const graphics: Record<string, string[]> = {
+    "--status-online": ["--bg-sidebar", "--bg-chat", "--bg-panel"],
+    "--status-offline": ["--bg-sidebar", "--bg-chat", "--bg-panel"],
+    "--border-control": ["--bg-sidebar", "--bg-chat", "--bg-overlay"],
+    "--focus-ring": ["--bg-sidebar", "--bg-chat", "--bg-overlay", "--bg-input", "--bg-rail", "--bg-panel"],
+  };
+  for (const [name, surfaces] of Object.entries(graphics)) {
+    it.each(surfaces)(`${name} reaches 3:1 on %s`, (spec) => {
+      const ratio = contrast(parseColor(token(theme, name)), surface(theme, spec));
+      expect(ratio, `${name} on ${spec} is ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(3);
+    });
+  }
 });
 
 describe("contrast()", () => {

@@ -5,8 +5,12 @@ type ResolvedTheme = "dark" | "light";
 
 export const THEME_STORAGE_KEY = "zazzzor.theme";
 const LIGHT_QUERY = "(prefers-color-scheme: light)";
-/** The browser chrome colour: the rail's --bg-rail in each theme. */
-const THEME_COLOR: Record<ResolvedTheme, string> = { dark: "#0e0d0c", light: "#dcd9d4" };
+/**
+ * The browser chrome colour: the rail's --bg-rail in each theme. public/theme-boot.js
+ * repeats these and the storage key (it runs before any module); theme.test.tsx
+ * runs it to keep the two in step.
+ */
+export const THEME_COLOR: Record<ResolvedTheme, string> = { dark: "#0e0d0c", light: "#dcd9d4" };
 
 function isPreference(v: unknown): v is ThemePreference {
   return v === "dark" || v === "light" || v === "system";

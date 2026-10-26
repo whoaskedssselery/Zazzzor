@@ -65,7 +65,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               onOpenChange={(open) => {
                 if (!open) close(t.id);
               }}
-              className="flex w-full animate-pop-in items-center gap-3 rounded-lg bg-overlay py-2.5 pr-2 pl-3.5 text-fg shadow-overlay ring-1 ring-border data-[swipe=move]:translate-y-(--radix-toast-swipe-move-y) data-[state=closed]:hidden"
+              className="flex w-full animate-pop-in items-center gap-3 rounded-lg bg-overlay py-2.5 pr-2 pl-3.5 text-fg shadow-float ring-1 ring-border data-[swipe=move]:translate-y-(--radix-toast-swipe-move-y) data-[state=closed]:hidden"
             >
               <Icon aria-hidden className={cn("size-5 shrink-0", className)} strokeWidth={2} />
               <ToastPrimitive.Description data-toast-text className="min-w-0 flex-1 text-sm font-medium">
@@ -80,7 +80,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             </ToastPrimitive.Root>
           );
         })}
-        <ToastPrimitive.Viewport className="fixed bottom-6 left-1/2 z-(--z-toast) flex w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 flex-col gap-2 outline-none" />
+        <ToastPrimitive.Viewport label="Уведомления ({hotkey})" className="fixed bottom-6 left-1/2 z-(--z-toast) flex w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 flex-col gap-2 outline-none" />
       </ToastPrimitive.Provider>
     </ToastContext>
   );

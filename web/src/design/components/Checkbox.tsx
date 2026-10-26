@@ -8,7 +8,7 @@ export function Checkbox({ className, ...props }: ComponentProps<typeof Checkbox
   return (
     <CheckboxPrimitive.Root
       className={cn(
-        "inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm ring-2 ring-border-strong ring-inset transition-colors duration-(--duration-fast)",
+        "inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm ring-2 ring-border-control ring-inset transition-colors duration-(--duration-fast)",
         "data-[state=checked]:bg-accent data-[state=checked]:ring-0",
         "disabled:cursor-not-allowed disabled:opacity-50",
         className,

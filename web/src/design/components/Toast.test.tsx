@@ -26,6 +26,7 @@ describe("Toast", () => {
       const statuses = screen.getAllByRole("status");
       expect(statuses.map((s) => s.textContent)).toContain("Уведомление Инвайт скопирован");
     });
+    expect(screen.getByRole("region", { name: "Уведомления (F8)" })).toBeTruthy();
     // The visible toast stays until its timer runs out.
     expect(screen.getByText("Инвайт скопирован", { selector: "[data-toast-text]" })).toBeTruthy();
   });

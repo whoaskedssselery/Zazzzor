@@ -248,19 +248,19 @@ function Fields() {
   return (
     <div className="grid gap-5 sm:grid-cols-2">
       <Field htmlFor={`${id}-name`} label="Отображаемое имя" hint="Его видят все на ваших серверах.">
-        <Input id={`${id}-name`} defaultValue="Максим" />
+        <Input defaultValue="Максим" />
       </Field>
-      <Field htmlFor={`${id}-login`} label="Логин" error="Этот логин уже занят." errorId={`${id}-login-error`}>
-        <Input id={`${id}-login`} defaultValue="maksim" aria-invalid aria-describedby={`${id}-login-error`} />
+      <Field htmlFor={`${id}-login`} label="Логин" error="Этот логин уже занят.">
+        <Input defaultValue="maksim" />
       </Field>
       <Field htmlFor={`${id}-invite`} label="Ссылка-приглашение">
-        <Input id={`${id}-invite`} placeholder="https://zazzzor.duckdns.org/invite/…" />
+        <Input placeholder="https://zazzzor.duckdns.org/invite/…" />
       </Field>
       <Field htmlFor={`${id}-off`} label="Недоступно">
-        <Input id={`${id}-off`} defaultValue="Только для владельца" disabled />
+        <Input defaultValue="Только для владельца" disabled />
       </Field>
       <Field htmlFor={`${id}-topic`} label="Тема канала" hint="До 1024 символов." className="sm:col-span-2">
-        <Textarea id={`${id}-topic`} defaultValue="Болтаем обо всём. Кино — по пятницам в 21:00 в «Кинозале»." />
+        <Textarea defaultValue="Болтаем обо всём. Кино — по пятницам в 21:00 в «Кинозале»." />
       </Field>
     </div>
   );
@@ -273,7 +273,6 @@ function Choices() {
     <div className="grid gap-5 sm:grid-cols-2">
       <Field htmlFor={`${id}-select`} label="Уведомления сервера">
         <Select
-          id={`${id}-select`}
           defaultValue="mentions"
           options={[
             { value: "all", label: "Все сообщения" },
@@ -330,7 +329,7 @@ function Overlays() {
             }
           >
             <Field htmlFor="dlg-channel" label="Название канала">
-              <Input id="dlg-channel" placeholder="новый-канал" />
+              <Input placeholder="новый-канал" />
             </Field>
           </DialogContent>
         </Dialog>

@@ -68,6 +68,8 @@
   /* Lines and focus. */
   --border: #2f2d2a;
   --border-strong: #4a4641;
+  /* Boundaries of controls that are empty at rest (an unchecked checkbox): 3:1. */
+  --border-control: #7a746c;
   --focus-ring: #62d0a2;
 
   /* Initials avatars: muted, mid-dark fills that hold white text. */
@@ -135,6 +137,7 @@
 
   --border: #d6d2cc;
   --border-strong: #b5afa7;
+  --border-control: #857f78;
   --focus-ring: #1a7f55;
 
   --avatar-1: #2f7559;

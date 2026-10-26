@@ -442,7 +442,7 @@ function MessageGroup({ message: m }: { message: MessageMock }) {
 
 function MessageActions() {
   return (
-    <div className="absolute -top-4 right-4 hidden items-center rounded-md bg-overlay p-0.5 shadow-overlay group-hover:flex">
+    <div className="absolute -top-4 right-4 hidden items-center rounded-md bg-overlay p-0.5 shadow-float group-hover:flex">
       <IconButton size="sm" label="Реакция" icon={SmilePlus} />
       <IconButton size="sm" label="Ответить" icon={Reply} />
       <IconButton size="sm" label="Изменить" icon={Pencil} />

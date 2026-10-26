@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { renderUi } from "../../test/render";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -55,5 +55,39 @@ describe("ConfirmDialog", () => {
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Отмена" }));
     await user.keyboard("{Enter}");
     expect(onConfirm).not.toHaveBeenCalled();
+  });
+});
+
+describe("ConfirmDialog while the action runs", () => {
+  function Pending({ onConfirm, onOpenChange }: { onConfirm: () => void; onOpenChange: (open: boolean) => void }) {
+    return (
+      <ConfirmDialog
+        open
+        onOpenChange={onOpenChange}
+        title="Выгнать Диму?"
+        confirmLabel="Выгнать"
+        tone="danger"
+        pending
+        onConfirm={onConfirm}
+      />
+    );
+  }
+
+  it("stays open on Escape and ignores another confirm", async () => {
+    const onConfirm = vi.fn();
+    const onOpenChange = vi.fn();
+    const { user } = renderUi(<Pending onConfirm={onConfirm} onOpenChange={onOpenChange} />);
+    await screen.findByRole("alertdialog", { name: "Выгнать Диму?" });
+
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+
+    const confirm = screen.getByRole("button", { name: "Выгнать" });
+    expect(confirm.getAttribute("aria-busy")).toBe("true");
+    await user.click(confirm);
+    // fireEvent bypasses the disabled attribute, as a stray synthetic click would.
+    fireEvent.click(confirm);
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
 });

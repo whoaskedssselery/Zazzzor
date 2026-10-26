@@ -22,7 +22,8 @@ interface ConfirmDialogProps {
 /**
  * Asks before an irreversible action (role="alertdialog"). Cancel, Escape and
  * the outside click close it without confirming; the cancel button has the
- * initial focus, so an Enter on open never confirms.
+ * initial focus, so an Enter on open never confirms. While `pending`, it
+ * cannot be closed and repeat confirms are ignored.
  */
 export function ConfirmDialog({
   open,
@@ -36,11 +37,21 @@ export function ConfirmDialog({
   pending = false,
 }: ConfirmDialogProps) {
   return (
-    <AlertDialog.Root open={open} onOpenChange={onOpenChange}>
+    <AlertDialog.Root
+      open={open}
+      onOpenChange={(next) => {
+        // While the action runs the dialog stays put: closing it would hide the result.
+        if (!next && pending) return;
+        onOpenChange(next);
+      }}
+    >
       <AlertDialog.Portal>
         <AlertDialog.Overlay className={overlayClass} />
         <AlertDialog.Content
           className={cn(dialogPanelClass, "max-w-110")}
+          onEscapeKeyDown={(e) => {
+            if (pending) e.preventDefault();
+          }}
           {...(description ? {} : { "aria-describedby": undefined })}
         >
           <div className="px-4 pt-4 pb-5">
@@ -56,7 +67,13 @@ export function ConfirmDialog({
               </Button>
             </AlertDialog.Cancel>
             {/* Not AlertDialog.Action: that closes the dialog before the action has run. */}
-            <Button variant={tone} loading={pending} onClick={onConfirm}>
+            <Button
+              variant={tone}
+              loading={pending}
+              onClick={() => {
+                if (!pending) onConfirm();
+              }}
+            >
               {confirmLabel}
             </Button>
           </div>

@@ -70,7 +70,14 @@ export default defineConfig([
   },
   {
     files: ["**/*.js"],
+    ignores: ["public/**"],
     extends: [js.configs.recommended],
     languageOptions: { globals: globals.node },
+  },
+  {
+    // Classic scripts served as-is from public/ (theme-boot.js runs before the app).
+    files: ["public/**/*.js"],
+    extends: [js.configs.recommended],
+    languageOptions: { globals: globals.browser, sourceType: "script" },
   },
 ]);
