@@ -104,7 +104,7 @@ jobs:
         run: bash deploy/scripts/restore-test.sh
 
   web:
-    name: Web packages (test, build)
+    name: Web packages (lint, test, build)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -118,6 +118,16 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Generated API types match api/openapi.yaml
+        run: |
+          pnpm gen:api
+          if ! git diff --exit-code -- web/src/api/schema.gen.ts; then
+            echo "::error file=web/src/api/schema.gen.ts::stale; run 'pnpm gen:api' and commit the result"
+            exit 1
+          fi
+      # Only packages with a "lint" script run: @zazzzor/web. The stage 1.1
+      # connectivity-test has none on purpose (its type check runs in build).
+      - run: pnpm -r lint
       - run: pnpm -r test
       - run: pnpm -r build
 
