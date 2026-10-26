@@ -11,6 +11,37 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
 
+const claimNonce = `-- name: ClaimNonce :execrows
+INSERT INTO message_nonces (author_id, channel_id, nonce, message_id, expires_at)
+VALUES ($1, $2, $3, $4, now() + make_interval(secs => $5::float8))
+ON CONFLICT DO NOTHING
+`
+
+type ClaimNonceParams struct {
+	AuthorID   snowflake.ID
+	ChannelID  snowflake.ID
+	Nonce      string
+	MessageID  snowflake.ID
+	TtlSeconds float64
+}
+
+// Claims the nonce for the message; no row when a claim holds it (after
+// DropExpiredNonces, a live one). A claim being inserted concurrently is
+// waited for.
+func (q *Queries) ClaimNonce(ctx context.Context, db DBTX, arg ClaimNonceParams) (int64, error) {
+	result, err := db.Exec(ctx, claimNonce,
+		arg.AuthorID,
+		arg.ChannelID,
+		arg.Nonce,
+		arg.MessageID,
+		arg.TtlSeconds,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const createMessage = `-- name: CreateMessage :one
 INSERT INTO messages (id, channel_id, author_id, content, reply_to_id, created_at)
 VALUES ($1, $2, $3, $4, $5, now())
@@ -64,6 +95,15 @@ func (q *Queries) DeleteMessage(ctx context.Context, db DBTX, arg DeleteMessageP
 	return result.RowsAffected(), nil
 }
 
+const dropExpiredNonces = `-- name: DropExpiredNonces :exec
+DELETE FROM message_nonces WHERE author_id = $1 AND expires_at <= now()
+`
+
+func (q *Queries) DropExpiredNonces(ctx context.Context, db DBTX, authorID snowflake.ID) error {
+	_, err := db.Exec(ctx, dropExpiredNonces, authorID)
+	return err
+}
+
 const editMessage = `-- name: EditMessage :one
 UPDATE messages SET content = $1, edited_at = now()
 WHERE id = $2 AND channel_id = $3 AND author_id = $4 AND content <> $1
@@ -86,6 +126,34 @@ func (q *Queries) EditMessage(ctx context.Context, db DBTX, arg EditMessageParam
 		arg.ChannelID,
 		arg.AuthorID,
 	)
+	var i Message
+	err := row.Scan(
+		&i.ID,
+		&i.ChannelID,
+		&i.AuthorID,
+		&i.Content,
+		&i.ReplyToID,
+		&i.EditedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const messageByNonce = `-- name: MessageByNonce :one
+SELECT id, channel_id, author_id, content, reply_to_id, edited_at, created_at FROM messages
+WHERE id = (SELECT n.message_id FROM message_nonces n
+            WHERE n.author_id = $1 AND n.channel_id = $2 AND n.nonce = $3 AND n.expires_at > now())
+`
+
+type MessageByNonceParams struct {
+	AuthorID  snowflake.ID
+	ChannelID snowflake.ID
+	Nonce     string
+}
+
+// The message a live claim of the nonce points to.
+func (q *Queries) MessageByNonce(ctx context.Context, db DBTX, arg MessageByNonceParams) (Message, error) {
+	row := db.QueryRow(ctx, messageByNonce, arg.AuthorID, arg.ChannelID, arg.Nonce)
 	var i Message
 	err := row.Scan(
 		&i.ID,

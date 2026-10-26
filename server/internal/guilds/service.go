@@ -157,11 +157,22 @@ func (s *Service) AddMember(ctx context.Context, tx pgx.Tx, guildID, userID snow
 }
 
 // AnnounceJoin publishes GUILD_MEMBER_ADD to the guild and GUILD_CREATE
-// (the snapshot) to the new member.
+// (the snapshot) to the new member. The member is stored by then, so a
+// snapshot that cannot be read still announces the join: GUILD_CREATE to
+// the new member and GUILD_SYNC to the rest, both of which the gateway
+// fills with the state it reads for each recipient (or it makes them
+// reconnect).
 func (s *Service) AnnounceJoin(ctx context.Context, guildID, userID snowflake.ID) {
 	snap, err := s.Snapshot(ctx, guildID)
 	if err != nil {
-		httpx.LoggerFrom(ctx).WarnContext(ctx, "announce join", "guild_id", guildID.String(), "err", err.Error())
+		httpx.LoggerFrom(ctx).WarnContext(ctx, "announce join without a snapshot", "guild_id", guildID.String(),
+			"err", err.Error())
+		s.publish(ctx, events.Event{Type: events.GuildSync,
+			Audience: events.Audience{Kind: events.AudienceGuildSync, GuildID: guildID},
+			Payload:  GuildSyncPayload{GuildID: guildID}, ExcludeUserID: userID})
+		s.publish(ctx, events.Event{Type: events.GuildCreate,
+			Audience: events.Audience{Kind: events.AudienceUsers, UserIDs: []snowflake.ID{userID}},
+			Payload:  GuildSyncPayload{GuildID: guildID}})
 		return
 	}
 	for _, m := range snap.Members {

@@ -32,6 +32,8 @@ const (
 	MaxContent = 4000
 	// MaxNonce is the longest nonce, in characters (runes).
 	MaxNonce = 64
+	// NonceTTL is how long a nonce returns the message sent with it.
+	NonceTTL = 10 * time.Minute
 	// DefaultLimit and MaxLimit bound a page of history.
 	DefaultLimit = 50
 	MaxLimit     = 100
@@ -132,7 +134,8 @@ type Message struct {
 	ReplyToID *snowflake.ID
 	// Referenced is nil when there is no reply or the original is gone.
 	Referenced *Stub
-	// Nonce is the client's tag of a message just sent; never stored.
+	// Nonce is the client's tag of a message just sent; history never
+	// shows it.
 	Nonce *string
 }
 

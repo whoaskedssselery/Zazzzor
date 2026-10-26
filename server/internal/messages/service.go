@@ -14,6 +14,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/messages/store"
 	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/db"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
@@ -167,8 +168,10 @@ type CreateFields struct {
 
 // Create sends a message to a text channel; userID needs SEND_MESSAGES
 // there, and READ_MESSAGE_HISTORY for a reply, which must answer a message
-// of the same channel. The message is
-// announced as MESSAGE_CREATE with the nonce, which is not stored.
+// of the same channel. The message is announced as MESSAGE_CREATE with the
+// nonce. A nonce is remembered for NonceTTL per author and channel: sending
+// with it again returns the message already sent, announced only the first
+// time.
 func (s *Service) Create(ctx context.Context, channelID, userID snowflake.ID, f CreateFields) (Message, error) {
 	p, guildID, err := s.access(ctx, userID, channelID, permissions.SendMessages)
 	if err != nil {
@@ -198,22 +201,90 @@ func (s *Service) Create(ctx context.Context, channelID, userID snowflake.ID, f 
 			return Message{}, fmt.Errorf("messages: load replied message: %w", err)
 		}
 	}
-	row, err := s.q.CreateMessage(ctx, s.pool, store.CreateMessageParams{ID: s.ids.Next(), ChannelID: channelID,
-		AuthorID: &userID, Content: content, ReplyToID: f.ReplyToID})
+	params := store.CreateMessageParams{ID: s.ids.Next(), ChannelID: channelID, AuthorID: &userID,
+		Content: content, ReplyToID: f.ReplyToID}
+	// Everything the event shows but created_at is read before the write,
+	// so nothing can fail between the write and the event.
+	m, err := s.completeOne(ctx, guildID, store.Message{ID: params.ID, ChannelID: channelID, AuthorID: &userID,
+		Content: content, ReplyToID: f.ReplyToID})
+	if err != nil {
+		return Message{}, err
+	}
+	var row store.Message
+	if f.Nonce == nil {
+		row, err = s.q.CreateMessage(ctx, s.pool, params)
+	} else {
+		// A claim gone before it is read (its message deleted, or it just
+		// expired) frees the nonce: one more try then.
+		for range 2 {
+			if row, err = s.createOnce(ctx, params, *f.Nonce); !errors.Is(err, errNonceTaken) {
+				break
+			}
+			if sent, ok, sentErr := s.sentWith(ctx, guildID, channelID, userID, *f.Nonce); ok || sentErr != nil {
+				return sent, sentErr
+			}
+		}
+	}
 	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23503" {
 		return Message{}, channels.ErrNotFound // the channel went away meanwhile
 	}
 	if err != nil {
 		return Message{}, fmt.Errorf("messages: create message: %w", err)
 	}
-	m, err := s.completeOne(ctx, guildID, row)
-	if err != nil {
-		return Message{}, err
-	}
+	m.CreatedAt = row.CreatedAt
 	m.Nonce = f.Nonce
 	s.publish(ctx, events.Event{Type: events.MessageCreate, Audience: channelAudience(guildID, channelID),
 		Payload: m.Public()})
 	return m, nil
+}
+
+// errNonceTaken: a live claim holds the nonce, so its message was sent.
+var errNonceTaken = errors.New("messages: nonce taken")
+
+// createOnce stores the message and claims the nonce for it in one
+// transaction; errNonceTaken (and nothing stored) when a live claim holds
+// the nonce.
+func (s *Service) createOnce(ctx context.Context, params store.CreateMessageParams, nonce string) (store.Message, error) {
+	var row store.Message
+	err := db.InTx(ctx, s.pool, func(tx pgx.Tx) error {
+		var err error
+		if row, err = s.q.CreateMessage(ctx, tx, params); err != nil {
+			return err
+		}
+		if err = s.q.DropExpiredNonces(ctx, tx, *params.AuthorID); err != nil {
+			return fmt.Errorf("drop expired nonces: %w", err)
+		}
+		n, err := s.q.ClaimNonce(ctx, tx, store.ClaimNonceParams{AuthorID: *params.AuthorID,
+			ChannelID: params.ChannelID, Nonce: nonce, MessageID: params.ID, TtlSeconds: NonceTTL.Seconds()})
+		if err != nil {
+			return fmt.Errorf("claim nonce: %w", err)
+		}
+		if n == 0 {
+			return errNonceTaken
+		}
+		return nil
+	})
+	return row, err
+}
+
+// sentWith returns the message userID sent to the channel with the nonce,
+// for a retry (it is not announced again); false when no live claim holds
+// the nonce.
+func (s *Service) sentWith(ctx context.Context, guildID, channelID, userID snowflake.ID, nonce string) (Message, bool, error) {
+	row, err := s.q.MessageByNonce(ctx, s.pool, store.MessageByNonceParams{AuthorID: userID, ChannelID: channelID,
+		Nonce: nonce})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Message{}, false, nil
+	}
+	if err != nil {
+		return Message{}, false, fmt.Errorf("messages: load message by nonce: %w", err)
+	}
+	m, err := s.completeOne(ctx, guildID, row)
+	if err != nil {
+		return Message{}, false, err
+	}
+	m.Nonce = &nonce
+	return m, true, nil
 }
 
 func (s *Service) load(ctx context.Context, channelID, messageID snowflake.ID) (store.Message, error) {
@@ -264,8 +335,11 @@ func (s *Service) Edit(ctx context.Context, channelID, messageID, userID snowfla
 	if content, err = NormalizeContent(content); err != nil {
 		return Message{}, err
 	}
-	if content == row.Content {
-		return s.completeOne(ctx, guildID, row)
+	// Everything the event shows but the edit is read before the write, so
+	// nothing can fail between the write and the event.
+	m, err := s.completeOne(ctx, guildID, row)
+	if err != nil || content == row.Content {
+		return m, err
 	}
 	edited, err := s.q.EditMessage(ctx, s.pool, store.EditMessageParams{Content: content, ID: messageID,
 		ChannelID: channelID, AuthorID: &userID})
@@ -280,10 +354,7 @@ func (s *Service) Edit(ctx context.Context, channelID, messageID, userID snowfla
 	if err != nil {
 		return Message{}, fmt.Errorf("messages: edit message: %w", err)
 	}
-	m, err := s.completeOne(ctx, guildID, edited)
-	if err != nil {
-		return Message{}, err
-	}
+	m.Content, m.EditedAt = edited.Content, edited.EditedAt
 	s.publish(ctx, events.Event{Type: events.MessageUpdate, Audience: channelAudience(guildID, channelID),
 		Payload: m.Public()})
 	return m, nil
