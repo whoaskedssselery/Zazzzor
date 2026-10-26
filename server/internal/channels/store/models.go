@@ -79,6 +79,14 @@ type Message struct {
 	CreatedAt time.Time
 }
 
+type MessageNonce struct {
+	AuthorID  int64
+	ChannelID int64
+	Nonce     string
+	MessageID int64
+	ExpiresAt time.Time
+}
+
 type Overwrite struct {
 	ChannelID  snowflake.ID
 	TargetID   snowflake.ID

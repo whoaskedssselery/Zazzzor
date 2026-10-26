@@ -34,3 +34,20 @@ RETURNING *;
 
 -- name: DeleteMessage :execrows
 DELETE FROM messages WHERE id = @id AND channel_id = @channel_id;
+
+-- name: DropExpiredNonces :exec
+DELETE FROM message_nonces WHERE author_id = @author_id AND expires_at <= now();
+
+-- name: ClaimNonce :execrows
+-- Claims the nonce for the message; no row when a claim holds it (after
+-- DropExpiredNonces, a live one). A claim being inserted concurrently is
+-- waited for.
+INSERT INTO message_nonces (author_id, channel_id, nonce, message_id, expires_at)
+VALUES (@author_id, @channel_id, @nonce, @message_id, now() + make_interval(secs => @ttl_seconds::float8))
+ON CONFLICT DO NOTHING;
+
+-- name: MessageByNonce :one
+-- The message a live claim of the nonce points to.
+SELECT * FROM messages
+WHERE id = (SELECT n.message_id FROM message_nonces n
+            WHERE n.author_id = @author_id AND n.channel_id = @channel_id AND n.nonce = @nonce AND n.expires_at > now());

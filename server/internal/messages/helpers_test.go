@@ -57,6 +57,7 @@ type env struct {
 	t      *testing.T
 	pool   *pgxpool.Pool
 	guilds *guilds.Service
+	msgs   *messages.Service
 	pub    *recorder
 	h      http.Handler
 }
@@ -87,6 +88,7 @@ func newEnv(t *testing.T, opts ...func(*messages.Options)) *env {
 		opt(&o)
 	}
 	msgSvc := messages.NewService(o)
+	e.msgs = msgSvc
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	r := chi.NewRouter()

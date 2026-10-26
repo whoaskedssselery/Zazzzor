@@ -157,3 +157,9 @@ sql:
               type: ID
               pointer: true
             nullable: true
+          - column: message_nonces.author_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: message_nonces.channel_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: message_nonces.message_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
