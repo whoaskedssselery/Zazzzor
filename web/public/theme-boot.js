@@ -1,6 +1,6 @@
 // Sets the theme before the first paint, so a light or "system" user never
 // sees a flash of the dark default. A classic script from 'self' (the CSP
-// bans inline scripts). Mirrors applyTheme() in src/design/theme.tsx: same
+// bans inline scripts). Mirrors applyTheme() in src/shared/ui/theme.tsx: same
 // storage key, values and colours; theme.test.tsx runs this file to check.
 (() => {
   var pref = "dark";

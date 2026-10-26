@@ -121,8 +121,8 @@ jobs:
       - name: Generated API types match api/openapi.yaml
         run: |
           pnpm gen:api
-          if ! git diff --exit-code -- web/src/api/schema.gen.ts; then
-            echo "::error file=web/src/api/schema.gen.ts::stale; run 'pnpm gen:api' and commit the result"
+          if ! git diff --exit-code -- web/src/shared/api/schema.gen.ts; then
+            echo "::error file=web/src/shared/api/schema.gen.ts::stale; run 'pnpm gen:api' and commit the result"
             exit 1
           fi
       # Biome formats and lints every JS/TS package (biome.json at the root);

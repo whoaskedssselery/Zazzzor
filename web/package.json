@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "lint": "eslint --max-warnings 0 .",
-    "gen:api": "openapi-typescript ../api/openapi.yaml -o src/api/schema.gen.ts"
+    "gen:api": "openapi-typescript ../api/openapi.yaml -o src/shared/api/schema.gen.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "5.9.1",
@@ -36,6 +36,8 @@
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.2",
     "eslint": "9.39.5",
+    "eslint-import-resolver-typescript": "4.4.5",
+    "eslint-plugin-boundaries": "7.2.0",
     "eslint-plugin-react": "7.37.5",
     "eslint-plugin-react-hooks": "7.1.1",
     "globals": "17.13.0",

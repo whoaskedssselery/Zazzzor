@@ -1,5 +1,6 @@
 import js from "@eslint/js";
 import { defineConfig, globalIgnores } from "eslint/config";
+import boundaries from "eslint-plugin-boundaries";
 import react from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
@@ -130,8 +131,75 @@ const biomeOwns = [
   "valid-typeof",
 ];
 
+// Feature-Sliced Design (src/): app → pages → widgets → features → entities →
+// shared. A layer imports only from the layers below it, never from another
+// slice of its own layer, and only through a slice's public API (index.ts).
+// Relative imports stay inside a slice (or a shared segment); everything
+// else goes through the `@/` alias. Tests may also drive the whole app
+// through `@/app/test`; nothing else imports app/ or the test helpers.
+const sliced = ["pages", "widgets", "features", "entities"];
+const below = {
+  app: ["pages", "widgets", "features", "entities", "shared"],
+  pages: ["widgets", "features", "entities", "shared"],
+  widgets: ["features", "entities", "shared"],
+  features: ["entities", "shared"],
+  entities: ["shared"],
+  shared: [],
+};
+const publicApi = "index.{ts,tsx}";
+const viaAlias = { source: "@/**" };
+
+const fsdElements = [
+  { type: "app", pattern: "src/app" },
+  ...sliced.map((layer) => ({ type: layer, pattern: `src/${layer}/*`, capture: ["slice"] })),
+  { type: "shared", pattern: "src/shared/*", capture: ["slice"] },
+];
+
+const fsdPolicies = [
+  // Anything inside its own slice (app/ is one slice).
+  ...["app", ...sliced, "shared"].map((layer) => ({
+    from: { element: { type: layer } },
+    allow: { to: { element: { type: layer, captured: { slice: "{{ from.element.captured.slice }}" } } } },
+  })),
+  // Lower layers (and other shared segments), through their public API and the alias.
+  ...Object.entries(below).map(([layer, targets]) => ({
+    from: { element: { type: layer } },
+    allow: {
+      to: {
+        element: {
+          types: { anyOf: layer === "shared" ? ["shared"] : targets },
+          captured: { slice: "!test" },
+          fileInternalPath: publicApi,
+        },
+      },
+      dependency: viaAlias,
+    },
+  })),
+  // Only tests use the test helpers (shared/test), and they may drive the
+  // whole app through its harness (app/test).
+  {
+    from: { file: { categories: "test" } },
+    allow: {
+      to: { element: { type: "shared", captured: { slice: "test" }, fileInternalPath: publicApi } },
+      dependency: viaAlias,
+    },
+  },
+  {
+    from: { file: { categories: "test" } },
+    allow: { to: { element: { type: "app", fileInternalPath: "test/index.ts" } }, dependency: viaAlias },
+  },
+  // The app harness itself is a test helper.
+  {
+    from: { element: { type: "app", fileInternalPath: "test/**" } },
+    allow: {
+      to: { element: { type: "shared", captured: { slice: "test" }, fileInternalPath: publicApi } },
+      dependency: viaAlias,
+    },
+  },
+];
+
 export default defineConfig([
-  globalIgnores(["dist", "src/api/schema.gen.ts"]),
+  globalIgnores(["dist", "src/shared/api/schema.gen.ts"]),
   {
     files: ["**/*.{ts,tsx}"],
     extends: [js.configs.recommended, tseslint.configs.strictTypeChecked, reactHooks.configs.flat.recommended],
@@ -163,6 +231,19 @@ export default defineConfig([
         { allow: [{ from: "package", package: "@tanstack/router-core", name: "Redirect" }] },
       ],
       "@typescript-eslint/restrict-template-expressions": ["error", { allowNumber: true }],
+    },
+  },
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    plugins: { boundaries },
+    settings: {
+      "import/resolver": { typescript: { project: "tsconfig.json" } },
+      "boundaries/elements": fsdElements,
+      "boundaries/files": [{ category: "test", pattern: "**/*.test.{ts,tsx}" }],
+    },
+    rules: {
+      "boundaries/dependencies": ["error", { default: "disallow", policies: fsdPolicies }],
+      "boundaries/no-unknown-files": "error",
     },
   },
   {
