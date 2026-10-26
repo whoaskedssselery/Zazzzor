@@ -17,6 +17,13 @@ describe("safeNext", () => {
   it.each([
     ["//evil.com"],
     ["//evil.com/channels/@me"],
+    ["/.//evil.com"],
+    ["/%2e//evil.com"],
+    ["/%2e%2e//evil.com"],
+    ["/a/..//evil.com"],
+    ["/./\\evil.com"],
+    [`/.${String.fromCodePoint(9)}//evil.com`],
+    [`/a/..${String.fromCodePoint(10)}//evil.com`],
     ["/\\evil.com"],
     ["\\\\evil.com"],
     ["https://evil.com"],
@@ -64,6 +71,40 @@ describe("session", () => {
     const { router } = renderApp("/login?next=%2Finvite%2Fabc");
     expect(await screen.findByRole("heading", { name: "Приглашение" })).toBeTruthy();
     expect(currentHref(router)).toBe("/invite/abc");
+  });
+
+  it("sends a signed-in user on /login with a dot-segment next to /channels/@me", async () => {
+    server.use(sessionHandler(testUser));
+    const { router } = renderApp(`/login?next=${encodeURIComponent("/.//evil.com")}`);
+    await screen.findByText(/Вы вошли как/);
+    expect(currentHref(router)).toBe("/channels/@me");
+  });
+
+  it("goes to /login with next on a 401 from PATCH /users/@me", async () => {
+    server.use(
+      sessionHandler(testUser),
+      apiHandler("patch", "/users/@me", () => problem(401, "unauthenticated")),
+    );
+    const { router } = renderApp("/channels/@me");
+    await screen.findByText(/Вы вошли как/);
+
+    await api.PATCH("/users/@me", { body: { display_name: "Вася" } });
+
+    expect(await screen.findByRole("heading", { name: "С возвращением!" })).toBeTruthy();
+    expect(router.state.location.search).toEqual({ next: "/channels/@me" });
+  });
+
+  it("goes to /login with next when the session check comes back anonymous on a refetch", async () => {
+    server.use(sessionHandler(testUser));
+    const { router, queryClient } = renderApp("/channels/1/2?x=1");
+    await screen.findByRole("heading", { name: "Канал" });
+
+    server.use(sessionHandler(null));
+    await queryClient.invalidateQueries({ queryKey: ["me"] });
+
+    expect(await screen.findByRole("heading", { name: "С возвращением!" })).toBeTruthy();
+    expect(router.state.location.pathname).toBe("/login");
+    expect(router.state.location.search).toEqual({ next: "/channels/1/2?x=1" });
   });
 
   it("serves the protected placeholders with a session", async () => {

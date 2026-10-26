@@ -42,9 +42,12 @@ export function RegisterPage({ next }: { next?: string | undefined }) {
       setSignedIn(queryClient, user);
       await navigate({ href: safeNext(next), replace: true });
     } catch (e) {
+      let focused = false;
       const text = showRequestError(e, (field, message) => {
         if (!isFieldOf(registerSchema, field)) return false;
-        setError(field, { type: "server", message });
+        // The first field with a server error takes focus, so its error is read out.
+        setError(field, { type: "server", message }, { shouldFocus: !focused });
+        focused = true;
         return true;
       });
       const closed = e instanceof ApiError && e.code === "registration_closed";
@@ -80,7 +83,7 @@ export function RegisterPage({ next }: { next?: string | undefined }) {
         <Field
           htmlFor="register-username"
           label="Логин"
-          hint="Для входа: латиница, цифры, «_» и «.»."
+          hint="От 2 до 32 символов: латиница, цифры, «_» и «.»."
           error={errors.username?.message}
         >
           <Input

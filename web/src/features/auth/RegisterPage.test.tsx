@@ -84,7 +84,12 @@ describe("RegisterPage", () => {
 
     await fill(user, { username: "vasya", password: "password1" });
 
-    expect((await screen.findByRole("alert")).textContent).toBe("Слишком много попыток, подождите 3600 с.");
+    expect((await screen.findByRole("alert")).textContent).toBe("Слишком много попыток, подождите 60 мин.");
+  });
+
+  it("states the login rule, length included, in the hint", async () => {
+    renderApp("/register");
+    expect(description(await screen.findByRole("textbox", { name: "Логин" }))).toBe("От 2 до 32 символов: латиница, цифры, «_» и «.».");
   });
 
   it("lower-cases the login as it is typed", async () => {
@@ -138,6 +143,7 @@ describe("RegisterPage", () => {
       expect(name.getAttribute("aria-invalid")).toBe("true");
     });
     expect(description(name)).toBe("Имя: от 1 до 32 символов, без управляющих и невидимых символов.");
+    expect(document.activeElement).toBe(name);
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
@@ -151,5 +157,7 @@ describe("RegisterPage", () => {
     await vi.waitFor(() => {
       expect(description(login)).toBe("Этот логин уже занят.");
     });
+    expect(login.getAttribute("aria-invalid")).toBe("true");
+    expect(document.activeElement).toBe(login);
   });
 });

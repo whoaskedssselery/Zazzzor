@@ -2,6 +2,7 @@ import { http, HttpResponse } from "msw";
 import type { components } from "./schema.gen";
 import { api, ApiError, errorText, unwrap } from "./client";
 import { apiHandler, problem, server } from "../test/msw";
+import { tooManyAttemptsText } from "./errors";
 
 type User = components["schemas"]["User"];
 
@@ -144,6 +145,22 @@ describe("api client", () => {
 
     expect(failure).toBeInstanceOf(TypeError);
     expect(errorText(failure)).toBe("Нет связи с сервером. Проверьте подключение.");
+  });
+});
+
+describe("tooManyAttemptsText", () => {
+  it.each([
+    [1, "Слишком много попыток, подождите 1 с."],
+    [59, "Слишком много попыток, подождите 59 с."],
+    [60, "Слишком много попыток, подождите 1 мин."],
+    [61, "Слишком много попыток, подождите 2 мин."],
+    [3600, "Слишком много попыток, подождите 60 мин."],
+  ])("words a wait of %i s", (seconds, text) => {
+    expect(tooManyAttemptsText(seconds)).toBe(text);
+  });
+
+  it("falls back to the rate_limited text without Retry-After", () => {
+    expect(tooManyAttemptsText(undefined)).toBe("Слишком много запросов. Подождите немного.");
   });
 });
 

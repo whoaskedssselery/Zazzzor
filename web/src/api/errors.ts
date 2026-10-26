@@ -53,10 +53,14 @@ export const ERROR_TEXTS: Readonly<Record<string, string>> = {
 
 /**
  * Sign-in and registration past their limits (429 rate_limited): the wait
- * comes from Retry-After; without it the plain rate_limited text is used.
+ * comes from Retry-After, in seconds under a minute and in whole minutes,
+ * rounded up, from a minute on (registration waits up to an hour). Without
+ * Retry-After the plain rate_limited text is used.
  */
 export function tooManyAttemptsText(retryAfter: number | undefined): string {
-  return retryAfter ? `Слишком много попыток, подождите ${retryAfter} с.` : (ERROR_TEXTS.rate_limited ?? GENERIC_ERROR);
+  if (!retryAfter) return ERROR_TEXTS.rate_limited ?? GENERIC_ERROR;
+  const wait = retryAfter < 60 ? `${retryAfter} с` : `${Math.ceil(retryAfter / 60)} мин`;
+  return `Слишком много попыток, подождите ${wait}.`;
 }
 
 /**

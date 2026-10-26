@@ -59,10 +59,17 @@ const AUTH_PATHS = new Set(["/login", "/register"]);
  * only a same-origin relative path (one leading "/", no "//" or "/\", no
  * scheme, nothing the URL parser puts on another origin, not the sign-in
  * pages themselves). Anything else becomes HOME_PATH. The path is returned
- * as the URL parser normalised it, so what is checked is what is opened.
+ * as the URL parser normalised it, and the checks run again on that result:
+ * dot segments ("/.//evil.com", "/%2e//evil.com", "/a/..//evil.com") and the
+ * tabs and newlines the parser drops can turn a harmless input into "//…".
  */
+/** "//host" and "/\host" mean another host to a browser. */
+function isProtocolRelative(path: string): boolean {
+  return path.startsWith("//") || path.startsWith("/\\");
+}
+
 export function safeNext(next: unknown): string {
-  if (typeof next !== "string" || !next.startsWith("/") || next.startsWith("//") || next.startsWith("/\\")) {
+  if (typeof next !== "string" || !next.startsWith("/") || isProtocolRelative(next)) {
     return HOME_PATH;
   }
   const origin = window.location.origin;
@@ -72,8 +79,9 @@ export function safeNext(next: unknown): string {
   } catch {
     return HOME_PATH;
   }
-  if (url.origin !== origin || AUTH_PATHS.has(url.pathname)) return HOME_PATH;
-  return url.pathname + url.search + url.hash;
+  const path = url.pathname + url.search + url.hash;
+  if (url.origin !== origin || AUTH_PATHS.has(url.pathname) || isProtocolRelative(path)) return HOME_PATH;
+  return path;
 }
 
 interface Binding {
@@ -85,14 +93,15 @@ let binding: Binding | null = null;
 
 /**
  * 401s the global handler leaves alone: a wrong password on the sign-in form
- * is the form's own error, and GET /users/@me answers 401 for anyone not
- * signed in, which the session query and the route guard handle.
+ * is the form's own error, and GET /users/@me (the session check) answers
+ * 401 for anyone not signed in, which the session query and AuthGuard
+ * handle. Keyed by method and path: PATCH /users/@me is an ordinary request.
  */
-const OWN_401 = new Set(["/auth/login", "/users/@me"]);
+const OWN_401 = new Set(["POST /auth/login", "GET /users/@me"]);
 
 const unauthorizedMiddleware: Middleware = {
-  onResponse({ response, schemaPath }) {
-    if (response.status === 401 && !OWN_401.has(schemaPath)) onUnauthorized();
+  onResponse({ request, response, schemaPath }) {
+    if (response.status === 401 && !OWN_401.has(`${request.method} ${schemaPath}`)) onUnauthorized();
   },
 };
 

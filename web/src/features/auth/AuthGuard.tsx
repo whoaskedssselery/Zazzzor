@@ -1,6 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { Outlet, redirect, type ParsedLocation } from "@tanstack/react-router";
-import { loadSession, safeNext, useSession } from "./session";
+import { useEffect } from "react";
+import { loadSession, onUnauthorized, safeNext, useSession } from "./session";
 
 /** `beforeLoad` of the protected layout: no session → /login?next=<this page>. */
 export async function requireSession({ context, location }: { context: { queryClient: QueryClient }; location: ParsedLocation }) {
@@ -20,11 +21,22 @@ export async function redirectSignedIn({ context, search }: { context: { queryCl
 }
 
 /**
- * The protected layout. requireSession has already loaded the user; once the
- * session is reset (sign-out, a 401) nothing protected stays on screen while
- * the router moves to /login.
+ * The protected layout. requireSession has already loaded the user before
+ * the first render. Later the session check can come back anonymous (a
+ * refetch of ["me"] after the session expired): the guard then does what a
+ * 401 elsewhere does, onUnauthorized(): the cache is cleared and the router
+ * goes to /login?next=<this page>, rendering nothing protected meanwhile.
+ *
+ * Sign-out and a 401 from another request clear the cache and navigate
+ * themselves. queryClient.clear() does not notify mounted observers, so the
+ * page stays as it was until that navigation replaces it; nothing new is
+ * shown in between.
  */
 export function AuthGuard() {
   const { status } = useSession();
+  const anonymous = status === "anonymous";
+  useEffect(() => {
+    if (anonymous) onUnauthorized();
+  }, [anonymous]);
   return status === "authenticated" ? <Outlet /> : null;
 }

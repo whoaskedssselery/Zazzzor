@@ -31,10 +31,13 @@ export function LoginPage({ next }: { next?: string | undefined }) {
       setSignedIn(queryClient, user);
       await navigate({ href: safeNext(next), replace: true });
     } catch (e) {
+      let focused = false;
       setAlert(
         showRequestError(e, (field, message) => {
           if (!isFieldOf(loginSchema, field)) return false;
-          setError(field, { type: "server", message });
+          // The first field with a server error takes focus, so its error is read out.
+          setError(field, { type: "server", message }, { shouldFocus: !focused });
+          focused = true;
           return true;
         }),
       );
