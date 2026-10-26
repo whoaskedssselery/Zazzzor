@@ -1,7 +1,7 @@
 import { detectBrowser } from "./browser";
 
 const CHROME = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
-const EDGE = CHROME + " Edg/141.0.0.0";
+const EDGE = `${CHROME} Edg/141.0.0.0`;
 const FIREFOX = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:143.0) Gecko/20100101 Firefox/143.0";
 
 test("chrome is reliable", () => expect(detectBrowser(CHROME)).toEqual({ name: "chrome", reliable60fps: true }));

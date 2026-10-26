@@ -1,3 +1,5 @@
+// biome-ignore-all lint/a11y/useValidAnchor: a static dev-only mock; its links only look like Discord's and go nowhere.
+// biome-ignore-all lint/suspicious/noArrayIndexKey: a static dev-only mock; its lists never reorder.
 import {
   ChevronDown,
   ChevronRight,

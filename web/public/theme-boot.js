@@ -2,10 +2,11 @@
 // sees a flash of the dark default. A classic script from 'self' (the CSP
 // bans inline scripts). Mirrors applyTheme() in src/design/theme.tsx: same
 // storage key, values and colours; theme.test.tsx runs this file to check.
-(function () {
+(() => {
   var pref = "dark";
+  var stored;
   try {
-    var stored = localStorage.getItem("zazzzor.theme");
+    stored = localStorage.getItem("zazzzor.theme");
     if (stored === "light" || stored === "system") pref = stored;
   } catch {
     // Storage blocked: keep the dark default.

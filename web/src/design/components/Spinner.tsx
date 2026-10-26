@@ -10,6 +10,7 @@ interface SpinnerProps {
 /** A small arc that turns. Inherits the text colour. */
 export function Spinner({ label, size = 16, className }: SpinnerProps) {
   return (
+    // biome-ignore lint/a11y/noSvgWithoutTitle: the spread below gives it role="img" with aria-label, or aria-hidden.
     <svg
       viewBox="0 0 16 16"
       width={size}

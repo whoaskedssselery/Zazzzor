@@ -59,6 +59,7 @@ export function Avatar({ name, src, size = 40, status, className }: AvatarProps)
   return (
     <span className={cn("relative inline-flex shrink-0", className)} style={{ width: size, height: size }}>
       {showImage && src ? (
+        // biome-ignore lint/a11y/noNoninteractiveElementInteractions: onError is the image failing to load, not a user interaction.
         <img
           src={src}
           alt={label}

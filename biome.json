@@ -1,0 +1,152 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "includes": [
+      "*.{js,cjs,mjs,ts,json}",
+      ".pnpmfile.cjs",
+      "web/**/*.{js,ts,tsx,json}",
+      "tools/**/*.{js,ts,tsx,json}",
+      "!tools/review-catcord",
+      "!**/schema.gen.ts",
+      "!**/dist",
+      "!**/test-results",
+      "!**/playwright-report"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 120,
+    "lineEnding": "lf"
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "jsxQuoteStyle": "double",
+      "semicolons": "always",
+      "trailingCommas": "all",
+      "arrowParentheses": "always",
+      "bracketSpacing": true
+    }
+  },
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "a11y": "error"
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["**"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "noLabelWithoutControl": {
+              "level": "error",
+              "options": {
+                "inputComponents": ["Checkbox", "Switch", "Input", "Textarea", "Select"]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["web/**"],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "noAdjacentSpacesInRegex": "error",
+            "noExtraBooleanCast": "error",
+            "noUselessCatch": "error",
+            "noUselessEscapeInRegex": "error",
+            "noUselessThisAlias": "off"
+          },
+          "correctness": {
+            "noUnusedLabels": "error",
+            "noUnusedPrivateClassMembers": "error",
+            "noUnusedVariables": "error",
+            "noUnusedImports": "error",
+            "noUnusedFunctionParameters": "error",
+            "useHookAtTopLevel": "off",
+            "useExhaustiveDependencies": "off"
+          },
+          "security": {
+            "noDangerouslySetInnerHtml": "off",
+            "noDangerouslySetInnerHtmlWithChildren": "off",
+            "noScriptUrl": "off",
+            "noGlobalEval": "off",
+            "noBlankTarget": "off"
+          },
+          "suspicious": {
+            "noCatchAssign": "error",
+            "noConstantBinaryExpressions": "error",
+            "noIrregularWhitespace": "error",
+            "noPrototypeBuiltins": "error",
+            "noUselessRegexBackrefs": "error",
+            "noTsIgnore": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["web/**/*.{ts,tsx}"],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "noArguments": "error",
+            "noBannedTypes": "error",
+            "noStaticOnlyClass": "error",
+            "noUselessConstructor": "error",
+            "noUselessTypeConstraint": "error"
+          },
+          "style": {
+            "noCommonJs": "error",
+            "noNamespace": "error",
+            "noNonNullAssertion": "error",
+            "useArrayLiterals": "error",
+            "useAsConstAssertion": "error",
+            "useConsistentEnumValueType": "error",
+            "useConst": "error",
+            "useLiteralEnumMembers": "error",
+            "useSpreadOverApply": "error",
+            "useUnifiedTypeSignatures": "error"
+          },
+          "suspicious": {
+            "noConfusingVoidType": "error",
+            "noDuplicateEnumValues": "error",
+            "noExplicitAny": "error",
+            "noExtraNonNullAssertion": "error",
+            "noVar": "error",
+            "useAwait": "error"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["web/**/*.js"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUndeclaredVariables": "error"
+          }
+        }
+      }
+    }
+  ]
+}

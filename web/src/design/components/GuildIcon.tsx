@@ -44,6 +44,7 @@ export function GuildIcon({ name, src, active = false, size = 48, className }: G
       style={{ width: size, height: size }}
     >
       {showImage && src ? (
+        // biome-ignore lint/a11y/noNoninteractiveElementInteractions: onError is the image failing to load, not a user interaction.
         <img
           src={src}
           alt=""

@@ -4,6 +4,7 @@ import { apiHandler, problem, server } from "./msw";
 
 // The handlers below are only type-checked (tsc runs in `build`): each
 // expected error below proves apiHandler rejects something off-contract.
+// biome-ignore lint/suspicious/noExportsInTest: exported only so the type-checked handlers are not unused.
 export const typeChecks = [
   // @ts-expect-error: the body does not match components.schemas.User
   apiHandler("get", "/users/@me", () => HttpResponse.json({ id: 1 })),
