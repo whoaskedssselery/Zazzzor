@@ -64,7 +64,11 @@ export const settingsRoute = createRoute({
 export const adminRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/admin/$",
-  component: () => <Placeholder title="Администрирование">Настройки сервера Zazzzor появятся здесь в следующем обновлении.</Placeholder>,
+  component: () => (
+    <Placeholder title="Администрирование">
+      Настройки сервера Zazzzor появятся здесь в следующем обновлении.
+    </Placeholder>
+  ),
 });
 
 export const appRoutes = appRoute.addChildren([homeRoute, channelRoute, inviteRoute, settingsRoute, adminRoute]);

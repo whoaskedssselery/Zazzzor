@@ -8,15 +8,15 @@ import {
   Headphones,
   House,
   Mic,
+  Pencil,
   Plus,
   Reply,
   Settings,
   SmilePlus,
   Users,
   Volume2,
-  Pencil,
 } from "lucide-react";
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { type CSSProperties, type ReactNode, useState } from "react";
 import { cn } from "../design/cn";
 import { Avatar, type Presence } from "../design/components/Avatar";
 import { Badge } from "../design/components/Badge";
@@ -75,7 +75,8 @@ export function MainScreenMock() {
     <div
       className={cn(
         "grid h-full min-h-0 grid-cols-[var(--rail-width)_var(--sidebar-width)_minmax(0,1fr)] overflow-hidden",
-        showMembers && "min-[1100px]:grid-cols-[var(--rail-width)_var(--sidebar-width)_minmax(0,1fr)_var(--members-width)]",
+        showMembers &&
+          "min-[1100px]:grid-cols-[var(--rail-width)_var(--sidebar-width)_minmax(0,1fr)_var(--members-width)]",
       )}
     >
       <Rail />
@@ -144,13 +145,15 @@ function RailItem({
         )}
       />
       <Tooltip content={label} side="right" delayDuration={0}>
-        <button type="button" aria-label={name} aria-current={active ? "page" : undefined} className="group relative cursor-pointer rounded-xl">
+        <button
+          type="button"
+          aria-label={name}
+          aria-current={active ? "page" : undefined}
+          className="group relative cursor-pointer rounded-xl"
+        >
           {children}
           {mentions !== undefined && (
-            <Badge
-              variant="count"
-              className="absolute -right-1 -bottom-1 h-5 min-w-5 px-1.5 ring-4 ring-(--bg-rail)"
-            >
+            <Badge variant="count" className="absolute -right-1 -bottom-1 h-5 min-w-5 px-1.5 ring-4 ring-(--bg-rail)">
               {mentions}
             </Badge>
           )}
@@ -231,7 +234,9 @@ function ChannelRow({
   const bright = selected || unread || Boolean(mentions);
   return (
     <div className="relative px-2">
-      {unread && !selected && <span aria-hidden className="absolute top-1/2 left-0 h-2 w-1 -translate-y-1/2 rounded-r-full bg-fg" />}
+      {unread && !selected && (
+        <span aria-hidden className="absolute top-1/2 left-0 h-2 w-1 -translate-y-1/2 rounded-r-full bg-fg" />
+      )}
       <a
         href="#"
         aria-current={selected ? "page" : undefined}
@@ -276,7 +281,10 @@ function UserPanel() {
       className="flex h-(--user-panel-height) shrink-0 items-center gap-1 bg-panel px-2"
       style={{ "--avatar-cutout": "var(--bg-panel)" } as CSSProperties}
     >
-      <button type="button" className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md py-1 pr-1 pl-0.5 text-left hover:bg-hover">
+      <button
+        type="button"
+        className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md py-1 pr-1 pl-0.5 text-left hover:bg-hover"
+      >
         <Avatar name="Максим" size={32} status="online" />
         <span className="min-w-0">
           <span className="block truncate text-sm leading-4 font-semibold">Максим</span>
@@ -328,9 +336,8 @@ const messages: MessageMock[] = [
     lines: [
       "Подключусь минут через десять, доем.",
       <>
-        Кстати, <code className="rounded-xs bg-input px-1 py-0.5">Ctrl+Shift+M</code> выключает микрофон, если кто-то опять
-        будет хрустеть.{" "}
-        <span className="text-xs text-fg-faint">(изменено)</span>
+        Кстати, <code className="rounded-xs bg-input px-1 py-0.5">Ctrl+Shift+M</code> выключает микрофон, если кто-то
+        опять будет хрустеть. <span className="text-xs text-fg-faint">(изменено)</span>
       </>,
     ],
   },
@@ -341,8 +348,8 @@ const messages: MessageMock[] = [
     mentionsMe: true,
     lines: [
       <>
-        <span className="rounded-xs bg-mention-chip px-0.5 font-medium text-fg-mention">@Максим</span> не забудь попкорн, в прошлый
-        раз кончился на второй серии.
+        <span className="rounded-xs bg-mention-chip px-0.5 font-medium text-fg-mention">@Максим</span> не забудь
+        попкорн, в прошлый раз кончился на второй серии.
       </>,
     ],
   },
@@ -353,7 +360,13 @@ const messages: MessageMock[] = [
     lines: [
       <>
         Я сегодня только на час, завтра рано вставать. Ссылка на расписание:{" "}
-        <a href="#" className="text-link hover:underline" onClick={(e) => { e.preventDefault(); }}>
+        <a
+          href="#"
+          className="text-link hover:underline"
+          onClick={(e) => {
+            e.preventDefault();
+          }}
+        >
           https://example.com/raspisanie
         </a>
       </>,
@@ -363,7 +376,10 @@ const messages: MessageMock[] = [
 
 function Chat({ showMembers, onToggleMembers }: { showMembers: boolean; onToggleMembers: () => void }) {
   return (
-    <main className="flex min-h-0 min-w-0 flex-col bg-chat" style={{ "--avatar-cutout": "var(--bg-chat)" } as CSSProperties}>
+    <main
+      className="flex min-h-0 min-w-0 flex-col bg-chat"
+      style={{ "--avatar-cutout": "var(--bg-chat)" } as CSSProperties}
+    >
       <header className="flex h-(--header-height) shrink-0 items-center gap-2 px-4 shadow-[0_1px_0_var(--border)]">
         <Hash aria-hidden className="size-6 shrink-0 text-fg-faint" strokeWidth={1.75} />
         <h2 className="text-base font-semibold">общий</h2>
@@ -371,7 +387,13 @@ function Chat({ showMembers, onToggleMembers }: { showMembers: boolean; onToggle
         <p className="min-w-0 flex-1 truncate text-sm text-fg-muted">
           Болтаем обо всём. Кино — по пятницам в 21:00 в «Кинозале».
         </p>
-        <IconButton label={showMembers ? "Скрыть участников" : "Показать участников"} icon={Users} pressed={showMembers} onClick={onToggleMembers} tooltipSide="bottom" />
+        <IconButton
+          label={showMembers ? "Скрыть участников" : "Показать участников"}
+          icon={Users}
+          pressed={showMembers}
+          onClick={onToggleMembers}
+          tooltipSide="bottom"
+        />
       </header>
       <div className="flex min-h-0 flex-1 flex-col justify-end overflow-y-auto">
         <ol aria-label="Сообщения в #общий" className="pb-4">
@@ -380,7 +402,9 @@ function Chat({ showMembers, onToggleMembers }: { showMembers: boolean; onToggle
               <Hash className="size-10 text-fg" strokeWidth={1.75} />
             </span>
             <h3 className="mt-3 text-xl font-bold">Добро пожаловать в #общий!</h3>
-            <p className="mt-1 text-base text-fg-muted">Это начало канала #общий. Пишите, договаривайтесь о вечере, кидайте ссылки.</p>
+            <p className="mt-1 text-base text-fg-muted">
+              Это начало канала #общий. Пишите, договаривайтесь о вечере, кидайте ссылки.
+            </p>
           </li>
           <li aria-hidden className="mx-4 mt-6 mb-1 flex items-center gap-2 text-xs font-semibold text-fg-faint">
             <span className="h-px flex-1 bg-border" />
@@ -409,7 +433,10 @@ function MessageGroup({ message: m }: { message: MessageMock }) {
       >
         {m.reply && (
           <div className="relative mb-1 flex items-center gap-1.5 text-sm text-fg-muted">
-            <span aria-hidden className="absolute top-2.5 -left-9 h-5 w-7.5 rounded-tl-md border-t-2 border-l-2 border-border-strong" />
+            <span
+              aria-hidden
+              className="absolute top-2.5 -left-9 h-5 w-7.5 rounded-tl-md border-t-2 border-l-2 border-border-strong"
+            />
             <Avatar name={m.reply.author} size={20} />
             <span className="role-text shrink-0 font-semibold" style={roleTextStyle(m.reply.color ?? 0)}>
               @{m.reply.author}
@@ -421,7 +448,10 @@ function MessageGroup({ message: m }: { message: MessageMock }) {
           <Avatar name={m.author} size={40} />
         </div>
         <h3 className="flex items-baseline gap-2">
-          <span className="role-text cursor-pointer text-base font-semibold hover:underline" style={roleTextStyle(m.color ?? 0)}>
+          <span
+            className="role-text cursor-pointer text-base font-semibold hover:underline"
+            style={roleTextStyle(m.color ?? 0)}
+          >
             {m.author}
           </span>
           <time className="text-xs text-fg-faint">{m.time}</time>
@@ -457,7 +487,11 @@ function Composer() {
     <div className="shrink-0 px-4 pb-6">
       <div className="flex min-h-11 items-center gap-1 rounded-lg bg-input pr-3 pl-2">
         <IconButton label="Прикрепить файл" icon={CirclePlus} />
-        <input aria-label="Сообщение в #общий" placeholder="Написать в #общий" className="h-11 min-w-0 flex-1 bg-transparent text-base text-fg outline-none" />
+        <input
+          aria-label="Сообщение в #общий"
+          placeholder="Написать в #общий"
+          className="h-11 min-w-0 flex-1 bg-transparent text-base text-fg outline-none"
+        />
       </div>
       <p className="-mb-5 h-5 pt-0.5 pl-1 text-xs text-fg-muted">
         <span className="font-semibold text-fg">Дима Орлов</span> печатает…
@@ -479,9 +513,17 @@ function MemberList() {
                   type="button"
                   className="flex h-11 w-full cursor-pointer items-center gap-3 rounded-md px-2 text-left hover:bg-hover"
                 >
-                  <Avatar name={m.name} size={32} status={m.status} className={cn(m.status === "offline" && "opacity-45")} />
+                  <Avatar
+                    name={m.name}
+                    size={32}
+                    status={m.status}
+                    className={cn(m.status === "offline" && "opacity-45")}
+                  />
                   <span
-                    className={cn("truncate text-base font-medium", m.status === "offline" ? "text-fg-faint" : "role-text")}
+                    className={cn(
+                      "truncate text-base font-medium",
+                      m.status === "offline" ? "text-fg-faint" : "role-text",
+                    )}
                     style={m.status === "offline" ? undefined : roleTextStyle(m.color ?? 0)}
                   >
                     {m.name}

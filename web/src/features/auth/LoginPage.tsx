@@ -7,7 +7,7 @@ import { api, unwrap } from "../../api/client";
 import { Button } from "../../design/components/Button";
 import { Field, Input } from "../../design/components/Input";
 import { AuthLayout, FormAlert } from "./AuthLayout";
-import { isFieldOf, loginSchema, lowerCaseInput, showRequestError, type LoginValues } from "./form";
+import { isFieldOf, type LoginValues, loginSchema, lowerCaseInput, showRequestError } from "./form";
 import { safeNext, setSignedIn } from "./session";
 
 const linkClass = "font-medium text-link underline-offset-2 hover:underline";

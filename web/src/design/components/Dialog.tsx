@@ -27,7 +27,15 @@ const widths = { sm: "max-w-110", md: "max-w-135", lg: "max-w-180" };
  * traps focus, closes on Escape and outside click, and returns focus to the
  * trigger.
  */
-export function DialogContent({ title, description, footer, size = "md", className, children, ...props }: DialogContentProps) {
+export function DialogContent({
+  title,
+  description,
+  footer,
+  size = "md",
+  className,
+  children,
+  ...props
+}: DialogContentProps) {
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className={overlayClass} />
@@ -40,7 +48,9 @@ export function DialogContent({ title, description, footer, size = "md", classNa
           <div className="min-w-0 flex-1">
             <DialogPrimitive.Title className="text-lg font-semibold">{title}</DialogPrimitive.Title>
             {description && (
-              <DialogPrimitive.Description className="mt-1 text-sm text-fg-muted">{description}</DialogPrimitive.Description>
+              <DialogPrimitive.Description className="mt-1 text-sm text-fg-muted">
+                {description}
+              </DialogPrimitive.Description>
             )}
           </div>
           <DialogPrimitive.Close

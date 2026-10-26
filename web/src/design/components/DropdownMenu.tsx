@@ -2,7 +2,13 @@ import { Check } from "lucide-react";
 import { DropdownMenu as Menu } from "radix-ui";
 import type { ComponentProps } from "react";
 import { cn } from "../cn";
-import { menuContentClass, menuItemClass, menuItemDangerClass, menuLabelClass, menuSeparatorClass } from "./menu-styles";
+import {
+  menuContentClass,
+  menuItemClass,
+  menuItemDangerClass,
+  menuLabelClass,
+  menuSeparatorClass,
+} from "./menu-styles";
 
 export const DropdownMenu = Menu.Root;
 export const DropdownMenuTrigger = Menu.Trigger;
@@ -11,7 +17,12 @@ export const DropdownMenuGroup = Menu.Group;
 export function DropdownMenuContent({ className, sideOffset = 6, ...props }: ComponentProps<typeof Menu.Content>) {
   return (
     <Menu.Portal>
-      <Menu.Content sideOffset={sideOffset} collisionPadding={8} className={cn(menuContentClass, className)} {...props} />
+      <Menu.Content
+        sideOffset={sideOffset}
+        collisionPadding={8}
+        className={cn(menuContentClass, className)}
+        {...props}
+      />
     </Menu.Portal>
   );
 }

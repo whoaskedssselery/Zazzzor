@@ -1,7 +1,6 @@
-import { readTokenFromHash, tokenExpiresAt, isTokenExpired } from "./token";
+import { isTokenExpired, readTokenFromHash, tokenExpiresAt } from "./token";
 
-const jwt = (payload: object) =>
-  `h.${Buffer.from(JSON.stringify(payload)).toString("base64url")}.s`;
+const jwt = (payload: object) => `h.${Buffer.from(JSON.stringify(payload)).toString("base64url")}.s`;
 
 test("reads token from #token=", () => {
   expect(readTokenFromHash("#token=abc.def.ghi")).toBe("abc.def.ghi");

@@ -1,14 +1,14 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useState, type ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { useForm } from "react-hook-form";
-import { api, ApiError, unwrap } from "../../api/client";
+import { ApiError, api, unwrap } from "../../api/client";
 import { Button } from "../../design/components/Button";
 import { Field, Input } from "../../design/components/Input";
 import { trimContent } from "../../lib/text";
 import { AuthLayout, FormAlert } from "./AuthLayout";
-import { isFieldOf, lowerCaseInput, registerSchema, showRequestError, type RegisterValues } from "./form";
+import { isFieldOf, lowerCaseInput, type RegisterValues, registerSchema, showRequestError } from "./form";
 import { safeNext, setSignedIn } from "./session";
 
 const linkClass = "font-medium text-link underline-offset-2 hover:underline";
@@ -37,7 +37,9 @@ export function RegisterPage({ next }: { next?: string | undefined }) {
     const name = trimContent(display_name);
     try {
       const user = unwrap(
-        await api.POST("/auth/register", { body: name ? { username, password, display_name: name } : { username, password } }),
+        await api.POST("/auth/register", {
+          body: name ? { username, password, display_name: name } : { username, password },
+        }),
       );
       setSignedIn(queryClient, user);
       await navigate({ href: safeNext(next), replace: true });

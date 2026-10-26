@@ -98,7 +98,10 @@ export function Avatar({ name, src, size = 40, status, className }: AvatarProps)
           }}
         >
           {status === "offline" && (
-            <span className="absolute inset-[28%] rounded-full" style={{ background: "var(--avatar-cutout, var(--bg-sidebar))" }} />
+            <span
+              className="absolute inset-[28%] rounded-full"
+              style={{ background: "var(--avatar-cutout, var(--bg-sidebar))" }}
+            />
           )}
         </span>
       )}

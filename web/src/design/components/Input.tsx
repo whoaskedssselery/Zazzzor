@@ -1,4 +1,4 @@
-import { createContext, use, type ComponentProps, type ReactNode } from "react";
+import { type ComponentProps, createContext, type ReactNode, use } from "react";
 import { cn } from "../cn";
 
 /**
@@ -50,7 +50,14 @@ export function useFieldControl(own: FieldControlProps) {
   };
 }
 
-export function Input({ className, type, id, "aria-describedby": describedBy, "aria-invalid": invalid, ...props }: ComponentProps<"input">) {
+export function Input({
+  className,
+  type,
+  id,
+  "aria-describedby": describedBy,
+  "aria-invalid": invalid,
+  ...props
+}: ComponentProps<"input">) {
   const wiring = useFieldControl({ id, "aria-describedby": describedBy, "aria-invalid": invalid });
   return <input type={type ?? "text"} className={cn(fieldClass, "h-10", className)} {...wiring} {...props} />;
 }

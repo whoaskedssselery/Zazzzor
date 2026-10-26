@@ -1,12 +1,24 @@
-import { Room, RoomEvent, Track, type RemoteTrack } from "livekit-client";
+import { type RemoteTrack, Room, RoomEvent, Track } from "livekit-client";
 import { detectBrowser } from "./browser";
-import { countConnectionEvent, disconnectMessage, emptyConnectionEvents, type ConnectionEvent, type ConnectionEvents } from "./connection-events";
+import {
+  type ConnectionEvent,
+  type ConnectionEvents,
+  countConnectionEvent,
+  disconnectMessage,
+  emptyConnectionEvents,
+} from "./connection-events";
 import { isPickerCancelled, roomOptions, screenShareOptions } from "./media-options";
 import { aggregateSamples, formatReport } from "./report";
-import { shareReducer, type ShareEvent, type ShareState } from "./share-state";
-import { mergeSummaries, summarizeStats, type ConnectivitySummary, type InboundVideoStat, type RTCStatsLike } from "./stats";
-import { isTokenExpired, readTokenFromHash } from "./token";
+import { type ShareEvent, type ShareState, shareReducer } from "./share-state";
 import { signalUrl } from "./signal-url";
+import {
+  type ConnectivitySummary,
+  type InboundVideoStat,
+  mergeSummaries,
+  type RTCStatsLike,
+  summarizeStats,
+} from "./stats";
+import { isTokenExpired, readTokenFromHash } from "./token";
 import { h, renderLiveStats } from "./view";
 
 const STATS_INTERVAL_MS = 2000;
@@ -85,13 +97,16 @@ function start(root: HTMLElement, accessToken: string): void {
 
   const dispatch = (event: ShareEvent): void => {
     share = shareReducer(share, event);
-    shareBtn.textContent = share.status === "sharing" ? "Остановить" : share.status === "starting" ? "Запуск…" : "Начать демку";
+    shareBtn.textContent =
+      share.status === "sharing" ? "Остановить" : share.status === "starting" ? "Запуск…" : "Начать демку";
     shareBtn.disabled = room.state !== "connected" || share.status === "starting";
     shareError.textContent = share.status === "error" ? `Не удалось начать демку: ${share.message}` : "";
   };
 
   const renderLive = (summary: ConnectivitySummary | null): void => {
-    live.replaceChildren(renderLiveStats(summary, { prevInbound, agg: samples.length ? aggregateSamples(samples) : null, events, labels }));
+    live.replaceChildren(
+      renderLiveStats(summary, { prevInbound, agg: samples.length ? aggregateSamples(samples) : null, events, labels }),
+    );
   };
 
   const record = (event: ConnectionEvent): void => {

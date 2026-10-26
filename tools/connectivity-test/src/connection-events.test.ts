@@ -1,5 +1,10 @@
 import { DisconnectReason } from "livekit-client";
-import { countConnectionEvent, disconnectMessage, disconnectReasonName, emptyConnectionEvents } from "./connection-events";
+import {
+  countConnectionEvent,
+  disconnectMessage,
+  disconnectReasonName,
+  emptyConnectionEvents,
+} from "./connection-events";
 
 test("counts disconnects with reason names, reconnect attempts and successes", () => {
   let e = emptyConnectionEvents();
@@ -8,7 +13,12 @@ test("counts disconnects with reason names, reconnect attempts and successes", (
   e = countConnectionEvent(e, { type: "reconnecting" });
   e = countConnectionEvent(e, { type: "disconnected", reason: DisconnectReason.SIGNAL_CLOSE });
   e = countConnectionEvent(e, { type: "disconnected" });
-  expect(e).toEqual({ disconnects: 2, reconnectAttempts: 2, reconnects: 1, disconnectReasons: ["SIGNAL_CLOSE", "UNKNOWN_REASON"] });
+  expect(e).toEqual({
+    disconnects: 2,
+    reconnectAttempts: 2,
+    reconnects: 1,
+    disconnectReasons: ["SIGNAL_CLOSE", "UNKNOWN_REASON"],
+  });
 });
 
 test("counting does not mutate the previous state", () => {
@@ -24,7 +34,9 @@ test("reason names come from the protocol enum", () => {
 });
 
 test("duplicate identity explains the second tab", () => {
-  expect(disconnectMessage(DisconnectReason.DUPLICATE_IDENTITY)).toBe("Эта ссылка открыта в другой вкладке или на другом устройстве");
+  expect(disconnectMessage(DisconnectReason.DUPLICATE_IDENTITY)).toBe(
+    "Эта ссылка открыта в другой вкладке или на другом устройстве",
+  );
 });
 
 test("other reasons keep the technical name for the report", () => {

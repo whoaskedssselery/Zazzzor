@@ -1,6 +1,6 @@
-import { CircleAlert, CircleCheck, Info, X, type LucideIcon } from "lucide-react";
+import { CircleAlert, CircleCheck, Info, type LucideIcon, X } from "lucide-react";
 import { Toast as ToastPrimitive } from "radix-ui";
-import { createContext, use, useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, type ReactNode, use, useCallback, useMemo, useRef, useState } from "react";
 import { cn } from "../cn";
 
 export type ToastTone = "info" | "error" | "success";
@@ -80,7 +80,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             </ToastPrimitive.Root>
           );
         })}
-        <ToastPrimitive.Viewport label="Уведомления ({hotkey})" className="fixed bottom-6 left-1/2 z-(--z-toast) flex w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 flex-col gap-2 outline-none" />
+        <ToastPrimitive.Viewport
+          label="Уведомления ({hotkey})"
+          className="fixed bottom-6 left-1/2 z-(--z-toast) flex w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 flex-col gap-2 outline-none"
+        />
       </ToastPrimitive.Provider>
     </ToastContext>
   );

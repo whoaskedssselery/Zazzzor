@@ -1,6 +1,6 @@
-import { inboundInterval, type ConnectivitySummary, type InboundVideoStat } from "./stats";
-import type { ConnectivityAggregate } from "./report";
 import type { ConnectionEvents } from "./connection-events";
+import type { ConnectivityAggregate } from "./report";
+import { type ConnectivitySummary, type InboundVideoStat, inboundInterval } from "./stats";
 
 type Child = Node | string;
 
@@ -15,7 +15,8 @@ export function h<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-const fmt = (n: number | null, digits = 0, unit = ""): string => (n === null ? "нет данных" : `${n.toFixed(digits)}${unit}`);
+const fmt = (n: number | null, digits = 0, unit = ""): string =>
+  n === null ? "нет данных" : `${n.toFixed(digits)}${unit}`;
 const resolution = (w: number, hgt: number): string => (w > 0 ? `${w}×${hgt}` : "—");
 
 function row(label: string, value: string, warn = false): HTMLElement {
@@ -62,7 +63,11 @@ export function renderLiveStats(summary: ConnectivitySummary | null, ctx: LiveCo
   if (ctx.agg) {
     table.append(
       row("Макс. потери за 2 с", fmt(ctx.agg.maxLossPercent, 1, "%")),
-      row("Замеров с остановкой кадров", `${ctx.agg.inboundStallSamples} из ${ctx.agg.inboundStreamSamples}`, ctx.agg.inboundStallSamples > 0),
+      row(
+        "Замеров с остановкой кадров",
+        `${ctx.agg.inboundStallSamples} из ${ctx.agg.inboundStreamSamples}`,
+        ctx.agg.inboundStallSamples > 0,
+      ),
     );
   }
   const e = ctx.events;

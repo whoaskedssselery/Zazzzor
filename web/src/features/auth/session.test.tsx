@@ -1,8 +1,8 @@
 import { screen, waitFor } from "@testing-library/react";
 import { HttpResponse } from "msw";
 import { api } from "../../api/client";
-import { apiHandler, problem, server } from "../../test/msw";
 import { currentHref, renderApp, sessionHandler, testUser } from "../../test/app";
+import { apiHandler, problem, server } from "../../test/msw";
 import { safeNext } from "./session";
 
 describe("safeNext", () => {

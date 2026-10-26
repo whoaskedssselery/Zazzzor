@@ -1,5 +1,5 @@
-import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
 // Dev only: the browser talks to the Vite origin and Vite forwards the REST

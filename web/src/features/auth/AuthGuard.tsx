@@ -1,10 +1,16 @@
 import type { QueryClient } from "@tanstack/react-query";
-import { Outlet, redirect, type ParsedLocation } from "@tanstack/react-router";
+import { Outlet, type ParsedLocation, redirect } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { loadSession, onUnauthorized, safeNext, useSession } from "./session";
 
 /** `beforeLoad` of the protected layout: no session → /login?next=<this page>. */
-export async function requireSession({ context, location }: { context: { queryClient: QueryClient }; location: ParsedLocation }) {
+export async function requireSession({
+  context,
+  location,
+}: {
+  context: { queryClient: QueryClient };
+  location: ParsedLocation;
+}) {
   const user = await loadSession(context.queryClient);
   if (!user) throw redirect({ to: "/login", search: { next: location.href }, replace: true });
   return { user };
@@ -15,7 +21,13 @@ export async function requireSession({ context, location }: { context: { queryCl
  * straight away. When the check itself fails (server down) the form is shown
  * anyway; submitting it then explains the problem.
  */
-export async function redirectSignedIn({ context, search }: { context: { queryClient: QueryClient }; search: { next?: string } }) {
+export async function redirectSignedIn({
+  context,
+  search,
+}: {
+  context: { queryClient: QueryClient };
+  search: { next?: string };
+}) {
   const user = await loadSession(context.queryClient).catch(() => null);
   if (user) throw redirect({ href: safeNext(search.next), replace: true });
 }

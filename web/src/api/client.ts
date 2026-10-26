@@ -1,6 +1,6 @@
 import createClient, { type Client } from "openapi-fetch";
-import type { paths } from "./schema.gen";
 import { ERROR_TEXTS, GENERIC_ERROR, NETWORK_ERROR } from "./errors";
+import type { paths } from "./schema.gen";
 
 /**
  * The REST client. Same origin as the page (Caddy serves both; Vite proxies

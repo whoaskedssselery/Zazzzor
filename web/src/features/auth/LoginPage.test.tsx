@@ -1,8 +1,8 @@
 import { screen } from "@testing-library/react";
 import { HttpResponse } from "msw";
-import { apiHandler, problem, server } from "../../test/msw";
-import { currentHref, renderApp, sessionHandler, testUser, type User } from "../../test/app";
 import type { components } from "../../api/schema.gen";
+import { currentHref, renderApp, sessionHandler, testUser, type User } from "../../test/app";
+import { apiHandler, problem, server } from "../../test/msw";
 
 type LoginBody = components["schemas"]["LoginRequest"];
 type Problem = components["schemas"]["Problem"];

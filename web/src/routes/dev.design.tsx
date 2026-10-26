@@ -1,5 +1,5 @@
 import { Bell, Copy, LogOut, Pencil, Settings, Trash2, UserPlus, Volume2 } from "lucide-react";
-import { useId, useState, type ReactNode } from "react";
+import { type ReactNode, useId, useState } from "react";
 import { Avatar } from "../design/components/Avatar";
 import { Badge } from "../design/components/Badge";
 import { Button } from "../design/components/Button";
@@ -34,7 +34,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../design/components/T
 import { Textarea } from "../design/components/Textarea";
 import { useToast } from "../design/components/Toast";
 import { Tooltip } from "../design/components/Tooltip";
-import { useTheme, type ThemePreference } from "../design/theme";
+import { type ThemePreference, useTheme } from "../design/theme";
 import { MainScreenMock } from "./dev.design-mock";
 
 /**
@@ -204,7 +204,10 @@ function Showcase() {
         </div>
       </Section>
 
-      <Section title="Диалоги, меню, подсказки" note="Всё открывается и закрывается с клавиатуры; Esc возвращает фокус.">
+      <Section
+        title="Диалоги, меню, подсказки"
+        note="Всё открывается и закрывается с клавиатуры; Esc возвращает фокус."
+      >
         <Overlays />
       </Section>
 
@@ -387,9 +390,7 @@ function Overlays() {
           Щёлкните здесь правой кнопкой: меню сообщения
         </ContextMenuTrigger>
         <ContextMenuContent>
-          <ContextMenuItem>
-            Ответить
-          </ContextMenuItem>
+          <ContextMenuItem>Ответить</ContextMenuItem>
           <ContextMenuItem>
             Копировать текст <Copy aria-hidden />
           </ContextMenuItem>
@@ -456,7 +457,10 @@ function Palette() {
     <div className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
       {swatches.map((s) => (
         <div key={s.token} className="flex items-center gap-3">
-          <span className="size-8 shrink-0 rounded-md shadow-[inset_0_0_0_1px_var(--border)]" style={{ background: `var(${s.token})` }} />
+          <span
+            className="size-8 shrink-0 rounded-md shadow-[inset_0_0_0_1px_var(--border)]"
+            style={{ background: `var(${s.token})` }}
+          />
           <span className="min-w-0">
             <span className="block truncate text-sm font-medium">{s.name}</span>
             <code className="block truncate text-xs text-fg-faint">{s.token}</code>

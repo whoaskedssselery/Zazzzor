@@ -1,4 +1,4 @@
-import { http, HttpResponse, type DefaultBodyType, type HttpHandler, type HttpResponseResolver } from "msw";
+import { type DefaultBodyType, type HttpHandler, HttpResponse, type HttpResponseResolver, http } from "msw";
 import { setupServer } from "msw/node";
 import type { components, paths } from "../api/schema.gen";
 
@@ -28,14 +28,17 @@ export type ApiSuccessBody<P extends keyof paths, M extends ApiMethod<P>> = {
 
 /** JSON request body of an operation (never when it takes none or another media type). */
 export type ApiRequestBody<P extends keyof paths, M extends ApiMethod<P>> =
-  Operation<P, M> extends { requestBody?: { content: { "application/json": infer B extends DefaultBodyType } } } ? B : never;
+  Operation<P, M> extends { requestBody?: { content: { "application/json": infer B extends DefaultBodyType } } }
+    ? B
+    : never;
 
 /** Route parameters as MSW parses them: `{guild_id}` → `params.guild_id` (always a string). */
-export type ApiPathParams<P extends keyof paths, M extends ApiMethod<P>> = Operation<P, M> extends { parameters: { path?: infer PP } }
-  ? [PP] extends [Record<string, unknown>]
-    ? { [K in keyof PP & string]: string }
-    : Record<string, never>
-  : Record<string, never>;
+export type ApiPathParams<P extends keyof paths, M extends ApiMethod<P>> =
+  Operation<P, M> extends { parameters: { path?: infer PP } }
+    ? [PP] extends [Record<string, unknown>]
+      ? { [K in keyof PP & string]: string }
+      : Record<string, never>
+    : Record<string, never>;
 
 /**
  * Every response a handler for `M P` may return: the operation's 2xx JSON
@@ -75,7 +78,12 @@ function apiUrlPattern(path: keyof paths): string {
  * A problem+json response shaped like the server's (`components.schemas.Problem`),
  * with extra `headers` such as `Retry-After`.
  */
-export function problem(status: number, code: string, errors?: FieldError[], headers?: Record<string, string>): HttpResponse<Problem> {
+export function problem(
+  status: number,
+  code: string,
+  errors?: FieldError[],
+  headers?: Record<string, string>,
+): HttpResponse<Problem> {
   const body: Problem = { type: `urn:zazzzor:error:${code}`, title: code, status, code };
   if (errors) body.errors = errors;
   return HttpResponse.json(body, { status, headers: { ...headers, "Content-Type": "application/problem+json" } });

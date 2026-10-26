@@ -1,8 +1,8 @@
 import { screen, waitFor } from "@testing-library/react";
+import { Settings } from "lucide-react";
 import { renderUi } from "../../test/render";
 import { IconButton } from "./IconButton";
 import { Tooltip } from "./Tooltip";
-import { Settings } from "lucide-react";
 
 describe("Tooltip", () => {
   it("opens on keyboard focus, describes the trigger and closes on Escape", async () => {

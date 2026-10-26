@@ -1,10 +1,10 @@
-import { act, renderHook } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
+import { act, renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { THEME_COLOR, THEME_STORAGE_KEY, ThemeProvider, useTheme, type ThemePreference } from "./theme";
+import { THEME_COLOR, THEME_STORAGE_KEY, type ThemePreference, ThemeProvider, useTheme } from "./theme";
 
 const wrapper = ({ children }: { children: ReactNode }) => <ThemeProvider>{children}</ThemeProvider>;
 const root = document.documentElement;
@@ -135,7 +135,10 @@ describe("useTheme", () => {
  * values and the browser-chrome colours; run it here against the real DOM.
  */
 describe("theme-boot.js", () => {
-  const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "..", "public", "theme-boot.js"), "utf8");
+  const source = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "..", "..", "public", "theme-boot.js"),
+    "utf8",
+  );
   let metas: HTMLMetaElement[] = [];
 
   beforeEach(() => {

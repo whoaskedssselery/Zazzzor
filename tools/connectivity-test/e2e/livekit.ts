@@ -18,9 +18,25 @@ export function removeStaleContainers(): void {
 export function startLiveKit(): string {
   const name = `zazzzor-e2e-livekit-${process.pid}-${Date.now()}`;
   docker([
-    "run", "-d", "--rm", "--name", name, "--label", LABEL,
-    "-p", "127.0.0.1:7880:7880", "-p", "127.0.0.1:7881:7881", "-p", "127.0.0.1:7882:7882/udp",
-    LIVEKIT_IMAGE, "--dev", "--bind", "0.0.0.0", "--node-ip", "127.0.0.1",
+    "run",
+    "-d",
+    "--rm",
+    "--name",
+    name,
+    "--label",
+    LABEL,
+    "-p",
+    "127.0.0.1:7880:7880",
+    "-p",
+    "127.0.0.1:7881:7881",
+    "-p",
+    "127.0.0.1:7882:7882/udp",
+    LIVEKIT_IMAGE,
+    "--dev",
+    "--bind",
+    "0.0.0.0",
+    "--node-ip",
+    "127.0.0.1",
   ]);
   return name;
 }

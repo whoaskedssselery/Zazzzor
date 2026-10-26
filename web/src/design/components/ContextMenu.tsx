@@ -1,7 +1,13 @@
 import { ContextMenu as Menu } from "radix-ui";
 import type { ComponentProps } from "react";
 import { cn } from "../cn";
-import { menuContentClass, menuItemClass, menuItemDangerClass, menuLabelClass, menuSeparatorClass } from "./menu-styles";
+import {
+  menuContentClass,
+  menuItemClass,
+  menuItemDangerClass,
+  menuLabelClass,
+  menuSeparatorClass,
+} from "./menu-styles";
 
 /**
  * Right-click menus (messages, members, channels). Every action in a context

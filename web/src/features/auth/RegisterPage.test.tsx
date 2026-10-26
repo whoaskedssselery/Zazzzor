@@ -1,8 +1,8 @@
 import { screen, within } from "@testing-library/react";
 import { HttpResponse } from "msw";
 import type { components } from "../../api/schema.gen";
-import { apiHandler, problem, server } from "../../test/msw";
 import { currentHref, renderApp, sessionHandler, testUser, type User } from "../../test/app";
+import { apiHandler, problem, server } from "../../test/msw";
 
 type RegisterBody = components["schemas"]["RegisterRequest"];
 type Problem = components["schemas"]["Problem"];
@@ -28,7 +28,10 @@ function description(el: HTMLElement): string {
     .join(" | ");
 }
 
-async function fill(user: ReturnType<typeof renderApp>["user"], values: { displayName?: string; username: string; password: string }) {
+async function fill(
+  user: ReturnType<typeof renderApp>["user"],
+  values: { displayName?: string; username: string; password: string },
+) {
   const name = await screen.findByRole("textbox", { name: "Отображаемое имя" });
   if (values.displayName) await user.type(name, values.displayName);
   await user.type(screen.getByRole("textbox", { name: "Логин" }), values.username);
@@ -89,7 +92,9 @@ describe("RegisterPage", () => {
 
   it("states the login rule, length included, in the hint", async () => {
     renderApp("/register");
-    expect(description(await screen.findByRole("textbox", { name: "Логин" }))).toBe("От 2 до 32 символов: латиница, цифры, «_» и «.».");
+    expect(description(await screen.findByRole("textbox", { name: "Логин" }))).toBe(
+      "От 2 до 32 символов: латиница, цифры, «_» и «.».",
+    );
   });
 
   it("lower-cases the login as it is typed", async () => {
@@ -131,7 +136,9 @@ describe("RegisterPage", () => {
   it("puts the server's errors[].field under the matching field", async () => {
     server.use(
       registerHandler(() =>
-        problem(400, "validation_failed", [{ field: "display_name", message: "must not contain bidirectional control characters" }]),
+        problem(400, "validation_failed", [
+          { field: "display_name", message: "must not contain bidirectional control characters" },
+        ]),
       ).handler,
     );
     const { user } = renderApp("/register");

@@ -43,7 +43,10 @@ export function lowerCaseInput(input: HTMLInputElement): void {
 }
 
 /** Whether `field` (from the server's errors[]) is one of the form's fields. */
-export function isFieldOf<S extends z.ZodMiniObject>(schema: S, field: string): field is Extract<keyof z.infer<S>, string> {
+export function isFieldOf<S extends z.ZodMiniObject>(
+  schema: S,
+  field: string,
+): field is Extract<keyof z.infer<S>, string> {
   return Object.hasOwn(schema.shape, field);
 }
 

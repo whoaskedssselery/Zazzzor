@@ -1,6 +1,6 @@
-import { queryOptions, useQuery, type QueryClient } from "@tanstack/react-query";
+import { type QueryClient, queryOptions, useQuery } from "@tanstack/react-query";
 import type { Middleware } from "openapi-fetch";
-import { api, ApiError, unwrap } from "../../api/client";
+import { ApiError, api, unwrap } from "../../api/client";
 import type { components } from "../../api/schema.gen";
 import type { AppRouter } from "../../routes/router";
 

@@ -7,7 +7,7 @@ import { createQueryClient } from "../api/query-client";
 import type { components } from "../api/schema.gen";
 import { AppProviders } from "../design/providers";
 import { initSession } from "../features/auth/session";
-import { createAppRouter, type AppRouter } from "../routes/router";
+import { type AppRouter, createAppRouter } from "../routes/router";
 import { apiHandler, problem } from "./msw";
 
 export type User = components["schemas"]["User"];

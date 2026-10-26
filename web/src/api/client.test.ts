@@ -1,8 +1,8 @@
-import { http, HttpResponse } from "msw";
-import type { components } from "./schema.gen";
-import { api, ApiError, errorText, unwrap } from "./client";
+import { HttpResponse, http } from "msw";
 import { apiHandler, problem, server } from "../test/msw";
+import { ApiError, api, errorText, unwrap } from "./client";
 import { tooManyAttemptsText } from "./errors";
+import type { components } from "./schema.gen";
 
 type User = components["schemas"]["User"];
 
@@ -37,9 +37,12 @@ describe("api client", () => {
     api.use(spy);
     server.use(apiHandler("get", "/users/@me", () => HttpResponse.json(user)));
 
-    const me = await api.GET("/users/@me").then(unwrap).finally(() => {
-      api.eject(spy);
-    });
+    const me = await api
+      .GET("/users/@me")
+      .then(unwrap)
+      .finally(() => {
+        api.eject(spy);
+      });
 
     expect(me).toEqual(user);
     expect(sent?.url).toBe(`${window.location.origin}/api/v1/users/@me`);
@@ -68,7 +71,9 @@ describe("api client", () => {
   });
 
   it("keeps the Retry-After seconds of a 429", async () => {
-    server.use(apiHandler("post", "/auth/login", () => problem(429, "rate_limited", undefined, { "Retry-After": "42" })));
+    server.use(
+      apiHandler("post", "/auth/login", () => problem(429, "rate_limited", undefined, { "Retry-After": "42" })),
+    );
 
     const r = await api.POST("/auth/login", { body: { username: "vasya", password: "password1" } });
 
@@ -78,7 +83,9 @@ describe("api client", () => {
   it.each([["soon"], ["0"], ["-5"], ["1.5"], ["Wed, 21 Oct 2026 07:28:00 GMT"]])(
     "leaves retryAfter undefined for the Retry-After %j",
     async (header) => {
-      server.use(apiHandler("post", "/auth/login", () => problem(429, "rate_limited", undefined, { "Retry-After": header })));
+      server.use(
+        apiHandler("post", "/auth/login", () => problem(429, "rate_limited", undefined, { "Retry-After": header })),
+      );
 
       const r = await api.POST("/auth/login", { body: { username: "vasya", password: "password1" } });
       const e = thrown(() => unwrap(r));
@@ -101,8 +108,10 @@ describe("api client", () => {
   it("gives code «unknown» to an error body that is not a problem (a proxy page)", async () => {
     // Off-contract on purpose (a proxy page), so a bare MSW handler.
     server.use(
-      http.get("/api/v1/users/@me", () =>
-        new HttpResponse("<html>502 Bad Gateway</html>", { status: 502, headers: { "Content-Type": "text/html" } }),
+      http.get(
+        "/api/v1/users/@me",
+        () =>
+          new HttpResponse("<html>502 Bad Gateway</html>", { status: 502, headers: { "Content-Type": "text/html" } }),
       ),
     );
 
