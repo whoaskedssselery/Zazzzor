@@ -30,7 +30,7 @@ function RootError() {
   return (
     <main role="alert" className="grid min-h-dvh place-items-center p-6 text-center">
       <div>
-        <h1 className="text-2xl font-semibold">Что-то сломалось</h1>
+        <h1 className="text-xl font-semibold">Что-то сломалось</h1>
         <p className="mt-2 text-fg-muted">Перезагрузите страницу. Если не поможет, попробуйте позже.</p>
         <Button
           className="mt-4"
@@ -49,7 +49,7 @@ function NotFound() {
   return (
     <main className="grid min-h-dvh place-items-center p-6 text-center">
       <div>
-        <h1 className="text-2xl font-semibold">Страница не найдена</h1>
+        <h1 className="text-xl font-semibold">Страница не найдена</h1>
         <p className="mt-2 text-fg-muted">Такого адреса в Zazzzor нет.</p>
       </div>
     </main>

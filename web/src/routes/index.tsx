@@ -1,20 +1,14 @@
-import { createRoute } from "@tanstack/react-router";
+import { createRoute, redirect } from "@tanstack/react-router";
+import { loadSession } from "../features/auth/session";
 import { rootRoute } from "./root";
 
-/** Placeholder start page until sign-in and the app shell exist (Task 3). */
+/** The start page is a fork: home with a session, sign-in without one. */
 export const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
-  component: IndexPage,
+  beforeLoad: async ({ context }) => {
+    const user = await loadSession(context.queryClient);
+    if (user) throw redirect({ to: "/channels/@me", replace: true });
+    throw redirect({ to: "/login", replace: true });
+  },
 });
-
-function IndexPage() {
-  return (
-    <main className="grid min-h-dvh place-items-center p-6 text-center">
-      <div>
-        <h1 className="text-xl font-bold">Zazzzor</h1>
-        <p className="mt-2 text-fg-muted">Веб-клиент в разработке.</p>
-      </div>
-    </main>
-  );
-}

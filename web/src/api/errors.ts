@@ -50,3 +50,30 @@ export const ERROR_TEXTS: Readonly<Record<string, string>> = {
   too_many_connections: "Открыто слишком много вкладок Zazzzor. Закройте лишние.",
   origin_not_allowed: "Сервер не принимает запросы с этого адреса.",
 };
+
+/**
+ * Sign-in and registration past their limits (429 rate_limited): the wait
+ * comes from Retry-After; without it the plain rate_limited text is used.
+ */
+export function tooManyAttemptsText(retryAfter: number | undefined): string {
+  return retryAfter ? `Слишком много попыток, подождите ${retryAfter} с.` : (ERROR_TEXTS.rate_limited ?? GENERIC_ERROR);
+}
+
+/**
+ * Texts for the request fields of `validation_failed` errors[] and for the
+ * same rules checked in the forms before sending. The server's own messages
+ * are English, so the UI shows these by field name instead; a field missing
+ * here gets FIELD_ERROR.
+ */
+export const FIELD_ERROR = "Проверьте это поле.";
+
+export const FIELD_ERROR_TEXTS: Readonly<Record<string, string>> = {
+  username: "Логин: 2–32 символа, латиница, цифры, «_» и «.».",
+  password: "Пароль: от 8 до 128 символов.",
+  display_name: "Имя: от 1 до 32 символов, без управляющих и невидимых символов.",
+};
+
+/** Russian text for a field error of the API (`ApiError.fields`). */
+export function fieldErrorText(field: string): string {
+  return Object.hasOwn(FIELD_ERROR_TEXTS, field) ? (FIELD_ERROR_TEXTS[field] ?? FIELD_ERROR) : FIELD_ERROR;
+}

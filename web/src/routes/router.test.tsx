@@ -24,11 +24,6 @@ describe("router", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders the start page at /", async () => {
-    renderAt("/");
-    expect(await screen.findByRole("heading", { name: "Zazzzor" })).toBeTruthy();
-  });
-
   it("serves the design showcase at /dev/design in dev builds", async () => {
     expect(import.meta.env.DEV).toBe(true);
     renderAt("/dev/design");

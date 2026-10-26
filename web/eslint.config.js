@@ -65,6 +65,11 @@ export default defineConfig([
       "no-new-func": "error",
       "@typescript-eslint/no-implied-eval": "error",
       // Numbers in template strings are fine (`${n} участников`).
+      // TanStack Router redirects by throwing redirect(...) from beforeLoad.
+      "@typescript-eslint/only-throw-error": [
+        "error",
+        { allow: [{ from: "package", package: "@tanstack/router-core", name: "Redirect" }] },
+      ],
       "@typescript-eslint/restrict-template-expressions": ["error", { allowNumber: true }],
     },
   },

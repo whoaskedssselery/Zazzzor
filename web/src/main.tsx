@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { createQueryClient } from "./api/query-client";
 import { AppProviders } from "./design/providers";
 import { applyTheme, readThemePreference } from "./design/theme";
+import { initSession } from "./features/auth/session";
 import { createAppRouter } from "./routes/router";
 import "./index.css";
 
@@ -13,6 +14,7 @@ applyTheme(readThemePreference());
 
 const queryClient = createQueryClient();
 const router = createAppRouter(queryClient);
+initSession(router, queryClient);
 
 const root = document.getElementById("root");
 if (!root) throw new Error("index.html has no #root");
