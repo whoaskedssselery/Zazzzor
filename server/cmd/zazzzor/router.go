@@ -56,6 +56,9 @@ func newRouter(d routerDeps) http.Handler {
 	r.Use(
 		// First, so it sees the raw connection writer.
 		httpx.Deadlines(d.Deadlines),
+		// A write outlives its client up to the write deadline, so it is
+		// announced once committed.
+		httpx.Detach(d.Deadlines.Write),
 		withRequestID,
 		withRequestLog(d.Logger, d.Config),
 		d.Metrics.middleware,
