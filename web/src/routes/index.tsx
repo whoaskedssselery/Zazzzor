@@ -12,8 +12,8 @@ function IndexPage() {
   return (
     <main className="grid min-h-dvh place-items-center p-6 text-center">
       <div>
-        <h1 className="text-3xl font-bold">Zazzzor</h1>
-        <p className="mt-2 text-neutral-300">Веб-клиент в разработке.</p>
+        <h1 className="text-xl font-bold">Zazzzor</h1>
+        <p className="mt-2 text-fg-muted">Веб-клиент в разработке.</p>
       </div>
     </main>
   );

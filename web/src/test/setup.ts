@@ -14,6 +14,32 @@ globalThis.Request = class extends NodeRequest {
 // jsdom has no layout; the router resets the scroll position on navigation.
 window.scrollTo = () => {};
 
+// Browser APIs jsdom lacks that Radix primitives call: popper content measures
+// itself with ResizeObserver, Select scrolls the selected item into view and
+// captures the pointer. No-ops are enough without layout.
+class NoopResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+Object.assign(globalThis, { ResizeObserver: NoopResizeObserver });
+Object.assign(Element.prototype, {
+  scrollIntoView: () => {},
+  hasPointerCapture: () => false,
+  releasePointerCapture: () => {},
+});
+
+// useTheme follows the OS preference for "system"; jsdom has no matchMedia.
+// Tests that need a given preference replace it with their own stub.
+Object.defineProperty(window, "matchMedia", {
+  configurable: true,
+  writable: true,
+  value: (query: string): MediaQueryList => {
+    const list = new EventTarget() as MediaQueryList;
+    return Object.assign(list, { matches: false, media: query, onchange: null });
+  },
+});
+
 // Any request without a handler fails the test instead of reaching the network.
 beforeAll(() => {
   server.listen({ onUnhandledFrame: "error" });

@@ -1,5 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, Outlet } from "@tanstack/react-router";
+import { Button } from "../design/components/Button";
 
 export interface RouterContext {
   queryClient: QueryClient;
@@ -18,8 +19,7 @@ export const rootRoute = createRootRouteWithContext<RouterContext>()({
 
 function RootLayout() {
   return (
-    // Theme placeholder: the tokens and the theme switch come with the design system (Task 2).
-    <div className="min-h-dvh bg-neutral-900 text-neutral-100">
+    <div className="min-h-dvh bg-chat text-fg">
       <Outlet />
     </div>
   );
@@ -31,16 +31,15 @@ function RootError() {
     <main role="alert" className="grid min-h-dvh place-items-center p-6 text-center">
       <div>
         <h1 className="text-2xl font-semibold">Что-то сломалось</h1>
-        <p className="mt-2 text-neutral-300">Перезагрузите страницу. Если не поможет, попробуйте позже.</p>
-        <button
-          type="button"
-          className="mt-4 rounded bg-indigo-600 px-4 py-2 font-medium text-white hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+        <p className="mt-2 text-fg-muted">Перезагрузите страницу. Если не поможет, попробуйте позже.</p>
+        <Button
+          className="mt-4"
           onClick={() => {
             window.location.reload();
           }}
         >
           Перезагрузить
-        </button>
+        </Button>
       </div>
     </main>
   );
@@ -51,7 +50,7 @@ function NotFound() {
     <main className="grid min-h-dvh place-items-center p-6 text-center">
       <div>
         <h1 className="text-2xl font-semibold">Страница не найдена</h1>
-        <p className="mt-2 text-neutral-300">Такого адреса в Zazzzor нет.</p>
+        <p className="mt-2 text-fg-muted">Такого адреса в Zazzzor нет.</p>
       </div>
     </main>
   );
