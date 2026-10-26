@@ -2022,7 +2022,9 @@ paths:
         concurrent joins with the last use left exactly one succeeds. A
         member already in the server gets it back without taking a use,
         whatever the invite's state. Announced as `GUILD_MEMBER_ADD` to the
-        members and `GUILD_CREATE` to the new member. A user can be in at
+        members and `GUILD_CREATE` to the new member (when the server cannot
+        read the new member back, `GUILD_SYNC` replaces `GUILD_MEMBER_ADD`).
+        A user can be in at
         most 100 servers (`400 too_many_guilds`). A user banned from the
         server is refused (`403 banned`) without taking a use. Shares the
         by-code limit.
@@ -3075,7 +3077,8 @@ x-gateway:
     reaches only members with VIEW_CHANNEL in it at that moment, a server
     event only its current members. GUILD_CREATE (to a member who joined)
     and GUILD_SYNC (to every member after a role, member-role, channel or
-    overwrite change) carry the receiver's own GuildState. A member who
+    overwrite change, and in place of a GUILD_MEMBER_ADD the server could
+    not build) carry the receiver's own GuildState. A member who
     leaves, is kicked or is banned gets GUILD_DELETE once and nothing more
     from that server. GUILD_BAN_ADD and GUILD_BAN_REMOVE reach only the
     members who hold BAN_MEMBERS when they are sent.
