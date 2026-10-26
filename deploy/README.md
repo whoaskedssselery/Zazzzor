@@ -640,6 +640,48 @@ bash deploy/scripts/stack.sh deploy
 `docker exec -e NEWPW` передаёт пароль через окружение, а не командной
 строкой, поэтому его не видно в списке процессов.
 
+## 16. Готовые образы (GitHub Container Registry)
+
+Workflow `.github/workflows/images.yml` собирает образы и публикует их в
+GHCR, так что на сервере их можно не собирать:
+
+| Образ | Что внутри |
+|---|---|
+| `ghcr.io/whoaskedssselery/zazzzor-api` | API (`server/Dockerfile`) |
+| `ghcr.io/whoaskedssselery/zazzzor-caddy` | Caddy с DuckDNS и статическими страницами (`deploy/caddy/Dockerfile`) |
+
+Теги:
+
+| Событие | Теги |
+|---|---|
+| push в `main` | `sha-<12 знаков коммита>`, `main`, `latest` |
+| git-тег `v1.2.3` | `sha-<...>`, `1.2.3`, `1.2` |
+| ручной запуск (Actions → Images → Run workflow) | `sha-<...>` |
+
+Разворачивайте по `sha-<...>` или по версии: эти теги не меняются, поэтому
+Swarm видит каждое обновление, а откат идёт на конкретный образ. `latest` и
+`main` переезжают на новый коммит, и Swarm с `--resolve-image never` такую
+смену не заметит.
+
+Тег для текущего коммита на сервере:
+
+```bash
+echo "sha-$(git rev-parse --short=12 HEAD)"
+```
+
+Новые пакеты GHCR по умолчанию приватные. Либо сделайте их публичными
+(GitHub → Packages → пакет → Package settings → Change visibility), либо
+войдите на сервере токеном с правом `read:packages`:
+
+```bash
+docker login ghcr.io -u whoaskedssselery
+```
+
+В файле стека тогда указывается образ из реестра, например
+`image: ghcr.io/whoaskedssselery/zazzzor-api:${API_TAG}` с
+`API_TAG=sha-<...>`. Флаг `--resolve-image never` для таких образов уберите,
+чтобы Swarm скачал образ и закрепил его по digest.
+
 ---
 
 ## Проверка связи (этап 1.1)
