@@ -6,9 +6,8 @@ import { useForm } from "react-hook-form";
 import { safeNext, setSignedIn } from "@/entities/session";
 import { ApiError, api, unwrap } from "@/shared/api";
 import { trimContent } from "@/shared/lib";
-import { Button, Field, Input } from "@/shared/ui";
+import { Button, Field, FormAlert, Input } from "@/shared/ui";
 import { isFieldOf, lowerCaseInput, type RegisterValues, registerSchema, showRequestError } from "../model/form";
-import { FormAlert } from "./AuthLayout";
 
 const linkClass = "font-medium text-link underline-offset-2 hover:underline";
 

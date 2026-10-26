@@ -8,6 +8,7 @@ import {
   setConnectionStatus,
   useConnectionStatus,
   useGuilds,
+  waitForGuild,
 } from "./store";
 
 const me = makeUser("100");
@@ -75,5 +76,30 @@ describe("guild store", () => {
     resetGuilds();
     expect(getGuildsState()).toEqual(EMPTY_GUILDS);
     expect(renderHook(() => useConnectionStatus()).result.current).toBe("connecting");
+  });
+});
+
+describe("waitForGuild", () => {
+  it("resolves at once for a server the store holds", async () => {
+    applyGatewayDispatch("READY", makeReady(me, [makeGuildState("10", me)]));
+    await expect(waitForGuild("10")).resolves.toBe(true);
+  });
+
+  it("resolves when the server arrives later (GUILD_CREATE)", async () => {
+    applyGatewayDispatch("READY", makeReady(me, []));
+    const arrived = waitForGuild("20");
+    applyGatewayDispatch("GUILD_CREATE", makeGuildState("20", me));
+    await expect(arrived).resolves.toBe(true);
+  });
+
+  it("gives up after the timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const arrived = waitForGuild("30", 1000);
+      vi.advanceTimersByTime(1000);
+      await expect(arrived).resolves.toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

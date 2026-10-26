@@ -13,7 +13,7 @@ interface GuildIconProps {
   src?: string | null | undefined;
   /** The open server: square corners and the accent fill stay on. */
   active?: boolean;
-  size?: 40 | 48;
+  size?: 40 | 48 | 80;
   className?: string;
 }
 
@@ -38,7 +38,7 @@ export const GuildIcon = ({ name, src, active = false, size = 48, className }: G
           (active
             ? "bg-accent text-on-accent"
             : "bg-guild text-on-guild group-hover:bg-accent group-hover:text-on-accent group-focus-visible:bg-accent group-focus-visible:text-on-accent"),
-        acronym.length > 2 ? "text-sm" : "text-base",
+        size === 80 ? "text-xl" : acronym.length > 2 ? "text-sm" : "text-base",
         className,
       )}
       style={{ width: size, height: size }}

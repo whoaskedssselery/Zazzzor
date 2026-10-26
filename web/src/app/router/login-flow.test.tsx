@@ -36,7 +36,7 @@ describe("LoginPage", () => {
 
     await signIn(user, "vasya", "password1");
 
-    expect(await screen.findByText(/Вы вошли как/)).toBeTruthy();
+    expect(await screen.findByText("Выберите сервер слева или создайте свой")).toBeTruthy();
     expect(currentHref(router)).toBe("/channels/@me");
     expect(login.bodies).toEqual([{ username: "vasya", password: "password1" }]);
   });
@@ -71,7 +71,7 @@ describe("LoginPage", () => {
     expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Логин" }).value).toBe("ivan.petrov");
     await user.type(screen.getByLabelText("Пароль"), "password1");
     await user.click(screen.getByRole("button", { name: "Войти" }));
-    await screen.findByText(/Вы вошли как/);
+    await screen.findByText("Выберите сервер слева или создайте свой");
     expect(login.bodies[0]?.username).toBe("ivan.petrov");
   });
 
@@ -89,15 +89,17 @@ describe("LoginPage", () => {
   });
 
   it("returns to next after signing in, e.g. an invite", async () => {
-    server.use(loginHandler(() => HttpResponse.json(testUser)).handler);
+    server.use(
+      loginHandler(() => HttpResponse.json(testUser)).handler,
+      apiHandler("get", "/invites/{code}", () => problem(404, "not_found")),
+    );
     const { user, router } = renderApp("/invite/abc");
     await screen.findByRole("heading", { name: "С возвращением!" });
     expect(router.state.location.search).toEqual({ next: "/invite/abc" });
 
     await signIn(user, "vasya", "password1");
 
-    expect(await screen.findByRole("heading", { name: "Приглашение" })).toBeTruthy();
-    expect(screen.getByText("abc")).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Приглашение недействительно" })).toBeTruthy();
     expect(currentHref(router)).toBe("/invite/abc");
   });
 
@@ -107,7 +109,7 @@ describe("LoginPage", () => {
 
     await signIn(user, "vasya", "password1");
 
-    await screen.findByText(/Вы вошли как/);
+    await screen.findByText("Выберите сервер слева или создайте свой");
     expect(currentHref(router)).toBe("/channels/@me");
   });
 

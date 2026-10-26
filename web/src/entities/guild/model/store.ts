@@ -48,3 +48,28 @@ export const applyGatewayDispatch = (t: string, d: unknown): void => {
 export const resetGuilds = (): void => {
   store.setState(INITIAL, true);
 };
+
+/**
+ * Resolves true once the store holds server `guildId` (at once if it does
+ * already), or false after `timeoutMs`. A server the user creates or joins
+ * arrives over the gateway (GUILD_CREATE) a moment after the REST answer;
+ * this is how the UI waits for it before opening the server.
+ */
+export const waitForGuild = (guildId: string, timeoutMs = 15_000): Promise<boolean> =>
+  new Promise((resolve) => {
+    if (guildId in store.getState().guilds.guilds) {
+      resolve(true);
+      return;
+    }
+    const done = (arrived: boolean): void => {
+      clearTimeout(timer);
+      unsubscribe();
+      resolve(arrived);
+    };
+    const unsubscribe = store.subscribe((st) => {
+      if (guildId in st.guilds.guilds) done(true);
+    });
+    const timer = setTimeout(() => {
+      done(false);
+    }, timeoutMs);
+  });

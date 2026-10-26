@@ -133,7 +133,8 @@ const biomeOwns = [
 
 // Feature-Sliced Design (src/): app → pages → widgets → features → entities →
 // shared. A layer imports only from the layers below it, never from another
-// slice of its own layer, and only through a slice's public API (index.ts).
+// slice of its own layer (entities excepted, through `@x`, see below), and
+// only through a slice's public API (index.ts).
 // Relative imports stay inside a slice (or a shared segment); everything
 // else goes through the `@/` alias. app/ is split by segment too (providers,
 // router, styles; main.tsx is its own entry), so its segments meet through
@@ -187,6 +188,15 @@ const fsdPolicies = [
       dependency: viaAlias,
     },
   })),
+  // Entities may use another entity only through its cross-import file for
+  // them (FSD "@x"): entities/guild/@x/channel.ts is what entities/channel sees.
+  {
+    from: { element: { type: "entities" } },
+    allow: {
+      to: { element: { type: "entities", fileInternalPath: "@x/{{ from.element.captured.slice }}.ts" } },
+      dependency: viaAlias,
+    },
+  },
   // Tests (and the app harness) use the test helpers.
   {
     from: { file: { categories: "test" } },

@@ -13,9 +13,9 @@ type Saved = z.infer<typeof savedSchema>;
 
 interface ChannelUi extends Saved {
   /** Remembers `channelId` as the channel to open in server `guildId`. */
-  setLastChannel(guildId: string, channelId: string): void;
+  setLastChannel: (guildId: string, channelId: string) => void;
   /** Collapses category `categoryId`, or expands it when collapsed. */
-  toggleCategory(categoryId: string): void;
+  toggleCategory: (categoryId: string) => void;
 }
 
 const EMPTY: Saved = { lastChannel: {}, collapsed: {} };

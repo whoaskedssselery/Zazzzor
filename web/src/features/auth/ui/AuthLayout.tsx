@@ -1,4 +1,3 @@
-import { CircleAlert } from "lucide-react";
 import type { ReactNode } from "react";
 
 /**
@@ -24,12 +23,4 @@ export const AuthLayout = ({ title, subtitle, children }: { title: string; subti
       {children}
     </section>
   </main>
-);
-
-/** The form-level error under the heading: what went wrong and, when there is one, the way out. */
-export const FormAlert = ({ children }: { children: ReactNode }) => (
-  <div role="alert" className="mb-5 flex gap-2.5 rounded-md bg-danger/12 px-3 py-2.5 text-sm text-fg">
-    <CircleAlert aria-hidden className="mt-px size-4.5 shrink-0 text-fg-danger" strokeWidth={2} />
-    <p className="min-w-0">{children}</p>
-  </div>
 );

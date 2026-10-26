@@ -12,7 +12,7 @@ describe("gateway", () => {
   it("connects once signed in and says «Подключение…» until READY", async () => {
     server.use(sessionHandler(testUser));
     renderApp("/channels/@me");
-    await screen.findByText(/Вы вошли как/);
+    await screen.findByText("Выберите сервер слева или создайте свой");
     // The default gateway of the tests accepts and never says HELLO.
     expect(banner().textContent).toBe("Подключение…");
   });
@@ -80,7 +80,7 @@ describe("gateway", () => {
       }),
     );
     renderApp("/channels/@me");
-    expect(await screen.findByText(/Вы вошли как Василий/)).toBeTruthy();
+    expect(await screen.findByText("Василий", { selector: "[data-user-name]" })).toBeTruthy();
   });
 
   it("goes to sign-in when the server closes with 4004", async () => {
