@@ -4,6 +4,7 @@ export {
   loadSession,
   logout,
   ME_KEY,
+  onSessionEnd,
   onUnauthorized,
   type Session,
   safeNext,

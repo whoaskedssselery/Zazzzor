@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { HttpResponse } from "msw";
 import { currentHref, renderApp, sessionHandler, testUser } from "@/app/test";
 import { api } from "@/shared/api";
@@ -128,9 +128,8 @@ describe("session", () => {
 
     await user.click(screen.getByRole("button", { name: "Выйти" }));
 
-    await waitFor(() => {
-      expect(screen.getByRole("status").textContent).toContain("Слишком много запросов");
-    });
+    // The connection banner is a live region too; the toast is the one with the text.
+    expect(await screen.findByText(/Слишком много запросов/)).toBeTruthy();
     expect(router.state.location.pathname).toBe("/channels/@me");
   });
 });

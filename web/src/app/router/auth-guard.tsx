@@ -2,6 +2,8 @@ import type { QueryClient } from "@tanstack/react-query";
 import { Outlet, type ParsedLocation, redirect } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { loadSession, onUnauthorized, safeNext, useSession } from "@/entities/session";
+import { ConnectionBanner } from "@/widgets/connection-banner";
+import { useGatewaySession } from "./gateway-session";
 
 /** `beforeLoad` of the protected layout: no session → /login?next=<this page>. */
 export const requireSession = async ({
@@ -39,6 +41,9 @@ export const redirectSignedIn = async ({
  * 401 elsewhere does, onUnauthorized(): the cache is cleared and the router
  * goes to /login?next=<this page>, rendering nothing protected meanwhile.
  *
+ * While the session is authenticated the gateway runs (useGatewaySession)
+ * and the connection banner sits in its own row above the screen.
+ *
  * Sign-out and a 401 from another request clear the cache and navigate
  * themselves. queryClient.clear() does not notify mounted observers, so the
  * page stays as it was until that navigation replaces it; nothing new is
@@ -47,8 +52,18 @@ export const redirectSignedIn = async ({
 export const AuthGuard = () => {
   const { status } = useSession();
   const anonymous = status === "anonymous";
+  const authenticated = status === "authenticated";
   useEffect(() => {
     if (anonymous) onUnauthorized();
   }, [anonymous]);
-  return status === "authenticated" ? <Outlet /> : null;
+  useGatewaySession(authenticated);
+  if (!authenticated) return null;
+  return (
+    <div className="flex h-dvh flex-col">
+      <ConnectionBanner />
+      <div className="min-h-0 flex-1 overflow-auto">
+        <Outlet />
+      </div>
+    </div>
+  );
 };

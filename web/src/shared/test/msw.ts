@@ -1,12 +1,17 @@
 import { type DefaultBodyType, type HttpHandler, HttpResponse, type HttpResponseResolver, http } from "msw";
 import { setupServer } from "msw/node";
 import type { components, paths } from "@/shared/api";
+import { silentGateway } from "./gateway";
 
 type Problem = components["schemas"]["Problem"];
 type FieldError = components["schemas"]["FieldError"];
 
-/** One MSW server for every test file; handlers are added per test with `server.use`. */
-export const server = setupServer();
+/**
+ * One MSW server for every test file; handlers are added per test with
+ * `server.use`. The gateway WebSocket answers by default with a silent
+ * server (see `silentGateway`), so any screen behind sign-in can connect.
+ */
+export const server = setupServer(silentGateway);
 
 type HttpMethod = "get" | "put" | "post" | "delete" | "patch";
 

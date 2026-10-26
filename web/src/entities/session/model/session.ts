@@ -123,14 +123,29 @@ export function setSignedIn(queryClient: QueryClient, user: User): void {
   queryClient.setQueryData(ME_KEY, user);
 }
 
+const sessionEndListeners = new Set<() => void>();
+
+/**
+ * Calls `fn` whenever the session ends (sign-out, or a 401 from any request
+ * or the gateway), right after the query cache is cleared: the app stops the
+ * gateway and empties its client stores there. Returns the unsubscribe.
+ */
+export function onSessionEnd(fn: () => void): () => void {
+  sessionEndListeners.add(fn);
+  return () => {
+    sessionEndListeners.delete(fn);
+  };
+}
+
 /**
  * Forgets everything of the session: every cached query goes and the user
- * reads as anonymous at once (no new GET /users/@me). Client stores of later
- * tasks (guilds, gateway) are reset here too.
+ * reads as anonymous at once (no new GET /users/@me); then the listeners of
+ * onSessionEnd reset the client stores.
  */
 function resetSession(queryClient: QueryClient): void {
   queryClient.clear();
   queryClient.setQueryData(ME_KEY, null);
+  for (const fn of [...sessionEndListeners]) fn();
 }
 
 /**

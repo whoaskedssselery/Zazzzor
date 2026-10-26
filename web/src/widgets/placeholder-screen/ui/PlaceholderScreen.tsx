@@ -7,7 +7,7 @@ import { LogoutButton } from "@/features/auth";
  * replace the pages that use it.
  */
 export const PlaceholderScreen = ({ title, children }: { title: string; children: ReactNode }) => (
-  <main className="grid min-h-dvh place-items-center p-6 text-center">
+  <main className="grid min-h-full place-items-center p-6 text-center">
     <div className="max-w-md">
       <h1 className="text-xl font-semibold">{title}</h1>
       <p className="mt-2 text-fg-muted">{children}</p>

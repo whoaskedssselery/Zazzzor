@@ -1,0 +1,217 @@
+import { z } from "zod/mini";
+import type { components } from "../schema.gen";
+
+// The one decoding boundary of the gateway (api/openapi.yaml, `x-gateway`).
+// Everything the server sends is checked here against the contract's shapes
+// before the rest of the app sees it as typed data: a frame that does not
+// match is logged and dropped, never thrown. The schemas are typed with the
+// generated types, so a contract change that they miss fails typecheck.
+
+type S = components["schemas"];
+
+/** Frame ops (`x-gateway.ops`). */
+export const OP = { DISPATCH: 0, HEARTBEAT: 1, HELLO: 10, HEARTBEAT_ACK: 11 } as const;
+
+/** Close codes of `x-gateway.close_codes` that the client treats specially. */
+export const CLOSE = {
+  DECODE_ERROR: 4002,
+  AUTHENTICATION_FAILED: 4004,
+  OVERLOADED: 4008,
+  SESSION_TIMEOUT: 4009,
+} as const;
+
+/** The only frame a client sends (`d` is ignored by the server). */
+export const HEARTBEAT_FRAME = JSON.stringify({ op: OP.HEARTBEAT, d: null });
+
+/** A server frame after decoding: DISPATCH with its event, HELLO with its interval, or an ACK. */
+export type ServerFrame =
+  | { op: typeof OP.DISPATCH; t: string; s: number; d: unknown }
+  | { op: typeof OP.HELLO; d: S["GatewayHello"] }
+  | { op: typeof OP.HEARTBEAT_ACK };
+
+/** setInterval treats anything above this as 0 and would heartbeat in a loop. */
+const MAX_TIMER_MS = 2 ** 31 - 1;
+
+const helloSchema: z.ZodMiniType<S["GatewayHello"]> = z.object({
+  heartbeat_interval_ms: z.number().check(z.positive(), z.lte(MAX_TIMER_MS)),
+});
+
+const frameSchema = z.discriminatedUnion("op", [
+  z.object({
+    op: z.literal(OP.DISPATCH),
+    t: z.string().check(z.minLength(1)),
+    s: z.int().check(z.positive()),
+    d: z.unknown(),
+  }),
+  z.object({ op: z.literal(OP.HELLO), d: helloSchema }),
+  z.object({ op: z.literal(OP.HEARTBEAT_ACK) }),
+]);
+
+const parseJson = (text: string): { ok: true; value: unknown } | { ok: false } => {
+  try {
+    return { ok: true, value: JSON.parse(text) };
+  } catch {
+    return { ok: false };
+  }
+};
+
+/**
+ * Decodes the data of one socket message into a server frame, or returns
+ * null (after a console warning) for anything the contract does not allow:
+ * a binary frame, invalid JSON, a missing or unknown op, a DISPATCH without
+ * `t` or `s`, a HELLO without a usable interval.
+ */
+export function decodeFrame(data: unknown): ServerFrame | null {
+  if (typeof data !== "string") {
+    console.warn("gateway: dropped a binary frame");
+    return null;
+  }
+  const json = parseJson(data);
+  if (!json.ok) {
+    console.warn("gateway: dropped a frame that is not JSON");
+    return null;
+  }
+  const frame = frameSchema.safeParse(json.value);
+  if (!frame.success) {
+    console.warn("gateway: dropped a malformed frame", frame.error.issues);
+    return null;
+  }
+  const f = frame.data;
+  switch (f.op) {
+    case OP.DISPATCH:
+      return { op: f.op, t: f.t, s: f.s, d: f.d };
+    case OP.HELLO:
+      return { op: f.op, d: f.d };
+    case OP.HEARTBEAT_ACK:
+      return { op: f.op };
+  }
+}
+
+// Event payloads (`x-gateway.events`) the guild store applies. Messages and
+// typing go to the subscribers of the connection as they came; their decoder
+// joins this map with the chat (Task 6).
+
+/** A snowflake: a decimal string, kept a string. */
+const snowflake = z.string().check(z.regex(/^\d{1,20}$/));
+/** A permission mask: a decimal string without leading zeros (its bits are read as bigint). */
+const permission = z.string().check(z.regex(/^(0|[1-9]\d{0,19})$/));
+const nullableString = z.nullable(z.string());
+
+const userSchema: z.ZodMiniType<S["User"]> = z.object({
+  id: snowflake,
+  username: z.string(),
+  display_name: z.string(),
+  avatar_url: nullableString,
+  created_at: z.string(),
+});
+
+const guildSchema: z.ZodMiniType<S["Guild"]> = z.object({
+  id: snowflake,
+  name: z.string(),
+  icon_url: nullableString,
+  owner_id: snowflake,
+  created_at: z.string(),
+});
+
+const roleSchema: z.ZodMiniType<S["Role"]> = z.object({
+  id: snowflake,
+  name: z.string(),
+  color: z.int(),
+  position: z.int(),
+  permissions: permission,
+  hoist: z.boolean(),
+  mentionable: z.boolean(),
+});
+
+const overwriteSchema: z.ZodMiniType<S["Overwrite"]> = z.object({
+  id: snowflake,
+  type: z.union([z.literal(0), z.literal(1)]),
+  allow: permission,
+  deny: permission,
+});
+
+const channelSchema: z.ZodMiniType<S["Channel"]> = z.object({
+  id: snowflake,
+  guild_id: snowflake,
+  type: z.union([z.literal(0), z.literal(2), z.literal(4)]),
+  name: z.string(),
+  topic: nullableString,
+  parent_id: z.nullable(snowflake),
+  position: z.int(),
+  permission_synced: z.boolean(),
+  permission_overwrites: z.array(overwriteSchema),
+});
+
+const memberSchema: z.ZodMiniType<S["Member"]> = z.object({
+  user: userSchema,
+  nick: nullableString,
+  roles: z.array(snowflake),
+  joined_at: z.string(),
+});
+
+const presenceSchema: z.ZodMiniType<S["Presence"]> = z.object({
+  user_id: snowflake,
+  status: z.enum(["online", "offline"]),
+});
+
+const guildStateSchema: z.ZodMiniType<S["GuildState"]> = z.object({
+  guild: guildSchema,
+  roles: z.array(roleSchema),
+  channels: z.array(channelSchema),
+  members: z.array(memberSchema),
+  my_member: memberSchema,
+  presences: z.array(presenceSchema),
+});
+
+/** The payload type of each event the guild store applies (`x-gateway.events`). */
+export interface GatewayEvents {
+  READY: S["GatewayReady"];
+  GUILD_CREATE: S["GuildState"];
+  GUILD_SYNC: S["GuildState"];
+  GUILD_UPDATE: S["Guild"];
+  GUILD_DELETE: S["GuildDeleteEvent"];
+  GUILD_MEMBER_ADD: S["MemberEvent"];
+  GUILD_MEMBER_UPDATE: S["MemberEvent"];
+  GUILD_MEMBER_REMOVE: S["MemberRemoveEvent"];
+  GUILD_ROLE_CREATE: S["RoleEvent"];
+  GUILD_ROLE_UPDATE: S["RoleEvent"];
+  GUILD_ROLE_DELETE: S["RoleDeleteEvent"];
+  CHANNEL_CREATE: S["Channel"];
+  CHANNEL_UPDATE: S["Channel"];
+  CHANNEL_DELETE: S["Channel"];
+  PRESENCE_UPDATE: S["Presence"];
+  USER_UPDATE: S["User"];
+}
+
+const memberEventSchema: z.ZodMiniType<S["MemberEvent"]> = z.object({ guild_id: snowflake, member: memberSchema });
+const roleEventSchema: z.ZodMiniType<S["RoleEvent"]> = z.object({ guild_id: snowflake, role: roleSchema });
+
+const eventSchemas: { [K in keyof GatewayEvents]: z.ZodMiniType<GatewayEvents[K]> } = {
+  READY: z.object({ user: userSchema, guilds: z.array(guildStateSchema), presences: z.array(presenceSchema) }),
+  GUILD_CREATE: guildStateSchema,
+  GUILD_SYNC: guildStateSchema,
+  GUILD_UPDATE: guildSchema,
+  GUILD_DELETE: z.object({ id: snowflake }),
+  GUILD_MEMBER_ADD: memberEventSchema,
+  GUILD_MEMBER_UPDATE: memberEventSchema,
+  GUILD_MEMBER_REMOVE: z.object({ guild_id: snowflake, user: userSchema }),
+  GUILD_ROLE_CREATE: roleEventSchema,
+  GUILD_ROLE_UPDATE: roleEventSchema,
+  GUILD_ROLE_DELETE: z.object({ guild_id: snowflake, role_id: snowflake }),
+  CHANNEL_CREATE: channelSchema,
+  CHANNEL_UPDATE: channelSchema,
+  CHANNEL_DELETE: channelSchema,
+  PRESENCE_UPDATE: presenceSchema,
+  USER_UPDATE: userSchema,
+};
+
+/**
+ * The payload `d` of event `t` checked against the contract, or null (after
+ * a console warning) when it does not match.
+ */
+export function parseEvent<K extends keyof GatewayEvents>(t: K, d: unknown): GatewayEvents[K] | null {
+  const result = eventSchemas[t].safeParse(d);
+  if (result.success) return result.data;
+  console.warn(`gateway: dropped a malformed ${t}`, result.error.issues);
+  return null;
+}
