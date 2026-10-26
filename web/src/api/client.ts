@@ -22,6 +22,8 @@ export class ApiError extends Error {
     readonly code: string,
     /** Messages of `errors[]` by request field (snake_case, dotted for nesting). */
     readonly fields: Record<string, string> = {},
+    /** Seconds from the Retry-After header (429, 503), when it is a positive integer. */
+    readonly retryAfter?: number,
   ) {
     super(`${status} ${code}`);
   }
@@ -31,7 +33,7 @@ export class ApiError extends Error {
 export function unwrap<T>(r: { data?: T; error?: unknown; response: Response }): T {
   if (!r.response.ok) {
     const p = parseProblem(r.error);
-    throw new ApiError(r.response.status, p?.code ?? "unknown", p?.fields);
+    throw new ApiError(r.response.status, p?.code ?? "unknown", p?.fields, retryAfterSeconds(r.response.headers));
   }
   // openapi-fetch leaves data undefined only for bodiless successes (204),
   // whose T is then `undefined` or `never` as the schema says.
@@ -68,6 +70,17 @@ function parseProblem(body: unknown): { code: string; fields: Record<string, str
     }
   }
   return { code: body.code, fields: Object.fromEntries(entries) };
+}
+
+/**
+ * The Retry-After of a response in seconds. The contract always sends whole
+ * seconds (an integer >= 1); an HTTP date or anything else is ignored.
+ */
+function retryAfterSeconds(headers: Headers): number | undefined {
+  const value = headers.get("Retry-After")?.trim() ?? "";
+  if (!/^[0-9]{1,9}$/.test(value)) return undefined;
+  const seconds = Number(value);
+  return seconds >= 1 ? seconds : undefined;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {

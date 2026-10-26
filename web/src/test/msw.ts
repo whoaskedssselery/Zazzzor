@@ -71,9 +71,12 @@ function apiUrlPattern(path: keyof paths): string {
   return `/api/v1${path.replace(/\{(\w+)\}/g, ":$1")}`;
 }
 
-/** A problem+json response shaped like the server's (`components.schemas.Problem`). */
-export function problem(status: number, code: string, errors?: FieldError[]): HttpResponse<Problem> {
+/**
+ * A problem+json response shaped like the server's (`components.schemas.Problem`),
+ * with extra `headers` such as `Retry-After`.
+ */
+export function problem(status: number, code: string, errors?: FieldError[], headers?: Record<string, string>): HttpResponse<Problem> {
   const body: Problem = { type: `urn:zazzzor:error:${code}`, title: code, status, code };
   if (errors) body.errors = errors;
-  return HttpResponse.json(body, { status, headers: { "Content-Type": "application/problem+json" } });
+  return HttpResponse.json(body, { status, headers: { ...headers, "Content-Type": "application/problem+json" } });
 }

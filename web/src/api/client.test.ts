@@ -66,6 +66,27 @@ describe("api client", () => {
     });
   });
 
+  it("keeps the Retry-After seconds of a 429", async () => {
+    server.use(apiHandler("post", "/auth/login", () => problem(429, "rate_limited", undefined, { "Retry-After": "42" })));
+
+    const r = await api.POST("/auth/login", { body: { username: "vasya", password: "password1" } });
+
+    expect(thrown(() => unwrap(r))).toMatchObject({ status: 429, code: "rate_limited", retryAfter: 42 });
+  });
+
+  it.each([["soon"], ["0"], ["-5"], ["1.5"], ["Wed, 21 Oct 2026 07:28:00 GMT"]])(
+    "leaves retryAfter undefined for the Retry-After %j",
+    async (header) => {
+      server.use(apiHandler("post", "/auth/login", () => problem(429, "rate_limited", undefined, { "Retry-After": header })));
+
+      const r = await api.POST("/auth/login", { body: { username: "vasya", password: "password1" } });
+      const e = thrown(() => unwrap(r));
+
+      expect(e).toBeInstanceOf(ApiError);
+      expect(e).toHaveProperty("retryAfter", undefined);
+    },
+  );
+
   it("gives code «unknown» to an error response without a body", async () => {
     server.use(apiHandler("get", "/users/@me", () => new HttpResponse(null, { status: 500 })));
 
