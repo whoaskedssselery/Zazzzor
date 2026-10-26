@@ -55,15 +55,19 @@ export function errorText(e: unknown): string {
  */
 function parseProblem(body: unknown): { code: string; fields: Record<string, string> } | undefined {
   if (!isRecord(body) || typeof body.code !== "string") return undefined;
-  const fields: Record<string, string> = {};
-  if (Array.isArray(body.errors)) {
-    for (const e of body.errors as unknown[]) {
-      if (isRecord(e) && typeof e.field === "string" && typeof e.message === "string" && !(e.field in fields)) {
-        fields[e.field] = e.message;
-      }
+  const list: readonly unknown[] = Array.isArray(body.errors) ? body.errors : [];
+  // Field names come off the network: "__proto__" or "constructor" must end
+  // up as plain own keys, never touch a prototype. Object.fromEntries defines
+  // own properties; the first message of a field wins.
+  const seen = new Set<string>();
+  const entries: [string, string][] = [];
+  for (const e of list) {
+    if (isRecord(e) && typeof e.field === "string" && typeof e.message === "string" && !seen.has(e.field)) {
+      seen.add(e.field);
+      entries.push([e.field, e.message]);
     }
   }
-  return { code: body.code, fields };
+  return { code: body.code, fields: Object.fromEntries(entries) };
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {

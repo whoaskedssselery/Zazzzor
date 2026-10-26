@@ -14,6 +14,10 @@ describe("formatMessageTime", () => {
     expect(formatMessageTime(new Date(2026, 9, 31, 23, 59), new Date(2026, 10, 1, 0, 1))).toBe("Вчера в 23:59");
   });
 
+  it("says «Вчера» across a year boundary", () => {
+    expect(formatMessageTime(new Date(2026, 11, 31, 23, 59), new Date(2027, 0, 1, 0, 1))).toBe("Вчера в 23:59");
+  });
+
   it("gives the full date for anything older", () => {
     expect(formatMessageTime(new Date(2026, 9, 21, 21, 4), now)).toBe("21.10.2026 21:04");
     expect(formatMessageTime(new Date(2025, 0, 2, 9, 5), now)).toBe("02.01.2025 09:05");

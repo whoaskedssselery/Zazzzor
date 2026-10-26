@@ -7,10 +7,36 @@ import tseslint from "typescript-eslint";
 
 // HTML from strings is how markup injection happens. Messages are rendered as
 // React elements from our own markdown AST, so none of these is ever needed.
-const htmlSinks = ["innerHTML", "outerHTML", "insertAdjacentHTML", "createContextualFragment"].map((property) => ({
+const htmlSinks = [
+  "innerHTML",
+  "outerHTML",
+  "insertAdjacentHTML",
+  "createContextualFragment",
+  "setHTMLUnsafe",
+  "parseHTMLUnsafe",
+].map((property) => ({
   property,
   message: "Build DOM with React elements; HTML strings are banned in web/.",
 }));
+
+// react/no-danger only sees the JSX attribute. These catch the prop smuggled
+// in through an object (`<div {...{ dangerouslySetInnerHTML }} />`,
+// createElement props) and HTML parsed into an iframe via srcDoc. A spread of
+// an object built elsewhere is caught where that object literal is written.
+const htmlProps = [
+  {
+    selector: 'Property[key.name="dangerouslySetInnerHTML"], Property[key.value="dangerouslySetInnerHTML"]',
+    message: "dangerouslySetInnerHTML is banned in web/, including inside props objects.",
+  },
+  {
+    selector: 'MemberExpression[property.name="dangerouslySetInnerHTML"]',
+    message: "dangerouslySetInnerHTML is banned in web/.",
+  },
+  {
+    selector: 'JSXAttribute[name.name="srcDoc"], Property[key.name="srcDoc"]',
+    message: "srcDoc renders an HTML string; it is banned in web/.",
+  },
+];
 
 export default defineConfig([
   globalIgnores(["dist", "src/api/schema.gen.ts"]),
@@ -34,6 +60,7 @@ export default defineConfig([
         { object: "document", property: "write", message: "document.write is banned." },
         { object: "document", property: "writeln", message: "document.writeln is banned." },
       ],
+      "no-restricted-syntax": ["error", ...htmlProps],
       "no-eval": "error",
       "no-new-func": "error",
       "@typescript-eslint/no-implied-eval": "error",

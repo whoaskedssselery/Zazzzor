@@ -3,6 +3,10 @@
  * problem+json responses (api/openapi.yaml). Codes missing here fall back to
  * GENERIC_ERROR; `field` errors of validation_failed are shown under the
  * form fields instead.
+ *
+ * Deliberately left unmapped (GENERIC_ERROR), because each one means a bug in
+ * the client or the server rather than something the user can fix:
+ * unsupported_media_type, upgrade_required, method_not_allowed, internal.
  */
 export const GENERIC_ERROR = "Что-то пошло не так. Попробуйте ещё раз.";
 
@@ -35,6 +39,7 @@ export const ERROR_TEXTS: Readonly<Record<string, string>> = {
   file_too_large: "Файл больше 4 МБ.",
   unsupported_image: "Нужна картинка PNG, JPEG, GIF или WebP.",
   body_too_large: "Слишком большой запрос.",
+  invalid_body: "Сервер не понял запрос. Обновите страницу и попробуйте снова.",
   // Invites
   invite_expired: "Срок действия приглашения истёк.",
   invite_exhausted: "Приглашение больше не действует: все использования исчерпаны.",
