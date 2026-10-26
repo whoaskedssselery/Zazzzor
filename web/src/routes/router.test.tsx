@@ -2,6 +2,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from "@tanstack/react-router";
 import { render, screen } from "@testing-library/react";
 import { createQueryClient } from "../api/query-client";
+import { AppProviders } from "../design/providers";
 import { rootRoute } from "./root";
 import { createAppRouter } from "./router";
 
@@ -11,7 +12,9 @@ function renderAt(path: string) {
   const router = createAppRouter(queryClient, createMemoryHistory({ initialEntries: [path] }));
   render(
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <AppProviders>
+        <RouterProvider router={router} />
+      </AppProviders>
     </QueryClientProvider>,
   );
 }
@@ -24,6 +27,13 @@ describe("router", () => {
   it("renders the start page at /", async () => {
     renderAt("/");
     expect(await screen.findByRole("heading", { name: "Zazzzor" })).toBeTruthy();
+  });
+
+  it("serves the design showcase at /dev/design in dev builds", async () => {
+    expect(import.meta.env.DEV).toBe(true);
+    renderAt("/dev/design");
+    expect(await screen.findByRole("heading", { name: "Дизайн-система", level: 1 })).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Серверы" })).toBeTruthy();
   });
 
   it("renders a Russian not-found page for unknown paths", async () => {
