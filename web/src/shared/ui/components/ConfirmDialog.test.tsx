@@ -3,7 +3,7 @@ import { useState } from "react";
 import { renderUi } from "@/shared/test";
 import { ConfirmDialog } from "./ConfirmDialog";
 
-function Harness({ onConfirm }: { onConfirm: () => void }) {
+const Harness = ({ onConfirm }: { onConfirm: () => void }) => {
   const [open, setOpen] = useState(true);
   return (
     <ConfirmDialog
@@ -16,7 +16,7 @@ function Harness({ onConfirm }: { onConfirm: () => void }) {
       onConfirm={onConfirm}
     />
   );
-}
+};
 
 describe("ConfirmDialog", () => {
   it("calls onConfirm only from the confirm button", async () => {
@@ -59,19 +59,17 @@ describe("ConfirmDialog", () => {
 });
 
 describe("ConfirmDialog while the action runs", () => {
-  function Pending({ onConfirm, onOpenChange }: { onConfirm: () => void; onOpenChange: (open: boolean) => void }) {
-    return (
-      <ConfirmDialog
-        open
-        onOpenChange={onOpenChange}
-        title="Выгнать Диму?"
-        confirmLabel="Выгнать"
-        tone="danger"
-        pending
-        onConfirm={onConfirm}
-      />
-    );
-  }
+  const Pending = ({ onConfirm, onOpenChange }: { onConfirm: () => void; onOpenChange: (open: boolean) => void }) => (
+    <ConfirmDialog
+      open
+      onOpenChange={onOpenChange}
+      title="Выгнать Диму?"
+      confirmLabel="Выгнать"
+      tone="danger"
+      pending
+      onConfirm={onConfirm}
+    />
+  );
 
   it("stays open on Escape and ignores another confirm", async () => {
     const onConfirm = vi.fn();

@@ -14,7 +14,7 @@ const root = document.documentElement;
  * `os.set(light)` flips it and fires "change" on every list handed out, as a
  * browser does when the user switches the OS theme.
  */
-function stubOsScheme(light: boolean) {
+const stubOsScheme = (light: boolean) => {
   const original = Object.getOwnPropertyDescriptor(window, "matchMedia");
   const lists: MediaQueryList[] = [];
   const os = {
@@ -36,14 +36,14 @@ function stubOsScheme(light: boolean) {
   };
   Object.defineProperty(window, "matchMedia", { configurable: true, writable: true, value: stub });
   return os;
-}
+};
 
-function meta(name: string): HTMLMetaElement {
+const meta = (name: string): HTMLMetaElement => {
   const el = document.createElement("meta");
   el.name = name;
   document.head.append(el);
   return el;
-}
+};
 
 describe("useTheme", () => {
   afterEach(() => {
@@ -151,9 +151,9 @@ describe("theme-boot.js", () => {
     vi.restoreAllMocks();
   });
 
-  function boot() {
+  const boot = () => {
     runInNewContext(source, { document, localStorage, matchMedia: window.matchMedia.bind(window) });
-  }
+  };
 
   it.each<[ThemePreference | null, boolean, "dark" | "light"]>([
     [null, true, "dark"],

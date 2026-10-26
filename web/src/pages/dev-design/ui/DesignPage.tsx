@@ -48,21 +48,19 @@ import { MainScreenMock } from "./MainScreenMock";
  * made-up data, then every primitive in its states. The theme switch in the
  * top bar flips the whole page.
  */
-export function DesignPage() {
-  return (
-    <div className="flex min-h-dvh flex-col bg-chat">
-      <DevBar />
-      <div className="h-[calc(100dvh-2.75rem)] min-h-150 shrink-0">
-        <MainScreenMock />
-      </div>
-      <Showcase />
+export const DesignPage = () => (
+  <div className="flex min-h-dvh flex-col bg-chat">
+    <DevBar />
+    <div className="h-[calc(100dvh-2.75rem)] min-h-150 shrink-0">
+      <MainScreenMock />
     </div>
-  );
-}
+    <Showcase />
+  </div>
+);
 
 const themeLabels: Record<ThemePreference, string> = { dark: "Тёмная", light: "Светлая", system: "Как в системе" };
 
-function DevBar() {
+const DevBar = () => {
   const { theme, setTheme } = useTheme();
   return (
     <header className="flex h-11 shrink-0 items-center gap-4 bg-rail px-4">
@@ -85,175 +83,166 @@ function DevBar() {
       </Tabs>
     </header>
   );
-}
+};
 
-function Showcase() {
-  return (
-    <div className="mx-auto flex w-full max-w-300 flex-col gap-12 px-6 py-12">
-      <Section title="Кнопки" note="Основная — одна на экран. Опасная — для удаления, кика и бана.">
-        <Row>
-          <Button>Создать сервер</Button>
-          <Button variant="secondary">Отмена</Button>
-          <Button variant="ghost">Пропустить</Button>
-          <Button variant="danger">Удалить канал</Button>
-          <Button variant="link">Забыли пароль?</Button>
-        </Row>
-        <Row>
-          <Button size="sm">Маленькая</Button>
-          <Button>Обычная</Button>
-          <Button size="lg">Крупная</Button>
-          <Button loading>Сохраняем</Button>
-          <Button disabled>Недоступна</Button>
-        </Row>
-      </Section>
+const Showcase = () => (
+  <div className="mx-auto flex w-full max-w-300 flex-col gap-12 px-6 py-12">
+    <Section title="Кнопки" note="Основная — одна на экран. Опасная — для удаления, кика и бана.">
+      <Row>
+        <Button>Создать сервер</Button>
+        <Button variant="secondary">Отмена</Button>
+        <Button variant="ghost">Пропустить</Button>
+        <Button variant="danger">Удалить канал</Button>
+        <Button variant="link">Забыли пароль?</Button>
+      </Row>
+      <Row>
+        <Button size="sm">Маленькая</Button>
+        <Button>Обычная</Button>
+        <Button size="lg">Крупная</Button>
+        <Button loading>Сохраняем</Button>
+        <Button disabled>Недоступна</Button>
+      </Row>
+    </Section>
 
-      <Section title="Иконки-кнопки" note="Всегда с подписью: она же озвучивается и всплывает подсказкой.">
-        <Row>
-          <IconButton label="Настройки" icon={Settings} />
-          <IconButton label="Уведомления" icon={Bell} />
-          <IconButton label="Пригласить" icon={UserPlus} />
-          <IconButton label="Звук включён" icon={Volume2} pressed />
-          <IconButton label="Удалить" icon={Trash2} variant="danger" />
-          <IconButton label="Недоступно" icon={Pencil} disabled />
-          <IconButton label="Изменить" icon={Pencil} size="sm" />
-        </Row>
-      </Section>
+    <Section title="Иконки-кнопки" note="Всегда с подписью: она же озвучивается и всплывает подсказкой.">
+      <Row>
+        <IconButton label="Настройки" icon={Settings} />
+        <IconButton label="Уведомления" icon={Bell} />
+        <IconButton label="Пригласить" icon={UserPlus} />
+        <IconButton label="Звук включён" icon={Volume2} pressed />
+        <IconButton label="Удалить" icon={Trash2} variant="danger" />
+        <IconButton label="Недоступно" icon={Pencil} disabled />
+        <IconButton label="Изменить" icon={Pencil} size="sm" />
+      </Row>
+    </Section>
 
-      <Section title="Поля" note="Подпись над полем, подсказка или ошибка под ним.">
-        <Fields />
-      </Section>
+    <Section title="Поля" note="Подпись над полем, подсказка или ошибка под ним.">
+      <Fields />
+    </Section>
 
-      <Section title="Выбор" note="Выпадающий список, флажок и переключатель.">
-        <Choices />
-      </Section>
+    <Section title="Выбор" note="Выпадающий список, флажок и переключатель.">
+      <Choices />
+    </Section>
 
-      <Section title="Вкладки">
-        <Tabs defaultValue="overview">
-          <TabsList aria-label="Настройки сервера">
-            <TabsTrigger value="overview">Обзор</TabsTrigger>
-            <TabsTrigger value="roles">Роли</TabsTrigger>
-            <TabsTrigger value="members">Участники</TabsTrigger>
-            <TabsTrigger value="bans" disabled>
-              Баны
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="overview" className="pt-3 text-sm text-fg-muted">
-            Название, иконка и системный канал сервера.
-          </TabsContent>
-          <TabsContent value="roles" className="pt-3 text-sm text-fg-muted">
-            Роли и их права.
-          </TabsContent>
-          <TabsContent value="members" className="pt-3 text-sm text-fg-muted">
-            Список участников.
-          </TabsContent>
-        </Tabs>
-      </Section>
+    <Section title="Вкладки">
+      <Tabs defaultValue="overview">
+        <TabsList aria-label="Настройки сервера">
+          <TabsTrigger value="overview">Обзор</TabsTrigger>
+          <TabsTrigger value="roles">Роли</TabsTrigger>
+          <TabsTrigger value="members">Участники</TabsTrigger>
+          <TabsTrigger value="bans" disabled>
+            Баны
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="overview" className="pt-3 text-sm text-fg-muted">
+          Название, иконка и системный канал сервера.
+        </TabsContent>
+        <TabsContent value="roles" className="pt-3 text-sm text-fg-muted">
+          Роли и их права.
+        </TabsContent>
+        <TabsContent value="members" className="pt-3 text-sm text-fg-muted">
+          Список участников.
+        </TabsContent>
+      </Tabs>
+    </Section>
 
-      <Section title="Метки и роли">
-        <Row>
-          <Badge variant="count">3</Badge>
-          <Badge variant="count">99+</Badge>
-          <Badge>Владелец</Badge>
-          <Badge variant="accent">Новое</Badge>
-          <Badge variant="live">В эфире</Badge>
-        </Row>
-        <Row>
-          <RoleLine color={0xd9944a} name="Админ" />
-          <RoleLine color={0x5fa8d3} name="Киноклуб" />
-          <RoleLine color={0x3dba86} name="Игроки" />
-          <RoleLine color={0} name="@everyone" />
-        </Row>
-      </Section>
+    <Section title="Метки и роли">
+      <Row>
+        <Badge variant="count">3</Badge>
+        <Badge variant="count">99+</Badge>
+        <Badge>Владелец</Badge>
+        <Badge variant="accent">Новое</Badge>
+        <Badge variant="live">В эфире</Badge>
+      </Row>
+      <Row>
+        <RoleLine color={0xd9944a} name="Админ" />
+        <RoleLine color={0x5fa8d3} name="Киноклуб" />
+        <RoleLine color={0x3dba86} name="Игроки" />
+        <RoleLine color={0} name="@everyone" />
+      </Row>
+    </Section>
 
-      <Section title="Аватары и серверы" note="Без картинки — инициалы на тоне от имени. Точка — статус.">
-        <Row>
-          <Avatar name="Аня Соколова" size={80} status="online" />
-          <Avatar name="Дима Орлов" size={40} status="online" />
-          <Avatar name="Катя" size={40} status="offline" />
-          <Avatar name="Лёша Ким" size={32} status="online" />
-          <Avatar name="Оля Белова" size={24} />
-          <Avatar name="Паша" size={20} />
-        </Row>
-        <Row className="bg-rail p-3">
-          <span className="group">
-            <GuildIcon name="Вечерний сеанс" active />
-          </span>
-          <span className="group">
-            <GuildIcon name="Кооп по пятницам" />
-          </span>
-          <span className="group">
-            <GuildIcon name="Майнкрафт" />
-          </span>
-          <span className="group">
-            <GuildIcon name="Дача" size={40} />
-          </span>
-          <span className="text-sm text-fg-faint">Наведите: круг становится квадратом.</span>
-        </Row>
-      </Section>
+    <Section title="Аватары и серверы" note="Без картинки — инициалы на тоне от имени. Точка — статус.">
+      <Row>
+        <Avatar name="Аня Соколова" size={80} status="online" />
+        <Avatar name="Дима Орлов" size={40} status="online" />
+        <Avatar name="Катя" size={40} status="offline" />
+        <Avatar name="Лёша Ким" size={32} status="online" />
+        <Avatar name="Оля Белова" size={24} />
+        <Avatar name="Паша" size={20} />
+      </Row>
+      <Row className="bg-rail p-3">
+        <span className="group">
+          <GuildIcon name="Вечерний сеанс" active />
+        </span>
+        <span className="group">
+          <GuildIcon name="Кооп по пятницам" />
+        </span>
+        <span className="group">
+          <GuildIcon name="Майнкрафт" />
+        </span>
+        <span className="group">
+          <GuildIcon name="Дача" size={40} />
+        </span>
+        <span className="text-sm text-fg-faint">Наведите: круг становится квадратом.</span>
+      </Row>
+    </Section>
 
-      <Section title="Загрузка" note="Заглушки в размер настоящего содержимого, без мерцающих градиентов.">
-        <Row>
-          <Spinner label="Загрузка" />
-          <Spinner label="Загрузка" size={24} />
-        </Row>
-        {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: dev-only showcase, kept as designed; the real message list (Task 6) gets a proper role. */}
-        <div className="flex flex-col gap-5" aria-busy="true" aria-label="Сообщения загружаются">
-          {[0.62, 0.41, 0.8].map((w) => (
-            <div key={w} className="flex gap-4">
-              <Skeleton className="size-10 shrink-0 rounded-full" />
-              <div className="flex flex-1 flex-col gap-2 pt-1">
-                <Skeleton className="h-4 w-32 rounded-sm" />
-                <Skeleton className="h-4 rounded-sm" style={{ width: `${String(w * 100)}%` }} />
-              </div>
+    <Section title="Загрузка" note="Заглушки в размер настоящего содержимого, без мерцающих градиентов.">
+      <Row>
+        <Spinner label="Загрузка" />
+        <Spinner label="Загрузка" size={24} />
+      </Row>
+      {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: dev-only showcase, kept as designed; the real message list (Task 6) gets a proper role. */}
+      <div className="flex flex-col gap-5" aria-busy="true" aria-label="Сообщения загружаются">
+        {[0.62, 0.41, 0.8].map((w) => (
+          <div key={w} className="flex gap-4">
+            <Skeleton className="size-10 shrink-0 rounded-full" />
+            <div className="flex flex-1 flex-col gap-2 pt-1">
+              <Skeleton className="h-4 w-32 rounded-sm" />
+              <Skeleton className="h-4 rounded-sm" style={{ width: `${String(w * 100)}%` }} />
             </div>
-          ))}
-        </div>
-      </Section>
-
-      <Section
-        title="Диалоги, меню, подсказки"
-        note="Всё открывается и закрывается с клавиатуры; Esc возвращает фокус."
-      >
-        <Overlays />
-      </Section>
-
-      <Section title="Уведомления">
-        <Toasts />
-      </Section>
-
-      <Section title="Палитра" note="Токены из tokens.css; переключите тему вверху.">
-        <Palette />
-      </Section>
-    </div>
-  );
-}
-
-function Section({ title, note, children }: { title: string; note?: string; children: ReactNode }) {
-  return (
-    <section className="grid grid-cols-1 gap-4 md:grid-cols-[16rem_minmax(0,1fr)] md:gap-8">
-      <div className="pt-1">
-        <h2 className="text-lg font-semibold">{title}</h2>
-        {note && <p className="mt-1 text-sm text-fg-muted">{note}</p>}
+          </div>
+        ))}
       </div>
-      <div className="flex flex-col gap-5 rounded-lg bg-sidebar p-5">{children}</div>
-    </section>
-  );
-}
+    </Section>
 
-function Row({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={`flex flex-wrap items-center gap-3 rounded-md ${className ?? ""}`}>{children}</div>;
-}
+    <Section title="Диалоги, меню, подсказки" note="Всё открывается и закрывается с клавиатуры; Esc возвращает фокус.">
+      <Overlays />
+    </Section>
 
-function RoleLine({ color, name }: { color: number; name: string }) {
-  return (
-    <span className="inline-flex items-center gap-2 text-sm font-medium">
-      <RoleColorDot color={color} />
-      {name}
-    </span>
-  );
-}
+    <Section title="Уведомления">
+      <Toasts />
+    </Section>
 
-function Fields() {
+    <Section title="Палитра" note="Токены из tokens.css; переключите тему вверху.">
+      <Palette />
+    </Section>
+  </div>
+);
+
+const Section = ({ title, note, children }: { title: string; note?: string; children: ReactNode }) => (
+  <section className="grid grid-cols-1 gap-4 md:grid-cols-[16rem_minmax(0,1fr)] md:gap-8">
+    <div className="pt-1">
+      <h2 className="text-lg font-semibold">{title}</h2>
+      {note && <p className="mt-1 text-sm text-fg-muted">{note}</p>}
+    </div>
+    <div className="flex flex-col gap-5 rounded-lg bg-sidebar p-5">{children}</div>
+  </section>
+);
+
+const Row = ({ children, className }: { children: ReactNode; className?: string }) => (
+  <div className={`flex flex-wrap items-center gap-3 rounded-md ${className ?? ""}`}>{children}</div>
+);
+
+const RoleLine = ({ color, name }: { color: number; name: string }) => (
+  <span className="inline-flex items-center gap-2 text-sm font-medium">
+    <RoleColorDot color={color} />
+    {name}
+  </span>
+);
+
+const Fields = () => {
   const id = useId();
   return (
     <div className="grid gap-5 sm:grid-cols-2">
@@ -274,9 +263,9 @@ function Fields() {
       </Field>
     </div>
   );
-}
+};
 
-function Choices() {
+const Choices = () => {
   const id = useId();
   const [notify, setNotify] = useState(true);
   return (
@@ -311,9 +300,9 @@ function Choices() {
       </div>
     </div>
   );
-}
+};
 
-function Overlays() {
+const Overlays = () => {
   const toast = useToast();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [compact, setCompact] = useState(false);
@@ -411,9 +400,9 @@ function Overlays() {
       </ContextMenu>
     </>
   );
-}
+};
 
-function Toasts() {
+const Toasts = () => {
   const toast = useToast();
   return (
     <Row>
@@ -443,7 +432,7 @@ function Toasts() {
       </Button>
     </Row>
   );
-}
+};
 
 const swatches: { name: string; token: string }[] = [
   { name: "Полоса серверов", token: "--bg-rail" },
@@ -458,21 +447,19 @@ const swatches: { name: string; token: string }[] = [
   { name: "Не в сети", token: "--status-offline" },
 ];
 
-function Palette() {
-  return (
-    <div className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-      {swatches.map((s) => (
-        <div key={s.token} className="flex items-center gap-3">
-          <span
-            className="size-8 shrink-0 rounded-md shadow-[inset_0_0_0_1px_var(--border)]"
-            style={{ background: `var(${s.token})` }}
-          />
-          <span className="min-w-0">
-            <span className="block truncate text-sm font-medium">{s.name}</span>
-            <code className="block truncate text-xs text-fg-faint">{s.token}</code>
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
+const Palette = () => (
+  <div className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+    {swatches.map((s) => (
+      <div key={s.token} className="flex items-center gap-3">
+        <span
+          className="size-8 shrink-0 rounded-md shadow-[inset_0_0_0_1px_var(--border)]"
+          style={{ background: `var(${s.token})` }}
+        />
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-medium">{s.name}</span>
+          <code className="block truncate text-xs text-fg-faint">{s.token}</code>
+        </span>
+      </div>
+    ))}
+  </div>
+);

@@ -20,16 +20,15 @@ export const testUser: User = {
 };
 
 /** GET /users/@me answers as for a signed-in `user`, or 401 when it is null. */
-export function sessionHandler(user: User | null) {
-  return apiHandler("get", "/users/@me", () => (user ? HttpResponse.json(user) : problem(401, "unauthenticated")));
-}
+export const sessionHandler = (user: User | null) =>
+  apiHandler("get", "/users/@me", () => (user ? HttpResponse.json(user) : problem(401, "unauthenticated")));
 
 /**
  * Renders the whole app (router, providers, session wiring) at `path`, as
  * main.tsx does, with an in-memory history. The session wiring is undone when
  * the test ends.
  */
-export function renderApp(path: string) {
+export const renderApp = (path: string) => {
   const queryClient = createQueryClient();
   const router = createAppRouter(queryClient, createMemoryHistory({ initialEntries: [path] }));
   onTestFinished(initSession(router, queryClient));
@@ -40,9 +39,7 @@ export function renderApp(path: string) {
     </AppProviders>,
   );
   return { user, router, queryClient };
-}
+};
 
 /** Pathname plus search of the router's current location, e.g. "/login?next=%2Finvite%2Fabc". */
-export function currentHref(router: AppRouter): string {
-  return router.state.location.href;
-}
+export const currentHref = (router: AppRouter): string => router.state.location.href;

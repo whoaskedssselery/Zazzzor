@@ -8,36 +8,35 @@ type RegisterBody = components["schemas"]["RegisterRequest"];
 type Problem = components["schemas"]["Problem"];
 
 /** POST /auth/register that records the bodies it got and answers with `answer`. */
-function registerHandler(answer: () => HttpResponse<User | Problem>) {
+const registerHandler = (answer: () => HttpResponse<User | Problem>) => {
   const bodies: RegisterBody[] = [];
   const handler = apiHandler("post", "/auth/register", async ({ request }) => {
     bodies.push(await request.json());
     return answer();
   });
   return { handler, bodies };
-}
+};
 
 const created = () => HttpResponse.json<User>(testUser, { status: 201 });
 
 /** The text an element's aria-describedby points at. */
-function description(el: HTMLElement): string {
-  return (el.getAttribute("aria-describedby") ?? "")
+const description = (el: HTMLElement): string =>
+  (el.getAttribute("aria-describedby") ?? "")
     .split(" ")
     .filter(Boolean)
     .map((id) => document.getElementById(id)?.textContent ?? "")
     .join(" | ");
-}
 
-async function fill(
+const fill = async (
   user: ReturnType<typeof renderApp>["user"],
   values: { displayName?: string; username: string; password: string },
-) {
+) => {
   const name = await screen.findByRole("textbox", { name: "Отображаемое имя" });
   if (values.displayName) await user.type(name, values.displayName);
   await user.type(screen.getByRole("textbox", { name: "Логин" }), values.username);
   await user.type(screen.getByLabelText("Пароль"), values.password);
   await user.click(screen.getByRole("button", { name: "Зарегистрироваться" }));
-}
+};
 
 describe("RegisterPage", () => {
   beforeEach(() => {

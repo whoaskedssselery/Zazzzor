@@ -28,17 +28,13 @@ export const homeRoute = createRoute({
 export const channelRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/channels/$guildId/$channelId",
-  component: function ChannelRoute() {
-    return <ChannelPage channelId={channelRoute.useParams().channelId} />;
-  },
+  component: () => <ChannelPage channelId={channelRoute.useParams().channelId} />,
 });
 
 export const inviteRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/invite/$code",
-  component: function InviteRoute() {
-    return <InvitePage code={inviteRoute.useParams().code} />;
-  },
+  component: () => <InvitePage code={inviteRoute.useParams().code} />,
 });
 
 export const settingsRoute = createRoute({

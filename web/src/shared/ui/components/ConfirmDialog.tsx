@@ -25,7 +25,7 @@ interface ConfirmDialogProps {
  * initial focus, so an Enter on open never confirms. While `pending`, it
  * cannot be closed and repeat confirms are ignored.
  */
-export function ConfirmDialog({
+export const ConfirmDialog = ({
   open,
   onOpenChange,
   title,
@@ -35,50 +35,48 @@ export function ConfirmDialog({
   tone = "primary",
   onConfirm,
   pending = false,
-}: ConfirmDialogProps) {
-  return (
-    <AlertDialog.Root
-      open={open}
-      onOpenChange={(next) => {
-        // While the action runs the dialog stays put: closing it would hide the result.
-        if (!next && pending) return;
-        onOpenChange(next);
-      }}
-    >
-      <AlertDialog.Portal>
-        <AlertDialog.Overlay className={overlayClass} />
-        <AlertDialog.Content
-          className={cn(dialogPanelClass, "max-w-110")}
-          onEscapeKeyDown={(e) => {
-            if (pending) e.preventDefault();
-          }}
-          {...(description ? {} : { "aria-describedby": undefined })}
-        >
-          <div className="px-4 pt-4 pb-5">
-            <AlertDialog.Title className="text-lg font-semibold">{title}</AlertDialog.Title>
-            {description && (
-              <AlertDialog.Description className="mt-2 text-base text-fg-muted">{description}</AlertDialog.Description>
-            )}
-          </div>
-          <div className="flex justify-end gap-2 bg-panel px-4 py-3">
-            <AlertDialog.Cancel asChild>
-              <Button variant="ghost" disabled={pending}>
-                {cancelLabel}
-              </Button>
-            </AlertDialog.Cancel>
-            {/* Not AlertDialog.Action: that closes the dialog before the action has run. */}
-            <Button
-              variant={tone}
-              loading={pending}
-              onClick={() => {
-                if (!pending) onConfirm();
-              }}
-            >
-              {confirmLabel}
+}: ConfirmDialogProps) => (
+  <AlertDialog.Root
+    open={open}
+    onOpenChange={(next) => {
+      // While the action runs the dialog stays put: closing it would hide the result.
+      if (!next && pending) return;
+      onOpenChange(next);
+    }}
+  >
+    <AlertDialog.Portal>
+      <AlertDialog.Overlay className={overlayClass} />
+      <AlertDialog.Content
+        className={cn(dialogPanelClass, "max-w-110")}
+        onEscapeKeyDown={(e) => {
+          if (pending) e.preventDefault();
+        }}
+        {...(description ? {} : { "aria-describedby": undefined })}
+      >
+        <div className="px-4 pt-4 pb-5">
+          <AlertDialog.Title className="text-lg font-semibold">{title}</AlertDialog.Title>
+          {description && (
+            <AlertDialog.Description className="mt-2 text-base text-fg-muted">{description}</AlertDialog.Description>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 bg-panel px-4 py-3">
+          <AlertDialog.Cancel asChild>
+            <Button variant="ghost" disabled={pending}>
+              {cancelLabel}
             </Button>
-          </div>
-        </AlertDialog.Content>
-      </AlertDialog.Portal>
-    </AlertDialog.Root>
-  );
-}
+          </AlertDialog.Cancel>
+          {/* Not AlertDialog.Action: that closes the dialog before the action has run. */}
+          <Button
+            variant={tone}
+            loading={pending}
+            onClick={() => {
+              if (!pending) onConfirm();
+            }}
+          >
+            {confirmLabel}
+          </Button>
+        </div>
+      </AlertDialog.Content>
+    </AlertDialog.Portal>
+  </AlertDialog.Root>
+);

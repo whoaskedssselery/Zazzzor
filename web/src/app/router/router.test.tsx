@@ -13,7 +13,7 @@ import { rootRoute } from "./root";
 import { createAppRouter } from "./router";
 
 /** Renders the app's router at `path`, wrapped like main.tsx does. */
-function renderAt(path: string) {
+const renderAt = (path: string) => {
   const queryClient = createQueryClient();
   const router = createAppRouter(queryClient, createMemoryHistory({ initialEntries: [path] }));
   render(
@@ -21,7 +21,7 @@ function renderAt(path: string) {
       <RouterProvider router={router} />
     </AppProviders>,
   );
-}
+};
 
 describe("router", () => {
   afterEach(() => {

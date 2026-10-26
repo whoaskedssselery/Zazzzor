@@ -113,7 +113,8 @@
             "noBannedTypes": "error",
             "noStaticOnlyClass": "error",
             "noUselessConstructor": "error",
-            "noUselessTypeConstraint": "error"
+            "noUselessTypeConstraint": "error",
+            "useArrowFunction": "error"
           },
           "style": {
             "noCommonJs": "error",

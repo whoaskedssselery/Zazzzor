@@ -20,14 +20,12 @@ interface FieldContextValue {
 const FieldContext = createContext<FieldContextValue | null>(null);
 
 /** Stable ids of a field's parts, derived from the control's id. */
-export function fieldIds(id: string) {
-  return { hintId: `${id}-hint`, errorId: `${id}-error` };
-}
+export const fieldIds = (id: string) => ({ hintId: `${id}-hint`, errorId: `${id}-error` });
 
-function joinIds(...ids: (string | undefined)[]): string | undefined {
+const joinIds = (...ids: (string | undefined)[]): string | undefined => {
   const joined = ids.filter(Boolean).join(" ");
   return joined || undefined;
-}
+};
 
 interface FieldControlProps {
   id?: string | undefined;
@@ -40,7 +38,7 @@ interface FieldControlProps {
  * around it; its own props win, and its own aria-describedby is kept after
  * the field's. Input, Textarea and Select call this; a custom control can too.
  */
-export function useFieldControl(own: FieldControlProps) {
+export const useFieldControl = (own: FieldControlProps) => {
   const field = use(FieldContext);
   const invalid = own["aria-invalid"] ?? (field?.invalid ? true : undefined);
   return {
@@ -48,19 +46,19 @@ export function useFieldControl(own: FieldControlProps) {
     "aria-describedby": joinIds(field?.describedBy, own["aria-describedby"]),
     "aria-invalid": invalid,
   };
-}
+};
 
-export function Input({
+export const Input = ({
   className,
   type,
   id,
   "aria-describedby": describedBy,
   "aria-invalid": invalid,
   ...props
-}: ComponentProps<"input">) {
+}: ComponentProps<"input">) => {
   const wiring = useFieldControl({ id, "aria-describedby": describedBy, "aria-invalid": invalid });
   return <input type={type ?? "text"} className={cn(fieldClass, "h-10", className)} {...wiring} {...props} />;
-}
+};
 
 interface FieldProps {
   /** id of the control; the control inside takes it from the Field. */
@@ -79,7 +77,7 @@ interface FieldProps {
  * control inside (Input, Textarea, Select) gets the id, aria-invalid and an
  * aria-describedby pointing at the hint or the error (`fieldIds(htmlFor)`).
  */
-export function Field({ htmlFor, label, hint, error, children, className }: FieldProps) {
+export const Field = ({ htmlFor, label, hint, error, children, className }: FieldProps) => {
   const { hintId, errorId } = fieldIds(htmlFor);
   const describedBy = error ? errorId : hint ? hintId : undefined;
   return (
@@ -103,4 +101,4 @@ export function Field({ htmlFor, label, hint, error, children, className }: Fiel
       </div>
     </FieldContext>
   );
-}
+};

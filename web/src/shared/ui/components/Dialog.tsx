@@ -27,7 +27,7 @@ const widths = { sm: "max-w-110", md: "max-w-135", lg: "max-w-180" };
  * traps focus, closes on Escape and outside click, and returns focus to the
  * trigger.
  */
-export function DialogContent({
+export const DialogContent = ({
   title,
   description,
   footer,
@@ -35,38 +35,36 @@ export function DialogContent({
   className,
   children,
   ...props
-}: DialogContentProps) {
-  return (
-    <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className={overlayClass} />
-      <DialogPrimitive.Content
-        className={cn(dialogPanelClass, widths[size], className)}
-        {...(description ? {} : { "aria-describedby": undefined })}
-        {...props}
-      >
-        <div className="flex items-start gap-4 px-4 pt-4 pb-3">
-          <div className="min-w-0 flex-1">
-            <DialogPrimitive.Title className="text-lg font-semibold">{title}</DialogPrimitive.Title>
-            {description && (
-              <DialogPrimitive.Description className="mt-1 text-sm text-fg-muted">
-                {description}
-              </DialogPrimitive.Description>
-            )}
-          </div>
-          <DialogPrimitive.Close
-            aria-label="Закрыть"
-            className="-mt-1 -mr-1 inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-hover hover:text-fg"
-          >
-            <X aria-hidden className="size-5" strokeWidth={1.75} />
-          </DialogPrimitive.Close>
+}: DialogContentProps) => (
+  <DialogPrimitive.Portal>
+    <DialogPrimitive.Overlay className={overlayClass} />
+    <DialogPrimitive.Content
+      className={cn(dialogPanelClass, widths[size], className)}
+      {...(description ? {} : { "aria-describedby": undefined })}
+      {...props}
+    >
+      <div className="flex items-start gap-4 px-4 pt-4 pb-3">
+        <div className="min-w-0 flex-1">
+          <DialogPrimitive.Title className="text-lg font-semibold">{title}</DialogPrimitive.Title>
+          {description && (
+            <DialogPrimitive.Description className="mt-1 text-sm text-fg-muted">
+              {description}
+            </DialogPrimitive.Description>
+          )}
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">{children}</div>
-        {footer && <DialogFooter>{footer}</DialogFooter>}
-      </DialogPrimitive.Content>
-    </DialogPrimitive.Portal>
-  );
-}
+        <DialogPrimitive.Close
+          aria-label="Закрыть"
+          className="-mt-1 -mr-1 inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-hover hover:text-fg"
+        >
+          <X aria-hidden className="size-5" strokeWidth={1.75} />
+        </DialogPrimitive.Close>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">{children}</div>
+      {footer && <DialogFooter>{footer}</DialogFooter>}
+    </DialogPrimitive.Content>
+  </DialogPrimitive.Portal>
+);
 
-export function DialogFooter({ className, ...props }: ComponentProps<"div">) {
-  return <div className={cn("flex justify-end gap-2 bg-panel px-4 py-3", className)} {...props} />;
-}
+export const DialogFooter = ({ className, ...props }: ComponentProps<"div">) => (
+  <div className={cn("flex justify-end gap-2 bg-panel px-4 py-3", className)} {...props} />
+);

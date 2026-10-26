@@ -7,6 +7,6 @@ import { cn } from "../cn";
  * has none of its own) so nothing shifts when
  * the data lands. Hidden from assistive tech: announce loading on the region.
  */
-export function Skeleton({ className, ...props }: ComponentProps<"div">) {
-  return <div aria-hidden className={cn("animate-pulse-soft bg-skeleton", className)} {...props} />;
-}
+export const Skeleton = ({ className, ...props }: ComponentProps<"div">) => (
+  <div aria-hidden className={cn("animate-pulse-soft bg-skeleton", className)} {...props} />
+);

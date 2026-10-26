@@ -4,33 +4,33 @@ import { useEffect } from "react";
 import { loadSession, onUnauthorized, safeNext, useSession } from "@/entities/session";
 
 /** `beforeLoad` of the protected layout: no session → /login?next=<this page>. */
-export async function requireSession({
+export const requireSession = async ({
   context,
   location,
 }: {
   context: { queryClient: QueryClient };
   location: ParsedLocation;
-}) {
+}) => {
   const user = await loadSession(context.queryClient);
   if (!user) throw redirect({ to: "/login", search: { next: location.href }, replace: true });
   return { user };
-}
+};
 
 /**
  * `beforeLoad` of /login and /register: a signed-in user goes on to `next`
  * straight away. When the check itself fails (server down) the form is shown
  * anyway; submitting it then explains the problem.
  */
-export async function redirectSignedIn({
+export const redirectSignedIn = async ({
   context,
   search,
 }: {
   context: { queryClient: QueryClient };
   search: { next?: string };
-}) {
+}) => {
   const user = await loadSession(context.queryClient).catch(() => null);
   if (user) throw redirect({ href: safeNext(search.next), replace: true });
-}
+};
 
 /**
  * The protected layout. requireSession has already loaded the user before
@@ -44,11 +44,11 @@ export async function redirectSignedIn({
  * page stays as it was until that navigation replaces it; nothing new is
  * shown in between.
  */
-export function AuthGuard() {
+export const AuthGuard = () => {
   const { status } = useSession();
   const anonymous = status === "anonymous";
   useEffect(() => {
     if (anonymous) onUnauthorized();
   }, [anonymous]);
   return status === "authenticated" ? <Outlet /> : null;
-}
+};

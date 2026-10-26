@@ -8,7 +8,7 @@ type LoginBody = components["schemas"]["LoginRequest"];
 type Problem = components["schemas"]["Problem"];
 
 /** POST /auth/login that records the bodies it got and answers with `answer`. */
-function loginHandler(answer: () => HttpResponse<User | Problem>) {
+const loginHandler = (answer: () => HttpResponse<User | Problem>) => {
   const bodies: LoginBody[] = [];
   const handler = apiHandler("post", "/auth/login", async ({ request }) => {
     const body = await request.json();
@@ -16,13 +16,13 @@ function loginHandler(answer: () => HttpResponse<User | Problem>) {
     return answer();
   });
   return { handler, bodies };
-}
+};
 
-async function signIn(user: ReturnType<typeof renderApp>["user"], username: string, password: string) {
+const signIn = async (user: ReturnType<typeof renderApp>["user"], username: string, password: string) => {
   await user.type(await screen.findByRole("textbox", { name: "Логин" }), username);
   await user.type(screen.getByLabelText("Пароль"), password);
   await user.click(screen.getByRole("button", { name: "Войти" }));
-}
+};
 
 describe("LoginPage", () => {
   beforeEach(() => {

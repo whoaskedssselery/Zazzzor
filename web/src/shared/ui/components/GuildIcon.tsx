@@ -3,10 +3,10 @@ import { cn } from "../cn";
 import { firstGrapheme } from "./Avatar";
 
 /** Up to three letters, one per word, upper-cased (Discord's server acronym): «Вечерний сеанс» → «ВС». */
-export function guildAcronym(name: string): string {
+export const guildAcronym = (name: string): string => {
   const words = name.trim().split(/\s+/).filter(Boolean);
   return words.slice(0, 3).map(firstGrapheme).join("").toLocaleUpperCase("ru") || "?";
-}
+};
 
 interface GuildIconProps {
   name: string;
@@ -23,7 +23,7 @@ interface GuildIconProps {
  * focus states follow the nearest `group` (the rail item that holds it).
  * Decorative: the rail link around it carries the server name.
  */
-export function GuildIcon({ name, src, active = false, size = 48, className }: GuildIconProps) {
+export const GuildIcon = ({ name, src, active = false, size = 48, className }: GuildIconProps) => {
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const showImage = Boolean(src) && failedSrc !== src;
   const acronym = guildAcronym(name);
@@ -58,4 +58,4 @@ export function GuildIcon({ name, src, active = false, size = 48, className }: G
       )}
     </span>
   );
-}
+};

@@ -12,7 +12,7 @@ import { FormAlert } from "./AuthLayout";
 const linkClass = "font-medium text-link underline-offset-2 hover:underline";
 
 /** The sign-in form. After it the user goes to `next` (a checked same-origin path) or home. */
-export function LoginForm({ next }: { next?: string | undefined }) {
+export const LoginForm = ({ next }: { next?: string | undefined }) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [alert, setAlert] = useState<string | null>(null);
@@ -78,4 +78,4 @@ export function LoginForm({ next }: { next?: string | undefined }) {
       </p>
     </>
   );
-}
+};

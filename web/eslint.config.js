@@ -234,6 +234,19 @@ export default defineConfig([
     },
   },
   {
+    // Components, helpers and callbacks in .tsx are const arrow functions
+    // (the owner's call, 2026-10-26). Class members and generators are exempt
+    // by nature; .ts files keep their function declarations.
+    files: ["**/*.tsx"],
+    rules: {
+      "react/function-component-definition": [
+        "error",
+        { namedComponents: "arrow-function", unnamedComponents: "arrow-function" },
+      ],
+      "func-style": ["error", "expression"],
+    },
+  },
+  {
     files: ["src/**/*.{ts,tsx}"],
     plugins: { boundaries },
     settings: {

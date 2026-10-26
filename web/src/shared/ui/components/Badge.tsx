@@ -18,16 +18,12 @@ interface BadgeProps extends ComponentProps<"span"> {
 }
 
 /** A small label. For counts, render the number and give the parent an accessible name with the noun. */
-export function Badge({ variant = "neutral", className, ...props }: BadgeProps) {
-  return (
-    <span
-      className={cn("inline-flex shrink-0 items-center justify-center whitespace-nowrap", variants[variant], className)}
-      {...props}
-    />
-  );
-}
+export const Badge = ({ variant = "neutral", className, ...props }: BadgeProps) => (
+  <span
+    className={cn("inline-flex shrink-0 items-center justify-center whitespace-nowrap", variants[variant], className)}
+    {...props}
+  />
+);
 
 /** «99+» above 99, as Discord caps its counters. */
-export function formatCount(n: number): string {
-  return n > 99 ? "99+" : String(n);
-}
+export const formatCount = (n: number): string => (n > 99 ? "99+" : String(n));

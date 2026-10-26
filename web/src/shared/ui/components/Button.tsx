@@ -39,7 +39,7 @@ export interface ButtonProps extends ComponentProps<"button"> {
   loading?: boolean;
 }
 
-export function Button({
+export const Button = ({
   variant = "primary",
   size = "md",
   asChild = false,
@@ -50,7 +50,7 @@ export function Button({
   type,
   onClick,
   ...props
-}: ButtonProps) {
+}: ButtonProps) => {
   const classes = cn(buttonBase, sizes[size], buttonVariants[variant], className);
   if (asChild) {
     const blocked = disabled || loading;
@@ -86,4 +86,4 @@ export function Button({
       {children}
     </button>
   );
-}
+};

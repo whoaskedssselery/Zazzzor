@@ -6,14 +6,12 @@ import { LogoutButton } from "@/features/auth";
  * way out. The app shell (Task 5) and the settings and admin screens (Task 8)
  * replace the pages that use it.
  */
-export function PlaceholderScreen({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <main className="grid min-h-dvh place-items-center p-6 text-center">
-      <div className="max-w-md">
-        <h1 className="text-xl font-semibold">{title}</h1>
-        <p className="mt-2 text-fg-muted">{children}</p>
-        <LogoutButton className="mt-6" />
-      </div>
-    </main>
-  );
-}
+export const PlaceholderScreen = ({ title, children }: { title: string; children: ReactNode }) => (
+  <main className="grid min-h-dvh place-items-center p-6 text-center">
+    <div className="max-w-md">
+      <h1 className="text-xl font-semibold">{title}</h1>
+      <p className="mt-2 text-fg-muted">{children}</p>
+      <LogoutButton className="mt-6" />
+    </div>
+  </main>
+);

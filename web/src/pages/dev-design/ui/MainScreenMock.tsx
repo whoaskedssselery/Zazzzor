@@ -62,7 +62,7 @@ const memberGroups: { title: string; members: MemberMock[] }[] = [
   },
 ];
 
-export function MainScreenMock() {
+export const MainScreenMock = () => {
   const [showMembers, setShowMembers] = useState(true);
   return (
     // The member list folds away below 1100px, as Discord does on narrow windows.
@@ -84,38 +84,36 @@ export function MainScreenMock() {
       {showMembers && <MemberList />}
     </div>
   );
-}
+};
 
-function Rail() {
-  return (
-    <nav aria-label="Серверы" className="flex min-h-0 flex-col items-center gap-2 overflow-y-auto bg-rail py-3">
-      <RailItem label="Личные сообщения">
-        <span className="flex size-12 items-center justify-center rounded-[50%] bg-guild text-on-guild transition-[border-radius,background-color,color] duration-(--duration-base) group-hover:rounded-xl group-hover:bg-accent group-hover:text-on-accent">
-          <House aria-hidden className="size-6" strokeWidth={1.75} />
-        </span>
+const Rail = () => (
+  <nav aria-label="Серверы" className="flex min-h-0 flex-col items-center gap-2 overflow-y-auto bg-rail py-3">
+    <RailItem label="Личные сообщения">
+      <span className="flex size-12 items-center justify-center rounded-[50%] bg-guild text-on-guild transition-[border-radius,background-color,color] duration-(--duration-base) group-hover:rounded-xl group-hover:bg-accent group-hover:text-on-accent">
+        <House aria-hidden className="size-6" strokeWidth={1.75} />
+      </span>
+    </RailItem>
+    <div aria-hidden className="h-0.5 w-8 shrink-0 rounded-full bg-control" />
+    {guilds.map((g) => (
+      <RailItem
+        key={g.name}
+        label={g.name}
+        active={g.active}
+        unread={g.unread}
+        {...(g.mentions ? { mentions: g.mentions } : {})}
+      >
+        <GuildIcon name={g.name} active={g.active} />
       </RailItem>
-      <div aria-hidden className="h-0.5 w-8 shrink-0 rounded-full bg-control" />
-      {guilds.map((g) => (
-        <RailItem
-          key={g.name}
-          label={g.name}
-          active={g.active}
-          unread={g.unread}
-          {...(g.mentions ? { mentions: g.mentions } : {})}
-        >
-          <GuildIcon name={g.name} active={g.active} />
-        </RailItem>
-      ))}
-      <RailItem label="Создать сервер">
-        <span className="flex size-12 items-center justify-center rounded-[50%] bg-guild text-fg-success transition-[border-radius,background-color,color] duration-(--duration-base) group-hover:rounded-xl group-hover:bg-accent group-hover:text-on-accent">
-          <Plus aria-hidden className="size-6" strokeWidth={2} />
-        </span>
-      </RailItem>
-    </nav>
-  );
-}
+    ))}
+    <RailItem label="Создать сервер">
+      <span className="flex size-12 items-center justify-center rounded-[50%] bg-guild text-fg-success transition-[border-radius,background-color,color] duration-(--duration-base) group-hover:rounded-xl group-hover:bg-accent group-hover:text-on-accent">
+        <Plus aria-hidden className="size-6" strokeWidth={2} />
+      </span>
+    </RailItem>
+  </nav>
+);
 
-function RailItem({
+const RailItem = ({
   label,
   active = false,
   unread = false,
@@ -127,7 +125,7 @@ function RailItem({
   unread?: boolean | undefined;
   mentions?: number;
   children: ReactNode;
-}) {
+}) => {
   const name = mentions ? `${label}, упоминаний: ${String(mentions)}` : label;
   return (
     <div className="relative flex w-full shrink-0 justify-center">
@@ -155,44 +153,50 @@ function RailItem({
       </Tooltip>
     </div>
   );
-}
+};
 
-function ChannelSidebar() {
-  return (
-    <div className="flex min-h-0 flex-col bg-sidebar">
-      <button
-        type="button"
-        className="flex h-(--header-height) shrink-0 cursor-pointer items-center justify-between px-4 text-base font-semibold shadow-[0_1px_0_var(--border)] transition-colors hover:bg-hover"
-      >
-        <span className="truncate">Вечерний сеанс</span>
-        <ChevronDown aria-hidden className="size-5 text-fg-muted" />
-      </button>
-      <nav aria-label="Каналы" className="min-h-0 flex-1 overflow-y-auto pt-2 pb-3">
-        <Category name="Текстовые каналы">
-          <ChannelRow name="общий" selected />
-          <ChannelRow name="сериалы" unread />
-          <ChannelRow name="игры" />
-          <ChannelRow name="мемы" mentions={2} />
-          <ChannelRow name="объявления" />
-        </Category>
-        <Category name="Голосовые каналы">
-          <ChannelRow name="Кинозал" voice />
-          <div className="mb-1 ml-9 flex flex-col">
-            <VoiceUser name="Аня Соколова" live />
-            <VoiceUser name="Дима Орлов" />
-            <VoiceUser name="Катя" />
-          </div>
-          <ChannelRow name="Игровая" voice />
-          <ChannelRow name="Тихий угол" voice />
-        </Category>
-        <Category name="Архив" collapsed />
-      </nav>
-      <UserPanel />
-    </div>
-  );
-}
+const ChannelSidebar = () => (
+  <div className="flex min-h-0 flex-col bg-sidebar">
+    <button
+      type="button"
+      className="flex h-(--header-height) shrink-0 cursor-pointer items-center justify-between px-4 text-base font-semibold shadow-[0_1px_0_var(--border)] transition-colors hover:bg-hover"
+    >
+      <span className="truncate">Вечерний сеанс</span>
+      <ChevronDown aria-hidden className="size-5 text-fg-muted" />
+    </button>
+    <nav aria-label="Каналы" className="min-h-0 flex-1 overflow-y-auto pt-2 pb-3">
+      <Category name="Текстовые каналы">
+        <ChannelRow name="общий" selected />
+        <ChannelRow name="сериалы" unread />
+        <ChannelRow name="игры" />
+        <ChannelRow name="мемы" mentions={2} />
+        <ChannelRow name="объявления" />
+      </Category>
+      <Category name="Голосовые каналы">
+        <ChannelRow name="Кинозал" voice />
+        <div className="mb-1 ml-9 flex flex-col">
+          <VoiceUser name="Аня Соколова" live />
+          <VoiceUser name="Дима Орлов" />
+          <VoiceUser name="Катя" />
+        </div>
+        <ChannelRow name="Игровая" voice />
+        <ChannelRow name="Тихий угол" voice />
+      </Category>
+      <Category name="Архив" collapsed />
+    </nav>
+    <UserPanel />
+  </div>
+);
 
-function Category({ name, collapsed = false, children }: { name: string; collapsed?: boolean; children?: ReactNode }) {
+const Category = ({
+  name,
+  collapsed = false,
+  children,
+}: {
+  name: string;
+  collapsed?: boolean;
+  children?: ReactNode;
+}) => {
   const Chevron = collapsed ? ChevronRight : ChevronDown;
   return (
     <section className="mt-3 first:mt-1">
@@ -209,9 +213,9 @@ function Category({ name, collapsed = false, children }: { name: string; collaps
       {!collapsed && <div className="flex flex-col gap-px">{children}</div>}
     </section>
   );
-}
+};
 
-function ChannelRow({
+const ChannelRow = ({
   name,
   selected = false,
   unread = false,
@@ -223,7 +227,7 @@ function ChannelRow({
   unread?: boolean;
   voice?: boolean;
   mentions?: number;
-}) {
+}) => {
   const Icon = voice ? Volume2 : Hash;
   const bright = selected || unread || Boolean(mentions);
   return (
@@ -253,44 +257,40 @@ function ChannelRow({
       </a>
     </div>
   );
-}
+};
 
-function VoiceUser({ name, live = false }: { name: string; live?: boolean }) {
-  return (
-    <div className="flex h-7.5 items-center gap-2 rounded-md px-2 text-sm font-medium text-fg-muted hover:bg-hover hover:text-fg">
-      <Avatar name={name} size={24} />
-      <span className="truncate">{name}</span>
-      {live && (
-        <Badge variant="live" className="ml-auto">
-          В эфире
-        </Badge>
-      )}
-    </div>
-  );
-}
+const VoiceUser = ({ name, live = false }: { name: string; live?: boolean }) => (
+  <div className="flex h-7.5 items-center gap-2 rounded-md px-2 text-sm font-medium text-fg-muted hover:bg-hover hover:text-fg">
+    <Avatar name={name} size={24} />
+    <span className="truncate">{name}</span>
+    {live && (
+      <Badge variant="live" className="ml-auto">
+        В эфире
+      </Badge>
+    )}
+  </div>
+);
 
-function UserPanel() {
-  return (
-    <div
-      className="flex h-(--user-panel-height) shrink-0 items-center gap-1 bg-panel px-2"
-      style={{ "--avatar-cutout": "var(--bg-panel)" } as CSSProperties}
+const UserPanel = () => (
+  <div
+    className="flex h-(--user-panel-height) shrink-0 items-center gap-1 bg-panel px-2"
+    style={{ "--avatar-cutout": "var(--bg-panel)" } as CSSProperties}
+  >
+    <button
+      type="button"
+      className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md py-1 pr-1 pl-0.5 text-left hover:bg-hover"
     >
-      <button
-        type="button"
-        className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md py-1 pr-1 pl-0.5 text-left hover:bg-hover"
-      >
-        <Avatar name="Максим" size={32} status="online" />
-        <span className="min-w-0">
-          <span className="block truncate text-sm leading-4 font-semibold">Максим</span>
-          <span className="block truncate text-xs text-fg-faint">в сети</span>
-        </span>
-      </button>
-      <IconButton label="Выключить микрофон" icon={Mic} />
-      <IconButton label="Выключить звук" icon={Headphones} />
-      <IconButton label="Настройки пользователя" icon={Settings} />
-    </div>
-  );
-}
+      <Avatar name="Максим" size={32} status="online" />
+      <span className="min-w-0">
+        <span className="block truncate text-sm leading-4 font-semibold">Максим</span>
+        <span className="block truncate text-xs text-fg-faint">в сети</span>
+      </span>
+    </button>
+    <IconButton label="Выключить микрофон" icon={Mic} />
+    <IconButton label="Выключить звук" icon={Headphones} />
+    <IconButton label="Настройки пользователя" icon={Settings} />
+  </div>
+);
 
 interface MessageMock {
   author: string;
@@ -368,54 +368,52 @@ const messages: MessageMock[] = [
   },
 ];
 
-function Chat({ showMembers, onToggleMembers }: { showMembers: boolean; onToggleMembers: () => void }) {
-  return (
-    <main
-      className="flex min-h-0 min-w-0 flex-col bg-chat"
-      style={{ "--avatar-cutout": "var(--bg-chat)" } as CSSProperties}
-    >
-      <header className="flex h-(--header-height) shrink-0 items-center gap-2 px-4 shadow-[0_1px_0_var(--border)]">
-        <Hash aria-hidden className="size-6 shrink-0 text-fg-faint" strokeWidth={1.75} />
-        <h2 className="text-base font-semibold">общий</h2>
-        <span aria-hidden className="mx-2 h-6 w-px shrink-0 bg-border" />
-        <p className="min-w-0 flex-1 truncate text-sm text-fg-muted">
-          Болтаем обо всём. Кино — по пятницам в 21:00 в «Кинозале».
-        </p>
-        <IconButton
-          label={showMembers ? "Скрыть участников" : "Показать участников"}
-          icon={Users}
-          pressed={showMembers}
-          onClick={onToggleMembers}
-          tooltipSide="bottom"
-        />
-      </header>
-      <div className="flex min-h-0 flex-1 flex-col justify-end overflow-y-auto">
-        <ol aria-label="Сообщения в #общий" className="pb-4">
-          <li className="mx-4 mt-6 mb-2">
-            <span aria-hidden className="flex size-17 items-center justify-center rounded-full bg-control">
-              <Hash className="size-10 text-fg" strokeWidth={1.75} />
-            </span>
-            <h3 className="mt-3 text-xl font-bold">Добро пожаловать в #общий!</h3>
-            <p className="mt-1 text-base text-fg-muted">
-              Это начало канала #общий. Пишите, договаривайтесь о вечере, кидайте ссылки.
-            </p>
-          </li>
-          <li aria-hidden className="mx-4 mt-6 mb-1 flex items-center gap-2 text-xs font-semibold text-fg-faint">
-            <span className="h-px flex-1 bg-border" />
-            23 октября 2026 г.
-            <span className="h-px flex-1 bg-border" />
-          </li>
-          {messages.map((m) => (
-            <MessageGroup key={m.time} message={m} />
-          ))}
-        </ol>
-      </div>
-      <Composer />
-    </main>
-  );
-}
+const Chat = ({ showMembers, onToggleMembers }: { showMembers: boolean; onToggleMembers: () => void }) => (
+  <main
+    className="flex min-h-0 min-w-0 flex-col bg-chat"
+    style={{ "--avatar-cutout": "var(--bg-chat)" } as CSSProperties}
+  >
+    <header className="flex h-(--header-height) shrink-0 items-center gap-2 px-4 shadow-[0_1px_0_var(--border)]">
+      <Hash aria-hidden className="size-6 shrink-0 text-fg-faint" strokeWidth={1.75} />
+      <h2 className="text-base font-semibold">общий</h2>
+      <span aria-hidden className="mx-2 h-6 w-px shrink-0 bg-border" />
+      <p className="min-w-0 flex-1 truncate text-sm text-fg-muted">
+        Болтаем обо всём. Кино — по пятницам в 21:00 в «Кинозале».
+      </p>
+      <IconButton
+        label={showMembers ? "Скрыть участников" : "Показать участников"}
+        icon={Users}
+        pressed={showMembers}
+        onClick={onToggleMembers}
+        tooltipSide="bottom"
+      />
+    </header>
+    <div className="flex min-h-0 flex-1 flex-col justify-end overflow-y-auto">
+      <ol aria-label="Сообщения в #общий" className="pb-4">
+        <li className="mx-4 mt-6 mb-2">
+          <span aria-hidden className="flex size-17 items-center justify-center rounded-full bg-control">
+            <Hash className="size-10 text-fg" strokeWidth={1.75} />
+          </span>
+          <h3 className="mt-3 text-xl font-bold">Добро пожаловать в #общий!</h3>
+          <p className="mt-1 text-base text-fg-muted">
+            Это начало канала #общий. Пишите, договаривайтесь о вечере, кидайте ссылки.
+          </p>
+        </li>
+        <li aria-hidden className="mx-4 mt-6 mb-1 flex items-center gap-2 text-xs font-semibold text-fg-faint">
+          <span className="h-px flex-1 bg-border" />
+          23 октября 2026 г.
+          <span className="h-px flex-1 bg-border" />
+        </li>
+        {messages.map((m) => (
+          <MessageGroup key={m.time} message={m} />
+        ))}
+      </ol>
+    </div>
+    <Composer />
+  </main>
+);
 
-function MessageGroup({ message: m }: { message: MessageMock }) {
+const MessageGroup = ({ message: m }: { message: MessageMock }) => {
   const [first, ...rest] = m.lines;
   return (
     <>
@@ -464,70 +462,64 @@ function MessageGroup({ message: m }: { message: MessageMock }) {
       ))}
     </>
   );
-}
+};
 
-function MessageActions() {
-  return (
-    <div className="absolute -top-4 right-4 hidden items-center rounded-md bg-overlay p-0.5 shadow-float group-hover:flex">
-      <IconButton size="sm" label="Реакция" icon={SmilePlus} />
-      <IconButton size="sm" label="Ответить" icon={Reply} />
-      <IconButton size="sm" label="Изменить" icon={Pencil} />
+const MessageActions = () => (
+  <div className="absolute -top-4 right-4 hidden items-center rounded-md bg-overlay p-0.5 shadow-float group-hover:flex">
+    <IconButton size="sm" label="Реакция" icon={SmilePlus} />
+    <IconButton size="sm" label="Ответить" icon={Reply} />
+    <IconButton size="sm" label="Изменить" icon={Pencil} />
+  </div>
+);
+
+const Composer = () => (
+  <div className="shrink-0 px-4 pb-6">
+    <div className="flex min-h-11 items-center gap-1 rounded-lg bg-input pr-3 pl-2">
+      <IconButton label="Прикрепить файл" icon={CirclePlus} />
+      <input
+        aria-label="Сообщение в #общий"
+        placeholder="Написать в #общий"
+        className="h-11 min-w-0 flex-1 bg-transparent text-base text-fg outline-none"
+      />
     </div>
-  );
-}
+    <p className="-mb-5 h-5 pt-0.5 pl-1 text-xs text-fg-muted">
+      <span className="font-semibold text-fg">Дима Орлов</span> печатает…
+    </p>
+  </div>
+);
 
-function Composer() {
-  return (
-    <div className="shrink-0 px-4 pb-6">
-      <div className="flex min-h-11 items-center gap-1 rounded-lg bg-input pr-3 pl-2">
-        <IconButton label="Прикрепить файл" icon={CirclePlus} />
-        <input
-          aria-label="Сообщение в #общий"
-          placeholder="Написать в #общий"
-          className="h-11 min-w-0 flex-1 bg-transparent text-base text-fg outline-none"
-        />
-      </div>
-      <p className="-mb-5 h-5 pt-0.5 pl-1 text-xs text-fg-muted">
-        <span className="font-semibold text-fg">Дима Орлов</span> печатает…
-      </p>
-    </div>
-  );
-}
-
-function MemberList() {
-  return (
-    <aside aria-label="Участники" className="min-h-0 overflow-y-auto bg-sidebar px-2 pb-4 max-[1099px]:hidden">
-      {memberGroups.map((g) => (
-        <section key={g.title}>
-          <h3 className="px-2 pt-6 pb-1 text-xs font-semibold text-fg-faint">{g.title}</h3>
-          <ul>
-            {g.members.map((m) => (
-              <li key={m.name}>
-                <button
-                  type="button"
-                  className="flex h-11 w-full cursor-pointer items-center gap-3 rounded-md px-2 text-left hover:bg-hover"
+const MemberList = () => (
+  <aside aria-label="Участники" className="min-h-0 overflow-y-auto bg-sidebar px-2 pb-4 max-[1099px]:hidden">
+    {memberGroups.map((g) => (
+      <section key={g.title}>
+        <h3 className="px-2 pt-6 pb-1 text-xs font-semibold text-fg-faint">{g.title}</h3>
+        <ul>
+          {g.members.map((m) => (
+            <li key={m.name}>
+              <button
+                type="button"
+                className="flex h-11 w-full cursor-pointer items-center gap-3 rounded-md px-2 text-left hover:bg-hover"
+              >
+                <Avatar
+                  name={m.name}
+                  size={32}
+                  status={m.status}
+                  className={cn(m.status === "offline" && "opacity-45")}
+                />
+                <span
+                  className={cn(
+                    "truncate text-base font-medium",
+                    m.status === "offline" ? "text-fg-faint" : "role-text",
+                  )}
+                  style={m.status === "offline" ? undefined : roleTextStyle(m.color ?? 0)}
                 >
-                  <Avatar
-                    name={m.name}
-                    size={32}
-                    status={m.status}
-                    className={cn(m.status === "offline" && "opacity-45")}
-                  />
-                  <span
-                    className={cn(
-                      "truncate text-base font-medium",
-                      m.status === "offline" ? "text-fg-faint" : "role-text",
-                    )}
-                    style={m.status === "offline" ? undefined : roleTextStyle(m.color ?? 0)}
-                  >
-                    {m.name}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
-    </aside>
-  );
-}
+                  {m.name}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </section>
+    ))}
+  </aside>
+);

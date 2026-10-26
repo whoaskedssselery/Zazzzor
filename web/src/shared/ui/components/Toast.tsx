@@ -35,7 +35,7 @@ const MAX_TOASTS = 3;
  * paused on hover and focus, swipe or F8 to reach them). Errors stay twice
  * as long as other tones.
  */
-export function ToastProvider({ children }: { children: ReactNode }) {
+export const ToastProvider = ({ children }: { children: ReactNode }) => {
   const [items, setItems] = useState<ToastItem[]>([]);
   const nextId = useRef(1);
 
@@ -87,11 +87,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       </ToastPrimitive.Provider>
     </ToastContext>
   );
-}
+};
 
 /** Shows a toast: `useToast().show({ text: "Инвайт скопирован", tone: "success" })`. */
-export function useToast(): ToastApi {
+export const useToast = (): ToastApi => {
   const ctx = use(ToastContext);
   if (!ctx) throw new Error("useToast must be used inside <ToastProvider>");
   return ctx;
-}
+};

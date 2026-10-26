@@ -3,7 +3,7 @@ import { renderUi } from "@/shared/test";
 import { Button } from "./Button";
 import { useToast } from "./Toast";
 
-function ShowButton({ tone }: { tone?: "info" | "error" | "success" }) {
+const ShowButton = ({ tone }: { tone?: "info" | "error" | "success" }) => {
   const toast = useToast();
   return (
     <Button
@@ -14,7 +14,7 @@ function ShowButton({ tone }: { tone?: "info" | "error" | "success" }) {
       Показать
     </Button>
   );
-}
+};
 
 describe("Toast", () => {
   it("announces the text through role=status", async () => {
@@ -40,10 +40,10 @@ describe("Toast", () => {
   });
 
   it("throws a clear error outside the provider", () => {
-    function Bare() {
+    const Bare = () => {
       useToast();
       return null;
-    }
+    };
     // React reports the render error on console.error; keep the output clean.
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     expect(() => render(<Bare />)).toThrow("useToast must be used inside <ToastProvider>");

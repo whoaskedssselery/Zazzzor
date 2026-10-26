@@ -4,7 +4,7 @@ import { errorText } from "@/shared/api";
 import { Button, useToast } from "@/shared/ui";
 
 /** «Выйти»: signs out and goes to sign-in; a failed request shows a toast and keeps the session. */
-export function LogoutButton({ className }: { className?: string }) {
+export const LogoutButton = ({ className }: { className?: string }) => {
   const toast = useToast();
   const signOut = useMutation({
     mutationFn: logout,
@@ -24,4 +24,4 @@ export function LogoutButton({ className }: { className?: string }) {
       Выйти
     </Button>
   );
-}
+};

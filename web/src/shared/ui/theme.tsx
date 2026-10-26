@@ -12,36 +12,34 @@ const LIGHT_QUERY = "(prefers-color-scheme: light)";
  */
 export const THEME_COLOR: Record<ResolvedTheme, string> = { dark: "#0e0d0c", light: "#dcd9d4" };
 
-function isPreference(v: unknown): v is ThemePreference {
-  return v === "dark" || v === "light" || v === "system";
-}
+const isPreference = (v: unknown): v is ThemePreference => v === "dark" || v === "light" || v === "system";
 
 /** The stored preference; dark when nothing (or garbage) is stored, or storage is blocked. */
-export function readThemePreference(): ThemePreference {
+export const readThemePreference = (): ThemePreference => {
   try {
     const stored = localStorage.getItem(THEME_STORAGE_KEY);
     return isPreference(stored) ? stored : "dark";
   } catch {
     return "dark";
   }
-}
+};
 
-function resolve(pref: ThemePreference): ResolvedTheme {
+const resolve = (pref: ThemePreference): ResolvedTheme => {
   if (pref !== "system") return pref;
   return window.matchMedia(LIGHT_QUERY).matches ? "light" : "dark";
-}
+};
 
 /**
  * Writes the theme onto <html> (tokens.css keys off data-theme) and the
  * color-scheme meta, so form controls and scrollbars follow. main.tsx calls it
  * before the first render to avoid a flash of the wrong theme.
  */
-export function applyTheme(pref: ThemePreference): void {
+export const applyTheme = (pref: ThemePreference): void => {
   const theme = resolve(pref);
   document.documentElement.dataset.theme = theme;
   document.querySelector('meta[name="color-scheme"]')?.setAttribute("content", theme);
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", THEME_COLOR[theme]);
-}
+};
 
 interface ThemeContextValue {
   theme: ThemePreference;
@@ -50,7 +48,7 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-export function ThemeProvider({ children }: { children: ReactNode }) {
+export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   const [theme, setThemeState] = useState<ThemePreference>(readThemePreference);
 
   useEffect(() => {
@@ -77,11 +75,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(() => ({ theme, setTheme }), [theme, setTheme]);
   return <ThemeContext value={value}>{children}</ThemeContext>;
-}
+};
 
 /** The user's theme preference and its setter. */
-export function useTheme(): ThemeContextValue {
+export const useTheme = (): ThemeContextValue => {
   const ctx = use(ThemeContext);
   if (!ctx) throw new Error("useTheme must be used inside <ThemeProvider>");
   return ctx;
-}
+};

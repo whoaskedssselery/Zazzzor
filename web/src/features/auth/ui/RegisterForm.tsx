@@ -17,7 +17,7 @@ const linkClass = "font-medium text-link underline-offset-2 hover:underline";
  * home. An instance may close registration, which the server answers with
  * registration_closed: the alert then points to sign-in.
  */
-export function RegisterForm({ next }: { next?: string | undefined }) {
+export const RegisterForm = ({ next }: { next?: string | undefined }) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [alert, setAlert] = useState<ReactNode>(null);
@@ -114,4 +114,4 @@ export function RegisterForm({ next }: { next?: string | undefined }) {
       </p>
     </>
   );
-}
+};

@@ -18,7 +18,7 @@ export interface IconButtonProps extends Omit<ComponentProps<"button">, "childre
 
 const sizes = { sm: "size-7 [&>svg]:size-4", md: "size-8 [&>svg]:size-5" };
 
-export function IconButton({
+export const IconButton = ({
   label,
   icon: Icon,
   size = "md",
@@ -29,7 +29,7 @@ export function IconButton({
   className,
   type,
   ...props
-}: IconButtonProps) {
+}: IconButtonProps) => {
   const button = (
     <button
       type={type ?? "button"}
@@ -55,4 +55,4 @@ export function IconButton({
   ) : (
     button
   );
-}
+};

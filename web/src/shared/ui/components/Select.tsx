@@ -33,7 +33,7 @@ interface SelectProps {
  * A single choice from a short list (Radix Select: typeahead, arrows, Escape).
  * Inside a Field it takes the field's id, error state and description.
  */
-export function Select({
+export const Select = ({
   options,
   placeholder = "Выберите…",
   className,
@@ -49,7 +49,7 @@ export function Select({
   "aria-label": ariaLabel,
   "aria-describedby": describedBy,
   "aria-invalid": invalid,
-}: SelectProps) {
+}: SelectProps) => {
   const wiring = useFieldControl({ id, "aria-describedby": describedBy, "aria-invalid": invalid });
   return (
     <SelectPrimitive.Root
@@ -102,4 +102,4 @@ export function Select({
       </SelectPrimitive.Portal>
     </SelectPrimitive.Root>
   );
-}
+};

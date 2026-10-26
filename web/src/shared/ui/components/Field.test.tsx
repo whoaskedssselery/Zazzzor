@@ -9,13 +9,12 @@ const options = [
 ];
 
 /** The ids in an element's aria-describedby, resolved to their text. */
-function description(el: HTMLElement): string {
-  return (el.getAttribute("aria-describedby") ?? "")
+const description = (el: HTMLElement): string =>
+  (el.getAttribute("aria-describedby") ?? "")
     .split(" ")
     .filter(Boolean)
     .map((id) => document.getElementById(id)?.textContent ?? `<missing #${id}>`)
     .join(" | ");
-}
 
 describe("Field", () => {
   it("labels an Input and links its error through aria-describedby", () => {

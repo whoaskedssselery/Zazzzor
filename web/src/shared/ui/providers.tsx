@@ -8,12 +8,10 @@ import { ThemeProvider } from "./theme";
  * app/providers puts them around the app; renderUi (shared/test) around a
  * component under test.
  */
-export function UiProviders({ children }: { children: ReactNode }) {
-  return (
-    <ThemeProvider>
-      <Tooltip.Provider delayDuration={400} skipDelayDuration={200}>
-        <ToastProvider>{children}</ToastProvider>
-      </Tooltip.Provider>
-    </ThemeProvider>
-  );
-}
+export const UiProviders = ({ children }: { children: ReactNode }) => (
+  <ThemeProvider>
+    <Tooltip.Provider delayDuration={400} skipDelayDuration={200}>
+      <ToastProvider>{children}</ToastProvider>
+    </Tooltip.Provider>
+  </ThemeProvider>
+);
