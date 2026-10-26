@@ -1,4 +1,4 @@
-import { CLOSE, decodeFrame, HEARTBEAT_FRAME, OP } from "./protocol";
+import { CLOSE, decodeFrame, HEARTBEAT_FRAME, OP, parseEvent } from "./protocol";
 
 /**
  * Where the gateway is: the page's own host (`x-gateway.path` under
@@ -13,13 +13,22 @@ const BASE_DELAY_MS = 1000;
 const MAX_DELAY_MS = 30_000;
 const JITTER = 0.3;
 
+/** The base is kept here so that ±30 % of it is always within 1–30 s. */
+const MIN_BASE_MS = BASE_DELAY_MS / (1 - JITTER);
+const MAX_BASE_MS = MAX_DELAY_MS / (1 + JITTER);
+
 /**
- * The wait before reconnect attempt `attempt` (0 for the first): 1 s doubling
- * up to 30 s, with ±30 % of jitter from `rand` (0..1), kept within 1–30 s.
+ * The wait before reconnect attempt `attempt` (0 for the first): a base of
+ * 1 s doubling each attempt, clamped to [1 s / 0.7, 30 s / 1.3], then ±30 %
+ * of jitter from `rand` (0..1). So every delay is within 1–30 s and the
+ * jitter is never cut off by those bounds: attempt 0 waits 1–1.86 s, the
+ * cap 16.2–30 s.
  */
 export function nextDelay(attempt: number, rand: () => number): number {
-  const base = Math.min(MAX_DELAY_MS, BASE_DELAY_MS * 2 ** Math.max(0, attempt));
+  const doubled = BASE_DELAY_MS * 2 ** Math.max(0, attempt);
+  const base = Math.min(MAX_BASE_MS, Math.max(MIN_BASE_MS, doubled));
   const jittered = Math.round(base * (1 - JITTER + 2 * JITTER * rand()));
+  // Only guards against float rounding; the range above is already inside.
   return Math.min(MAX_DELAY_MS, Math.max(BASE_DELAY_MS, jittered));
 }
 
@@ -55,10 +64,13 @@ export interface GatewayListener {
   onUnauthorized?: () => void;
 }
 
-/** Our own close code for a connection whose heartbeats went unanswered. */
-const HEARTBEAT_TIMEOUT = 4000;
-/** Heartbeats in a row without an ACK after which the connection counts as dead. */
-const MAX_UNACKED = 2;
+/**
+ * Our own close code for a connection we give up on: no HELLO in time,
+ * heartbeats unanswered, or a READY that does not match the contract.
+ */
+const GIVE_UP = 4000;
+/** A new socket that has not said HELLO within this long is dropped (a hung connect after sleep or a network switch). */
+const HELLO_TIMEOUT_MS = 10_000;
 
 /**
  * The gateway connection (`x-gateway`): connects, heartbeats every
@@ -66,6 +78,15 @@ const MAX_UNACKED = 2;
  * delays of `nextDelay` (the attempt count starts over after a READY), and
  * hands every DISPATCH to its listeners and to the subscribers of its type.
  * A 4004 close ends it without reconnecting; `stop()` ends it too.
+ *
+ * It also gives up on a socket itself (closes it with 4000 and reconnects):
+ * - no HELLO within 10 s of opening it;
+ * - a heartbeat still unacknowledged when the next one is due. That is the
+ *   plan's rule (no ACK for two intervals, counted from HELLO or from the
+ *   last ACK), checked at each tick: a silent link loss shows within about
+ *   one interval of the first unanswered heartbeat;
+ * - a READY whose payload does not match the contract (logged), so no stale
+ *   store is shown as "ready".
  */
 export class GatewayConnection {
   private readonly url: () => string;
@@ -78,8 +99,9 @@ export class GatewayConnection {
   private active = false;
   private socket: GatewaySocket | null = null;
   private heartbeat: ReturnType<typeof setInterval> | null = null;
+  private helloTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnect: ReturnType<typeof setTimeout> | null = null;
-  private unacked = 0;
+  private awaitingAck = false;
   private attempt = 0;
   private everReady = false;
   private current: ConnectionStatus = "connecting";
@@ -142,6 +164,10 @@ export class GatewayConnection {
       return;
     }
     this.socket = socket;
+    this.helloTimer = setTimeout(() => {
+      this.helloTimer = null;
+      this.giveUp();
+    }, HELLO_TIMEOUT_MS);
     socket.onmessage = (ev) => {
       this.receive(ev.data);
     };
@@ -158,7 +184,7 @@ export class GatewayConnection {
         this.startHeartbeat(frame.d.heartbeat_interval_ms);
         return;
       case OP.HEARTBEAT_ACK:
-        this.unacked = 0;
+        this.awaitingAck = false;
         return;
       case OP.DISPATCH:
         this.dispatch(frame.t, frame.d);
@@ -167,7 +193,17 @@ export class GatewayConnection {
   }
 
   private dispatch(t: string, d: unknown): void {
-    for (const l of [...this.listeners]) l.onDispatch?.(t, d);
+    if (t === "READY" && parseEvent("READY", d) === null) {
+      this.giveUp();
+      return;
+    }
+    for (const l of [...this.listeners]) {
+      try {
+        l.onDispatch?.(t, d);
+      } catch (e) {
+        console.error(`gateway: a listener failed on ${t}`, e);
+      }
+    }
     if (t === "READY") {
       this.attempt = 0;
       this.everReady = true;
@@ -183,22 +219,31 @@ export class GatewayConnection {
   }
 
   private startHeartbeat(intervalMs: number): void {
-    this.stopHeartbeat();
-    this.unacked = 0;
+    this.clearTimers();
+    this.awaitingAck = false;
     this.heartbeat = setInterval(() => {
-      if (this.unacked >= MAX_UNACKED) {
-        this.dropSocket(HEARTBEAT_TIMEOUT);
-        this.scheduleReconnect();
+      // The previous heartbeat had a whole interval to be acknowledged.
+      if (this.awaitingAck) {
+        this.giveUp();
         return;
       }
-      this.unacked += 1;
+      this.awaitingAck = true;
       this.socket?.send(HEARTBEAT_FRAME);
     }, intervalMs);
   }
 
-  private stopHeartbeat(): void {
+  /** Stops the heartbeat and the HELLO deadline of the current socket. */
+  private clearTimers(): void {
     if (this.heartbeat !== null) clearInterval(this.heartbeat);
     this.heartbeat = null;
+    if (this.helloTimer !== null) clearTimeout(this.helloTimer);
+    this.helloTimer = null;
+  }
+
+  /** Drops the current socket from our side and reconnects with backoff. */
+  private giveUp(): void {
+    this.dropSocket(GIVE_UP);
+    this.scheduleReconnect();
   }
 
   /** The server (or the network) closed the socket. */
@@ -224,7 +269,7 @@ export class GatewayConnection {
    * (null).
    */
   private dropSocket(code: number | null): void {
-    this.stopHeartbeat();
+    this.clearTimers();
     const socket = this.socket;
     this.socket = null;
     if (!socket) return;

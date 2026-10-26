@@ -98,11 +98,15 @@ describe("gatewayUrl", () => {
   });
 });
 
+/** The first reconnect delay with the jitter of the tests (0.5). */
+const FIRST = nextDelay(0, () => 0.5);
+
 describe("nextDelay", () => {
-  it("starts at 1 s and doubles up to 30 s", () => {
+  it("doubles from about 1 s and levels off below 30 s", () => {
     const mid = () => 0.5;
+    // The base is kept within [1 s / 0.7, 30 s / 1.3], so ±30 % of it stays in 1–30 s.
     expect([0, 1, 2, 3, 4, 5, 6, 20].map((a) => nextDelay(a, mid))).toEqual([
-      1000, 2000, 4000, 8000, 16000, 30000, 30000, 30000,
+      1429, 2000, 4000, 8000, 16000, 23077, 23077, 23077,
     ]);
   });
 
@@ -110,7 +114,17 @@ describe("nextDelay", () => {
     expect(nextDelay(1, () => 0)).toBe(1400);
     expect(nextDelay(1, () => 1)).toBe(2600);
     expect(nextDelay(3, () => 0.25)).toBe(6800);
-    expect(nextDelay(10, () => 0)).toBe(21000);
+    expect(nextDelay(10, () => 0)).toBe(16154);
+  });
+
+  it("spreads the delays over the whole range at both ends instead of piling them on a bound", () => {
+    for (const attempt of [0, 20]) {
+      const draws = [0, 0.25, 0.5, 0.75, 1].map((r) => nextDelay(attempt, () => r));
+      expect(new Set(draws).size).toBe(draws.length);
+      expect([...draws].sort((a, b) => a - b)).toEqual(draws);
+    }
+    expect(nextDelay(0, () => 0)).toBe(1000);
+    expect(nextDelay(20, () => 1)).toBe(30000);
   });
 
   it("stays within 1–30 s for any attempt and any random value", () => {
@@ -148,16 +162,18 @@ describe("GatewayConnection", () => {
     gw.stop();
   });
 
-  it("reconnects when no ACK came for two intervals", () => {
+  it("reconnects when a heartbeat is still unanswered when the next one is due", () => {
     const { gw, sockets, statuses, current } = setup();
     gw.start();
     current().receive(hello(1000));
     current().receive(readyFrame());
     vi.advanceTimersByTime(1000); // heartbeat 1, never acknowledged
-    vi.advanceTimersByTime(1000); // heartbeat 2
     expect(sockets[0]?.closedWith).toBeNull();
-    vi.advanceTimersByTime(1000); // two intervals since heartbeat 1 without an ACK
+    vi.advanceTimersByTime(999);
+    expect(sockets[0]?.closedWith).toBeNull();
+    vi.advanceTimersByTime(1); // heartbeat 2 is due: two intervals since HELLO without an ACK
     expect(sockets[0]?.closedWith).not.toBeNull();
+    expect(sockets[0]?.sent).toHaveLength(1);
     expect(statuses.at(-1)).toBe("reconnecting");
     vi.advanceTimersByTime(nextDelay(0, () => 0.5));
     expect(sockets).toHaveLength(2);
@@ -207,13 +223,13 @@ describe("GatewayConnection", () => {
     const { gw, sockets, current } = setup();
     gw.start();
     current().drop(1006);
-    vi.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(FIRST);
     current().drop(1006);
-    vi.advanceTimersByTime(2000);
+    vi.advanceTimersByTime(nextDelay(1, () => 0.5));
     current().receive(hello(30000));
     current().receive(readyFrame());
     current().drop(1012);
-    vi.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(FIRST);
     expect(sockets).toHaveLength(4);
     gw.stop();
   });
@@ -224,7 +240,7 @@ describe("GatewayConnection", () => {
     gw.start();
     current().drop(4002);
     expect(error).toHaveBeenCalledTimes(1);
-    vi.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(FIRST);
     expect(sockets).toHaveLength(2);
     gw.stop();
     error.mockRestore();
@@ -266,7 +282,7 @@ describe("GatewayConnection", () => {
     current().receive(hello(1000));
     current().receive(readyFrame());
     current().drop(1012);
-    vi.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(FIRST);
     current().receive(hello(1000));
     current().receive(readyFrame());
     expect(statuses).toEqual(["ready", "reconnecting", "ready"]);
@@ -337,7 +353,7 @@ describe("GatewayConnection", () => {
     const { gw, statuses, current } = setup();
     gw.start();
     current().drop(1006);
-    vi.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(FIRST);
     expect(statuses).toEqual([]);
     current().receive(hello(1000));
     current().receive(readyFrame());
@@ -362,9 +378,81 @@ describe("GatewayConnection", () => {
     const { gw, sockets, current } = setup();
     gw.start();
     current().receive(hello(1000));
-    vi.advanceTimersByTime(3000);
+    vi.advanceTimersByTime(2000);
     expect(sockets[0]?.closedWith).toBe(4000);
     gw.stop();
+  });
+
+  it("gives up on a socket that brings no HELLO within 10 s and reconnects", () => {
+    const { gw, sockets } = setup();
+    gw.start();
+    vi.advanceTimersByTime(9999);
+    expect(sockets[0]?.closedWith).toBeNull();
+    vi.advanceTimersByTime(1);
+    expect(sockets[0]?.closedWith).toBe(4000);
+    vi.advanceTimersByTime(FIRST);
+    expect(sockets).toHaveLength(2);
+    // The next socket gets its own 10 s, and a later one waits longer (no READY in between).
+    vi.advanceTimersByTime(10_000);
+    expect(sockets[1]?.closedWith).toBe(4000);
+    vi.advanceTimersByTime(nextDelay(1, () => 0.5));
+    expect(sockets).toHaveLength(3);
+    gw.stop();
+  });
+
+  it("keeps a socket that said HELLO in time", () => {
+    const { gw, sockets, current } = setup();
+    gw.start();
+    vi.advanceTimersByTime(9000);
+    current().receive(hello(30_000));
+    vi.advanceTimersByTime(20_000);
+    expect(sockets[0]?.closedWith).toBeNull();
+    expect(sockets).toHaveLength(1);
+    gw.stop();
+  });
+
+  it("keeps going when a listener of the connection throws", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { gw, statuses, dispatched, current } = setup();
+    const onReady = vi.fn();
+    gw.listen({
+      onDispatch: () => {
+        throw new Error("boom");
+      },
+    });
+    const after = vi.fn();
+    gw.listen({ onDispatch: after });
+    gw.on("READY", onReady);
+    gw.start();
+    current().receive(hello(1000));
+    current().receive(readyFrame());
+    expect(dispatched.map(([t]) => t)).toEqual(["READY"]);
+    expect(after).toHaveBeenCalledTimes(1);
+    expect(statuses).toEqual(["ready"]);
+    expect(onReady).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledTimes(1);
+    gw.stop();
+    error.mockRestore();
+  });
+
+  it("does not take a malformed READY: logs it, drops the socket and reconnects", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { gw, sockets, statuses, dispatched, current } = setup();
+    gw.start();
+    current().receive(hello(1000));
+    current().receive({ op: 0, t: "READY", s: 1, d: { user: { id: "1" }, guilds: "nope", presences: [] } });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(dispatched).toEqual([]);
+    expect(statuses).toEqual([]);
+    expect(sockets[0]?.closedWith).toBe(4000);
+    vi.advanceTimersByTime(FIRST);
+    expect(sockets).toHaveLength(2);
+    // A good READY on the new socket is taken as usual.
+    current().receive(hello(1000));
+    current().receive(readyFrame());
+    expect(statuses).toEqual(["ready"]);
+    gw.stop();
+    warn.mockRestore();
   });
 
   it("logs and drops a binary frame", () => {

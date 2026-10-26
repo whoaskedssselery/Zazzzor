@@ -3,7 +3,7 @@ import { HttpResponse } from "msw";
 import { renderApp, sessionHandler, testUser } from "@/app/test";
 import { useChannelUi } from "@/entities/channel";
 import { EMPTY_GUILDS, getGuildsState } from "@/entities/guild";
-import { apiHandler, gateway, makeGuildState, makeReady, readyGateway, server } from "@/shared/test";
+import { apiHandler, dispatchFrame, gateway, makeGuildState, makeReady, readyGateway, server } from "@/shared/test";
 
 /** The connection banner: the only live region on these screens (no toast is shown). */
 const banner = () => screen.getByRole("status");
@@ -70,6 +70,17 @@ describe("gateway", () => {
     await waitFor(() => {
       expect(banner().textContent).toBe("");
     });
+  });
+
+  it("shows a USER_UPDATE of the signed-in user wherever the session user is read", async () => {
+    server.use(
+      sessionHandler(testUser),
+      readyGateway(makeReady(testUser, [makeGuildState("10", testUser)]), (client) => {
+        client.send(dispatchFrame("USER_UPDATE", 2, { ...testUser, display_name: "Василий" }));
+      }),
+    );
+    renderApp("/channels/@me");
+    expect(await screen.findByText(/Вы вошли как Василий/)).toBeTruthy();
   });
 
   it("goes to sign-in when the server closes with 4004", async () => {
