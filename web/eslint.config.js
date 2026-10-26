@@ -135,8 +135,10 @@ const biomeOwns = [
 // shared. A layer imports only from the layers below it, never from another
 // slice of its own layer, and only through a slice's public API (index.ts).
 // Relative imports stay inside a slice (or a shared segment); everything
-// else goes through the `@/` alias. Tests may also drive the whole app
-// through `@/app/test`; nothing else imports app/ or the test helpers.
+// else goes through the `@/` alias. app/ is split by segment too (providers,
+// router, styles; main.tsx is its own entry), so its segments meet through
+// their index.ts as well. The test helpers (shared/test) are for tests only,
+// and the whole-app harness (app/test) only for the app's own tests.
 const sliced = ["pages", "widgets", "features", "entities"];
 const below = {
   app: ["pages", "widgets", "features", "entities", "shared"],
@@ -148,22 +150,32 @@ const below = {
 };
 const publicApi = "index.{ts,tsx}";
 const viaAlias = { source: "@/**" };
+const testHelpers = { type: "shared", captured: { slice: "test" }, fileInternalPath: publicApi };
 
 const fsdElements = [
+  // Before "app", so the harness is not an ordinary app segment.
+  { type: "app-test", pattern: "src/app/test" },
+  { type: "app", pattern: "src/app/*", capture: ["slice"] },
+  // What is left directly in src/app: main.tsx.
   { type: "app", pattern: "src/app" },
   ...sliced.map((layer) => ({ type: layer, pattern: `src/${layer}/*`, capture: ["slice"] })),
   { type: "shared", pattern: "src/shared/*", capture: ["slice"] },
 ];
 
 const fsdPolicies = [
-  // Anything inside its own slice (app/ is one slice).
-  ...["app", ...sliced, "shared"].map((layer) => ({
+  // Anything inside its own slice or segment.
+  ...["app", "app-test", ...sliced, "shared"].map((layer) => ({
     from: { element: { type: layer } },
     allow: { to: { element: { type: layer, captured: { slice: "{{ from.element.captured.slice }}" } } } },
   })),
+  // Other app segments, through their index (styles/index.css included).
+  {
+    from: { element: { types: { anyOf: ["app", "app-test"] } } },
+    allow: { to: { element: { type: "app", fileInternalPath: "index.{ts,tsx,css}" } } },
+  },
   // Lower layers (and other shared segments), through their public API and the alias.
   ...Object.entries(below).map(([layer, targets]) => ({
-    from: { element: { type: layer } },
+    from: { element: { types: { anyOf: layer === "app" ? ["app", "app-test"] : [layer] } } },
     allow: {
       to: {
         element: {
@@ -175,26 +187,19 @@ const fsdPolicies = [
       dependency: viaAlias,
     },
   })),
-  // Only tests use the test helpers (shared/test), and they may drive the
-  // whole app through its harness (app/test).
+  // Tests (and the app harness) use the test helpers.
   {
     from: { file: { categories: "test" } },
-    allow: {
-      to: { element: { type: "shared", captured: { slice: "test" }, fileInternalPath: publicApi } },
-      dependency: viaAlias,
-    },
+    allow: { to: { element: testHelpers }, dependency: viaAlias },
   },
   {
-    from: { file: { categories: "test" } },
-    allow: { to: { element: { type: "app", fileInternalPath: "test/index.ts" } }, dependency: viaAlias },
+    from: { element: { type: "app-test" } },
+    allow: { to: { element: testHelpers }, dependency: viaAlias },
   },
-  // The app harness itself is a test helper.
+  // Only the app's own tests drive the whole app through its harness.
   {
-    from: { element: { type: "app", fileInternalPath: "test/**" } },
-    allow: {
-      to: { element: { type: "shared", captured: { slice: "test" }, fileInternalPath: publicApi } },
-      dependency: viaAlias,
-    },
+    from: { element: { type: "app" }, file: { categories: "test" } },
+    allow: { to: { element: { type: "app-test", fileInternalPath: publicApi } }, dependency: viaAlias },
   },
 ];
 

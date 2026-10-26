@@ -193,8 +193,7 @@ const Showcase = () => (
         <Spinner label="Загрузка" />
         <Spinner label="Загрузка" size={24} />
       </Row>
-      {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: dev-only showcase, kept as designed; the real message list (Task 6) gets a proper role. */}
-      <div className="flex flex-col gap-5" aria-busy="true" aria-label="Сообщения загружаются">
+      <div role="status" className="flex flex-col gap-5" aria-busy="true" aria-label="Сообщения загружаются">
         {[0.62, 0.41, 0.8].map((w) => (
           <div key={w} className="flex gap-4">
             <Skeleton className="size-10 shrink-0 rounded-full" />

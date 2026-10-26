@@ -74,32 +74,21 @@
             "noAdjacentSpacesInRegex": "error",
             "noExtraBooleanCast": "error",
             "noUselessCatch": "error",
-            "noUselessEscapeInRegex": "error",
-            "noUselessThisAlias": "off"
+            "noUselessEscapeInRegex": "error"
           },
           "correctness": {
             "noUnusedLabels": "error",
             "noUnusedPrivateClassMembers": "error",
             "noUnusedVariables": "error",
             "noUnusedImports": "error",
-            "noUnusedFunctionParameters": "error",
-            "useHookAtTopLevel": "off",
-            "useExhaustiveDependencies": "off"
-          },
-          "security": {
-            "noDangerouslySetInnerHtml": "off",
-            "noDangerouslySetInnerHtmlWithChildren": "off",
-            "noScriptUrl": "off",
-            "noGlobalEval": "off",
-            "noBlankTarget": "off"
+            "noUnusedFunctionParameters": "error"
           },
           "suspicious": {
             "noCatchAssign": "error",
             "noConstantBinaryExpressions": "error",
             "noIrregularWhitespace": "error",
             "noPrototypeBuiltins": "error",
-            "noUselessRegexBackrefs": "error",
-            "noTsIgnore": "off"
+            "noUselessRegexBackrefs": "error"
           }
         }
       }
@@ -114,7 +103,8 @@
             "noStaticOnlyClass": "error",
             "noUselessConstructor": "error",
             "noUselessTypeConstraint": "error",
-            "useArrowFunction": "error"
+            "useArrowFunction": "error",
+            "noUselessThisAlias": "off"
           },
           "style": {
             "noCommonJs": "error",
@@ -134,7 +124,19 @@
             "noExplicitAny": "error",
             "noExtraNonNullAssertion": "error",
             "noVar": "error",
-            "useAwait": "error"
+            "useAwait": "error",
+            "noTsIgnore": "off"
+          },
+          "correctness": {
+            "useHookAtTopLevel": "off",
+            "useExhaustiveDependencies": "off"
+          },
+          "security": {
+            "noDangerouslySetInnerHtml": "off",
+            "noDangerouslySetInnerHtmlWithChildren": "off",
+            "noScriptUrl": "off",
+            "noGlobalEval": "off",
+            "noBlankTarget": "off"
           }
         }
       }
