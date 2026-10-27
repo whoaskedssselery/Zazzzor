@@ -462,6 +462,51 @@ func (q *Queries) GuildsOfUser(ctx context.Context, db DBTX, userID snowflake.ID
 	return items, nil
 }
 
+const iconReferenced = `-- name: IconReferenced :one
+SELECT EXISTS (SELECT 1 FROM guilds WHERE id = $1 AND icon_hash = $2::text)
+`
+
+type IconReferencedParams struct {
+	ID   snowflake.ID
+	Hash string
+}
+
+func (q *Queries) IconReferenced(ctx context.Context, db DBTX, arg IconReferencedParams) (bool, error) {
+	row := db.QueryRow(ctx, iconReferenced, arg.ID, arg.Hash)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const iconReferences = `-- name: IconReferences :many
+SELECT id, COALESCE(icon_hash, '')::text AS hash FROM guilds WHERE icon_hash IS NOT NULL
+`
+
+type IconReferencesRow struct {
+	ID   snowflake.ID
+	Hash string
+}
+
+func (q *Queries) IconReferences(ctx context.Context, db DBTX) ([]IconReferencesRow, error) {
+	rows, err := db.Query(ctx, iconReferences)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []IconReferencesRow
+	for rows.Next() {
+		var i IconReferencesRow
+		if err := rows.Scan(&i.ID, &i.Hash); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const isBanned = `-- name: IsBanned :one
 SELECT EXISTS (SELECT 1 FROM guild_bans WHERE guild_id = $1 AND user_id = $2)
 `

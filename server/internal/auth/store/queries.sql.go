@@ -13,6 +13,51 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
 
+const avatarReferenced = `-- name: AvatarReferenced :one
+SELECT EXISTS (SELECT 1 FROM users WHERE id = $1 AND avatar_hash = $2::text)
+`
+
+type AvatarReferencedParams struct {
+	ID   snowflake.ID
+	Hash string
+}
+
+func (q *Queries) AvatarReferenced(ctx context.Context, db DBTX, arg AvatarReferencedParams) (bool, error) {
+	row := db.QueryRow(ctx, avatarReferenced, arg.ID, arg.Hash)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const avatarReferences = `-- name: AvatarReferences :many
+SELECT id, COALESCE(avatar_hash, '')::text AS hash FROM users WHERE avatar_hash IS NOT NULL
+`
+
+type AvatarReferencesRow struct {
+	ID   snowflake.ID
+	Hash string
+}
+
+func (q *Queries) AvatarReferences(ctx context.Context, db DBTX) ([]AvatarReferencesRow, error) {
+	rows, err := db.Query(ctx, avatarReferences)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AvatarReferencesRow
+	for rows.Next() {
+		var i AvatarReferencesRow
+		if err := rows.Scan(&i.ID, &i.Hash); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createSession = `-- name: CreateSession :exec
 INSERT INTO sessions (id, user_id, token_hash, created_at, last_used_at, expires_at, user_agent, ip)
 VALUES ($1, $2, $3, $4, $4, $5, $6, $7)

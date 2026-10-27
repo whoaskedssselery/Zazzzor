@@ -75,3 +75,9 @@ UPDATE users SET avatar_hash = @avatar_hash
 FROM (SELECT users.avatar_hash FROM users WHERE users.id = @id FOR UPDATE) AS prev
 WHERE users.id = @id
 RETURNING sqlc.embed(users), prev.avatar_hash AS previous_hash;
+
+-- name: AvatarReferences :many
+SELECT id, COALESCE(avatar_hash, '')::text AS hash FROM users WHERE avatar_hash IS NOT NULL;
+
+-- name: AvatarReferenced :one
+SELECT EXISTS (SELECT 1 FROM users WHERE id = @id AND avatar_hash = @hash::text);
