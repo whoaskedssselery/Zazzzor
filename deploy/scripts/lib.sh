@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
 # Общие функции скриптов deploy/scripts. Не запускается сам: его подключают
-# через source (сейчас stack.sh).
+# через source stack.sh, backup.sh и backup-job.sh (последний — внутри образа
+# Postgres на Alpine, где тоже есть bash).
 #
 # Использование:
 #   source "$script_dir/lib.sh"
 #   die "сообщение"                  напечатать ошибку и выйти с кодом 2
 #   load_env                         прочитать $env_file (переменная задаётся заранее)
+#   require_backup_dir <каталог>     проверить каталог копий на хосте
+
+# Задание backup работает под тем же UID, что и API (nonroot в distroless).
+backup_uid=65532
 
 die() {
   echo "Ошибка: $*" >&2
@@ -38,4 +43,21 @@ load_env() {
     [[ -n "${!key+set}" ]] && continue
     export "$key=$value"
   done < "$env_file"
+}
+
+# Каталог копий на хосте должен существовать и принадлежать UID задания.
+# Недостающий каталог Docker создал бы от root, и копии молча перестали бы
+# сниматься, поэтому его готовит владелец сервера, а здесь проверка
+# называет нужную команду.
+require_backup_dir() {
+  local dir="$1" owner mode
+  [[ "$dir" == /* ]] || die "ZAZZZOR_BACKUP_DIR должен быть абсолютным путём, сейчас: $dir"
+  if [[ ! -d "$dir" ]]; then
+    die "нет каталога копий $dir. Создайте его: sudo install -d -o $backup_uid -g $backup_uid -m 0700 '$dir'"
+  fi
+  owner="$(stat -c %u "$dir")"
+  mode="$(stat -c %a "$dir")"
+  if [[ "$owner" != "$backup_uid" ]]; then
+    die "каталог копий $dir принадлежит UID $owner (права $mode), а задание backup работает под UID $backup_uid. Исправьте: sudo chown $backup_uid:$backup_uid '$dir' && sudo chmod 0700 '$dir'"
+  fi
 }
