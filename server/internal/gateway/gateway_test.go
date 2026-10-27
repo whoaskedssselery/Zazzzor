@@ -145,6 +145,29 @@ func TestHeartbeatAck(t *testing.T) {
 	}
 }
 
+func TestThrottledHeartbeatsStayConnected(t *testing.T) {
+	const scale = 100
+	timeout := gateway.DefaultHeartbeatTimeout / scale
+	const throttledInterval = 60 * time.Second / scale
+	e := newEnv(t, gateway.Options{HeartbeatTimeout: timeout})
+	alice, _ := e.user("alice")
+	cl, _ := connect(t, alice)
+	start := time.Now()
+	for range 4 {
+		time.Sleep(throttledInterval)
+		cl.send(gateway.OpHeartbeat)
+		if f := cl.next(); f.Op != gateway.OpHeartbeatAck {
+			t.Fatalf("frame = %+v, want HEARTBEAT_ACK", f)
+		}
+	}
+	if time.Since(start) <= 150*time.Second/scale {
+		t.Fatal("connection was not exercised past the scaled 150s timeout")
+	}
+	if n := e.metric("zazzzor_gateway_closes_total", "4009"); n != 0 {
+		t.Fatalf("timeout closes = %v, want 0", n)
+	}
+}
+
 func TestHeartbeatTimeoutCloses(t *testing.T) {
 	const timeout = time.Second
 	e := newEnv(t, gateway.Options{HeartbeatTimeout: timeout})

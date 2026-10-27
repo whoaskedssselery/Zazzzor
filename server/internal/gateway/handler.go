@@ -52,7 +52,7 @@ type Options struct {
 	// Registerer exports the gateway metrics; nil keeps them unexported.
 	Registerer prometheus.Registerer
 
-	// HeartbeatTimeout closes a silent connection (4009); default 45 s.
+	// HeartbeatTimeout closes a silent connection (4009); default 150 s.
 	HeartbeatTimeout time.Duration
 	// PresenceGrace delays offline after the last connection; default 5 s.
 	PresenceGrace time.Duration
