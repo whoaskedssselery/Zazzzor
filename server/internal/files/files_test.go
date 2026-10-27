@@ -35,7 +35,7 @@ var hashRE = regexp.MustCompile(`^[0-9a-f]{16}$`)
 func newDisk(t *testing.T) (*files.Disk, string) {
 	t.Helper()
 	dir := t.TempDir()
-	d, err := files.NewDisk(dir)
+	d, err := files.NewDisk(dir, files.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}

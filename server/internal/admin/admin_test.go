@@ -72,7 +72,7 @@ func newEnv(t *testing.T, opts ...func(*admin.Options)) *env {
 		RegistrationOpen: settings.RegistrationOpen,
 		RegisterLimiter:  ratelimit.New(rate.Inf, 1, time.Minute),
 	})
-	disk, err := files.NewDisk(t.TempDir())
+	disk, err := files.NewDisk(t.TempDir(), files.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -73,7 +73,7 @@ func newEnv(t *testing.T, opts ...func(*users.Options)) *env {
 		RegisterLimiter: ratelimit.New(rate.Inf, 1, time.Minute),
 	})
 	var err error
-	if e.disk, err = files.NewDisk(e.dir); err != nil {
+	if e.disk, err = files.NewDisk(e.dir, files.Options{}); err != nil {
 		t.Fatal(err)
 	}
 	o := users.Options{Accounts: e.auth, Files: e.disk, Publisher: e.pub,

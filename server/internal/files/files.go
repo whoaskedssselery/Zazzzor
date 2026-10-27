@@ -85,22 +85,26 @@ var _ Store = (*Disk)(nil)
 // decodeWait is how long SaveImage waits for decode memory before ErrBusy.
 const decodeWait = 10 * time.Second
 
-// NewDisk returns a Disk storing under root, creating root if needed. At
-// most runtime.GOMAXPROCS(0) images are decoded at once.
-func NewDisk(root string) (*Disk, error) {
-	return newDisk(root, runtime.GOMAXPROCS(0))
+// Options configures a Disk. Zero fields take the defaults.
+type Options struct {
+	// MaxDecodes caps concurrent image decodes; zero means
+	// runtime.GOMAXPROCS(0).
+	MaxDecodes int
 }
 
-func newDisk(root string, maxDecodes int) (*Disk, error) {
+// NewDisk returns a Disk storing under root, creating root if needed.
+func NewDisk(root string, o Options) (*Disk, error) {
+	if o.MaxDecodes <= 0 {
+		o.MaxDecodes = max(runtime.GOMAXPROCS(0), 1)
+	}
 	if err := os.MkdirAll(root, dirPerm); err != nil {
 		return nil, fmt.Errorf("files: create %s: %w", root, err)
 	}
-	maxDecodes = max(maxDecodes, 1)
 	return &Disk{
 		root:       root,
 		mem:        semaphore.NewWeighted(decodeBudget),
-		slots:      semaphore.NewWeighted(int64(maxDecodes)),
-		maxDecodes: maxDecodes,
+		slots:      semaphore.NewWeighted(int64(o.MaxDecodes)),
+		maxDecodes: o.MaxDecodes,
 		wait:       decodeWait,
 	}, nil
 }
