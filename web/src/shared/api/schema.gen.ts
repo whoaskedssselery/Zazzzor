@@ -1353,7 +1353,7 @@ export interface components {
             d: unknown;
         };
         GatewayHello: {
-            /** @description Send HEARTBEAT this often (30000); 45 s without one closes the connection with 4009. */
+            /** @description Send HEARTBEAT this often (30000); 150 s without one closes the connection with 4009, allowing for throttled timers in hidden browser tabs. */
             heartbeat_interval_ms: number;
         };
         GatewayReady: {
