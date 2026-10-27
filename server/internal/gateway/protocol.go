@@ -59,8 +59,9 @@ const (
 	// HeartbeatInterval is announced in HELLO.
 	HeartbeatInterval = 30 * time.Second
 	// DefaultHeartbeatTimeout closes a connection that sent no heartbeat
-	// for this long (4009).
-	DefaultHeartbeatTimeout = 45 * time.Second
+	// for this long (4009). Hidden browser tabs may run timers only once
+	// a minute; allow delayed heartbeats without reconnecting.
+	DefaultHeartbeatTimeout = 150 * time.Second
 	// DefaultPresenceGrace is how long a user stays online after their
 	// last connection closed.
 	DefaultPresenceGrace = 5 * time.Second

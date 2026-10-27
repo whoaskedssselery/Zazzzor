@@ -2908,7 +2908,7 @@ components:
         heartbeat_interval_ms:
           type: integer
           minimum: 1
-          description: Send HEARTBEAT this often (30000); 45 s without one closes the connection with 4009.
+          description: Send HEARTBEAT this often (30000); 150 s without one closes the connection with 4009, allowing for throttled timers in hidden browser tabs.
     GatewayReady:
       type: object
       additionalProperties: false
@@ -3076,6 +3076,12 @@ x-gateway:
     `d` is ignored). A binary frame, invalid JSON, any other op or a frame
     over 4096 bytes closes the connection with 4002.
 
+    Heartbeats are requested every 30 seconds. The server tolerates up to
+    150 seconds without one so throttled timers in hidden browser tabs do
+    not force reconnects. A silently lost connection may therefore remain
+    online until this timeout closes it, plus the 5-second presence grace.
+    A clean close is detected immediately and keeps the same presence grace.
+
     Events are filtered by permission when they are sent: a channel event
     reaches only members with VIEW_CHANNEL in it at that moment, a server
     event only its current members. GUILD_CREATE (to a member who joined)
@@ -3123,7 +3129,7 @@ x-gateway:
     "4002": "decode_error: binary, invalid, unknown or oversized frame"
     "4004": "authentication_failed: the session was revoked (logout, password change, account disabled)"
     "4008": "overloaded: the server lost events or could not deliver an event of a server the client holds (reconnect to resync), or the connection fell more than 256 frames behind (a client that stopped reading may see only an abnormal closure)"
-    "4009": "session_timeout: no heartbeat for 45 seconds"
+    "4009": "session_timeout: no heartbeat for 150 seconds"
     "1011": "internal_error: READY could not be built"
     "1012": "service_restart: the server is stopping; reconnect"
   events:
