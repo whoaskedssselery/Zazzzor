@@ -75,6 +75,34 @@ jobs:
             exit 1
           fi
 
+  restore:
+    name: Backups and restore (deploy/scripts)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # In the Postgres image the backup service runs (busybox), as its UID:
+      # as root every directory is writable and the permission checks pass.
+      - name: Backup job (schedule, lock, health, retention, verify, restore)
+        run: |
+          image="postgres:$(grep -E '^POSTGRES_VERSION=' deploy/.env.ci | cut -d= -f2)"
+          docker run --rm --user 65532:65532 -v "$PWD:/repo:ro" -w /repo "$image" \
+            bash deploy/scripts/backup-job-test.sh
+      # Also as 65532, the owner of the backup folder (require_backup_dir),
+      # whose folder the test makes unreadable: the host side must never
+      # look inside it, as on the server where it is 0700.
+      - name: Restore orchestration with a fake docker
+        run: |
+          image="postgres:$(grep -E '^POSTGRES_VERSION=' deploy/.env.ci | cut -d= -f2)"
+          docker run --rm --user 65532:65532 -v "$PWD:/repo:ro" -w /repo "$image" \
+            bash deploy/scripts/backup-host-test.sh
+      # Seeds data through the API, backs up, restores over a newer schema
+      # and onto fresh volumes, and checks login, message and image bytes.
+      - name: Restore end to end
+        run: bash deploy/scripts/restore-test.sh
+
   web:
     name: Web packages (test, build)
     runs-on: ubuntu-latest
