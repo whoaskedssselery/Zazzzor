@@ -1,6 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { useNavigateToFallback } from "@/entities/channel";
-import { waitForGuild } from "@/entities/guild";
+import { useOpenGuild } from "@/entities/channel";
 import { ApiError, api, type components, errorText, unwrap } from "@/shared/api";
 
 export type Invite = components["schemas"]["Invite"];
@@ -46,22 +45,29 @@ export async function previewInvite(code: string): Promise<Invite> {
   return unwrap(await api.GET("/invites/{code}", { params: { path: { code } } }));
 }
 
+/** Shown when the joined server has not arrived over the gateway in time. */
+export const JOINED_LATE =
+  "Вы вступили на сервер, но связь прервалась. Он откроется сам, когда подключение восстановится.";
+
 /**
  * Joins through an invite and opens its channel: POST /invites/{code}, then
- * the server's GUILD_CREATE is awaited (the store must hold the server
- * before it can be opened), then the channel of the invite, or the nearest
- * visible one, opens. A member already in the server just goes there.
+ * the server opens on the invite's channel (or the nearest visible one) once
+ * its GUILD_CREATE is in the store (see useOpenGuild). `late` says the server
+ * is overdue; `onOpen` runs right before it opens (a dialog closes itself).
  */
-export function useJoinInvite() {
-  const open = useNavigateToFallback();
-  return useMutation({
-    mutationFn: async ({ code, channelId }: { code: string; channelId: string }) => {
-      const guild = unwrap(await api.POST("/invites/{code}", { params: { path: { code } } }));
-      await waitForGuild(guild.id);
-      return { guildId: guild.id, channelId };
-    },
-    onSuccess: ({ guildId, channelId }) => {
-      open(guildId, { prefer: channelId });
+export function useJoinInvite(onOpen?: () => void) {
+  const arrival = useOpenGuild(onOpen);
+  const join = useMutation({
+    mutationFn: async ({ code }: { code: string; channelId: string }) =>
+      unwrap(await api.POST("/invites/{code}", { params: { path: { code } } })),
+    onSuccess: (guild, { channelId }) => {
+      arrival.open(guild.id, channelId);
     },
   });
+  return {
+    join: join.mutate,
+    pending: join.isPending || (arrival.waiting && !arrival.late),
+    error: join.error,
+    late: arrival.late,
+  };
 }

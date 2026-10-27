@@ -1,4 +1,5 @@
 import type { components } from "@/shared/api";
+import { makeEveryone } from "@/shared/test";
 import {
   ALL,
   canActOn,
@@ -477,6 +478,10 @@ describe("permission bits (TestPermissionBits)", () => {
 
   it("ALL is the union of the bits", () => {
     expect(ALL).toBe(Object.values(bits).reduce((a, b) => a | b, 0n));
+  });
+
+  it("the @everyone test fixture has the mask of a new server", () => {
+    expect(makeEveryone("10").permissions).toBe(formatMask(DEFAULT_EVERYONE));
   });
 
   it("DEFAULT_EVERYONE is the mask of a new server", () => {

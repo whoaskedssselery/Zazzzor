@@ -3,12 +3,10 @@ import { useState } from "react";
 import { CreateGuildDialog } from "@/features/create-guild";
 import { JoinGuildDialog } from "@/features/join-guild";
 import { Button } from "@/shared/ui";
-import { AppShell, NavButton, ShellHeader } from "@/widgets/app-shell";
-import { GuildRail } from "@/widgets/guild-rail";
-import { UserPanel } from "@/widgets/user-panel";
+import { NavButton, ShellHeader } from "@/widgets/app-shell";
 
-/** Home's column beside the rail. Direct messages come in stage 2; until then it says so quietly. */
-const HomeSidebar = () => (
+/** Home's column in the shell. Direct messages come in stage 2; until then it says so quietly. */
+export const HomeSidebar = () => (
   <>
     <div className="flex h-(--header-height) shrink-0 items-center px-4 text-base font-semibold shadow-[0_1px_0_var(--border)]">
       Главная
@@ -18,8 +16,9 @@ const HomeSidebar = () => (
 );
 
 /**
- * /channels/@me (HomeView): no server is open. An empty screen points to
- * the rail and offers to create a server or to join one.
+ * The main area of /channels/@me (HomeView): no server is open. An empty
+ * screen points to the rail and offers to create a server or to join one.
+ * The header only holds the menu button on a phone; the sidebar names the place.
  */
 export const ChannelsHomePage = () => {
   const [dialog, setDialog] = useState<"create" | "join" | null>(null);
@@ -27,13 +26,12 @@ export const ChannelsHomePage = () => {
     if (!open) setDialog(null);
   };
   return (
-    <AppShell rail={<GuildRail activeGuildId={null} />} sidebar={<HomeSidebar />} userPanel={<UserPanel />}>
-      <ShellHeader>
+    <>
+      <ShellHeader className="md:hidden">
         <NavButton />
-        <h1 className="text-base font-semibold">Главная</h1>
       </ShellHeader>
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-6 py-10 text-center">
-        <h2 className="max-w-md text-xl font-semibold text-balance">Выберите сервер слева или создайте свой</h2>
+        <h1 className="max-w-md text-xl font-semibold text-balance">Выберите сервер слева или создайте свой</h1>
         <p className="mt-2 max-w-md text-base text-fg-muted">
           Сервер — это место для вас и друзей: текстовые каналы, роли, а скоро и голос.
         </p>
@@ -61,6 +59,6 @@ export const ChannelsHomePage = () => {
       </div>
       <CreateGuildDialog open={dialog === "create"} onOpenChange={close} />
       <JoinGuildDialog open={dialog === "join"} onOpenChange={close} />
-    </AppShell>
+    </>
   );
 };

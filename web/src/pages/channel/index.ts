@@ -1,1 +1,1 @@
-export { ChannelPage } from "./ui/ChannelPage";
+export { ChannelPage, ServerMembers, ServerSidebar } from "./ui/ChannelPage";

@@ -1,6 +1,7 @@
 import { screen, within } from "@testing-library/react";
+import { resetChannelUi, useChannelUi } from "@/entities/channel";
 import { applyGatewayDispatch, resetGuilds } from "@/entities/guild";
-import { makeGuild, makeGuildState, makeReady, makeUser, renderRouted } from "@/shared/test";
+import { makeChannel, makeGuild, makeGuildState, makeReady, makeUser, renderRouted } from "@/shared/test";
 import { GuildRail } from "./GuildRail";
 
 const me = makeUser("100");
@@ -19,18 +20,38 @@ beforeEach(() => {
 
 afterEach(() => {
   resetGuilds();
+  resetChannelUi();
 });
 
 const servers = () => within(screen.getByRole("navigation", { name: "Серверы" }));
 
 describe("GuildRail", () => {
-  it("lists the servers in the order of READY, each linking to the server", async () => {
+  it("lists the servers in the order of READY, each linking straight to the channel it opens on", async () => {
     await renderRouted(<GuildRail activeGuildId={null} />);
     const links = servers()
       .getAllByRole("link")
       .filter((a) => a.getAttribute("href")?.startsWith("/channels/") && a.getAttribute("href") !== "/channels/@me");
     expect(links.map((a) => a.getAttribute("aria-label"))).toEqual(["Вечерний сеанс", "Книжный клуб", "Дача"]);
-    expect(links.map((a) => a.getAttribute("href"))).toEqual(["/channels/30", "/channels/20", "/channels/10"]);
+    expect(links.map((a) => a.getAttribute("href"))).toEqual([
+      "/channels/30/301",
+      "/channels/20/201",
+      "/channels/10/101",
+    ]);
+  });
+
+  it("links to the channel last opened in a server, and to the server itself when it has no text channel", async () => {
+    useChannelUi.getState().setLastChannel("30", "302");
+    applyGatewayDispatch("GUILD_SYNC", {
+      ...makeGuildState("30", me, { guild: makeGuild("30", me.id, { name: "Вечерний сеанс" }) }),
+      channels: [makeChannel("301", "30"), makeChannel("302", "30", { position: 1 })],
+    });
+    applyGatewayDispatch("GUILD_SYNC", {
+      ...makeGuildState("10", me, { guild: makeGuild("10", "1", { name: "Дача" }) }),
+      channels: [makeChannel("103", "10", { type: 2 })],
+    });
+    await renderRouted(<GuildRail activeGuildId={null} />);
+    expect(servers().getByRole("link", { name: "Вечерний сеанс" }).getAttribute("href")).toBe("/channels/30/302");
+    expect(servers().getByRole("link", { name: "Дача" }).getAttribute("href")).toBe("/channels/10");
   });
 
   it("shows the server icon, or the initials of its name", async () => {

@@ -3,6 +3,7 @@ export {
   INVALID_INVITE,
   type Invite,
   inviteErrorText,
+  JOINED_LATE,
   parseInviteCode,
   previewInvite,
   useJoinInvite,

@@ -87,7 +87,7 @@ describe("ChannelSidebar", () => {
     const { user, router } = await renderRouted(<ChannelSidebar guildId={G} channelId="101" />, {
       path: `/channels/${G}/101`,
     });
-    await user.click(list().getByRole("button", { name: "Кинозал" }));
+    await user.click(list().getByRole("button", { name: "Голосовой канал Кинозал" }));
     expect(await screen.findByText("Голосовые каналы появятся в следующем обновлении")).toBeTruthy();
     expect(router.state.location.pathname).toBe(`/channels/${G}/101`);
   });
@@ -140,6 +140,7 @@ describe("ChannelSidebar", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/channels/@me");
     });
+    expect(await screen.findByText("Вы покинули сервер «Вечерний сеанс»")).toBeTruthy();
   });
 
   it("does not offer leaving to the owner", async () => {

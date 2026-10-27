@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { Compass, House, type LucideIcon, Plus } from "lucide-react";
 import { type ReactNode, useState } from "react";
+import { useChannelToOpen } from "@/entities/channel";
 import { useGuilds } from "@/entities/guild";
 import { CreateGuildDialog } from "@/features/create-guild";
 import { JoinGuildDialog } from "@/features/join-guild";
@@ -40,18 +41,22 @@ const RailButton = ({ label, icon: Icon, onClick }: { label: string; icon: Lucid
   </RailItem>
 );
 
+/**
+ * A server of the rail. It links straight to the channel the server opens on
+ * (the last one opened there, else the first visible one), so a click is one
+ * navigation; a server with no text channel to open links to its own view.
+ */
 const GuildItem = ({ guildId, active }: { guildId: string; active: boolean }) => {
   const guild = useGuilds((s) => s.guilds[guildId]?.guild);
+  const channelId = useChannelToOpen(guildId);
   if (!guild) return null;
+  const target =
+    channelId === null
+      ? ({ to: "/channels/$guildId", params: { guildId } } as const)
+      : ({ to: "/channels/$guildId/$channelId", params: { guildId, channelId } } as const);
   return (
     <RailItem label={guild.name} active={active}>
-      <Link
-        to="/channels/$guildId"
-        params={{ guildId }}
-        aria-label={guild.name}
-        aria-current={active ? "page" : undefined}
-        className="group rounded-xl"
-      >
+      <Link {...target} aria-label={guild.name} aria-current={active ? "page" : undefined} className="group rounded-xl">
         <GuildIcon name={guild.name} src={guild.icon_url} active={active} />
       </Link>
     </RailItem>

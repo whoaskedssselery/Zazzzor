@@ -30,7 +30,7 @@ export const UserPanel = () => {
             {user.display_name}
           </span>
           <span data-user-status className="block truncate text-xs text-fg-faint">
-            {online ? "в сети" : "не в сети"}
+            {online ? "В сети" : "Не в сети"}
           </span>
         </span>
       </div>

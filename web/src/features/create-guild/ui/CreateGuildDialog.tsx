@@ -1,12 +1,14 @@
 import { useMutation } from "@tanstack/react-query";
 import { type SubmitEvent, useState } from "react";
-import { useNavigateToFallback } from "@/entities/channel";
-import { waitForGuild } from "@/entities/guild";
+import { useOpenGuild } from "@/entities/channel";
 import { ApiError, api, errorText, unwrap } from "@/shared/api";
 import { runeLength, trimContent } from "@/shared/lib";
 import { Button, Dialog, DialogClose, DialogContent, Field, FormAlert, Input } from "@/shared/ui";
 
 const NAME_RULE = "Название: от 2 до 100 символов.";
+
+const createdLate = (name: string): string =>
+  `Сервер «${name}» создан, но связь прервалась. Он откроется сам, когда подключение восстановится.`;
 
 interface CreateGuildDialogProps {
   open: boolean;
@@ -32,19 +34,13 @@ const CreateForm = ({ onDone }: { onDone: () => void }) => {
   const [name, setName] = useState("");
   const [fieldError, setFieldError] = useState<string | undefined>(undefined);
   const [alert, setAlert] = useState<string | null>(null);
-  const openGuild = useNavigateToFallback();
-
   // The server is announced over the gateway (GUILD_CREATE) a moment after
-  // the answer; it opens once the store holds it.
+  // the answer; it opens once the store holds it, closing the dialog.
+  const arrival = useOpenGuild(onDone);
   const create = useMutation({
-    mutationFn: async (value: string) => {
-      const guild = unwrap(await api.POST("/guilds", { body: { name: value } }));
-      await waitForGuild(guild.id);
-      return guild.id;
-    },
-    onSuccess: (guildId) => {
-      onDone();
-      openGuild(guildId);
+    mutationFn: async (value: string) => unwrap(await api.POST("/guilds", { body: { name: value } })),
+    onSuccess: (guild) => {
+      arrival.open(guild.id);
     },
     onError: (e) => {
       if (e instanceof ApiError && "name" in e.fields) setFieldError(NAME_RULE);
@@ -52,9 +48,15 @@ const CreateForm = ({ onDone }: { onDone: () => void }) => {
     },
   });
 
+  const created = create.data;
+  const busy = create.isPending || (arrival.waiting && !arrival.late);
+  // Created, but its GUILD_CREATE is overdue: say so, and offer no second creation.
+  const overdue = created !== undefined && arrival.late;
+  const message = overdue ? createdLate(created.name) : alert;
+
   const submit = (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (create.isPending) return;
+    if (busy || created) return;
     setAlert(null);
     const value = trimContent(name);
     const length = runeLength(value);
@@ -74,15 +76,17 @@ const CreateForm = ({ onDone }: { onDone: () => void }) => {
       footer={
         <>
           <DialogClose asChild>
-            <Button variant="ghost">Отмена</Button>
+            <Button variant="ghost">{overdue ? "Закрыть" : "Отмена"}</Button>
           </DialogClose>
-          <Button type="submit" form={FORM_ID} loading={create.isPending}>
-            Создать
-          </Button>
+          {!overdue && (
+            <Button type="submit" form={FORM_ID} loading={busy}>
+              Создать
+            </Button>
+          )}
         </>
       }
     >
-      {alert && <FormAlert>{alert}</FormAlert>}
+      {message !== null && <FormAlert>{message}</FormAlert>}
       <form id={FORM_ID} noValidate onSubmit={submit}>
         <Field htmlFor="create-guild-name" label="Название сервера" error={fieldError}>
           <Input

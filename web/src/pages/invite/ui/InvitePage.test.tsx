@@ -1,11 +1,10 @@
 import { screen, waitFor } from "@testing-library/react";
 import { HttpResponse } from "msw";
-import { applyGatewayDispatch, DEFAULT_EVERYONE, formatMask, resetGuilds } from "@/entities/guild";
+import { applyGatewayDispatch, resetGuilds } from "@/entities/guild";
 import type { components } from "@/shared/api";
 import {
   apiHandler,
   makeChannel,
-  makeEveryone,
   makeGuild,
   makeGuildState,
   makeReady,
@@ -50,6 +49,34 @@ describe("InvitePage", () => {
     expect(screen.getByText(/приглашает вас/)).toBeTruthy();
   });
 
+  it("tells a member they are already on the server and opens the invite's channel", async () => {
+    applyGatewayDispatch(
+      "READY",
+      makeReady(me, [
+        makeGuildState(guild.id, me, {
+          guild,
+          channels: [makeChannel("61", guild.id), makeChannel("62", guild.id, { position: 1 })],
+        }),
+      ]),
+    );
+    let joins = 0;
+    server.use(
+      apiHandler("get", "/invites/{code}", () => HttpResponse.json(invite)),
+      apiHandler("post", "/invites/{code}", () => {
+        joins += 1;
+        return HttpResponse.json(guild);
+      }),
+    );
+    const { user, router } = await open();
+    expect(await screen.findByText("Вы уже на этом сервере")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Принять приглашение" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Открыть" }));
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/channels/50/62");
+    });
+    expect(joins).toBe(0);
+  });
+
   it("joins and opens the channel of the invite", async () => {
     server.use(
       apiHandler("get", "/invites/{code}", () => HttpResponse.json(invite)),
@@ -59,7 +86,6 @@ describe("InvitePage", () => {
             "GUILD_CREATE",
             makeGuildState(guild.id, me, {
               guild,
-              roles: [makeEveryone(guild.id, formatMask(DEFAULT_EVERYONE))],
               channels: [makeChannel("62", guild.id, { name: "кино" })],
             }),
           );

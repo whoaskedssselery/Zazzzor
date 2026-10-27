@@ -12,6 +12,8 @@ interface Seen {
   key: string;
   guild: boolean;
   channel: boolean;
+  /** The channel-less address has been decided (opened a channel, or kept its empty view). */
+  resolved: boolean;
 }
 
 /**
@@ -28,12 +30,19 @@ interface Seen {
  * quietly for the nearest valid place, but only once the store can tell:
  * before the first READY nothing is decided. Without a channel in the
  * address, the server opens on its last or first text channel; a server
- * with no visible text channel stays on its empty view.
+ * with no visible text channel stays on its empty view. That is decided
+ * once per address: a GUILD_SYNC that later adds a text channel there does
+ * not move the user either.
+ *
+ * A store emptied by the end of the session (sign-out, a 401) is not a loss
+ * of access: the user is leaving for sign-in, so nothing is said or done.
  *
  * Returns whether the channel in the address can be shown.
  */
 export function useChannelAccess(guildId: string, channelId: string | null): boolean {
   const status = useConnectionStatus();
+  // The store has a user from READY until the session ends and empties it.
+  const signedIn = useGuilds((s) => s.me !== null);
   const entry = useGuilds((s) => s.guilds[guildId]);
   const openable = useGuilds((s) => {
     const e = s.guilds[guildId];
@@ -43,12 +52,13 @@ export function useChannelAccess(guildId: string, channelId: string | null): boo
   const goToFallback = useNavigateToFallback();
   const navigate = useNavigate();
   const toast = useToast();
-  const seen = useRef<Seen>({ key: "", guild: false, channel: false });
+  const seen = useRef<Seen>({ key: "", guild: false, channel: false, resolved: false });
 
   useEffect(() => {
     const key = `${guildId}/${channelId ?? ""}`;
-    if (seen.current.key !== key) seen.current = { key, guild: false, channel: false };
+    if (seen.current.key !== key) seen.current = { key, guild: false, channel: false, resolved: false };
     const was = seen.current;
+    if (!signedIn) return;
 
     if (!entry) {
       if (was.guild) {
@@ -63,6 +73,8 @@ export function useChannelAccess(guildId: string, channelId: string | null): boo
     was.guild = true;
 
     if (channelId === null) {
+      if (was.resolved) return;
+      was.resolved = true;
       const last = useChannelUi.getState().lastChannel[guildId];
       const target = fallbackPath(getGuildsState(), guildId, { last });
       if (target.startsWith(`/channels/${guildId}/`)) void navigate({ href: target, replace: true });
@@ -78,7 +90,7 @@ export function useChannelAccess(guildId: string, channelId: string | null): boo
       toast.show({ text: CHANNEL_LOST });
     }
     goToFallback(guildId, { replace: true });
-  }, [guildId, channelId, entry, openable, status, goToFallback, navigate, setLastChannel, toast]);
+  }, [guildId, channelId, signedIn, entry, openable, status, goToFallback, navigate, setLastChannel, toast]);
 
   return openable;
 }

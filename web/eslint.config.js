@@ -197,6 +197,12 @@ const fsdPolicies = [
       dependency: viaAlias,
     },
   },
+  // A test of an entity may seed another entity through its public API
+  // (e.g. the channel tests fill the guild store); app code may not.
+  {
+    from: { element: { type: "entities" }, file: { categories: "test" } },
+    allow: { to: { element: { type: "entities", fileInternalPath: publicApi } }, dependency: viaAlias },
+  },
   // Tests (and the app harness) use the test helpers.
   {
     from: { file: { categories: "test" } },

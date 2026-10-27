@@ -44,6 +44,8 @@ const ChannelRow = ({ channel, selected }: { channel: Channel; selected: boolean
       <li className="px-2">
         <button
           type="button"
+          // The icon is decorative, so the name says what kind of channel this is.
+          aria-label={`Голосовой канал ${channel.name}`}
           className={cn(rowClass, "cursor-pointer text-fg-faint hover:bg-hover hover:text-fg-muted")}
           onClick={() => {
             toast.show({ text: VOICE_LATER });

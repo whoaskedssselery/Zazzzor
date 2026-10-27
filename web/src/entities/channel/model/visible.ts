@@ -58,27 +58,37 @@ export const isOpenableChannel = (entry: GuildEntry, channelId: string, userId: 
 /** The path of a text channel. */
 export const channelPath = (guildId: string, channelId: string): string => `/channels/${guildId}/${channelId}`;
 
+interface Preference {
+  /** A channel to open if the user may view it (an invite's channel). */
+  prefer?: string | undefined;
+  /** The channel last opened in the server. */
+  last?: string | undefined;
+}
+
 /**
- * Where to go in server `guildId`: the channel asked for (`prefer`), else the
- * one last opened there (`last`), else the first text channel of the list,
- * whichever the user may view. Home when the server is not held, the user is
- * unknown, or no text channel is visible.
+ * The text channel to open in a server: the one asked for (`prefer`), else
+ * the one last opened there (`last`), else the first text channel of the
+ * list, whichever the user may view; null when no text channel is visible.
  */
-export const fallbackPath = (
-  state: GuildsState,
-  guildId: string | null,
-  { prefer, last }: { prefer?: string | undefined; last?: string | undefined } = {},
-): string => {
-  const entry = guildId === null ? undefined : state.guilds[guildId];
-  const userId = state.me?.id;
-  if (!entry || !userId) return HOME_PATH;
-  const gid = entry.guild.id;
+export const channelToOpen = (entry: GuildEntry, userId: string, { prefer, last }: Preference = {}): string | null => {
   for (const id of [prefer, last]) {
-    if (id !== undefined && isOpenableChannel(entry, id, userId)) return channelPath(gid, id);
+    if (id !== undefined && isOpenableChannel(entry, id, userId)) return id;
   }
   for (const group of visibleChannelGroups(entry, userId)) {
     const text = group.channels.find((c) => c.type === CHANNEL_TYPE.TEXT);
-    if (text) return channelPath(gid, text.id);
+    if (text) return text.id;
   }
-  return HOME_PATH;
+  return null;
+};
+
+/**
+ * Where to go in server `guildId` (see channelToOpen). Home when the server
+ * is not held, the user is unknown, or no text channel is visible.
+ */
+export const fallbackPath = (state: GuildsState, guildId: string | null, preference: Preference = {}): string => {
+  const entry = guildId === null ? undefined : state.guilds[guildId];
+  const userId = state.me?.id;
+  if (!entry || !userId) return HOME_PATH;
+  const id = channelToOpen(entry, userId, preference);
+  return id === null ? HOME_PATH : channelPath(entry.guild.id, id);
 };

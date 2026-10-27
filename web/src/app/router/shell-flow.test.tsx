@@ -3,7 +3,7 @@ import type { WebSocketHandlerConnection } from "msw";
 import { HttpResponse } from "msw";
 import { currentHref, renderApp, sessionHandler, testUser } from "@/app/test";
 import { resetChannelUi } from "@/entities/channel";
-import { DEFAULT_EVERYONE, formatMask } from "@/entities/guild";
+import { getGuildsState, resetGuilds } from "@/entities/guild";
 import {
   apiHandler,
   dispatchFrame,
@@ -16,6 +16,7 @@ import {
   makeUser,
   readyGateway,
   server,
+  setViewportWidth,
 } from "@/shared/test";
 
 type Client = WebSocketHandlerConnection["client"];
@@ -30,7 +31,7 @@ const guildWith = (channels = [general, memes]) => {
   const me = makeMember(testUser);
   return makeGuildState(G, testUser, {
     guild: makeGuild(G, owner.id, { name: "Вечерний сеанс" }),
-    roles: [makeEveryone(G, formatMask(DEFAULT_EVERYONE))],
+    roles: [makeEveryone(G)],
     channels,
     members: [me, makeMember(owner)],
     my_member: me,
@@ -58,6 +59,7 @@ const channelHeading = (name: string) => screen.findByRole("heading", { level: 1
 
 afterEach(() => {
   resetChannelUi();
+  resetGuilds();
 });
 
 describe("app shell", () => {
@@ -68,6 +70,8 @@ describe("app shell", () => {
     expect(await within(main).findByText("Выберите сервер слева или создайте свой")).toBeTruthy();
     expect(within(main).getByRole("button", { name: "Создать сервер" })).toBeTruthy();
     expect(within(main).getByRole("button", { name: "Присоединиться к серверу" })).toBeTruthy();
+    expect(within(main).getByRole("heading", { level: 1 }).textContent).toBe("Выберите сервер слева или создайте свой");
+    expect(within(main).queryByText("Главная")).toBeNull();
   });
 
   it("opens a server from the rail on its first text channel and shows the channel's header", async () => {
@@ -165,5 +169,133 @@ describe("app shell", () => {
       });
       expect(screen.queryByText("Канал больше недоступен")).toBeNull();
     });
+  });
+});
+
+/** A second server, 20, with its channel «кино». */
+const other = () =>
+  makeGuildState("20", testUser, {
+    guild: makeGuild("20", owner.id, { name: "Книжный клуб" }),
+    channels: [makeChannel("201", "20", { name: "кино" })],
+    members: [makeMember(testUser), makeMember(owner)],
+    my_member: makeMember(testUser),
+  });
+
+/** The toast texts on screen now (the connection banner is the other live region). */
+const toastCount = (text: string) => screen.queryAllByText(text).length;
+
+describe("switching servers", () => {
+  it("keeps the shell mounted and the member list hidden, going straight to the server's channel", async () => {
+    setViewportWidth(1440);
+    signedIn([guildWith(), other()]);
+    const { user, router } = renderApp(`/channels/${G}/101`);
+    expect(await channelHeading("общий")).toBeTruthy();
+    const rail = screen.getByRole("navigation", { name: "Серверы" });
+    await user.click(screen.getByRole("button", { name: "Скрыть участников" }));
+    expect(screen.queryByRole("complementary", { name: "Участники" })).toBeNull();
+
+    const club = within(rail).getByRole("link", { name: "Книжный клуб" });
+    expect(club.getAttribute("href")).toBe("/channels/20/201");
+    const visited: string[] = [];
+    const stop = router.history.subscribe(({ location }) => {
+      visited.push(location.pathname);
+    });
+    await user.click(club);
+
+    expect(await channelHeading("кино")).toBeTruthy();
+    stop();
+    expect(visited).toEqual(["/channels/20/201"]);
+    // The very same rail element: nothing around the channel was mounted again.
+    expect(screen.getByRole("navigation", { name: "Серверы" })).toBe(rail);
+    expect(screen.getByRole("button", { name: "Показать участников" }).getAttribute("aria-pressed")).toBe("false");
+    expect(screen.queryByRole("complementary", { name: "Участники" })).toBeNull();
+  });
+});
+
+describe("loss of access, more cases", () => {
+  it("says it once: exactly one toast when a GUILD_SYNC hides the open channel", async () => {
+    const send = signedIn();
+    const { router } = renderApp(`/channels/${G}/102`);
+    expect(await channelHeading("мемы")).toBeTruthy();
+    send("GUILD_SYNC", guildWith([general]));
+    await waitFor(() => {
+      expect(currentHref(router)).toBe(`/channels/${G}/101`);
+    });
+    await screen.findByText("Канал больше недоступен");
+    await new Promise((r) => setTimeout(r, 50));
+    expect(toastCount("Канал больше недоступен")).toBe(1);
+  });
+
+  it("moves away when a GUILD_SYNC keeps the channel but denies VIEW_CHANNEL on it", async () => {
+    const send = signedIn();
+    const { router } = renderApp(`/channels/${G}/102`);
+    expect(await channelHeading("мемы")).toBeTruthy();
+    const deny = { id: G, type: 0 as const, allow: "0", deny: String(1 << 10) };
+    send("GUILD_SYNC", guildWith([general, { ...memes, permission_overwrites: [deny] }]));
+    await waitFor(() => {
+      expect(currentHref(router)).toBe(`/channels/${G}/101`);
+    });
+    expect(await screen.findByText("Канал больше недоступен")).toBeTruthy();
+  });
+
+  it("goes home with a toast when the server is deleted while its channel-less view is open", async () => {
+    const voiceOnly = makeChannel("103", G, { name: "Кинозал", type: 2 });
+    const send = signedIn([guildWith([voiceOnly])]);
+    const { router } = renderApp(`/channels/${G}`);
+    expect(await screen.findByText("На этом сервере нет текстовых каналов, доступных вам.")).toBeTruthy();
+    send("GUILD_DELETE", { id: G });
+    await waitFor(() => {
+      expect(currentHref(router)).toBe("/channels/@me");
+    });
+    expect(await screen.findByText("Сервер больше недоступен")).toBeTruthy();
+  });
+
+  it("does not move when a GUILD_SYNC gives the channel-less view a text channel", async () => {
+    const voiceOnly = makeChannel("103", G, { name: "Кинозал", type: 2 });
+    const send = signedIn([guildWith([voiceOnly])]);
+    const { router } = renderApp(`/channels/${G}`);
+    expect(await screen.findByText("На этом сервере нет текстовых каналов, доступных вам.")).toBeTruthy();
+    send("GUILD_SYNC", guildWith([voiceOnly, general]));
+    expect(await screen.findByRole("link", { name: "общий" })).toBeTruthy();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(currentHref(router)).toBe(`/channels/${G}`);
+  });
+
+  it("goes home with a toast when a fresh READY after a reconnect no longer has the server", async () => {
+    server.use(
+      sessionHandler(testUser),
+      readyGateway(
+        (n) => makeReady(testUser, n === 1 ? [guildWith()] : [other()]),
+        (client, n) => {
+          if (n === 1) {
+            setTimeout(() => {
+              client.close(1012, "service_restart");
+            }, 50);
+          }
+        },
+      ),
+    );
+    const { router } = renderApp(`/channels/${G}/101`);
+    expect(await channelHeading("общий")).toBeTruthy();
+    await waitFor(
+      () => {
+        expect(currentHref(router)).toBe("/channels/@me");
+      },
+      { timeout: 3000 },
+    );
+    expect(await screen.findByText("Сервер больше недоступен")).toBeTruthy();
+    expect(getGuildsState().order).toEqual(["20"]);
+  });
+
+  it("says nothing about lost access when the user signs out from a channel", async () => {
+    signedIn();
+    server.use(apiHandler("post", "/auth/logout", () => new HttpResponse(null, { status: 204 })));
+    const { user } = renderApp(`/channels/${G}/101`);
+    expect(await channelHeading("общий")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Выйти" }));
+    expect(await screen.findByRole("heading", { name: "С возвращением!" })).toBeTruthy();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByText("Сервер больше недоступен")).toBeNull();
+    expect(screen.queryByText("Канал больше недоступен")).toBeNull();
   });
 });

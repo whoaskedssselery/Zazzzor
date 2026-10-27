@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import { applyGatewayDispatch, DEFAULT_EVERYONE, getGuildsState, resetGuilds } from "@/entities/guild/@x/channel";
+import { applyGatewayDispatch, getGuildsState, resetGuilds } from "@/entities/guild";
 import {
   makeChannel,
   makeEveryone,
@@ -24,7 +24,7 @@ const guildWith = (channels: ReturnType<typeof makeChannel>[], extra: { roles?: 
   const member = makeMember(me, { roles: extra.roles ?? [] });
   return makeGuildState(G, me, {
     guild: makeGuild(G, owner.id),
-    roles: [makeEveryone(G, String(DEFAULT_EVERYONE)), makeRole("50", { position: 1 })],
+    roles: [makeEveryone(G), makeRole("50", { position: 1 })],
     channels,
     members: [member, makeMember(owner)],
     my_member: member,

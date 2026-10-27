@@ -31,5 +31,4 @@ export {
   setConnectionStatus,
   useConnectionStatus,
   useGuilds,
-  waitForGuild,
 } from "./model/store";

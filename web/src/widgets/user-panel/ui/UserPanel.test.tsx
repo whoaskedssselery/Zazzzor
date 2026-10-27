@@ -15,17 +15,18 @@ afterEach(() => {
 });
 
 describe("UserPanel", () => {
-  it("shows the avatar, the name and «в сети» once connected", async () => {
+  it("shows the avatar, the name and «В сети» once connected", async () => {
     setConnectionStatus("ready");
     await show();
     expect(await screen.findByRole("img", { name: "Максим, в сети" })).toBeTruthy();
     expect(screen.getByText("Максим", { selector: "[data-user-name]" })).toBeTruthy();
-    expect(screen.getByText("в сети", { selector: "[data-user-status]" })).toBeTruthy();
+    expect(screen.getByText("В сети", { selector: "[data-user-status]" })).toBeTruthy();
   });
 
-  it("says «не в сети» while the gateway is not connected", async () => {
+  it("says «Не в сети» while the gateway is not connected", async () => {
     await show();
     expect(await screen.findByRole("img", { name: "Максим, не в сети" })).toBeTruthy();
+    expect(screen.getByText("Не в сети", { selector: "[data-user-status]" })).toBeTruthy();
   });
 
   it("opens the user settings", async () => {

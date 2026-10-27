@@ -1,7 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { INVALID_INVITE, type Invite, inviteErrorText, previewInvite, useJoinInvite } from "@/features/join-guild";
+import { useNavigateToFallback } from "@/entities/channel";
+import { useGuilds } from "@/entities/guild";
+import {
+  INVALID_INVITE,
+  type Invite,
+  inviteErrorText,
+  JOINED_LATE,
+  previewInvite,
+  useJoinInvite,
+} from "@/features/join-guild";
 import { ApiError } from "@/shared/api";
 import { Avatar, Button, FormAlert, GuildIcon, Skeleton } from "@/shared/ui";
 
@@ -49,6 +58,10 @@ const Dead = ({ text, title }: { text: string; title: string }) => (
 
 const Preview = ({ invite }: { invite: Invite }) => {
   const join = useJoinInvite();
+  const openGuild = useNavigateToFallback();
+  // A member opening an invite to their own server just goes there (no use is taken).
+  const member = useGuilds((s) => invite.guild.id in s.guilds) && !join.pending;
+  const message = join.error ? inviteErrorText(join.error) : join.late ? JOINED_LATE : null;
   return (
     <Card labelledBy="invite-title">
       <GuildIcon name={invite.guild.name} src={invite.guild.icon_url} size={80} active />
@@ -65,17 +78,32 @@ const Preview = ({ invite }: { invite: Invite }) => {
         <span className="sr-only">Канал </span>
         <span>{`#${invite.channel.name}`}</span>
       </p>
-      {join.isError && <FormAlert className="mt-6 mb-0 w-full text-left">{inviteErrorText(join.error)}</FormAlert>}
-      <Button
-        size="lg"
-        className="mt-8 w-full"
-        loading={join.isPending}
-        onClick={() => {
-          if (!join.isPending) join.mutate({ code: invite.code, channelId: invite.channel.id });
-        }}
-      >
-        Принять приглашение
-      </Button>
+      {message !== null && <FormAlert className="mt-6 mb-0 w-full text-left">{message}</FormAlert>}
+      {member ? (
+        <>
+          <p className="mt-6 text-base font-medium text-fg">Вы уже на этом сервере</p>
+          <Button
+            size="lg"
+            className="mt-4 w-full"
+            onClick={() => {
+              openGuild(invite.guild.id, { prefer: invite.channel.id });
+            }}
+          >
+            Открыть
+          </Button>
+        </>
+      ) : (
+        <Button
+          size="lg"
+          className="mt-8 w-full"
+          loading={join.pending}
+          onClick={() => {
+            if (!join.pending) join.join({ code: invite.code, channelId: invite.channel.id });
+          }}
+        >
+          Принять приглашение
+        </Button>
+      )}
     </Card>
   );
 };

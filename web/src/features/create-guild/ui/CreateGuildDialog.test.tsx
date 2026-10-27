@@ -85,4 +85,40 @@ describe("CreateGuildDialog", () => {
     await user.click(screen.getByRole("button", { name: "Создать" }));
     expect((await screen.findByRole("alert")).textContent).toBe("Достигнут предел числа серверов.");
   });
+
+  it("says so when the server does not arrive in time, keeps the dialog open and opens the server once it does", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    const guild = makeGuild("50", me.id, { name: "Дача" });
+    let answered = false;
+    server.use(
+      apiHandler("post", "/guilds", () => {
+        answered = true;
+        return HttpResponse.json(guild, { status: 201 });
+      }),
+    );
+    const { user, router } = await open();
+    await user.type(await screen.findByLabelText("Название сервера"), "Дача");
+    await user.click(screen.getByRole("button", { name: "Создать" }));
+    await waitFor(() => {
+      expect(answered).toBe(true);
+    });
+
+    vi.advanceTimersByTime(15_000);
+
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Сервер «Дача» создан, но связь прервалась. Он откроется сам, когда подключение восстановится.",
+    );
+    expect(router.state.location.pathname).toBe("/channels/@me");
+    expect(screen.getByRole("dialog", { name: "Создать сервер" })).toBeTruthy();
+    // Created already: no second server from a second click.
+    expect(screen.queryByRole("button", { name: "Создать" })).toBeNull();
+
+    applyGatewayDispatch("GUILD_CREATE", makeGuildState("50", me, { guild }));
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/channels/50/501");
+    });
+  });
 });

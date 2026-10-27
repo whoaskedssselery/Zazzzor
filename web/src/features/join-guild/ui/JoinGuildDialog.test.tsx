@@ -1,11 +1,10 @@
 import { screen, waitFor } from "@testing-library/react";
 import { HttpResponse } from "msw";
-import { applyGatewayDispatch, DEFAULT_EVERYONE, formatMask, resetGuilds } from "@/entities/guild";
+import { applyGatewayDispatch, resetGuilds } from "@/entities/guild";
 import type { components } from "@/shared/api";
 import {
   apiHandler,
   makeChannel,
-  makeEveryone,
   makeGuild,
   makeGuildState,
   makeReady,
@@ -53,7 +52,6 @@ const joinable = (joined: string[]) => {
           "GUILD_CREATE",
           makeGuildState(guild.id, me, {
             guild,
-            roles: [makeEveryone(guild.id, formatMask(DEFAULT_EVERYONE))],
             channels: [makeChannel("61", guild.id, { name: "общий" }), makeChannel("62", guild.id, { name: "огород" })],
           }),
         );
@@ -98,5 +96,42 @@ describe("JoinGuildDialog", () => {
     await user.type(await screen.findByLabelText("Ссылка-приглашение или код"), "AbCd1234");
     await user.click(screen.getByRole("button", { name: "Присоединиться" }));
     expect((await screen.findByRole("alert")).textContent).toBe("Приглашение недействительно");
+  });
+
+  it("says so when the server does not arrive in time and keeps the dialog usable", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    let joins = 0;
+    server.use(
+      apiHandler("get", "/invites/{code}", () => HttpResponse.json(invite)),
+      apiHandler("post", "/invites/{code}", () => {
+        joins += 1;
+        return HttpResponse.json(guild);
+      }),
+    );
+    const { user, router } = await open();
+    await user.type(await screen.findByLabelText("Ссылка-приглашение или код"), "AbCd1234");
+    await user.click(screen.getByRole("button", { name: "Присоединиться" }));
+    await waitFor(() => {
+      expect(joins).toBe(1);
+    });
+
+    vi.advanceTimersByTime(15_000);
+
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Вы вступили на сервер, но связь прервалась. Он откроется сам, когда подключение восстановится.",
+    );
+    expect(router.state.location.pathname).toBe("/channels/@me");
+    expect(screen.getByRole("button", { name: "Присоединиться" }).hasAttribute("disabled")).toBe(false);
+
+    applyGatewayDispatch(
+      "GUILD_CREATE",
+      makeGuildState(guild.id, me, { guild, channels: [makeChannel("62", guild.id)] }),
+    );
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/channels/50/62");
+    });
   });
 });

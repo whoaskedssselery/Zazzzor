@@ -1,11 +1,9 @@
 import { Hash } from "lucide-react";
 import { type Channel, useGuilds } from "@/entities/guild";
 import { Skeleton } from "@/shared/ui";
-import { AppShell, MembersButton, NavButton, ShellHeader } from "@/widgets/app-shell";
+import { MembersButton, NavButton, ShellHeader } from "@/widgets/app-shell";
 import { ChannelSidebar } from "@/widgets/channel-sidebar";
-import { GuildRail } from "@/widgets/guild-rail";
 import { MemberList } from "@/widgets/member-list";
-import { UserPanel } from "@/widgets/user-panel";
 import { useChannelAccess } from "../model/useChannelAccess";
 
 /** The channel list while the server is not known yet (before READY). */
@@ -17,6 +15,18 @@ const SidebarSkeleton = () => (
     ))}
   </div>
 );
+
+/** The shell's channel list for server `guildId`: the real list once the server is known. */
+export const ServerSidebar = ({ guildId, channelId }: { guildId: string; channelId: string | null }) => {
+  const known = useGuilds((s) => guildId in s.guilds);
+  return known ? <ChannelSidebar guildId={guildId} channelId={channelId} /> : <SidebarSkeleton />;
+};
+
+/** The shell's member list for server `guildId`, or nothing while the server is not known. */
+export const ServerMembers = ({ guildId }: { guildId: string }) => {
+  const known = useGuilds((s) => guildId in s.guilds);
+  return known ? <MemberList guildId={guildId} /> : null;
+};
 
 /**
  * The open text channel: its header (name and topic) and, until the chat
@@ -65,29 +75,17 @@ const EmptyView = ({ text }: { text: string | null }) => (
 );
 
 /**
- * /channels/$guildId/$channelId and /channels/$guildId: the server's
- * channels, the open channel and its members. useChannelAccess keeps the
- * address on something the user may open.
+ * The main area of /channels/$guildId/$channelId and /channels/$guildId,
+ * inside the app shell (the app's layout route renders the shell once, with
+ * ServerSidebar and ServerMembers). useChannelAccess keeps the address on
+ * something the user may open.
  */
 export const ChannelPage = ({ guildId, channelId = null }: { guildId: string; channelId?: string | null }) => {
   const openable = useChannelAccess(guildId, channelId);
   const known = useGuilds((s) => guildId in s.guilds);
   const channel = useGuilds((s) => (channelId === null ? undefined : s.guilds[guildId]?.channels[channelId]));
-  const showChannel = openable && channel !== undefined;
+  if (openable && channel !== undefined) return <ChannelView channel={channel} />;
   return (
-    <AppShell
-      rail={<GuildRail activeGuildId={guildId} />}
-      sidebar={known ? <ChannelSidebar guildId={guildId} channelId={channelId} /> : <SidebarSkeleton />}
-      userPanel={<UserPanel />}
-      {...(showChannel ? { members: <MemberList guildId={guildId} /> } : {})}
-    >
-      {showChannel ? (
-        <ChannelView channel={channel} />
-      ) : (
-        <EmptyView
-          text={known && channelId === null ? "На этом сервере нет текстовых каналов, доступных вам." : null}
-        />
-      )}
-    </AppShell>
+    <EmptyView text={known && channelId === null ? "На этом сервере нет текстовых каналов, доступных вам." : null} />
   );
 };

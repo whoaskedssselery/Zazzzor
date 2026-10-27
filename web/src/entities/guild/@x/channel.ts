@@ -1,15 +1,13 @@
-// The cross-import of entities/channel (FSD "@x" notation): what the channel
-// list needs of the servers. Only entities/channel imports this file.
+// The cross-import of entities/channel (FSD "@x" notation): the read-only
+// part of the servers the channel list needs. No store writers here; the
+// channel tests seed the store through @/entities/guild like any test.
 export {
-  applyGatewayDispatch,
   type Channel,
   computeChannel,
-  DEFAULT_EVERYONE,
   type GuildEntry,
   type GuildsState,
   getGuildsState,
   has,
   PERM,
-  resetGuilds,
   useGuilds,
 } from "../index";

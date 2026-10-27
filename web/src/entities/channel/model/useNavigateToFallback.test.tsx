@@ -1,5 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
-import { applyGatewayDispatch, resetGuilds } from "@/entities/guild/@x/channel";
+import { applyGatewayDispatch, resetGuilds } from "@/entities/guild";
 import { makeChannel, makeGuildState, makeReady, makeUser, renderRouted } from "@/shared/test";
 import { resetChannelUi, useChannelUi } from "./ui";
 import { useNavigateToFallback } from "./useNavigateToFallback";

@@ -1,6 +1,6 @@
 import { type SubmitEvent, useState } from "react";
 import { Button, Dialog, DialogClose, DialogContent, Field, FormAlert, Input } from "@/shared/ui";
-import { inviteErrorText, parseInviteCode, previewInvite, useJoinInvite } from "../model/invite";
+import { inviteErrorText, JOINED_LATE, parseInviteCode, previewInvite, useJoinInvite } from "../model/invite";
 
 const NOT_AN_INVITE = "Вставьте ссылку вида https://сайт/invite/AbCd1234 или код из 8 букв и цифр.";
 
@@ -29,8 +29,10 @@ const JoinForm = ({ onDone }: { onDone: () => void }) => {
   const [fieldError, setFieldError] = useState<string | undefined>(undefined);
   const [alert, setAlert] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
-  const join = useJoinInvite();
-  const busy = previewing || join.isPending;
+  const join = useJoinInvite(onDone);
+  const busy = previewing || join.pending;
+  // A failed step says why; a server that is late says it will open by itself.
+  const message = alert ?? (join.error ? inviteErrorText(join.error) : join.late ? JOINED_LATE : null);
 
   const submit = async (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -45,8 +47,7 @@ const JoinForm = ({ onDone }: { onDone: () => void }) => {
     setPreviewing(true);
     try {
       const invite = await previewInvite(code);
-      await join.mutateAsync({ code, channelId: invite.channel.id });
-      onDone();
+      join.join({ code, channelId: invite.channel.id });
     } catch (err) {
       setAlert(inviteErrorText(err));
     } finally {
@@ -70,7 +71,7 @@ const JoinForm = ({ onDone }: { onDone: () => void }) => {
         </>
       }
     >
-      {alert && <FormAlert>{alert}</FormAlert>}
+      {message !== null && <FormAlert>{message}</FormAlert>}
       <form id={FORM_ID} noValidate onSubmit={(e) => void submit(e)}>
         <Field
           htmlFor="join-guild-invite"

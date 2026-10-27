@@ -4,3 +4,4 @@ export * from "./fixtures";
 export * from "./gateway";
 export * from "./msw";
 export * from "./render";
+export * from "./viewport";

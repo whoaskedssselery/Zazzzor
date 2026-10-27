@@ -1,1 +1,1 @@
-export { ChannelsHomePage } from "./ui/ChannelsHomePage";
+export { ChannelsHomePage, HomeSidebar } from "./ui/ChannelsHomePage";

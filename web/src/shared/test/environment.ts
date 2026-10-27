@@ -30,14 +30,24 @@ Object.assign(Element.prototype, {
   releasePointerCapture: () => {},
 });
 
-// useTheme follows the OS preference for "system"; jsdom has no matchMedia.
-// Tests that need a given preference replace it with their own stub.
+// jsdom has no matchMedia. Width queries ("(min-width: 1100px)",
+// "(max-width: …)") are answered from window.innerWidth, jsdom's 1024 unless a
+// test sets another before rendering; everything else (the OS colour scheme
+// useTheme follows) does not match. Tests that need a given preference
+// replace it with their own stub.
+const matchesWidth = (query: string): boolean => {
+  const width = window.innerWidth;
+  const min = /\(min-width:\s*(\d+)px\)/.exec(query);
+  const max = /\(max-width:\s*(\d+)px\)/.exec(query);
+  if (!min && !max) return false;
+  return (!min || width >= Number(min[1])) && (!max || width <= Number(max[1]));
+};
 Object.defineProperty(window, "matchMedia", {
   configurable: true,
   writable: true,
   value: (query: string): MediaQueryList => {
     const list = new EventTarget() as MediaQueryList;
-    return Object.assign(list, { matches: false, media: query, onchange: null });
+    return Object.assign(list, { matches: matchesWidth(query), media: query, onchange: null });
   },
 });
 

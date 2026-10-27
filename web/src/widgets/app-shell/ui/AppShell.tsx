@@ -37,11 +37,14 @@ interface AppShellProps {
   children: ReactNode;
 }
 
-const navColumns = (rail: ReactNode, sidebar: ReactNode, userPanel: ReactNode, className?: string) => (
+/** The open server (or home) in the rail: where focus starts in the slid-in navigation. */
+const openPlace = (panel: HTMLElement): HTMLElement | null => panel.querySelector<HTMLElement>('[aria-current="page"]');
+
+const navColumns = (rail: ReactNode, sidebar: ReactNode, userPanel: ReactNode) => (
   <>
-    <div className={cn("flex w-(--rail-width) shrink-0 flex-col bg-rail", className)}>{rail}</div>
+    <div className="flex w-(--rail-width) shrink-0 flex-col bg-rail">{rail}</div>
     <div
-      className={cn("flex w-(--sidebar-width) min-w-0 shrink-0 flex-col bg-sidebar", className)}
+      className="flex w-(--sidebar-width) min-w-0 shrink-0 flex-col bg-sidebar"
       style={{ "--avatar-cutout": "var(--bg-sidebar)" } as CSSProperties}
     >
       <div className="flex min-h-0 flex-1 flex-col">{sidebar}</div>
@@ -57,6 +60,12 @@ const navColumns = (rail: ReactNode, sidebar: ReactNode, userPanel: ReactNode, c
  * taking a column; narrower than 768px (a phone) the rail and the channel
  * list slide in from the left, opened from the main area's header. The
  * pages put NavButton and MembersButton into their header.
+ *
+ * Each part is mounted once: the nav columns only when there is room for
+ * them (else inside the open sheet), the member column only on a wide window
+ * (else inside the open sheet). The app renders the shell in a layout route,
+ * so it stays mounted, toggles and scroll positions included, while the
+ * server and channel change under it.
  */
 export const AppShell = ({ rail, sidebar, userPanel, members, children }: AppShellProps) => {
   const wide = useMediaQuery(WIDE);
@@ -86,16 +95,16 @@ export const AppShell = ({ rail, sidebar, userPanel, members, children }: AppShe
   return (
     <ShellContext value={controls}>
       <div className="flex h-full min-h-0 overflow-hidden">
-        {navColumns(rail, sidebar, userPanel, "max-md:hidden")}
+        {roomy && navColumns(rail, sidebar, userPanel)}
         <main
           className="flex min-h-0 min-w-0 flex-1 flex-col bg-chat"
           style={{ "--avatar-cutout": "var(--bg-chat)" } as CSSProperties}
         >
           {children}
         </main>
-        {hasMembers && membersBeside && (
+        {hasMembers && wide && membersBeside && (
           <div
-            className="flex w-(--members-width) shrink-0 flex-col bg-sidebar max-[1099px]:hidden"
+            className="flex w-(--members-width) shrink-0 flex-col bg-sidebar"
             style={{ "--avatar-cutout": "var(--bg-sidebar)" } as CSSProperties}
           >
             {members}
@@ -109,7 +118,7 @@ export const AppShell = ({ rail, sidebar, userPanel, members, children }: AppShe
             setNavOpenAt(open ? pathname : null);
           }}
         >
-          <SheetContent side="left" title="Серверы и каналы">
+          <SheetContent side="left" title="Серверы и каналы" initialFocus={openPlace}>
             {navColumns(rail, sidebar, userPanel)}
           </SheetContent>
         </Sheet>
