@@ -53,7 +53,7 @@ type Modules struct {
 // NewModules wires the domain modules to the configuration and to each
 // other. Images live under cfg.DataDir, which is created if missing.
 func NewModules(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator, pub events.Publisher) (*Modules, error) {
-	disk, err := files.NewDisk(cfg.DataDir, files.Options{})
+	disk, err := files.NewDisk(cfg.DataDir, files.Options{Retention: cfg.FileRetention})
 	if err != nil {
 		return nil, err
 	}

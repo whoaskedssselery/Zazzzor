@@ -150,6 +150,11 @@ func serve(ctx context.Context, logger *slog.Logger, cfg config.Config, pool *pg
 		deps.Modules = m
 		deps.Gateway = m.NewGateway(bus, cfg, logger, reg, gateway.Options{})
 	}
+	// Trash is purged while the API serves; shutdown waits for the job.
+	if deps.Modules != nil {
+		stopPurge := startFilePurge(ctx, deps.Modules.Files, logger)
+		defer stopPurge()
+	}
 	api := newServer(newRouter(deps), logger)
 
 	metricsMux := http.NewServeMux()
