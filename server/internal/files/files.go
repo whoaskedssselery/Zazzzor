@@ -81,7 +81,7 @@ type Disk struct {
 	retention time.Duration
 	// mu serializes the changes this process makes to the tree (writes,
 	// moves to and from trash, purges), so an image is never moved while
-	// it is being replaced. Other processes are not covered.
+	// it is being replaced. Other processes are not covered: see Reconcile.
 	mu sync.Mutex
 	// mem reserves the estimated decode memory of each image (budget
 	// decodeBudget), so concurrent uploads cannot exhaust it together.
