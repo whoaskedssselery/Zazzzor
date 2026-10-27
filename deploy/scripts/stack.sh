@@ -24,34 +24,8 @@ env_file="${ENV_FILE:-$deploy_dir/.env}"
 stack="${STACK_NAME:-zazzzor}"
 stack_file="$deploy_dir/docker-stack.yml"
 
-die() { echo "Ошибка: $*" >&2; exit 2; }
-
-# Читает deploy/.env так же, как docker compose, но не исполняет его:
-# KEY=VALUE, необязательный "export ", пробелы вокруг ключа и значения,
-# кавычки, комментарий " #..." после значения без кавычек. Переменные, уже
-# заданные в окружении, как и в compose, важнее файла.
-load_env() {
-  [[ -f "$env_file" ]] || die "не найден файл настроек $env_file (cp deploy/.env.example deploy/.env)"
-  local line key value n=0
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    n=$((n + 1))
-    line="${line%$'\r'}"
-    [[ "$line" =~ ^[[:space:]]*(#|$) ]] && continue
-    if [[ ! "$line" =~ ^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
-      die "$env_file, строка $n: ожидается ИМЯ=значение"
-    fi
-    key="${BASH_REMATCH[2]}"
-    value="${BASH_REMATCH[3]}"
-    if [[ "$value" =~ ^\"(.*)\"[[:space:]]*(#.*)?$ || "$value" =~ ^\'(.*)\'[[:space:]]*(#.*)?$ ]]; then
-      value="${BASH_REMATCH[1]}"
-    else
-      value="${value%%[[:space:]]#*}"
-      value="${value%"${value##*[![:space:]]}"}"
-    fi
-    [[ -n "${!key+set}" ]] && continue
-    export "$key=$value"
-  done < "$env_file"
-}
+# shellcheck source=deploy/scripts/lib.sh
+source "$script_dir/lib.sh"
 
 # Версия для `zazzzor --version`. Тег образа от неё не зависит, поэтому
 # ошибка git (например, запуск через sudo: «dubious ownership») не мешает
