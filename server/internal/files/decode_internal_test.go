@@ -93,7 +93,7 @@ func withExif(jpg []byte, orientation uint16, bigEndian bool) []byte {
 
 func newTestDisk(t *testing.T) *Disk {
 	t.Helper()
-	d, err := NewDisk(t.TempDir())
+	d, err := NewDisk(t.TempDir(), Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -469,7 +469,7 @@ func TestDecodeSlotsCapConcurrency(t *testing.T) {
 	if d := newTestDisk(t); d.maxDecodes != runtime.GOMAXPROCS(0) {
 		t.Fatalf("maxDecodes = %d, want GOMAXPROCS %d", d.maxDecodes, runtime.GOMAXPROCS(0))
 	}
-	d, err := newDisk(t.TempDir(), 1)
+	d, err := NewDisk(t.TempDir(), Options{MaxDecodes: 1})
 	if err != nil {
 		t.Fatal(err)
 	}

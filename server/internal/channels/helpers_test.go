@@ -76,7 +76,7 @@ func newEnv(t *testing.T) *env {
 	ids := snowflake.NewGenerator(0, time.Now)
 	e.auth = auth.NewService(auth.Options{Pool: pool, IDs: ids, CookieSecure: true,
 		RegisterLimiter: unlimited(), LoginLimiter: unlimited()})
-	disk, err := files.NewDisk(t.TempDir())
+	disk, err := files.NewDisk(t.TempDir(), files.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}

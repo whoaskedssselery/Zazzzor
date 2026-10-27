@@ -7,11 +7,16 @@
 #   bash deploy/scripts/stack.sh config        итоговая конфигурация (в ней секреты, не публикуйте)
 #   bash deploy/scripts/stack.sh ps            задачи стека и их состояние
 #   bash deploy/scripts/stack.sh logs <сервис> [флаги docker service logs, например --follow]
-#                                              сервисы: caddy, livekit, duckdns, postgres, api
+#                                              сервисы: caddy, livekit, duckdns, postgres, api, backup
 #   bash deploy/scripts/stack.sh rm            остановить стек (данные в томах остаются)
+#   bash deploy/scripts/stack.sh backup        снять резервную копию сейчас
+#   bash deploy/scripts/stack.sh restore <копия> --yes   заменить все данные копией
+#   bash deploy/scripts/stack.sh reconcile     сверить изображения с базой
 #
 # Настройки: deploy/.env (другой файл: ENV_FILE=...). Имя стека: zazzzor
 # (другое: STACK_NAME=... — но тогда и тома другие, то есть база пустая).
+# Каталог копий ZAZZZOR_BACKUP_DIR должен существовать и принадлежать UID
+# 65532; deploy это проверяет и печатает команду, которая это исправит.
 # Тег образа — хеш его содержимого (слои и конфигурация), поэтому deploy
 # обновляет сервис, только если образ действительно изменился. Уже собранные
 # образы можно развернуть без сборки: ZAZZZOR_API_TAG=... ZAZZZOR_CADDY_TAG=...
@@ -24,34 +29,8 @@ env_file="${ENV_FILE:-$deploy_dir/.env}"
 stack="${STACK_NAME:-zazzzor}"
 stack_file="$deploy_dir/docker-stack.yml"
 
-die() { echo "Ошибка: $*" >&2; exit 2; }
-
-# Читает deploy/.env так же, как docker compose, но не исполняет его:
-# KEY=VALUE, необязательный "export ", пробелы вокруг ключа и значения,
-# кавычки, комментарий " #..." после значения без кавычек. Переменные, уже
-# заданные в окружении, как и в compose, важнее файла.
-load_env() {
-  [[ -f "$env_file" ]] || die "не найден файл настроек $env_file (cp deploy/.env.example deploy/.env)"
-  local line key value n=0
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    n=$((n + 1))
-    line="${line%$'\r'}"
-    [[ "$line" =~ ^[[:space:]]*(#|$) ]] && continue
-    if [[ ! "$line" =~ ^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
-      die "$env_file, строка $n: ожидается ИМЯ=значение"
-    fi
-    key="${BASH_REMATCH[2]}"
-    value="${BASH_REMATCH[3]}"
-    if [[ "$value" =~ ^\"(.*)\"[[:space:]]*(#.*)?$ || "$value" =~ ^\'(.*)\'[[:space:]]*(#.*)?$ ]]; then
-      value="${BASH_REMATCH[1]}"
-    else
-      value="${value%%[[:space:]]#*}"
-      value="${value%"${value##*[![:space:]]}"}"
-    fi
-    [[ -n "${!key+set}" ]] && continue
-    export "$key=$value"
-  done < "$env_file"
-}
+# shellcheck source=deploy/scripts/lib.sh
+source "$script_dir/lib.sh"
 
 # Версия для `zazzzor --version`. Тег образа от неё не зависит, поэтому
 # ошибка git (например, запуск через sudo: «dubious ownership») не мешает
@@ -122,6 +101,9 @@ prepare() {
   # docker stack has no nested defaults or ${VAR:+...}; compute them here.
   [[ -n "${ZAZZZOR_HTTPS_PORT:-}" ]] || die "заполните ZAZZZOR_HTTPS_PORT в $env_file (обычно 443)"
   export ZAZZZOR_PUBLIC_PORT="${ZAZZZOR_PUBLIC_PORT:-$ZAZZZOR_HTTPS_PORT}"
+  [[ -n "${ZAZZZOR_BACKUP_DIR:-}" ]] || die "заполните ZAZZZOR_BACKUP_DIR в $env_file (каталог копий на хосте, см. deploy/README.md)"
+  # The backup service mounts the job scripts from this checkout.
+  export ZAZZZOR_DEPLOY_DIR="$deploy_dir"
   if [[ -n "${LIVEKIT_NODE_IP:-}" ]]; then
     export LIVEKIT_USE_EXTERNAL_IP=false
   else
@@ -135,6 +117,7 @@ case "$cmd" in
     require_swarm
     prepare
     images
+    require_backup_dir "$ZAZZZOR_BACKUP_DIR"
     echo "Развёртывание стека $stack…"
     # Образы локальные: реестр не спрашиваем. --detach=false ждёт, пока
     # задачи запустятся (и пройдут healthcheck), и показывает прогресс.
@@ -142,6 +125,15 @@ case "$cmd" in
       -c "$stack_file" "$stack"
     docker stack ps "$stack" --filter desired-state=running \
       --format 'table {{.Name}}\t{{.CurrentState}}\t{{.Error}}'
+    ;;
+  backup)
+    exec bash "$script_dir/backup.sh" swarm backup
+    ;;
+  restore)
+    exec bash "$script_dir/backup.sh" swarm restore "${@:2}"
+    ;;
+  reconcile)
+    exec bash "$script_dir/backup.sh" swarm reconcile
     ;;
   build)
     prepare
@@ -159,7 +151,7 @@ case "$cmd" in
     docker stack ps "$stack" --format 'table {{.Name}}\t{{.DesiredState}}\t{{.CurrentState}}\t{{.Error}}'
     ;;
   logs)
-    [[ -n "${2:-}" ]] || die "укажите сервис: caddy, livekit, duckdns, postgres или api"
+    [[ -n "${2:-}" ]] || die "укажите сервис: caddy, livekit, duckdns, postgres, api или backup"
     docker service logs --raw --tail "${TAIL:-200}" "${@:3}" "${stack}_$2"
     ;;
   rm)
@@ -178,7 +170,7 @@ case "$cmd" in
     die "стек $stack не остановился за 60 секунд: docker ps --filter label=com.docker.stack.namespace=$stack"
     ;;
   *)
-    sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 2
     ;;
 esac

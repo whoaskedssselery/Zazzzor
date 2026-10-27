@@ -179,3 +179,9 @@ SELECT DISTINCT mine.user_id, other.user_id AS peer_id FROM members AS mine
 JOIN members AS other ON other.guild_id = mine.guild_id
 WHERE mine.user_id = ANY(@user_ids::bigint[]) AND other.user_id = ANY(@peer_ids::bigint[])
 ORDER BY mine.user_id, peer_id;
+
+-- name: IconReferences :many
+SELECT id, COALESCE(icon_hash, '')::text AS hash FROM guilds WHERE icon_hash IS NOT NULL;
+
+-- name: IconReferenced :one
+SELECT EXISTS (SELECT 1 FROM guilds WHERE id = @id AND icon_hash = @hash::text);

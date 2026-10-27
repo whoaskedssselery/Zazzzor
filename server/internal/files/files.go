@@ -6,6 +6,12 @@
 // Layout: <root>/<kind>/<owner_id>/<hash>.png, where hash is the first 16
 // hex digits of the SHA-256 of the stored PNG. Paths are only ever built
 // from a Kind constant, a snowflake ID and a validated hash.
+//
+// Delete does not remove an image: it moves it to
+// <root>/trash/<kind>/<owner_id>/<hash>/<unix_nano>.png, named after the
+// time of deletion, so a database restored from a backup taken before the
+// delete still finds its images (see retention.go). Serving never reads
+// trash.
 package files
 
 import (
@@ -17,6 +23,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sync"
 	"time"
 
 	"golang.org/x/sync/semaphore"
@@ -52,7 +59,8 @@ type Store interface {
 	// it and stores it for ownerID, returning its hash (16 lower-case hex
 	// digits). The same image always gives the same hash.
 	SaveImage(ctx context.Context, kind Kind, ownerID snowflake.ID, r io.Reader) (hash string, err error)
-	// Delete removes an image; a missing one is not an error.
+	// Delete moves an image to trash, where it stays for the retention; a
+	// missing one is not an error.
 	Delete(kind Kind, ownerID snowflake.ID, hash string) error
 }
 
@@ -68,7 +76,13 @@ const (
 
 // Disk is a Store on the local file system.
 type Disk struct {
-	root string
+	root      string
+	now       func() time.Time
+	retention time.Duration
+	// mu serializes the changes this process makes to the tree (writes,
+	// moves to and from trash, purges), so an image is never moved while
+	// it is being replaced. Other processes are not covered: see Reconcile.
+	mu sync.Mutex
 	// mem reserves the estimated decode memory of each image (budget
 	// decodeBudget), so concurrent uploads cannot exhaust it together.
 	mem *semaphore.Weighted
@@ -85,22 +99,40 @@ var _ Store = (*Disk)(nil)
 // decodeWait is how long SaveImage waits for decode memory before ErrBusy.
 const decodeWait = 10 * time.Second
 
-// NewDisk returns a Disk storing under root, creating root if needed. At
-// most runtime.GOMAXPROCS(0) images are decoded at once.
-func NewDisk(root string) (*Disk, error) {
-	return newDisk(root, runtime.GOMAXPROCS(0))
+// Options configures a Disk. Zero fields take the defaults.
+type Options struct {
+	// Retention is how long a deleted image stays in trash before Purge
+	// removes it for good; zero keeps trash forever.
+	Retention time.Duration
+	// Now is the clock; nil means time.Now.
+	Now func() time.Time
+	// MaxDecodes caps concurrent image decodes; zero means
+	// runtime.GOMAXPROCS(0).
+	MaxDecodes int
 }
 
-func newDisk(root string, maxDecodes int) (*Disk, error) {
-	if err := os.MkdirAll(root, dirPerm); err != nil {
-		return nil, fmt.Errorf("files: create %s: %w", root, err)
+// NewDisk returns a Disk storing under root, creating root and its image
+// and trash directories if needed.
+func NewDisk(root string, o Options) (*Disk, error) {
+	if o.Now == nil {
+		o.Now = time.Now
 	}
-	maxDecodes = max(maxDecodes, 1)
+	if o.MaxDecodes <= 0 {
+		o.MaxDecodes = max(runtime.GOMAXPROCS(0), 1)
+	}
+	for _, dir := range []string{root, filepath.Join(root, string(KindAvatar)),
+		filepath.Join(root, string(KindIcon)), filepath.Join(root, trashDir)} {
+		if err := os.MkdirAll(dir, dirPerm); err != nil {
+			return nil, fmt.Errorf("files: create %s: %w", dir, err)
+		}
+	}
 	return &Disk{
 		root:       root,
+		now:        o.Now,
+		retention:  o.Retention,
 		mem:        semaphore.NewWeighted(decodeBudget),
-		slots:      semaphore.NewWeighted(int64(maxDecodes)),
-		maxDecodes: maxDecodes,
+		slots:      semaphore.NewWeighted(int64(o.MaxDecodes)),
+		maxDecodes: o.MaxDecodes,
 		wait:       decodeWait,
 	}, nil
 }
@@ -156,6 +188,8 @@ func (d *Disk) SaveImage(ctx context.Context, kind Kind, ownerID snowflake.ID, r
 }
 
 func (d *Disk) write(kind Kind, ownerID snowflake.ID, hash string, data []byte) (err error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	dir := d.dir(kind, ownerID)
 	if err = os.MkdirAll(dir, dirPerm); err != nil {
 		return fmt.Errorf("files: create directory: %w", err)
@@ -205,11 +239,9 @@ func (d *Disk) Delete(kind Kind, ownerID snowflake.ID, hash string) error {
 	if !kind.valid() || ownerID <= 0 || !ValidHash(hash) {
 		return fmt.Errorf("files: invalid image %q/%d/%q", kind, ownerID, hash)
 	}
-	err := os.Remove(d.path(kind, ownerID, hash))
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("files: delete: %w", err)
-	}
-	return nil
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.trash(Reference{Kind: kind, OwnerID: ownerID, Hash: hash})
 }
 
 // open returns the stored image, or an error wrapping os.ErrNotExist.

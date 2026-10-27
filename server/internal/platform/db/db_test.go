@@ -295,3 +295,26 @@ func TestAcquireIsBounded(t *testing.T) {
 		t.Fatalf("Exec after release: %v", err)
 	}
 }
+
+func TestLatestMigrationIsWhereMigrateStops(t *testing.T) {
+	ctx := t.Context()
+	pool, err := db.Open(ctx, testkit.EmptyPostgresURL(t))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer pool.Close()
+	if err = db.Migrate(ctx, pool); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	want, err := db.Version(ctx, pool)
+	if err != nil {
+		t.Fatalf("Version: %v", err)
+	}
+	got, err := db.LatestMigration()
+	if err != nil {
+		t.Fatalf("LatestMigration: %v", err)
+	}
+	if got != want {
+		t.Errorf("LatestMigration = %d, want %d (the version after Migrate)", got, want)
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/config"
 )
@@ -41,6 +42,9 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.DataDir != "/data" {
 		t.Errorf("DataDir = %q, want /data", cfg.DataDir)
+	}
+	if cfg.FileRetention != config.DefaultFileRetention {
+		t.Errorf("FileRetention = %v, want DefaultFileRetention %v", cfg.FileRetention, config.DefaultFileRetention)
 	}
 	if !cfg.CookieSecure {
 		t.Error("CookieSecure = false, want true")
@@ -97,5 +101,45 @@ func TestLoadReportsAllInvalidValues(t *testing.T) {
 		if !strings.Contains(err.Error(), name) {
 			t.Errorf("error %q does not mention %s", err, name)
 		}
+	}
+}
+
+func TestLoadParsesFileRetention(t *testing.T) {
+	cfg, err := config.Load(envFrom(map[string]string{
+		"ZAZZZOR_DATABASE_URL":    "postgres://db",
+		"ZAZZZOR_ALLOWED_ORIGINS": "https://a.example",
+		"ZAZZZOR_FILE_RETENTION":  "240h",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.FileRetention != 240*time.Hour {
+		t.Errorf("FileRetention = %v, want 240h", cfg.FileRetention)
+	}
+}
+
+// A retention of one backup interval or less could purge a deleted image
+// before any backup has archived it.
+func TestLoadRejectsFileRetentionUpToADay(t *testing.T) {
+	for _, value := range []string{
+		"24h",
+		"1h",
+		"0",
+		"-240h",
+		"eight days",
+	} {
+		t.Run(value, func(t *testing.T) {
+			_, err := config.Load(envFrom(map[string]string{
+				"ZAZZZOR_DATABASE_URL":    "postgres://db",
+				"ZAZZZOR_ALLOWED_ORIGINS": "https://a.example",
+				"ZAZZZOR_FILE_RETENTION":  value,
+			}))
+			if err == nil {
+				t.Fatal("Load: want error, got nil")
+			}
+			if !strings.Contains(err.Error(), "ZAZZZOR_FILE_RETENTION") {
+				t.Errorf("error %q does not mention ZAZZZOR_FILE_RETENTION", err)
+			}
+		})
 	}
 }

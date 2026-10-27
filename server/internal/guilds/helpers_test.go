@@ -125,7 +125,7 @@ func newEnvOn(t *testing.T, pool *pgxpool.Pool, opts ...func(*guilds.Options)) *
 		RegisterLimiter: unlimited(), LoginLimiter: unlimited(),
 	})
 	var err error
-	if e.disk, err = files.NewDisk(e.dir); err != nil {
+	if e.disk, err = files.NewDisk(e.dir, files.Options{}); err != nil {
 		t.Fatal(err)
 	}
 	o := guilds.Options{Pool: e.pool, IDs: ids, Users: e.auth, Files: e.disk, Publisher: e.pub,
