@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Config is the validated server configuration.
@@ -21,6 +22,7 @@ type Config struct {
 	AdminUsernames []string       // ZAZZZOR_ADMIN_USERNAMES, comma-separated, lower-cased
 	DataDir        string         // ZAZZZOR_DATA_DIR, default "/data"
 	CookieSecure   bool           // ZAZZZOR_COOKIE_SECURE, default true
+	FileRetention  time.Duration  // ZAZZZOR_FILE_RETENTION, default DefaultFileRetention; over a day
 }
 
 // Defaults for optional variables.
@@ -29,7 +31,13 @@ const (
 	DefaultMetricsAddr    = ":9090"
 	DefaultTrustedProxies = "127.0.0.1/32,::1/128"
 	DefaultDataDir        = "/data"
+	// DefaultFileRetention keeps deleted images through eight daily
+	// backups.
+	DefaultFileRetention = 8 * 24 * time.Hour
 )
+
+// backupInterval is how often deploy/scripts/backup-job.sh backs up.
+const backupInterval = 24 * time.Hour
 
 // Load builds a Config from env (usually os.Getenv). The returned error names
 // every missing or invalid variable at once, never their values.
@@ -90,6 +98,17 @@ func Load(env func(string) string) (Config, error) {
 		errs = append(errs, errors.New("ZAZZZOR_COOKIE_SECURE: must be true or false"))
 	}
 	cfg.CookieSecure = secure
+
+	// Deleted images must outlive the next daily backup, or a restored
+	// database can refer to an image that no archive holds.
+	cfg.FileRetention = DefaultFileRetention
+	if v := get("ZAZZZOR_FILE_RETENTION", ""); v != "" {
+		retention, err := time.ParseDuration(v)
+		if err != nil || retention <= backupInterval {
+			errs = append(errs, fmt.Errorf("ZAZZZOR_FILE_RETENTION: must be a duration over %s, like 192h", backupInterval))
+		}
+		cfg.FileRetention = retention
+	}
 
 	if len(errs) > 0 {
 		return Config{}, fmt.Errorf("invalid configuration: %w", errors.Join(errs...))
