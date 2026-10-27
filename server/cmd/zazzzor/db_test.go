@@ -241,3 +241,17 @@ func TestOpenDatabaseFailsFastOnWrongPassword(t *testing.T) {
 		t.Fatalf("error leaks the password: %v", err)
 	}
 }
+
+// A restore compares the schema version of a backup with what
+// `zazzzor schema-version` prints, so it must be the version the server
+// migrates a database to.
+func TestSchemaVersionCommandPrintsMigratedVersion(t *testing.T) {
+	var out bytes.Buffer
+	if code := run([]string{"schema-version"}, func(string) string { return "" }, &out, io.Discard); code != 0 {
+		t.Fatalf("schema-version exit = %d", code)
+	}
+	want := fmt.Sprint(schemaVersion(t, testkit.Postgres(t)))
+	if got := strings.TrimSpace(out.String()); got != want {
+		t.Errorf("schema-version printed %q, want %q", got, want)
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strings"
@@ -105,7 +106,7 @@ func (s *smokeSession) step(name string, err error) error {
 }
 
 func (s *smokeSession) run(ctx context.Context, opts smokeOptions) (err error) {
-	if err = s.step("регистрация", s.register(ctx)); err != nil {
+	if err = s.step("регистрация", s.register(ctx, "smoke_"+randomHex(4), randomHex(16))); err != nil {
 		return err
 	}
 	defer func() { _ = s.do(ctx, http.MethodPost, "/api/v1/auth/logout", nil, http.StatusNoContent, nil) }()
@@ -141,21 +142,29 @@ func (s *smokeSession) run(ctx context.Context, opts smokeOptions) (err error) {
 	return s.step("WebSocket", s.gateway(ctx, opts.GatewayTimeout))
 }
 
-func (s *smokeSession) register(ctx context.Context) error {
-	user, pass := "smoke_"+randomHex(4), randomHex(16)
-	resp, err := s.send(ctx, http.MethodPost, "/api/v1/auth/register",
-		map[string]string{"username": user, "password": pass})
+// register creates the account user and keeps its session.
+func (s *smokeSession) register(ctx context.Context, user, pass string) error {
+	if err := s.signIn(ctx, "/api/v1/auth/register", user, pass, http.StatusCreated, nil); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintf(s.out, "пользователь %s создан\n", user)
+	return nil
+}
+
+// signIn posts user and pass to path (register or login), expects status,
+// decodes the body into out (when not nil) and keeps the session cookie.
+func (s *smokeSession) signIn(ctx context.Context, path, user, pass string, status int, out any) error {
+	resp, err := s.send(ctx, http.MethodPost, path, map[string]string{"username": user, "password": pass})
 	if err != nil {
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if err := expectStatus(resp, http.StatusCreated, nil); err != nil {
+	if err := expectStatus(resp, status, out); err != nil {
 		return err
 	}
 	for _, c := range resp.Cookies() {
 		if c.Name == "zz_session" && c.Value != "" {
 			s.session = c.Name + "=" + c.Value
-			_, _ = fmt.Fprintf(s.out, "пользователь %s создан\n", user)
 			return nil
 		}
 	}
@@ -264,21 +273,68 @@ func (s *smokeSession) do(ctx context.Context, method, path string, body any, st
 	return expectStatus(resp, status, out)
 }
 
+// send sends body (when not nil) as JSON.
 func (s *smokeSession) send(ctx context.Context, method, path string, body any) (*http.Response, error) {
-	var r io.Reader
-	if body != nil {
-		b, err := json.Marshal(body)
-		if err != nil {
-			return nil, err
-		}
-		r = bytes.NewReader(b)
+	if body == nil {
+		return s.sendRaw(ctx, method, path, "", nil)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, s.base+path, r)
+	b, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+	return s.sendRaw(ctx, method, path, "application/json", bytes.NewReader(b))
+}
+
+// upload sends image as the multipart field "file" with PUT, the way the
+// client uploads avatars and icons, expects 200 and decodes the body into
+// out.
+func (s *smokeSession) upload(ctx context.Context, path string, image []byte, out any) error {
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	part, err := mw.CreateFormFile("file", "image.png")
+	if err == nil {
+		_, err = part.Write(image)
+	}
+	if err == nil {
+		err = mw.Close()
+	}
+	if err != nil {
+		return fmt.Errorf("сборка запроса: %w", err)
+	}
+	resp, err := s.sendRaw(ctx, http.MethodPut, path, mw.FormDataContentType(), &body)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	return expectStatus(resp, http.StatusOK, out)
+}
+
+// fetch GETs path, expects 200 and returns the body.
+func (s *smokeSession) fetch(ctx context.Context, path string) ([]byte, error) {
+	resp, err := s.sendRaw(ctx, http.MethodGet, path, "", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, expectStatus(resp, http.StatusOK, nil)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, smokeReadLimit))
+	if err != nil {
+		return nil, fmt.Errorf("чтение ответа: %w", err)
+	}
+	return data, nil
+}
+
+// sendRaw sends body with contentType (when not empty), the Origin on
+// writes and the session cookie once there is one.
+func (s *smokeSession) sendRaw(ctx context.Context, method, path, contentType string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, method, s.base+path, body)
+	if err != nil {
+		return nil, err
+	}
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
 	}
 	if method != http.MethodGet {
 		req.Header.Set("Origin", s.origin)

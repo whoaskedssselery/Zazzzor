@@ -7,6 +7,9 @@
 //	zazzzor healthcheck                  exit 0 if GET /api/v1/readyz on the local port is 200
 //	zazzzor smoke <url>                  end-to-end check of a running API (see smoke.go)
 //	zazzzor files reconcile              make the images match the database (see files.go)
+//	zazzzor schema-version               print the schema version this binary migrates to
+//	zazzzor restore-check seed <url>     create data to check a restore with (see restorecheck.go)
+//	zazzzor restore-check verify <url>   check that data after the restore
 package main
 
 import (
@@ -73,9 +76,13 @@ func run(args []string, env func(string) string, stdout, stderr io.Writer) int {
 			return smokeCommand(args[1:], env, stdout, stderr)
 		case "files":
 			return filesCommand(args[1:], env, stdout, stderr)
+		case "schema-version":
+			return schemaVersionCommand(stdout, stderr)
+		case "restore-check":
+			return restoreCheckCommand(args[1:], env, os.Stdin, stdout, stderr)
 		default:
 			_, _ = fmt.Fprintf(stderr, "unknown command %q; usage: zazzzor [--version | healthcheck | smoke <base_url> | "+
-				"files reconcile]\n", args[0])
+				"files reconcile | schema-version | restore-check seed|verify <base_url>]\n", args[0])
 			return 2
 		}
 	}
