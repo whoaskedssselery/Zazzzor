@@ -102,6 +102,7 @@ nano deploy/.env
 | `LIVEKIT_API_SECRET` | результат `openssl rand -hex 32` |
 | `POSTGRES_PASSWORD` | результат `openssl rand -hex 24` (только hex, без других символов) |
 | `ZAZZZOR_ADMIN_USERNAMES` | ваш будущий логин, например `ivan` (раздел 10) |
+| `ZAZZZOR_BACKUP_DIR` | каталог резервных копий на хосте; `/srv/zazzzor-backups` можно оставить, но каталог создайте (раздел 12, шаг 1) |
 
 Каждую команду `openssl` запускайте отдельно и вставляйте её вывод в
 соответствующую строку. Порты, `ZAZZZOR_API_PORT` и версии образов можно
@@ -179,6 +180,8 @@ sudo sysctl --system
 
 ## 8. Запуск
 
+Сначала создайте каталог резервных копий (раздел 12, шаг 1), затем:
+
 ```bash
 docker compose -f deploy/docker-compose.yml up -d --build
 ```
@@ -192,7 +195,7 @@ docker compose -f deploy/docker-compose.yml up -d --build
 docker compose -f deploy/docker-compose.yml ps
 ```
 
-У `postgres` и `api` в колонке `STATUS` должно быть `(healthy)` (API
+У `postgres`, `api` и `backup` в колонке `STATUS` должно быть `(healthy)` (API
 становится healthy в течение минуты после старта), у остальных — `Up`.
 У `api` в колонке `PORTS` — только `127.0.0.1:8080->8080/tcp`.
 
@@ -311,6 +314,10 @@ diff deploy/.env.example deploy/.env
 docker compose -f deploy/docker-compose.yml up -d --build
 ```
 
+При обновлении на версию с резервными копиями добавьте в `deploy/.env`
+`ZAZZZOR_BACKUP_DIR` и до `up` создайте этот каталог (раздел 12, шаг 1).
+Без переменной не работает ни одна команда `docker compose`.
+
 Миграции базы применяются автоматически при старте API. Чтобы
 `zazzzor --version` показывал версию, а не `dev`, собирайте так:
 
@@ -336,37 +343,206 @@ ZAZZZOR_VERSION=$(git describe --tags --always) docker compose -f deploy/docker-
 **`docker compose ... down -v` удаляет тома, то есть все данные безвозвратно.**
 Не используйте `-v` без резервной копии.
 
-Ручная резервная копия (полные автоматические бэкапы появятся на этапе 1.5):
+### Автоматические резервные копии
+
+Сервис `backup` каждый день снимает копию базы и картинок. Он работает и в
+compose, и в стеке Swarm.
+
+1. До первого запуска создайте каталог копий на хосте. Путь задаёт
+   `ZAZZZOR_BACKUP_DIR` в `deploy/.env` (в `.env.example` это
+   `/srv/zazzzor-backups`). Сервис работает под UID 65532, как API, поэтому
+   каталог принадлежит ему:
+
+   ```bash
+   sudo install -d -o 65532 -g 65532 -m 0700 /srv/zazzzor-backups
+   ```
+
+   В копиях вся переписка, сессии и хеши паролей. Не открывайте каталог
+   другим пользователям.
+2. Копия снимается в 04:30 по `TZ=Europe/Warsaw`. Хранится последняя копия
+   за каждый из 7 последних дней и за каждую из 4 последних недель. Это
+   меняют `TZ`, `ZAZZZOR_BACKUP_TIME`, `ZAZZZOR_BACKUP_KEEP_DAILY` и
+   `ZAZZZOR_BACKUP_KEEP_WEEKLY` в `deploy/.env` (см. `.env.example`); потом
+   `docker compose -f deploy/docker-compose.yml up -d` или `stack.sh deploy`.
+   Если сервер был выключен в 04:30, копия снимется сразу после запуска.
+   Неудачная копия повторяется через 30 минут.
+3. Каждая копия — каталог вида `20261027T023000Z-AbCd1234` (время начала, UTC)
+   с файлами `database.dump`, `apidata.tar.gz` (картинки вместе с корзиной),
+   `manifest.json` и `SHA256SUMS`. Недописанная копия лежит в `.partial-*`
+   и в восстановлении не участвует.
+4. Следите за здоровьем сервиса. Он становится `unhealthy`, если последней
+   копии больше 26 часов или в каталог нельзя писать:
+
+   ```bash
+   docker compose -f deploy/docker-compose.yml ps backup
+   docker compose -f deploy/docker-compose.yml logs --tail 100 backup
+   # Swarm: неисправная задача перезапускается и видна в списке задач.
+   bash deploy/scripts/stack.sh ps
+   docker service ps zazzzor_backup
+   bash deploy/scripts/stack.sh logs backup
+   ```
+
+   Ошибка в логе называет причину и команду, которая её исправит.
+5. Снять копию сейчас:
+
+   ```bash
+   bash deploy/scripts/backup.sh compose backup
+   # Swarm:
+   bash deploy/scripts/stack.sh backup
+   ```
+
+Удалённые и заменённые картинки 8 суток лежат в корзине (`trash` в томе
+картинок) и наружу не отдаются. Поэтому копия, снятая до удаления, остаётся
+полной. Срок задаёт `ZAZZZOR_FILE_RETENTION`, он должен быть больше суток.
+Корзину раз в час чистит сам API. Не удаляйте её руками.
+
+### Восстановление
+
+Цели: терять не больше суток (RPO ≤ 24 ч) и подниматься примерно за час
+(RTO около 1 ч). На этом железе они ещё не проверены.
+
+**Восстановление заменяет все данные сервера копией.** Всё, что появилось
+после неё, пропадёт.
+
+1. Если сервер жив, сначала снимите свежую копию (шаг 5 выше).
+2. Выберите копию: `sudo ls /srv/zazzzor-backups`.
+3. Восстановите её:
+
+   ```bash
+   bash deploy/scripts/backup.sh compose restore 20261027T023000Z-AbCd1234 --yes
+   # Swarm:
+   bash deploy/scripts/stack.sh restore 20261027T023000Z-AbCd1234 --yes
+   ```
+
+   Копию можно назвать именем или путём. Скрипт проверяет суммы и схему
+   копии, останавливает API, восстанавливает базу и картинки, сверяет
+   картинки с базой (`files reconcile`) и запускает API.
+4. Проверьте вход, сообщения, аватары и иконки.
+
+Если скрипт остановился с ошибкой:
+
+- до остановки API данные не тронуты. Например, «копия новее образа API»:
+  восстанавливайте с образом, который назван в сообщении, или обновите код;
+- «Данные не изменены»: база восстанавливается одной транзакцией и при
+  ошибке откатывается, а если в это время шла плановая копия, восстановление
+  не начинается. API запускается снова. Устраните причину и повторите;
+- если база уже восстановлена, а картинки нет, API остаётся выключенным,
+  чтобы никто не работал на частично восстановленных данных. Устраните
+  причину и повторите ту же команду;
+- на сверке картинок API уже работает, но часть картинок может не
+  открываться. Устраните причину и повторите только сверку:
+  `bash deploy/scripts/backup.sh compose reconcile` (Swarm:
+  `bash deploy/scripts/stack.sh reconcile`).
+
+Копия со старой схемой базы восстанавливается и новым образом: API при
+запуске сам применит новые миграции.
+
+Сертификаты Caddy и состояние LiveKit в копию не входят. Сертификаты
+выпустятся заново, идущие звонки просто прервутся. `deploy/.env` с секретами
+храните отдельно. Шифрования копий пока нет.
+
+### Восстановление на чистой машине
+
+1. Установите Docker и скачайте код (разделы 2 и 3). Верните `deploy/.env`
+   из своей отдельной копии.
+2. Создайте каталог копий (шаг 1 раздела «Автоматические резервные копии»).
+3. Перенесите копию в этот каталог и отдайте её UID 65532, иначе сервис её
+   не прочтёт:
+
+   ```bash
+   rsync -a backup-user@backup-host:/srv/backups/zazzzor/20261027T023000Z-AbCd1234 /tmp/
+   sudo cp -a /tmp/20261027T023000Z-AbCd1234 /srv/zazzzor-backups/
+   sudo chown -R 65532:65532 /srv/zazzzor-backups/20261027T023000Z-AbCd1234
+   ```
+
+4. Соберите образы и запустите только базу:
+
+   ```bash
+   docker compose -f deploy/docker-compose.yml build
+   docker compose -f deploy/docker-compose.yml up -d --wait postgres
+   ```
+
+5. Восстановите копию и запустите остальное:
+
+   ```bash
+   bash deploy/scripts/backup.sh compose restore 20261027T023000Z-AbCd1234 --yes
+   docker compose -f deploy/docker-compose.yml up -d
+   ```
+
+   В Swarm вместо шагов 4 и 5: `stack.sh deploy` (раздел 15), затем
+   `stack.sh restore <копия> --yes`.
+
+### Копия вне сервера
+
+Копия на том же диске — не копия: сломается диск, и пропадут и данные, и
+копии. Переносите готовые копии на другую машину или на отключаемый
+USB-диск. Скрипты этого не делают. Например:
 
 ```bash
-# Образ Postgres, который уже запущен в стеке (тег из deploy/.env), —
-# в нём есть tar, ничего нового скачивать не нужно.
-PG_IMAGE=postgres:$(grep -E '^POSTGRES_VERSION=' deploy/.env | cut -d= -f2)
-mkdir -p ~/zazzzor-backup
-docker compose -f deploy/docker-compose.yml exec -T postgres \
-  pg_dump -U zazzzor -d zazzzor -Fc > ~/zazzzor-backup/zazzzor.dump
-docker run --rm -v zazzzor_apidata:/data:ro "$PG_IMAGE" \
-  tar czf - -C /data . > ~/zazzzor-backup/apidata.tar.gz
+# На другой сервер по SSH:
+sudo rsync -a --exclude '.partial-*' --exclude '.lock' --exclude '.last-scheduled' \
+  /srv/zazzzor-backups/ backup-user@backup-host:/srv/backups/zazzzor/
+# В облако через rclone (remote настраивается командой rclone config):
+sudo rclone copy /srv/zazzzor-backups remote:zazzzor-backups \
+  --exclude '.partial-*/**' --exclude '.lock' --exclude '.last-scheduled'
 ```
 
-Храните копию не на этом же диске.
+На новом месте проверьте суммы: `cd <копия> && sha256sum -c SHA256SUMS`.
 
-Восстановление (API на время останавливается):
+### Проверка восстановления
+
+Раз в несколько месяцев и после крупных обновлений проверьте, что копия
+действительно восстанавливается. Нужны только Docker и bash:
+
+```bash
+bash deploy/scripts/restore-test.sh
+```
+
+Скрипт поднимает отдельный временный проект compose. Через API он создаёт
+пользователя с аватаром, сервер с иконкой и сообщение, снимает копию и
+восстанавливает её дважды: поверх базы с лишней таблицей и на пустые тома.
+Затем проверяет вход, сообщение и байты картинок и удаляет всё, что создал.
+Рабочий стек не затрагивается. В конце печатается `restore test: OK`. Тот же
+сценарий идёт в CI.
+
+### Ручная копия, если скрипты не работают
+
+Команды запускаются из корня репозитория. **API на время копии
+останавливается**, иначе база и картинки могут разойтись:
 
 ```bash
 PG_IMAGE=postgres:$(grep -E '^POSTGRES_VERSION=' deploy/.env | cut -d= -f2)
+mkdir -p ~/zazzzor-manual
 docker compose -f deploy/docker-compose.yml stop api
 docker compose -f deploy/docker-compose.yml exec -T postgres \
-  pg_restore -U zazzzor -d zazzzor --clean --if-exists < ~/zazzzor-backup/zazzzor.dump
-docker run --rm -i -v zazzzor_apidata:/data "$PG_IMAGE" \
-  sh -c 'find /data -mindepth 1 -delete && tar xzf - -C /data' < ~/zazzzor-backup/apidata.tar.gz
+  pg_dump -U zazzzor -d zazzzor -Fc > ~/zazzzor-manual/database.dump
+docker run --rm -v zazzzor_apidata:/data:ro "$PG_IMAGE" \
+  tar czf - -C /data avatars icons trash > ~/zazzzor-manual/apidata.tar.gz
+docker compose -f deploy/docker-compose.yml start api
+(cd ~/zazzzor-manual && sha256sum database.dump apidata.tar.gz > SHA256SUMS)
+```
+
+Восстановление из неё. **Оно заменяет все данные сервера:**
+
+```bash
+PG_IMAGE=postgres:$(grep -E '^POSTGRES_VERSION=' deploy/.env | cut -d= -f2)
+(cd ~/zazzzor-manual && sha256sum -c SHA256SUMS)
+docker compose -f deploy/docker-compose.yml stop api
+docker compose -f deploy/docker-compose.yml exec -T postgres psql -U zazzzor -d zazzzor \
+  -v ON_ERROR_STOP=1 -c 'DROP SCHEMA public CASCADE' -c 'CREATE SCHEMA public'
+docker compose -f deploy/docker-compose.yml exec -T postgres \
+  pg_restore -U zazzzor -d zazzzor --exit-on-error --no-owner < ~/zazzzor-manual/database.dump
+docker run --rm -i --user 65532:65532 -v zazzzor_apidata:/data "$PG_IMAGE" \
+  sh -c 'rm -rf /data/avatars /data/icons /data/trash && tar xzf - -C /data' \
+  < ~/zazzzor-manual/apidata.tar.gz
+docker compose -f deploy/docker-compose.yml run --rm --no-deps api files reconcile
 docker compose -f deploy/docker-compose.yml start api
 ```
 
 ## 13. Логи, перезапуск, если что-то не работает
 
 ```bash
-# Логи одного сервиса (api, postgres, caddy, livekit, duckdns)
+# Логи одного сервиса (api, postgres, caddy, livekit, duckdns, backup)
 docker compose -f deploy/docker-compose.yml logs -f api
 # Перезапустить сервис
 docker compose -f deploy/docker-compose.yml restart api
@@ -603,26 +779,22 @@ bash deploy/scripts/stack.sh rm
 
 ### Резервная копия и пароль базы в стеке
 
-```bash
-PG=$(docker ps -q --filter label=com.docker.swarm.service.name=zazzzor_postgres)
-PG_IMAGE=postgres:$(grep -E '^POSTGRES_VERSION=' deploy/.env | cut -d= -f2)
-mkdir -p ~/zazzzor-backup
-docker exec "$PG" pg_dump -U zazzzor -d zazzzor -Fc > ~/zazzzor-backup/zazzzor.dump
-docker run --rm -v zazzzor_apidata:/data:ro "$PG_IMAGE" \
-  tar czf - -C /data . > ~/zazzzor-backup/apidata.tar.gz
-```
-
-Восстановление: остановите API, восстановите, запустите снова.
+Копии в стеке снимает тот же сервис `backup`, команды — те же, что в
+разделе 12, через `stack.sh`:
 
 ```bash
-PG=$(docker ps -q --filter label=com.docker.swarm.service.name=zazzzor_postgres)
-PG_IMAGE=postgres:$(grep -E '^POSTGRES_VERSION=' deploy/.env | cut -d= -f2)
-docker service scale zazzzor_api=0
-docker exec -i "$PG" pg_restore -U zazzzor -d zazzzor --clean --if-exists < ~/zazzzor-backup/zazzzor.dump
-docker run --rm -i -v zazzzor_apidata:/data "$PG_IMAGE" \
-  sh -c 'find /data -mindepth 1 -delete && tar xzf - -C /data' < ~/zazzzor-backup/apidata.tar.gz
-docker service scale zazzzor_api=1
+bash deploy/scripts/stack.sh backup
+bash deploy/scripts/stack.sh restore 20261027T023000Z-AbCd1234 --yes
+bash deploy/scripts/stack.sh reconcile
 ```
+
+Перед `deploy` каталог `ZAZZZOR_BACKUP_DIR` должен существовать и
+принадлежать UID 65532: иначе `deploy` остановится и напечатает команду,
+которая это исправит. Ручные команды раздела 12 в стеке отличаются так:
+API останавливается командой `docker service scale zazzzor_api=0` и
+запускается `docker service scale zazzzor_api=1`, а вместо
+`docker compose ... exec -T postgres` пишите `docker exec -i "$PG"`, где
+`PG=$(docker ps -q --filter label=com.docker.swarm.service.name=zazzzor_postgres)`.
 
 Сменить `POSTGRES_PASSWORD`: сначала поменяйте пароль в самой базе, пока
 работает старая версия, и только потом разверните стек с новым `.env`. Если
