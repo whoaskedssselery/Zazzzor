@@ -62,10 +62,18 @@ networks() {
 }
 
 echo '- .env.example: настройки варианта закомментированы'
-# load_env берёт первое значение ключа: активная строка в примере перебила
-# бы ту, которую владелец впишет ниже (STYLE §16).
+# Активная строка варианта в примере столкнулась бы с той, которую владелец
+# впишет ниже (STYLE §16): раньше она молча побеждала, теперь это повтор.
 reject "$deploy_dir/.env.example" '^\(ZAZZZOR_EDGE\|TRAEFIK_[A-Z_]*\|LIVEKIT_TURN_[A-Z_]*\|ZAZZZOR_\(API\|CADDY\)_REPOSITORY\)=' \
   'в .env.example активна строка варианта; закомментируйте её со значением по умолчанию'
+
+echo '- .env: повтор ключа — ошибка, а не тихий выбор одного из значений'
+cp "$ci_env" "$tmp/duplicate.env"
+echo 'ZAZZZOR_DOMAIN=second.example.invalid' >>"$tmp/duplicate.env"
+if ENV_FILE="$tmp/duplicate.env" bash "$script_dir/stack.sh" config >"$tmp/duplicate" 2>&1; then
+  fail 'stack.sh принял .env с повторённым ZAZZZOR_DOMAIN'
+fi
+expect "$tmp/duplicate" 'ZAZZZOR_DOMAIN' 'ошибка о повторе не называет ключ'
 
 echo '- Compose: репозитории Swarm не меняют полный образ Compose'
 cp "$ci_env" "$tmp/compose.env"
@@ -147,4 +155,4 @@ reject "$tmp/turn-off" 'LIVEKIT_TURN_ENABLED=true' 'явное LIVEKIT_TURN_ENAB
 reject "$tmp/turn-off" 'unexpected mutation' 'deploy изменил стек до проверки каталога копий'
 expect "$tmp/turn-off" 'ZAZZZOR_BACKUP_DIR\|каталог' 'deploy с LIVEKIT_TURN_ENABLED=false не дошёл до проверки каталога копий'
 
-echo 'stack tests: OK (example, edge, Traefik, TURN, repositories, TURN guard)'
+echo 'stack tests: OK (example, duplicates, edge, Traefik, TURN, repositories, TURN guard)'

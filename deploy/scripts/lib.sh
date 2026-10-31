@@ -25,11 +25,13 @@ die() {
 # Читает deploy/.env так же, как docker compose, но не исполняет его:
 # KEY=VALUE, необязательный "export ", пробелы вокруг ключа и значения,
 # кавычки, комментарий " #..." после значения без кавычек. Переменные, уже
-# заданные в окружении, как и в compose, важнее файла.
+# заданные в окружении, как и в compose, важнее файла. Повтор ключа в файле —
+# ошибка: compose берёт последнее значение, а этот разбор взял бы первое.
 load_env() {
   # shellcheck disable=SC2154 # env_file задаёт подключивший скрипт.
   [[ -f "$env_file" ]] || die "не найден файл настроек $env_file (cp deploy/.env.example deploy/.env)"
   local line key value n=0
+  local -A seen=()
   while IFS= read -r line || [[ -n "$line" ]]; do
     n=$((n + 1))
     line="${line%$'\r'}"
@@ -39,6 +41,10 @@ load_env() {
     fi
     key="${BASH_REMATCH[2]}"
     value="${BASH_REMATCH[3]}"
+    if [[ -n "${seen[$key]:-}" ]]; then
+      die "$env_file, строка $n: $key уже задан в строке ${seen[$key]}. Оставьте одну из них (по README — раскомментированную строку примера)"
+    fi
+    seen[$key]=$n
     if [[ "$value" =~ ^\"(.*)\"[[:space:]]*(#.*)?$ || "$value" =~ ^\'(.*)\'[[:space:]]*(#.*)?$ ]]; then
       value="${BASH_REMATCH[1]}"
     else
