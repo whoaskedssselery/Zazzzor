@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Проверяет оба Swarm-варианта с фальшивыми значениями, без развёртывания.
+# Проверяет оба Swarm-варианта и путь владельца по deploy/README.md §17 с
+# фальшивыми значениями, без развёртывания.
 #
 # Использование (из корня репозитория):
 #   bash deploy/scripts/stack-test.sh
@@ -59,6 +60,37 @@ service() {
 # networks <файл>: блок networks верхнего уровня.
 networks() {
   awk '/^[^ ]/ { inside = ($0 == "networks:") } inside' "$1"
+}
+
+# set_key <файл> <ключ> <значение> делает то, что README просит у человека:
+# находит строку ключа (закомментированную или нет), убирает «# » и меняет
+# значение. Нет такой строки — README велит раскомментировать то, чего нет.
+set_key() {
+  local file="$1" key="$2" value="$3"
+  grep -Eq "^(# )?$key=" "$file" || fail "в $(basename "$file") нет строки $key, которую README велит раскомментировать"
+  awk -v key="$key" -v value="$value" '
+    !done && ($0 ~ "^(# )?" key "=") { print key "=" value; done = 1; next }
+    { print }' "$file" >"$file.new"
+  mv -- "$file.new" "$file"
+}
+
+# readme_block <метка>: строки блока кода сразу после <!-- метка --> в README.
+readme_block() {
+  awk -v marker="<!-- $1 -->" '
+    index($0, marker) { found = 1; next }
+    found && /```/ { if (inside) exit; inside = 1; next }
+    inside { sub(/^[[:space:]]+/, ""); print }' "$deploy_dir/README.md"
+}
+
+# apply_readme <файл> <метка>: применяет блок README построчно через set_key.
+apply_readme() {
+  local file="$1" line n=0
+  while IFS= read -r line; do
+    [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || fail "README, блок $2: не ИМЯ=значение: $line"
+    set_key "$file" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+    n=$((n + 1))
+  done < <(readme_block "$2")
+  ((n > 0)) || fail "в README нет блока <!-- $2 -->"
 }
 
 echo '- .env.example: настройки варианта закомментированы'
@@ -155,4 +187,31 @@ reject "$tmp/turn-off" 'LIVEKIT_TURN_ENABLED=true' 'явное LIVEKIT_TURN_ENAB
 reject "$tmp/turn-off" 'unexpected mutation' 'deploy изменил стек до проверки каталога копий'
 expect "$tmp/turn-off" 'ZAZZZOR_BACKUP_DIR\|каталог' 'deploy с LIVEKIT_TURN_ENABLED=false не дошёл до проверки каталога копий'
 
-echo 'stack tests: OK (example, duplicates, edge, Traefik, TURN, repositories, TURN guard)'
+echo '- .env по README §17 разворачивает Traefik-стек'
+# Как владелец: копия примера, обязательные поля §5, затем блоки README
+# «раскомментируйте и измените» (основной и TURN).
+readme_env="$tmp/readme.env"
+cp "$deploy_dir/.env.example" "$readme_env"
+set_key "$readme_env" ZAZZZOR_DOMAIN zazzzor-readme.example.invalid
+set_key "$readme_env" LIVEKIT_API_KEY APIreadmetest
+set_key "$readme_env" LIVEKIT_API_SECRET deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+set_key "$readme_env" POSTGRES_PASSWORD cafecafecafecafecafecafecafecafecafecafecafecafe
+# Ошибка владельца: блок дописан в конец, а не раскомментирован. Ни одна
+# строка примера не должна его перебить: результат тот же Traefik-стек.
+cp "$readme_env" "$tmp/appended.env"
+readme_block traefik-env >>"$tmp/appended.env"
+ENV_FILE="$tmp/appended.env" bash "$script_dir/stack.sh" config >"$tmp/appended" ||
+  fail 'stack.sh config не отрисовал .env с дописанным блоком README'
+expect "$tmp/appended" 'Caddyfile.web' '.env с дописанным блоком README разворачивает не Traefik-стек'
+apply_readme "$readme_env" traefik-env
+apply_readme "$readme_env" traefik-turn-env
+ENV_FILE="$readme_env" bash "$script_dir/stack.sh" config >"$tmp/readme" ||
+  fail 'stack.sh config не отрисовал .env, собранный по README'
+reject "$tmp/readme" '\$''{' 'остались переменные в стеке по README'
+expect "$tmp/readme" 'Caddyfile.web' '.env по README разворачивает не Traefik-стек'
+reject "$tmp/readme" 'duckdns:' '.env по README разворачивает edge-стек с DuckDNS'
+expect "$tmp/readme" 'image: ghcr.io/whoaskedssselery/zazzzor-api:ci' '.env по README берёт API не из GHCR'
+expect "$tmp/readme" 'image: ghcr.io/whoaskedssselery/zazzzor-caddy:ci' '.env по README берёт web не из GHCR'
+expect "$tmp/readme" 'traefik.tcp.routers.zazzzor-turn.rule: HostSNI' '.env по README выключил TURN'
+
+echo 'stack tests: OK (example, duplicates, edge, Traefik, TURN, repositories, TURN guard, README)'
