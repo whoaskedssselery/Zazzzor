@@ -74,12 +74,15 @@ func NewModules(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator,
 		TrustedProxies:   cfg.TrustedProxies,
 		RegistrationOpen: settings.RegistrationOpen,
 	})
+	// Removals from guilds and channels take people out of voice; the
+	// voice service is plugged in below, before anything publishes.
+	cleanup := &voiceCleanup{next: pub}
 	// guilds runs the channels bootstrapper inside guild creation; channels
 	// reads guilds through its exported reads, invites both; messages asks
 	// channels what a member may do.
-	guildSvc := guilds.NewService(guilds.Options{Pool: pool, IDs: ids, Users: authSvc, Files: disk, Publisher: pub,
+	guildSvc := guilds.NewService(guilds.Options{Pool: pool, IDs: ids, Users: authSvc, Files: disk, Publisher: cleanup,
 		Hooks: guilds.Hooks{Channels: channels.NewBootstrapper(ids, nil), Overwrites: channels.NewCleaner()}})
-	channelSvc := channels.NewService(channels.Options{Pool: pool, IDs: ids, Guilds: guildSvc, Publisher: pub})
+	channelSvc := channels.NewService(channels.Options{Pool: pool, IDs: ids, Guilds: guildSvc, Publisher: cleanup})
 	messageSvc := messages.NewService(messages.Options{Pool: pool, IDs: ids, Channels: channelSvc, Users: authSvc,
 		Publisher: pub})
 	vo := voice.Options{Channels: channelSvc, Publisher: pub, Logger: slog.Default()}
@@ -87,7 +90,7 @@ func NewModules(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator,
 		vo.Rooms = voice.NewLiveKit(cfg.LiveKitURL, cfg.LiveKitAPIKey, cfg.LiveKitAPISecret)
 		vo.APIKey, vo.APISecret = cfg.LiveKitAPIKey, cfg.LiveKitAPISecret
 	}
-	voiceSvc := voice.NewService(vo)
+	cleanup.voice = voice.NewService(vo)
 	return &Modules{
 		Auth:        authSvc,
 		Users:       users.NewService(users.Options{Accounts: authSvc, Files: disk, Publisher: pub}),
@@ -97,7 +100,7 @@ func NewModules(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator,
 		Messages:    messageSvc,
 		Admin:       admin.NewService(admin.Options{Settings: settings, Accounts: authSvc}),
 		Files:       disk,
-		Voice:       voiceSvc,
+		Voice:       cleanup.voice,
 		ReadLimiter: ratelimit.New(readRate, readBurst, readTTL),
 	}, nil
 }

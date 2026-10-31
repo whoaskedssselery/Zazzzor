@@ -26,6 +26,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/ratelimit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/testkit"
+	"github.com/whoaskedssselery/zazzzor/server/internal/voice"
 )
 
 func TestMain(m *testing.M) { os.Exit(testkit.Main(m)) }
@@ -56,7 +57,16 @@ func newEnv(t *testing.T, opts gateway.Options) *env {
 // once the modules exist (e.g. wrap its dependencies).
 func newEnvWith(t *testing.T, opts gateway.Options, hook func(*app.Modules, *gateway.Options)) *env {
 	t.Helper()
+	return newEnvFrom(t, nil, opts, hook)
+}
+
+// newEnvFrom is newEnvWith with more configuration variables.
+func newEnvFrom(t *testing.T, vars map[string]string, opts gateway.Options, hook func(*app.Modules, *gateway.Options)) *env {
+	t.Helper()
 	cfg, err := config.Load(func(k string) string {
+		if v, ok := vars[k]; ok {
+			return v
+		}
 		return map[string]string{
 			"ZAZZZOR_DATABASE_URL":    "postgres://test",
 			"ZAZZZOR_ALLOWED_ORIGINS": testkit.DefaultOrigin,
@@ -104,7 +114,7 @@ func newEnvWith(t *testing.T, opts gateway.Options, hook func(*app.Modules, *gat
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			next.ServeHTTP(w, r.WithContext(httpx.WithLogger(r.Context(), logger)))
 		})
-	}, httpx.RequireOrigin(cfg.AllowedOrigins))
+	}, httpx.RequireOrigin(cfg.AllowedOrigins, http.MethodPost+" /api/v1"+voice.WebhookPath))
 	r.Route("/api/v1", func(r chi.Router) { e.m.Routes(r, e.gw) })
 	e.h = r
 	return e
