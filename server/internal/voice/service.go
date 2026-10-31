@@ -86,3 +86,53 @@ func (s *Service) leaveOther(ctx context.Context, userID, channelID snowflake.ID
 	}
 	return nil
 }
+
+// SelfFields are the self flags to change; nil leaves one as it is.
+type SelfFields struct {
+	SelfMute *bool
+	SelfDeaf *bool
+}
+
+// UpdateSelf changes userID's self flags and announces a change; the same
+// values again announce nothing. Without a state it is ErrNotInVoice.
+func (s *Service) UpdateSelf(ctx context.Context, userID snowflake.ID, f SelfFields) (State, error) {
+	if !s.enabled {
+		return State{}, ErrUnavailable
+	}
+	if f.SelfMute == nil && f.SelfDeaf == nil {
+		return State{}, invalid("self_mute", "set self_mute, self_deaf or both")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sess := s.sessions[userID]
+	if sess == nil {
+		return State{}, ErrNotInVoice
+	}
+	st := sess.state
+	if f.SelfMute != nil {
+		st.SelfMute = *f.SelfMute
+	}
+	if f.SelfDeaf != nil {
+		st.SelfDeaf = *f.SelfDeaf
+	}
+	if st != sess.state {
+		sess.state = st
+		s.touchLocked(userID)
+		s.announceLocked(ctx, st, false)
+	}
+	return st, nil
+}
+
+// Leave clears userID's state, announcing that they left, and removes them
+// from LiveKit in the background; a token issued before can no longer
+// connect. Not being in voice is fine.
+func (s *Service) Leave(ctx context.Context, userID snowflake.ID) error {
+	if !s.enabled {
+		return ErrUnavailable
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.intents[userID] = intent{}
+	s.dropLocked(ctx, userID, true)
+	return nil
+}
