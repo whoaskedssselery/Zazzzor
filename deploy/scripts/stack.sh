@@ -7,12 +7,15 @@
 #   bash deploy/scripts/stack.sh config        итоговая конфигурация (в ней секреты, не публикуйте)
 #   bash deploy/scripts/stack.sh ps            задачи стека и их состояние
 #   bash deploy/scripts/stack.sh logs <сервис> [флаги docker service logs, например --follow]
-#                                              сервисы: caddy, livekit, duckdns, postgres, api, backup
+#                                              сервисы: api, postgres, livekit, backup и
+#                                              caddy, duckdns (edge) или web (traefik)
 #   bash deploy/scripts/stack.sh rm            остановить стек (данные в томах остаются)
 #   bash deploy/scripts/stack.sh backup        снять резервную копию сейчас
 #   bash deploy/scripts/stack.sh restore <копия> --yes   заменить все данные копией
 #   bash deploy/scripts/stack.sh reconcile     сверить изображения с базой
 #
+# Вариант: ZAZZZOR_EDGE=caddy (по умолчанию) или traefik (deploy/README.md §17).
+# GHCR: ZAZZZOR_API_REPOSITORY / ZAZZZOR_CADDY_REPOSITORY и оба *_TAG.
 # Настройки: deploy/.env (другой файл: ENV_FILE=...). Имя стека: zazzzor
 # (другое: STACK_NAME=... — но тогда и тома другие, то есть база пустая).
 # Каталог копий ZAZZZOR_BACKUP_DIR должен существовать и принадлежать UID
@@ -27,7 +30,7 @@ deploy_dir="$(cd "$script_dir/.." && pwd)"
 repo_dir="$(cd "$deploy_dir/.." && pwd)"
 env_file="${ENV_FILE:-$deploy_dir/.env}"
 stack="${STACK_NAME:-zazzzor}"
-stack_file="$deploy_dir/docker-stack.yml"
+stack_files=(-c "$deploy_dir/docker-stack.yml")
 
 # shellcheck source=deploy/scripts/lib.sh
 source "$script_dir/lib.sh"
@@ -65,7 +68,14 @@ build_image() {
   printf '%s' "$tag"
 }
 
+# Стандартные ли имена образов. Сборка создаёт только их, и только их знает
+# edge-стек docker-stack.yml.
+default_repositories() {
+  [[ "${ZAZZZOR_API_REPOSITORY:-zazzzor-api}" == zazzzor-api && "${ZAZZZOR_CADDY_REPOSITORY:-zazzzor-caddy}" == zazzzor-caddy ]]
+}
+
 build() {
+  default_repositories || die "для образов GHCR задайте оба тега; сборка создаёт только локальные образы"
   local version
   version="$(app_version)"
   echo "Сборка образов (версия $version)…" >&2
@@ -85,8 +95,14 @@ images() {
     [[ -n "${ZAZZZOR_API_TAG:-}" && -n "${ZAZZZOR_CADDY_TAG:-}" ]] ||
       die "задайте оба тега: ZAZZZOR_API_TAG и ZAZZZOR_CADDY_TAG"
     local image
-    for image in "zazzzor-api:$ZAZZZOR_API_TAG" "zazzzor-caddy:$ZAZZZOR_CADDY_TAG"; do
-      docker image inspect "$image" >/dev/null 2>&1 || die "нет образа $image (bash deploy/scripts/stack.sh build)"
+    for image in "${ZAZZZOR_API_REPOSITORY:-zazzzor-api}:$ZAZZZOR_API_TAG" "${ZAZZZOR_CADDY_REPOSITORY:-zazzzor-caddy}:$ZAZZZOR_CADDY_TAG"; do
+      if ! docker image inspect "$image" >/dev/null 2>&1; then
+        if [[ "$image" == ghcr.io/* ]]; then
+          docker pull "$image"
+        else
+          die "нет образа $image (bash deploy/scripts/stack.sh build)"
+        fi
+      fi
     done
     export ZAZZZOR_API_TAG ZAZZZOR_CADDY_TAG
   else
@@ -94,8 +110,29 @@ images() {
   fi
 }
 
+# Выбирает вариант стека и вычисляет значения, которые Swarm не подставляет.
 prepare() {
   load_env
+  case "${ZAZZZOR_EDGE:-caddy}" in
+    caddy)
+      default_repositories || die "переопределение репозиториев доступно только при ZAZZZOR_EDGE=traefik; для caddy оставьте стандартные имена"
+      ;;
+    traefik)
+      stack_files=(-c "$deploy_dir/docker-stack.traefik.yml")
+      [[ -n "${LIVEKIT_NODE_IP:-}" ]] || die "задайте LIVEKIT_NODE_IP: внешний IPv4 для медиа"
+      [[ -n "${TRAEFIK_SUBNET:-}" ]] || die "задайте TRAEFIK_SUBNET: CIDR внешней сети Traefik"
+      case "${LIVEKIT_TURN_ENABLED:-false}" in
+        true)
+          [[ -n "${LIVEKIT_TURN_DOMAIN:-}" && "$LIVEKIT_TURN_DOMAIN" != "$ZAZZZOR_DOMAIN" ]] || die "задайте отдельный LIVEKIT_TURN_DOMAIN для TURN"
+          stack_files+=(-c "$deploy_dir/docker-stack.traefik-turn.yml")
+          ;;
+        false) ;;
+        *) die "LIVEKIT_TURN_ENABLED должен быть true или false" ;;
+      esac
+      ;;
+    *) die "ZAZZZOR_EDGE должен быть caddy или traefik" ;;
+  esac
+  export ZAZZZOR_EDGE="${ZAZZZOR_EDGE:-caddy}"
   ZAZZZOR_NODE_ID="$(docker info --format '{{.Swarm.NodeID}}')"
   export ZAZZZOR_NODE_ID
   # docker stack has no nested defaults or ${VAR:+...}; compute them here.
@@ -111,18 +148,33 @@ prepare() {
   fi
 }
 
+# TURN выключен по умолчанию, но у ручного стека и прежних deploy он может
+# работать, и на него рассчитывают друзья за VPN. Если LIVEKIT_TURN_ENABLED
+# не задан, а у работающего livekit есть TCP-router TURN, deploy не выключает
+# TURN молча и просит решить явно, до любых изменений.
+require_turn_decision() {
+  [[ "$ZAZZZOR_EDGE" == traefik && -z "${LIVEKIT_TURN_ENABLED:-}" ]] || return 0
+  local service="${stack}_livekit" services rule
+  services="$(docker service ls --filter "name=$service" --format '{{.Name}}')"
+  grep -Fxq -- "$service" <<<"$services" || return 0
+  rule="$(docker service inspect --format '{{index .Spec.Labels "traefik.tcp.routers.zazzzor-turn.rule"}}' "$service")"
+  [[ -z "$rule" ]] || die "в работающем стеке включён TURN ($rule), а LIVEKIT_TURN_ENABLED в $env_file не задан. Чтобы сохранить TURN, раскомментируйте LIVEKIT_TURN_ENABLED=true и LIVEKIT_TURN_DOMAIN=<домен из правила>; чтобы выключить, задайте LIVEKIT_TURN_ENABLED=false (deploy/README.md §17). Стек не изменён"
+}
+
 cmd="${1:-}"
 case "$cmd" in
   deploy)
     require_swarm
     prepare
+    require_turn_decision
     images
     require_backup_dir "$ZAZZZOR_BACKUP_DIR"
     echo "Развёртывание стека $stack…"
-    # Образы локальные: реестр не спрашиваем. --detach=false ждёт, пока
-    # задачи запустятся (и пройдут healthcheck), и показывает прогресс.
+    # Образы уже подготовлены images(): локальные или скачанные из GHCR.
+    # --detach=false ждёт, пока задачи запустятся (и пройдут healthcheck), и
+    # показывает прогресс.
     docker stack deploy --prune --resolve-image never --detach=false \
-      -c "$stack_file" "$stack"
+      "${stack_files[@]}" "$stack"
     docker stack ps "$stack" --filter desired-state=running \
       --format 'table {{.Name}}\t{{.CurrentState}}\t{{.Error}}'
     ;;
@@ -145,13 +197,13 @@ case "$cmd" in
     export ZAZZZOR_CADDY_TAG="${ZAZZZOR_CADDY_TAG:-<собирается при deploy>}"
     # Без Swarm (например, в CI) у узла нет ID: показываем заглушку.
     export ZAZZZOR_NODE_ID="${ZAZZZOR_NODE_ID:-<ID этого узла Swarm>}"
-    docker stack config -c "$stack_file"
+    docker stack config "${stack_files[@]}"
     ;;
   ps)
     docker stack ps "$stack" --format 'table {{.Name}}\t{{.DesiredState}}\t{{.CurrentState}}\t{{.Error}}'
     ;;
   logs)
-    [[ -n "${2:-}" ]] || die "укажите сервис: caddy, livekit, duckdns, postgres, api или backup"
+    [[ -n "${2:-}" ]] || die "укажите сервис: api, postgres, livekit, backup, а также caddy и duckdns (edge) или web (traefik)"
     docker service logs --raw --tail "${TAIL:-200}" "${@:3}" "${stack}_$2"
     ;;
   rm)
@@ -170,7 +222,7 @@ case "$cmd" in
     die "стек $stack не остановился за 60 секунд: docker ps --filter label=com.docker.stack.namespace=$stack"
     ;;
   *)
-    sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 2
     ;;
 esac

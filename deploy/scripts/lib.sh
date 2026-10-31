@@ -12,6 +12,11 @@
 # Задание backup работает под тем же UID, что и API (nonroot в distroless).
 backup_uid=65532
 
+# Внутренняя сеть Postgres в docker-stack.traefik.yml (networks.db).
+# Одноразовые задания backup.sh подключаются к ней как <стек>_db.
+# shellcheck disable=SC2034 # Используют backup.sh и stack-test.sh.
+traefik_db_network=db
+
 die() {
   echo "Ошибка: $*" >&2
   exit 2

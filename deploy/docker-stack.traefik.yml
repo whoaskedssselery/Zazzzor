@@ -1,0 +1,264 @@
+# Swarm behind existing Traefik. Render/deploy through scripts/stack.sh.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+x-deploy: &deploy
+  replicas: 1
+  placement:
+    constraints:
+      - node.id == ${ZAZZZOR_NODE_ID:?запускайте через stack.sh}
+  restart_policy:
+    condition: any
+    delay: 5s
+  update_config:
+    order: stop-first
+    failure_action: rollback
+
+services:
+  api:
+    image: ${ZAZZZOR_API_REPOSITORY:-zazzzor-api}:${ZAZZZOR_API_TAG:?задайте ZAZZZOR_API_TAG}
+    environment:
+      ZAZZZOR_DATABASE_URL: "postgres://zazzzor:${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD}@postgres:5432/zazzzor?sslmode=disable"
+      ZAZZZOR_ALLOWED_ORIGINS: "https://${ZAZZZOR_DOMAIN:?задайте ZAZZZOR_DOMAIN}"
+      # Traefik reaches the API over the traefik overlay network. Traefik
+      # replaces X-Forwarded-For from untrusted clients, so the API takes the
+      # real client address from it.
+      ZAZZZOR_TRUSTED_PROXIES: "${TRAEFIK_SUBNET:?задайте TRAEFIK_SUBNET}"
+      ZAZZZOR_ADMIN_USERNAMES: "${ZAZZZOR_ADMIN_USERNAMES:-}"
+      ZAZZZOR_HTTP_ADDR: :8080
+      ZAZZZOR_METRICS_ADDR: 127.0.0.1:9464
+      ZAZZZOR_FILE_RETENTION: ${ZAZZZOR_FILE_RETENTION:-}
+      ZAZZZOR_DATA_DIR: /data
+      GOMEMLIMIT: 768MiB
+    volumes:
+      - apidata:/data
+      - type: tmpfs
+        target: /tmp
+        tmpfs:
+          size: 67108864
+    healthcheck:
+      test: ["CMD", "/zazzzor", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    stop_grace_period: 20s
+    read_only: true
+    cap_drop: [ALL]
+    logging: *logging
+    deploy:
+      <<: *deploy
+      resources:
+        limits:
+          memory: 1G
+      labels:
+        - "traefik.enable=true"
+        - "traefik.swarm.network=${TRAEFIK_NETWORK:-traefik}"
+        - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
+        - "traefik.http.routers.zazzzor-api.priority=100"
+        - "traefik.http.routers.zazzzor-api.rule=Host(`${ZAZZZOR_DOMAIN}`) && PathPrefix(`/api/`)"
+        - "traefik.http.routers.zazzzor-api.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+        - "traefik.http.routers.zazzzor-api.tls=true"
+        - "traefik.http.routers.zazzzor-api.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}"
+        - "traefik.http.routers.zazzzor-api.middlewares=zazzzor-headers"
+        - "traefik.http.services.zazzzor-api.loadbalancer.server.port=8080"
+        - "traefik.http.middlewares.zazzzor-headers.headers.contentTypeNosniff=true"
+        - "traefik.http.middlewares.zazzzor-headers.headers.referrerPolicy=no-referrer"
+    networks: [traefik, db]
+
+  postgres:
+    image: postgres:${POSTGRES_VERSION:?задайте POSTGRES_VERSION}
+    environment:
+      POSTGRES_USER: zazzzor
+      POSTGRES_DB: zazzzor
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+    # PostgreSQL 18+ keeps data under /var/lib/postgresql/<major>/.
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - type: tmpfs
+        target: /dev/shm
+        tmpfs:
+          size: 268435456
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "zazzzor", "-d", "zazzzor"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    logging: *logging
+    deploy:
+      <<: *deploy
+      resources:
+        limits:
+          memory: 1G
+    networks: [db]
+
+  livekit:
+    image: livekit/livekit-server:${LIVEKIT_VERSION:?задайте LIVEKIT_VERSION}
+    environment:
+      LIVEKIT_CONFIG: |
+        port: 7880
+        rtc:
+          tcp_port: 7881
+          udp_port: 7882
+          use_external_ip: false
+          node_ip: ${LIVEKIT_NODE_IP:?задайте LIVEKIT_NODE_IP}
+          # Media goes through docker_gwbridge (ports in mode: host), not the overlay.
+          ips:
+            includes:
+              - 172.16.0.0/12
+        # TURN over TLS on 443 for clients whose UDP is blocked (VPNs, strict
+        # networks). Traefik terminates TLS for the separate TURN domain and
+        # forwards plain TCP here; LiveKit still advertises turns:<domain>:443.
+        turn:
+          enabled: ${LIVEKIT_TURN_ENABLED:-false}
+          domain: ${LIVEKIT_TURN_DOMAIN:-turn-disabled.invalid}
+          tls_port: 443
+          external_tls: true
+        keys:
+          "${LIVEKIT_API_KEY:?задайте LIVEKIT_API_KEY}": "${LIVEKIT_API_SECRET:?задайте LIVEKIT_API_SECRET}"
+        logging:
+          level: info
+    read_only: true
+    # TURN listens on 443 without CAP_NET_BIND_SERVICE: Docker sets
+    # net.ipv4.ip_unprivileged_port_start=0 in container namespaces.
+    cap_drop: [ALL]
+    volumes:
+      - type: tmpfs
+        target: /tmp
+        tmpfs:
+          size: 16777216
+    # Media goes straight to the host, past Traefik and the overlay network.
+    ports:
+      - { target: 7881, published: 7881, protocol: tcp, mode: host }
+      - { target: 7882, published: 7882, protocol: udp, mode: host }
+    logging: *logging
+    deploy:
+      <<: *deploy
+      resources:
+        limits:
+          memory: 1G
+      labels:
+        - "traefik.enable=true"
+        - "traefik.swarm.network=${TRAEFIK_NETWORK:-traefik}"
+        - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
+        - "traefik.http.routers.zazzzor-rtc.priority=100"
+        - "traefik.http.routers.zazzzor-rtc.rule=Host(`${ZAZZZOR_DOMAIN}`) && PathPrefix(`/rtc`)"
+        - "traefik.http.routers.zazzzor-rtc.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+        - "traefik.http.routers.zazzzor-rtc.tls=true"
+        - "traefik.http.routers.zazzzor-rtc.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}"
+        - "traefik.http.routers.zazzzor-rtc.service=zazzzor-rtc"
+        - "traefik.http.services.zazzzor-rtc.loadbalancer.server.port=7880"
+        # The scratch image has no probe tools; Traefik probes its HTTP endpoint.
+        - "traefik.http.services.zazzzor-rtc.loadbalancer.healthcheck.path=/"
+        - "traefik.http.services.zazzzor-rtc.loadbalancer.healthcheck.interval=10s"
+        - "traefik.http.services.zazzzor-rtc.loadbalancer.healthcheck.timeout=5s"
+    networks: [traefik]
+
+  # Plain HTTP; TLS and hostname routing belong to the existing Traefik.
+  web:
+    image: ${ZAZZZOR_CADDY_REPOSITORY:-zazzzor-caddy}:${ZAZZZOR_CADDY_TAG:?запускайте через stack.sh}
+    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile.web"]
+    read_only: true
+    cap_drop: [ALL]
+    # The binary has cap_net_bind_service in its file capabilities.
+    cap_add: [NET_BIND_SERVICE]
+    volumes:
+      - type: tmpfs
+        target: /config
+        tmpfs:
+          size: 16777216
+      - type: tmpfs
+        target: /data
+        tmpfs:
+          size: 16777216
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging: *logging
+    deploy:
+      <<: *deploy
+      resources:
+        limits:
+          memory: 128M
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
+        - "traefik.swarm.network=${TRAEFIK_NETWORK:-traefik}"
+        - "traefik.http.routers.zazzzor-web.rule=Host(`${ZAZZZOR_DOMAIN}`)"
+        - "traefik.http.routers.zazzzor-web.priority=1"
+        - "traefik.http.routers.zazzzor-web.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+        - "traefik.http.routers.zazzzor-web.tls=true"
+        - "traefik.http.routers.zazzzor-web.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}"
+        - "traefik.http.services.zazzzor-web.loadbalancer.server.port=8080"
+    networks: [traefik]
+
+  # Same retained-file backup protocol as the edge stack, on the DB overlay.
+  backup:
+    image: postgres:${POSTGRES_VERSION:?заполните POSTGRES_VERSION в deploy/.env (см. deploy/.env.example)}
+    user: "65532:65532"
+    entrypoint: ["/bin/bash", "/opt/backup/backup-job.sh"]
+    command: ["schedule"]
+    networks: [db]
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: zazzzor
+      PGDATABASE: zazzzor
+      PGPASSWORD: ${POSTGRES_PASSWORD:?заполните POSTGRES_PASSWORD в deploy/.env (см. deploy/.env.example)}
+      TZ: ${TZ:-Europe/Warsaw}
+      # Empty values take the defaults of backup-job.sh.
+      ZAZZZOR_BACKUP_TIME: ${ZAZZZOR_BACKUP_TIME:-}
+      ZAZZZOR_BACKUP_KEEP_DAILY: ${ZAZZZOR_BACKUP_KEEP_DAILY:-}
+      ZAZZZOR_BACKUP_KEEP_WEEKLY: ${ZAZZZOR_BACKUP_KEEP_WEEKLY:-}
+      ZAZZZOR_APP_IMAGE: ${ZAZZZOR_API_REPOSITORY:-zazzzor-api}:${ZAZZZOR_API_TAG:?запускайте через deploy/scripts/stack.sh}
+      # The job names the host path in its errors.
+      BACKUP_HOST_DIR: ${ZAZZZOR_BACKUP_DIR:?заполните ZAZZZOR_BACKUP_DIR в deploy/.env (см. deploy/.env.example)}
+    volumes:
+      - apidata:/data:ro
+      - ${ZAZZZOR_DEPLOY_DIR:?запускайте через deploy/scripts/stack.sh}/scripts:/opt/backup:ro
+      - ${ZAZZZOR_BACKUP_DIR:?заполните ZAZZZOR_BACKUP_DIR в deploy/.env (см. deploy/.env.example)}:/backups
+      - type: tmpfs
+        target: /tmp
+        tmpfs:
+          size: 67108864
+    healthcheck:
+      test: ["CMD", "/bin/bash", "/opt/backup/backup-job.sh", "health"]
+      interval: 10m
+      timeout: 30s
+      retries: 1
+      start_period: 1m
+      start_interval: 10s
+    read_only: true
+    stop_grace_period: 45s
+    cap_drop: [ALL]
+    logging: *logging
+    deploy:
+      <<: *deploy
+      resources:
+        limits:
+          memory: 256M
+
+networks:
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK:-traefik}
+  # api, postgres and backup only; no way out, nothing published. One-shot
+  # backup/restore containers join it from the manager (scripts/backup.sh),
+  # so it is attachable. Swarm never changes that on an existing network, so
+  # this one is new rather than the hand-written stack's "zazzzor": a plain
+  # stack deploy creates it and moves the services over.
+  db:
+    driver: overlay
+    internal: true
+    attachable: true
+
+volumes:
+  pgdata:
+  apidata:
