@@ -3104,7 +3104,7 @@ components:
     GuildState:
       type: object
       additionalProperties: false
-      required: [guild, roles, channels, members, my_member, presences]
+      required: [guild, roles, channels, members, my_member, presences, voice_states]
       description: A server as the receiving member sees it.
       properties:
         guild:
@@ -3134,6 +3134,11 @@ components:
             them, not capped like `members`.
           items:
             $ref: "#/components/schemas/Presence"
+        voice_states:
+          type: array
+          description: Who is in the voice channels the member may view, by user ID.
+          items:
+            $ref: "#/components/schemas/VoiceState"
     VoiceState:
       type: object
       additionalProperties: false
@@ -3358,12 +3363,15 @@ x-gateway:
 
     Voice: VOICE_STATE_UPDATE reaches the members who can view the voice
     channel when it is sent, like any channel event; a hidden channel's
-    voice states are never sent. It is sent when a user connects (LiveKit
+    voice states are never sent, neither as events nor in `voice_states`
+    of a GuildState. It is sent when a user connects (LiveKit
     reported it), changes their flags, starts or stops sharing their
     screen, and leaves (`left: true`, with the channel they left). A user
     who leaves a server, is kicked or banned, or whose voice channel or
     server is deleted, leaves voice the same way; a deleted channel has no
-    viewers, so nobody is told.
+    viewers, so nobody is told. Every GuildState (READY, GUILD_CREATE,
+    GUILD_SYNC) lists the voice states of the channels the receiver may
+    view in `voice_states`.
   ops:
     "0": DISPATCH
     "1": HEARTBEAT

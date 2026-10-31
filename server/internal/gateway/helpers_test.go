@@ -516,11 +516,17 @@ type (
 		Presences []presenceBody   `json:"presences"`
 	}
 	guildStateBody struct {
-		Guild     guildBody      `json:"guild"`
-		Channels  []channelBody  `json:"channels"`
-		Members   []memberBody   `json:"members"`
-		MyMember  memberBody     `json:"my_member"`
-		Presences []presenceBody `json:"presences"`
+		Guild       guildBody        `json:"guild"`
+		Channels    []channelBody    `json:"channels"`
+		Members     []memberBody     `json:"members"`
+		MyMember    memberBody       `json:"my_member"`
+		Presences   []presenceBody   `json:"presences"`
+		VoiceStates []voiceStateBody `json:"voice_states"`
+	}
+	voiceStateBody struct {
+		ChannelID string `json:"channel_id"`
+		UserID    string `json:"user_id"`
+		Left      bool   `json:"left"`
 	}
 	memberBody struct {
 		User userBody `json:"user"`

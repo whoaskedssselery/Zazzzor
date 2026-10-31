@@ -118,6 +118,7 @@ func (m *Modules) NewGateway(bus *events.Bus, cfg config.Config, logger *slog.Lo
 	if opts.Channels == nil {
 		opts.Channels = m.Channels
 	}
+	opts.Voice = m.Voice
 	opts.Bus = bus
 	opts.AllowedOrigins = cfg.AllowedOrigins
 	opts.TrustedProxies = cfg.TrustedProxies

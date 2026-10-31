@@ -18,7 +18,9 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/gateway"
+	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/testkit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/voice"
 )
@@ -145,6 +147,55 @@ func voiceChannel(t *testing.T, c *testkit.Client, g guildBody, name string) cha
 	var ch channelBody
 	resp.JSON(&ch)
 	return ch
+}
+
+func TestVoiceStateUpdateReachesOnlyViewers(t *testing.T) {
+	e, _ := voiceEnv(t)
+	alice, _ := e.user("alice")
+	bob, b := e.user("bob")
+	carol, cu := e.user("carol")
+	g, _ := newGuild(t, alice, "guild")
+	e.join(g, b)
+	e.join(g, cu)
+	secret := voiceChannel(t, alice, g, "secret")
+	overwrite(t, alice, secret.ID, g.ID, 0, 0, permissions.ViewChannel)
+	overwrite(t, alice, secret.ID, b.ID, 1, permissions.ViewChannel, 0)
+	acl, _ := connect(t, alice)
+	ccl, _ := connect(t, carol)
+
+	e.connectVoice(bob, b, secret.ID)
+	var st voiceStateBody
+	decode(t, acl.waitFor(events.VoiceStateUpdate).D, &st)
+	if st.UserID != b.ID || st.ChannelID != secret.ID || st.Left {
+		t.Fatalf("VOICE_STATE_UPDATE = %+v, want bob joining %s", st, secret.ID)
+	}
+	if got := types(e.untilSentinel(ccl, cu)); slices.Contains(got, events.VoiceStateUpdate) {
+		t.Fatalf("carol, who cannot view the channel, got %v", got)
+	}
+}
+
+func TestGuildStateListsOnlyVisibleVoiceStates(t *testing.T) {
+	e, _ := voiceEnv(t)
+	alice, _ := e.user("alice")
+	bob, b := e.user("bob")
+	carol, cu := e.user("carol")
+	g, _ := newGuild(t, alice, "guild")
+	e.join(g, b)
+	e.join(g, cu)
+	secret := voiceChannel(t, alice, g, "secret")
+	overwrite(t, alice, secret.ID, g.ID, 0, 0, permissions.ViewChannel)
+	overwrite(t, alice, secret.ID, b.ID, 1, permissions.ViewChannel, 0)
+	e.connectVoice(bob, b, secret.ID)
+
+	_, ar := connect(t, alice)
+	st, _ := ar.guild(g.ID)
+	if len(st.VoiceStates) != 1 || st.VoiceStates[0].UserID != b.ID || st.VoiceStates[0].ChannelID != secret.ID {
+		t.Fatalf("alice's voice_states = %+v, want bob in %s", st.VoiceStates, secret.ID)
+	}
+	_, cr := connect(t, carol)
+	if st, _ = cr.guild(g.ID); st.VoiceStates == nil || len(st.VoiceStates) != 0 {
+		t.Fatalf("carol's voice_states = %+v, want []", st.VoiceStates)
+	}
 }
 
 func TestRemovingAMemberTakesOnlyThemOutOfVoice(t *testing.T) {

@@ -9,6 +9,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/channels"
 	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
+	"github.com/whoaskedssselery/zazzzor/server/internal/voice"
 )
 
 // errNotInGuild: the guild is gone or the user is no longer a member of it.
@@ -53,7 +54,23 @@ func (g *Gateway) guildState(ctx context.Context, userID, guildID snowflake.ID) 
 	for j, id := range online {
 		st.Presences[j] = Presence{UserID: id, Status: StatusOnline}
 	}
+	st.VoiceStates = g.voiceStates(guildID, visible)
 	return st, nil
+}
+
+// voiceStates returns the voice states of guildID in the channels of
+// visible, which the receiver may view; the others stay hidden.
+func (g *Gateway) voiceStates(guildID snowflake.ID, visible []channels.Channel) []voice.PublicState {
+	out := []voice.PublicState{}
+	if g.opts.Voice == nil {
+		return out
+	}
+	for _, vs := range g.opts.Voice.GuildStates(guildID) {
+		if slices.ContainsFunc(visible, func(c channels.Channel) bool { return c.ID == vs.ChannelID }) {
+			out = append(out, vs.Public())
+		}
+	}
+	return out
 }
 
 // ready builds READY for user: every guild they are in, as they see it,

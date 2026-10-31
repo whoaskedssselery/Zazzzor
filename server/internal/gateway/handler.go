@@ -22,6 +22,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/ratelimit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
+	"github.com/whoaskedssselery/zazzzor/server/internal/voice"
 )
 
 // Authenticator resolves a session cookie (auth.Service).
@@ -38,6 +39,13 @@ type Bus interface {
 
 var _ Bus = (*events.Bus)(nil)
 
+// VoiceStates reads who is in the voice channels of a guild (voice.Service).
+type VoiceStates interface {
+	GuildStates(guildID snowflake.ID) []voice.State
+}
+
+var _ VoiceStates = (*voice.Service)(nil)
+
 // Options configures a Gateway. Auth, Guilds, Channels and Bus are
 // required; zero tuning fields take the defaults.
 type Options struct {
@@ -45,6 +53,9 @@ type Options struct {
 	Guilds   guilds.Directory
 	Channels channels.Resolver
 	Bus      Bus
+	// Voice fills the voice_states of every GuildState; nil leaves them
+	// empty.
+	Voice VoiceStates
 	// AllowedOrigins are the only Origin values accepted for the upgrade.
 	AllowedOrigins []string
 	// Logger is for failures; nil discards.
