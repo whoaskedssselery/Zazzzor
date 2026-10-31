@@ -82,6 +82,10 @@ func newFakeRooms() *fakeRooms {
 	return &fakeRooms{participants: map[string][]voice.Participant{}, failList: map[string]bool{}}
 }
 
+func (*fakeRooms) UpdateParticipant(context.Context, string, string, voice.ParticipantPermissions) error {
+	return nil
+}
+
 func (f *fakeRooms) ListRooms(context.Context) ([]voice.Room, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

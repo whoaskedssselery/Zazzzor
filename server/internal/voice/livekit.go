@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/livekit/protocol/livekit"
@@ -41,6 +42,16 @@ type RoomClient interface {
 	// RemoveParticipant disconnects identity from room; a participant or
 	// room that is already gone is not an error.
 	RemoveParticipant(ctx context.Context, room, identity string) error
+	// UpdateParticipant replaces the participant's publishing and listening
+	// permissions; an empty Sources list disables publishing entirely.
+	UpdateParticipant(ctx context.Context, room, identity string, p ParticipantPermissions) error
+}
+
+// ParticipantPermissions is the explicit set of media actions permitted.
+// Data publishing and metadata changes are always disabled.
+type ParticipantPermissions struct {
+	Subscribe bool
+	Sources   []livekit.TrackSource
 }
 
 // LiveKit is the RoomClient of a LiveKit server.
@@ -90,6 +101,23 @@ func (l *LiveKit) RemoveParticipant(ctx context.Context, room, identity string) 
 	}
 	if err != nil {
 		return fmt.Errorf("voice: remove participant: %w", err)
+	}
+	return nil
+}
+
+// UpdateParticipant implements RoomClient. Empty sources must also clear
+// CanPublish: LiveKit interprets an empty source list alone as all sources.
+func (l *LiveKit) UpdateParticipant(ctx context.Context, room, identity string, p ParticipantPermissions) error {
+	_, err := l.c.UpdateParticipant(ctx, &livekit.UpdateParticipantRequest{
+		Room: room, Identity: identity,
+		Permission: &livekit.ParticipantPermission{
+			CanSubscribe: p.Subscribe, CanPublish: len(p.Sources) > 0,
+			CanPublishSources: slices.Clone(p.Sources),
+			CanPublishData:    false, CanUpdateMetadata: false,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("voice: update participant permissions: %w", err)
 	}
 	return nil
 }

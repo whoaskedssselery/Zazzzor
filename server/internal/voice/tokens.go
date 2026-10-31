@@ -7,7 +7,6 @@ import (
 	"net/url"
 
 	lkauth "github.com/livekit/protocol/auth"
-	"github.com/livekit/protocol/livekit"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
 	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
@@ -20,20 +19,14 @@ import (
 // their own metadata. Every flag is explicit: LiveKit grants everything
 // when none is set.
 func grant(channelID snowflake.ID, p permissions.Permission) *lkauth.VideoGrant {
+	media := mediaPermissions(p, false, false)
 	g := &lkauth.VideoGrant{RoomJoin: true, Room: channelID.String()}
-	g.SetCanSubscribe(true)
+	g.SetCanSubscribe(media.Subscribe)
 	g.SetCanPublishData(false)
 	g.SetCanUpdateOwnMetadata(false)
-	var sources []livekit.TrackSource
-	if p.Has(permissions.Speak) {
-		sources = append(sources, livekit.TrackSource_MICROPHONE)
-	}
-	if p.Has(permissions.Stream) {
-		sources = append(sources, livekit.TrackSource_SCREEN_SHARE, livekit.TrackSource_SCREEN_SHARE_AUDIO)
-	}
-	g.SetCanPublish(len(sources) > 0)
-	if len(sources) > 0 {
-		g.SetCanPublishSources(sources)
+	g.SetCanPublish(len(media.Sources) > 0)
+	if len(media.Sources) > 0 {
+		g.SetCanPublishSources(media.Sources)
 	}
 	return g
 }

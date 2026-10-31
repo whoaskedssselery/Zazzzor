@@ -7,6 +7,10 @@ import (
 
 type replacementRoom struct{ removed bool }
 
+func (*replacementRoom) UpdateParticipant(context.Context, string, string, ParticipantPermissions) error {
+	return nil
+}
+
 func (*replacementRoom) ListRooms(context.Context) ([]Room, error) { return nil, nil }
 func (*replacementRoom) ListParticipants(context.Context, string) ([]Participant, error) {
 	return []Participant{{SID: "PA_new", Identity: "1"}}, nil
