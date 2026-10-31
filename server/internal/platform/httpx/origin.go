@@ -9,11 +9,15 @@ import (
 // RequireOrigin refuses state-changing requests (anything but GET, HEAD and
 // OPTIONS) and WebSocket upgrades unless their Origin header is exactly one of
 // allowed. Refusals are 403 origin_not_allowed. A missing Origin is refused too.
-func RequireOrigin(allowed []string) func(http.Handler) http.Handler {
+// exempt lists routes that need no Origin, as "METHOD /path" matched exactly
+// against the request's method and unescaped path (server-to-server calls
+// that authenticate otherwise, such as signed webhooks).
+func RequireOrigin(allowed []string, exempt ...string) func(http.Handler) http.Handler {
 	allowed = slices.Clone(allowed)
+	exempt = slices.Clone(exempt)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if needsOrigin(r) && !OriginAllowed(allowed, r) {
+			if needsOrigin(r) && !OriginAllowed(allowed, r) && !isExempt(exempt, r) {
 				WriteProblem(w, Forbidden("origin_not_allowed"))
 				return
 			}
@@ -28,6 +32,12 @@ func RequireOrigin(allowed []string) func(http.Handler) http.Handler {
 func OriginAllowed(allowed []string, r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	return origin != "" && slices.Contains(allowed, origin)
+}
+
+// isExempt reports whether r is one of the exempt routes; an escaped path
+// never is.
+func isExempt(exempt []string, r *http.Request) bool {
+	return r.URL.RawPath == "" && slices.Contains(exempt, r.Method+" "+r.URL.Path)
 }
 
 func needsOrigin(r *http.Request) bool {

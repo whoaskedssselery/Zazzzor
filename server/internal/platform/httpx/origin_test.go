@@ -72,3 +72,26 @@ func TestOriginAllowed(t *testing.T) {
 		}
 	}
 }
+
+func TestRequireOriginExemptsOnlyTheExactRoute(t *testing.T) {
+	ok := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	h := httpx.RequireOrigin([]string{"https://zazzzor.example"}, "POST /api/v1/hook")(ok)
+	for _, tc := range []struct {
+		method, path string
+		status       int
+	}{
+		{http.MethodPost, "/api/v1/hook", http.StatusNoContent},
+		{http.MethodPut, "/api/v1/hook", http.StatusForbidden},
+		{http.MethodPost, "/api/v1/hook/", http.StatusForbidden},
+		{http.MethodPost, "/api/v1/hook/x", http.StatusForbidden},
+		{http.MethodPost, "/api/v1/%68ook", http.StatusForbidden},
+		{http.MethodPost, "/api/v1/other", http.StatusForbidden},
+	} {
+		r := httptest.NewRequest(tc.method, tc.path, nil)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, r)
+		if rec.Code != tc.status {
+			t.Errorf("%s %s without Origin: status = %d, want %d", tc.method, tc.path, rec.Code, tc.status)
+		}
+	}
+}

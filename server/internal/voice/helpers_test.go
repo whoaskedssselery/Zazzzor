@@ -2,18 +2,24 @@ package voice_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"net/http"
 	"os"
 	"slices"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	lkauth "github.com/livekit/protocol/auth"
+	"github.com/livekit/protocol/livekit"
 	"golang.org/x/time/rate"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
 	"github.com/whoaskedssselery/zazzzor/server/internal/channels"
@@ -40,6 +46,19 @@ func (p *recorder) Publish(_ context.Context, e events.Event) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.events = append(p.events, e)
+}
+
+// updates returns the VOICE_STATE_UPDATE payloads so far.
+func (p *recorder) updates() []voice.UpdatePayload {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var out []voice.UpdatePayload
+	for _, e := range p.events {
+		if e.Type == events.VoiceStateUpdate {
+			out = append(out, e.Payload.(voice.UpdatePayload))
+		}
+	}
+	return out
 }
 
 // fakeRooms is a RoomClient over rooms held in memory. RemoveParticipant
@@ -89,6 +108,12 @@ func (f *fakeRooms) RemoveParticipant(_ context.Context, room, identity string) 
 	return nil
 }
 
+func (f *fakeRooms) removals() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.removed)
+}
+
 type env struct {
 	t      *testing.T
 	pool   *pgxpool.Pool
@@ -98,6 +123,8 @@ type env struct {
 	rooms  *fakeRooms
 	pub    *recorder
 	h      http.Handler
+	// lk posts the webhooks, as LiveKit: without Origin or cookies.
+	lk *testkit.Client
 }
 
 func unlimited() *ratelimit.Limiter { return ratelimit.New(rate.Inf, 1, time.Minute) }
@@ -127,8 +154,9 @@ func newEnv(t *testing.T, opts ...func(*voice.Options)) *env {
 	e.voice = voice.NewService(o)
 
 	r := chi.NewRouter()
-	r.Use(httpx.RequireOrigin([]string{testkit.DefaultOrigin}))
+	r.Use(httpx.RequireOrigin([]string{testkit.DefaultOrigin}, http.MethodPost+" /api/v1"+voice.WebhookPath))
 	r.Route("/api/v1", func(r chi.Router) {
+		voice.MountWebhook(r, e.voice)
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware(authSvc))
 			auth.Mount(r, authSvc)
@@ -138,7 +166,78 @@ func newEnv(t *testing.T, opts ...func(*voice.Options)) *env {
 		})
 	})
 	e.h = r
+	e.lk = testkit.NewClient(t, e.h)
+	e.lk.Origin = ""
 	return e
+}
+
+// sign returns the Authorization LiveKit sends with body, signed with key
+// and secret.
+func sign(t *testing.T, key, secret string, body []byte) string {
+	t.Helper()
+	sum := sha256.Sum256(body)
+	tok, err := lkauth.NewAccessToken(key, secret).SetValidFor(time.Minute).
+		SetSha256(base64.StdEncoding.EncodeToString(sum[:])).ToJWT()
+	if err != nil {
+		t.Fatalf("sign webhook: %v", err)
+	}
+	return tok
+}
+
+// postHook posts body to the webhook with the given Authorization.
+func (e *env) postHook(body []byte, authorization string) *testkit.Response {
+	e.t.Helper()
+	opts := []testkit.RequestOption{testkit.WithHeader("Content-Type", "application/webhook+json")}
+	if authorization != "" {
+		opts = append(opts, testkit.WithHeader("Authorization", authorization))
+	}
+	return e.lk.Do(http.MethodPost, "/api/v1"+voice.WebhookPath, body, opts...)
+}
+
+// hookID numbers the webhook events of a test.
+var hookID atomic.Int64
+
+// hook sends a signed webhook event, with a fresh ID unless it has one,
+// and expects it accepted.
+func (e *env) hook(ev *livekit.WebhookEvent) {
+	e.t.Helper()
+	if ev.Id == "" {
+		ev.Id = "EV_" + strconv.FormatInt(hookID.Add(1), 10)
+	}
+	body, err := protojson.Marshal(ev)
+	if err != nil {
+		e.t.Fatalf("encode webhook: %v", err)
+	}
+	expect(e.t, e.postHook(body, sign(e.t, testKey, testSecret, body)), http.StatusNoContent)
+}
+
+// lkRoom is the LiveKit room of a channel, with a SID.
+func lkRoom(channelID, sid string) *livekit.Room { return &livekit.Room{Name: channelID, Sid: sid} }
+
+// lkParticipant is a participant of user u with SID sid, connected with a
+// token whose join generation is join.
+func lkParticipant(u userBody, sid, join string) *livekit.ParticipantInfo {
+	return &livekit.ParticipantInfo{Sid: sid, Identity: u.ID, JoinedAtMs: time.Now().UnixMilli(),
+		Attributes: map[string]string{"zazzzor.join": join}}
+}
+
+// connect gets u a token for the channel and reports, as LiveKit, that
+// they connected with it as participant sid of room roomSID.
+func (e *env) connect(c *testkit.Client, u userBody, channelID, roomSID, sid string) {
+	e.t.Helper()
+	join := claims(e.t, joinVoice(e.t, c, channelID).Token).Attributes["zazzzor.join"]
+	e.hook(&livekit.WebhookEvent{Event: "participant_joined", Room: lkRoom(channelID, roomSID),
+		Participant: lkParticipant(u, sid, join)})
+}
+
+// stateOf returns the voice state of userID in guildID, if any.
+func (e *env) stateOf(guildID, userID snowflake.ID) (voice.State, bool) {
+	for _, st := range e.voice.GuildStates(guildID) {
+		if st.UserID == userID {
+			return st, true
+		}
+	}
+	return voice.State{}, false
 }
 
 type userBody struct {
