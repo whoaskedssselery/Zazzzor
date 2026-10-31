@@ -40,8 +40,11 @@ services:
     environment:
       LIVEKIT_CONFIG: |
         port: 7880
+        # Loopback for Caddy, and the gateway of the api network for the
+        # API (see networks below); that address exists only on this host.
         bind_addresses:
           - 127.0.0.1
+          - 172.31.250.1
         rtc:
           tcp_port: ${LIVEKIT_TCP_PORT:?заполните LIVEKIT_TCP_PORT в deploy/.env (обычно 7881)}
           udp_port: ${LIVEKIT_UDP_PORT:?заполните LIVEKIT_UDP_PORT в deploy/.env (обычно 7882)}
@@ -57,6 +60,12 @@ services:
           enabled: false
         keys:
           "${LIVEKIT_API_KEY:?заполните LIVEKIT_API_KEY в deploy/.env - результат openssl rand -hex 16}": "${LIVEKIT_API_SECRET:?заполните LIVEKIT_API_SECRET в deploy/.env - результат openssl rand -hex 32}"
+        # Who is in which voice channel: LiveKit tells the API, signed with
+        # this key, through the API's port on loopback.
+        webhook:
+          api_key: "${LIVEKIT_API_KEY}"
+          urls:
+            - http://127.0.0.1:${ZAZZZOR_API_PORT:-8080}/api/v1/livekit/webhook
         logging:
           level: info
     mem_limit: 1g
@@ -123,6 +132,11 @@ services:
       ZAZZZOR_DATA_DIR: /data
       # Empty takes the server default (config.DefaultFileRetention).
       ZAZZZOR_FILE_RETENTION: ${ZAZZZOR_FILE_RETENTION:-}
+      # LiveKit's server API: LiveKit (host network) listens on the gateway
+      # of the api network too.
+      ZAZZZOR_LIVEKIT_URL: http://172.31.250.1:7880
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
       # Below mem_limit, so the Go GC works harder before the kernel kills it.
       # The server caps its load-dependent allocations (image decodes, password
       # hashes, upload bodies) at 576 MiB in all; see the budget in
@@ -211,7 +225,13 @@ networks:
   db:
     internal: true
   # api only, for its port on 127.0.0.1 (an internal network cannot publish).
+  # A fixed subnet, so LiveKit can listen on its gateway, 172.31.250.1: the
+  # API reaches LiveKit there, and nothing outside this host can.
   api:
+    ipam:
+      config:
+        - subnet: 172.31.250.0/24
+          gateway: 172.31.250.1
 
 volumes:
   caddy_data:
