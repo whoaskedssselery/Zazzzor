@@ -36,6 +36,9 @@ import (
 
 func TestMain(m *testing.M) { os.Exit(testkit.Main(m)) }
 
+// wait bounds every wait for something done in the background.
+const wait = 5 * time.Second
+
 // recorder remembers every event published.
 type recorder struct {
 	mu     sync.Mutex
@@ -108,10 +111,26 @@ func (f *fakeRooms) RemoveParticipant(_ context.Context, room, identity string) 
 	return nil
 }
 
+// put adds a room (if new) with a participant.
+func (f *fakeRooms) put(room voice.Room, p voice.Participant) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !slices.Contains(f.rooms, room) {
+		f.rooms = append(f.rooms, room)
+	}
+	f.participants[room.Name] = append(f.participants[room.Name], p)
+}
+
 func (f *fakeRooms) removals() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return slices.Clone(f.removed)
+}
+
+// waitRemoved waits until "room/identity" was removed.
+func (f *fakeRooms) waitRemoved(t *testing.T, want string) {
+	t.Helper()
+	eventually(t, "removal of "+want, func() bool { return slices.Contains(f.removals(), want) })
 }
 
 type env struct {
@@ -238,6 +257,21 @@ func (e *env) stateOf(guildID, userID snowflake.ID) (voice.State, bool) {
 		}
 	}
 	return voice.State{}, false
+}
+
+// run starts the background work of the voice service for the test.
+func (e *env) run() {
+	e.t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		e.voice.Run(ctx)
+	}()
+	e.t.Cleanup(func() {
+		cancel()
+		<-done
+	})
 }
 
 type userBody struct {
@@ -415,4 +449,16 @@ func verifyToken(t *testing.T, token string) (time.Time, *lkauth.ClaimGrants) {
 		t.Fatal("the token never expires")
 	}
 	return reg.ExpiresAt.Time, grants
+}
+
+// eventually polls cond until it holds or wait passes.
+func eventually(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(wait)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }

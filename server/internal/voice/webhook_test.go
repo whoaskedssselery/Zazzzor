@@ -8,6 +8,8 @@ import (
 
 	"github.com/livekit/protocol/livekit"
 	"google.golang.org/protobuf/encoding/protojson"
+
+	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
 )
 
 func TestWebhookAcceptsOnlyValidSignatures(t *testing.T) {
@@ -101,6 +103,38 @@ func TestWebhookStaleLeaveKeepsTheNewerSession(t *testing.T) {
 	}
 }
 
+func TestWebhookJoinWithAnOutdatedTokenIsRemoved(t *testing.T) {
+	e := newEnv(t)
+	e.run()
+	alice, a := e.user("alice")
+	g, _, vc := newGuild(t, alice, "home")
+	old := claims(t, joinVoice(t, alice, vc.ID).Token).Attributes["zazzzor.join"]
+	joinVoice(t, alice, vc.ID) // a newer join
+	e.hook(&livekit.WebhookEvent{Event: "participant_joined", Room: lkRoom(vc.ID, "RM_1"),
+		Participant: lkParticipant(a, "PA_1", old)})
+	if _, ok := e.stateOf(parseID(t, g.ID), a.id(t)); ok {
+		t.Fatal("an outdated token created a state")
+	}
+	e.rooms.waitRemoved(t, vc.ID+"/"+a.ID)
+}
+
+func TestWebhookJoinWithoutConnectIsRemoved(t *testing.T) {
+	e := newEnv(t)
+	e.run()
+	alice, _ := e.user("alice")
+	bob, b := e.user("bob")
+	g, _, vc := newGuild(t, alice, "home")
+	e.join(g, b)
+	join := claims(t, joinVoice(t, bob, vc.ID).Token).Attributes["zazzzor.join"]
+	overwrite(t, alice, vc.ID, g.ID, 0, 0, permissions.Connect) // taken away after the token
+	e.hook(&livekit.WebhookEvent{Event: "participant_joined", Room: lkRoom(vc.ID, "RM_1"),
+		Participant: lkParticipant(b, "PA_1", join)})
+	if _, ok := e.stateOf(parseID(t, g.ID), b.id(t)); ok {
+		t.Fatal("a member without CONNECT got a state")
+	}
+	e.rooms.waitRemoved(t, vc.ID+"/"+b.ID)
+}
+
 func TestWebhookScreenShareSetsSelfStream(t *testing.T) {
 	e := newEnv(t)
 	alice, a := e.user("alice")
@@ -147,6 +181,17 @@ func TestWebhookRoomFinishedClearsOnlyThatRoom(t *testing.T) {
 	e.hook(&livekit.WebhookEvent{Event: "room_finished", Room: lkRoom(vc.ID, "RM_2")})
 	if _, ok := e.stateOf(parseID(t, g.ID), a.id(t)); ok {
 		t.Fatal("room_finished kept the state")
+	}
+}
+
+func TestWebhookIgnoresRoomsThatAreNotChannels(t *testing.T) {
+	e := newEnv(t)
+	e.run()
+	_, a := e.user("alice")
+	e.hook(&livekit.WebhookEvent{Event: "participant_joined", Room: lkRoom("connectivity", "RM_1"),
+		Participant: lkParticipant(a, "PA_1", "")})
+	if len(e.pub.updates()) != 0 || len(e.rooms.removals()) != 0 {
+		t.Fatalf("updates %v, removals %v, want none", e.pub.updates(), e.rooms.removals())
 	}
 }
 
