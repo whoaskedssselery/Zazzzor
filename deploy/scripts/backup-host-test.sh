@@ -28,6 +28,7 @@ cat > "$test_root/bin/docker" <<'EOF'
 # Подменный docker: печатает то, что спрашивает backup.sh, и пишет шаги.
 set -euo pipefail
 args="$*"
+printf '%s\n' "$args" >>"$DOCKER_CALLS"
 step() {
   echo "$1" >> "$STATE"
 }
@@ -63,6 +64,7 @@ esac
 EOF
 chmod +x "$test_root/bin/docker"
 export PATH="$test_root/bin:$PATH" STATE="$test_root/state"
+export DOCKER_CALLS="$test_root/docker-calls"
 export ENV_FILE="$script_dir/../.env.ci" STACK_NAME=zazzzor-host-test
 export ZAZZZOR_BACKUP_DIR="$test_root/backups"
 name=20261027T043000Z-test
@@ -77,7 +79,14 @@ expect() {
   [[ "$(cat "$STATE")" == "$want" ]] || fail "шаги: $(tr '\n' ' ' < "$STATE"), ожидались: $*"
 }
 
-for mode in compose swarm; do
+for variant in compose swarm swarm-traefik; do
+  mode="$variant"
+  export ZAZZZOR_EDGE=caddy
+  if [[ "$variant" == swarm-traefik ]]; then
+    mode=swarm
+    export ZAZZZOR_EDGE=traefik
+  fi
+  : >"$DOCKER_CALLS"
   echo "- $mode: без --yes ничего не делается"
   : > "$STATE"
   if bash "$script_dir/backup.sh" "$mode" restore "$name" 2>/dev/null; then fail 'восстановление без --yes'; fi
@@ -87,6 +96,10 @@ for mode in compose swarm; do
   : > "$STATE"
   bash "$script_dir/backup.sh" "$mode" restore "$name" --yes >/dev/null
   expect check stop restore reconcile start
+  if [[ "$variant" == swarm-traefik ]]; then
+    grep -q -- '--network zazzzor-host-test_db.*PGHOST=postgres.*PGPORT=5432' "$DOCKER_CALLS" || fail 'задание не в сети Postgres'
+    grep -q -- '--network zazzzor-host-test_db.*files reconcile' "$DOCKER_CALLS" || fail 'reconcile не в сети Postgres'
+  fi
 
   echo "- $mode: копия новее образа отвергается до остановки API"
   : > "$STATE"
