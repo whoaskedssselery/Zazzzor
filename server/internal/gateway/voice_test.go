@@ -51,6 +51,8 @@ func (f *fakeLiveKit) serve(t *testing.T) string {
 		switch strings.TrimPrefix(r.URL.Path, "/twirp/livekit.RoomService/") {
 		case "ListRooms":
 			resp = &livekit.ListRoomsResponse{}
+		case "ListParticipants":
+			resp = &livekit.ListParticipantsResponse{}
 		case "RemoveParticipant":
 			var req livekit.RoomParticipantIdentity
 			if err := proto.Unmarshal(body, &req); err != nil {

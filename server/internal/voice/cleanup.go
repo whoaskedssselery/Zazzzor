@@ -18,6 +18,14 @@ import (
 func (s *Service) RemoveMembers(ctx context.Context, guildID snowflake.ID, userIDs []snowflake.ID) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.pruneRemovalsLocked()
+	for _, userID := range userIDs {
+		s.rev++
+		s.membersRemoved[memberKey{guildID: guildID, userID: userID}] = s.invalidationLocked()
+		if s.intents[userID].guildID == guildID {
+			s.intents[userID] = intent{}
+		}
+	}
 	for userID, sess := range s.sessions {
 		if sess.state.GuildID == guildID && slices.Contains(userIDs, userID) {
 			s.dropLocked(ctx, userID, true)
@@ -29,6 +37,15 @@ func (s *Service) RemoveMembers(ctx context.Context, guildID snowflake.ID, userI
 func (s *Service) RemoveChannel(ctx context.Context, channelID snowflake.ID) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.pruneRemovalsLocked()
+	s.rev++
+	s.channelsRemoved[channelID] = s.invalidationLocked()
+	for userID, pending := range s.intents {
+		if pending.channelID == channelID {
+			s.intents[userID] = intent{}
+			s.touchLocked(userID)
+		}
+	}
 	for userID, sess := range s.sessions {
 		if sess.state.ChannelID == channelID {
 			s.dropLocked(ctx, userID, true)

@@ -51,6 +51,7 @@ type found struct {
 // alone. A user in two rooms keeps the one joined last.
 func (s *Service) Reconcile(ctx context.Context) error {
 	s.mu.Lock()
+	s.pruneRemovalsLocked()
 	start := s.rev
 	s.mu.Unlock()
 
@@ -114,6 +115,9 @@ func (s *Service) Reconcile(ctx context.Context) error {
 	}
 	for userID, f := range kept {
 		switch {
+		case s.departedLocked(f.p.SID):
+		case s.invalidatedLocked(f.guildID, userID, f.channelID, start):
+			s.removeLocked(f.room.Name, f.p.Identity, f.p.SID)
 		case changed(userID):
 		case !s.currentLocked(userID, f.channelID, f.p.Join):
 			s.removeLocked(f.room.Name, f.p.Identity, f.p.SID)
@@ -214,7 +218,7 @@ func (s *Service) removeDue(ctx context.Context) (time.Time, bool) {
 		s.mu.Unlock()
 
 		rpcCtx, cancel := context.WithTimeout(ctx, rpcTimeout)
-		err := s.rooms.RemoveParticipant(rpcCtx, key.room, key.identity)
+		err := s.removeParticipant(rpcCtx, key, job)
 		cancel()
 		if ctx.Err() != nil {
 			return time.Time{}, false
@@ -236,6 +240,24 @@ func (s *Service) removeDue(ctx context.Context) (time.Time, bool) {
 		}
 		s.mu.Unlock()
 	}
+}
+
+// removeParticipant checks the remote SID too: its join webhook may not
+// have arrived yet. LiveKit's identity-based API cannot make the check and
+// removal atomic, so this narrows rather than eliminates that RPC race.
+func (s *Service) removeParticipant(ctx context.Context, key removalKey, job *removal) error {
+	if job.sid != "" {
+		ps, err := s.rooms.ListParticipants(ctx, key.room)
+		if err != nil {
+			return fmt.Errorf("voice: inspect removal target: %w", err)
+		}
+		for _, p := range ps {
+			if p.Identity == key.identity && p.SID != job.sid {
+				return nil
+			}
+		}
+	}
+	return s.rooms.RemoveParticipant(ctx, key.room, key.identity)
 }
 
 // rejoinedLocked reports whether the user a removal is meant for is now in

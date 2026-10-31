@@ -50,7 +50,7 @@ func (s *Service) Join(ctx context.Context, channelID snowflake.ID, user auth.Us
 	}
 	join := newJoin()
 	s.mu.Lock()
-	s.intents[user.ID] = intent{channelID: channelID, join: join}
+	s.intents[user.ID] = intent{guildID: c.GuildID, channelID: channelID, join: join}
 	s.mu.Unlock()
 	token, err := s.token(user, channelID, p, join)
 	if err != nil {

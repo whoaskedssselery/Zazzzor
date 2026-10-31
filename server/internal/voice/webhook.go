@@ -97,9 +97,21 @@ func (s *Service) verify(authorization string, body []byte) error {
 // dropped, and events about another participant or room SID than the
 // state's change nothing.
 func (s *Service) apply(ctx context.Context, ev *livekit.WebhookEvent) error {
-	if s.repeated(ev.GetId()) {
+	apply, err := s.beginEvent(ctx, ev.GetId())
+	if err != nil {
+		return err
+	}
+	if !apply {
 		return nil
 	}
+	err = s.applyEvent(ctx, ev)
+	s.finishEvent(ev.GetId(), err == nil)
+	return err
+}
+
+// applyEvent applies an event owned by this delivery, without holding the
+// deduplication lock across permission reads.
+func (s *Service) applyEvent(ctx context.Context, ev *livekit.WebhookEvent) error {
 	channelID, ok := roomChannel(ev.GetRoom().GetName())
 	if !ok {
 		return nil
@@ -120,25 +132,50 @@ func (s *Service) apply(ctx context.Context, ev *livekit.WebhookEvent) error {
 	return nil
 }
 
-// repeated reports whether the event ID was seen within seenTTL, and
-// remembers it.
-func (s *Service) repeated(id string) bool {
+// beginEvent waits for an in-flight copy, or owns this delivery. Only a
+// successful delivery is remembered; a failed one can be retried.
+func (s *Service) beginEvent(ctx context.Context, id string) (bool, error) {
 	if id == "" {
-		return false
+		return true, nil
+	}
+	for {
+		s.mu.Lock()
+		for k, at := range s.seen {
+			if s.now().Sub(at) > seenTTL {
+				delete(s.seen, k)
+			}
+		}
+		if _, ok := s.seen[id]; ok {
+			s.mu.Unlock()
+			return false, nil
+		}
+		if done, ok := s.inflight[id]; ok {
+			s.mu.Unlock()
+			select {
+			case <-ctx.Done():
+				return false, fmt.Errorf("voice: wait for webhook delivery: %w", ctx.Err())
+			case <-done:
+				continue
+			}
+		}
+		s.inflight[id] = make(chan struct{})
+		s.mu.Unlock()
+		return true, nil
+	}
+}
+
+// finishEvent releases waiting deliveries and records only successful work.
+func (s *Service) finishEvent(id string, success bool) {
+	if id == "" {
+		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	now := s.now()
-	for k, at := range s.seen {
-		if now.Sub(at) > seenTTL {
-			delete(s.seen, k)
-		}
+	if success {
+		s.seen[id] = s.now()
 	}
-	if _, ok := s.seen[id]; ok {
-		return true
-	}
-	s.seen[id] = now
-	return false
+	close(s.inflight[id])
+	delete(s.inflight, id)
 }
 
 // admitted reports whether p may be in the room of channelID: the channel
@@ -173,6 +210,9 @@ func (s *Service) admitted(ctx context.Context, channelID snowflake.ID, p Partic
 // is of the user's latest join becomes the user's state, replacing one in
 // another channel; any other participant is removed from the room.
 func (s *Service) joined(ctx context.Context, channelID snowflake.ID, room Room, p Participant) error {
+	s.mu.Lock()
+	start := s.rev
+	s.mu.Unlock()
 	guildID, ok, err := s.admitted(ctx, channelID, p)
 	if err != nil {
 		return err
@@ -184,6 +224,13 @@ func (s *Service) joined(ctx context.Context, channelID snowflake.ID, room Room,
 		return nil
 	}
 	userID, _ := identityUser(p.Identity)
+	if s.departedLocked(p.SID) {
+		return nil
+	}
+	if s.invalidatedLocked(guildID, userID, channelID, start) {
+		s.removeLocked(room.Name, p.Identity, p.SID)
+		return nil
+	}
 	if !s.currentLocked(userID, channelID, p.Join) {
 		s.removeLocked(room.Name, p.Identity, p.SID)
 		return nil
@@ -235,6 +282,10 @@ func (s *Service) left(ctx context.Context, p Participant) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.pruneRemovalsLocked()
+	if p.SID != "" {
+		s.departed[p.SID] = s.now()
+	}
 	if sess := s.sessions[userID]; sess != nil && sess.sid == p.SID {
 		s.dropLocked(ctx, userID, false)
 	}

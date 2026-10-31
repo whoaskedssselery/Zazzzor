@@ -7,6 +7,46 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
 
+// pruneRemovalsLocked bounds tombstones to the token/retry horizon. HTTP
+// admission reads are bounded by request deadlines well below this window.
+func (s *Service) pruneRemovalsLocked() {
+	now := s.now()
+	for sid, at := range s.departed {
+		if now.Sub(at) > seenTTL {
+			delete(s.departed, sid)
+		}
+	}
+	for key, change := range s.membersRemoved {
+		if now.Sub(change.at) > seenTTL {
+			delete(s.membersRemoved, key)
+		}
+	}
+	for key, change := range s.channelsRemoved {
+		if now.Sub(change.at) > seenTTL {
+			delete(s.channelsRemoved, key)
+		}
+	}
+}
+
+// departedLocked reports whether LiveKit already reported this SID gone.
+func (s *Service) departedLocked(sid string) bool {
+	s.pruneRemovalsLocked()
+	_, ok := s.departed[sid]
+	return ok
+}
+
+// invalidatedLocked rejects a permission snapshot older than a removal.
+func (s *Service) invalidatedLocked(guildID, userID, channelID snowflake.ID, start uint64) bool {
+	s.pruneRemovalsLocked()
+	return s.membersRemoved[memberKey{guildID: guildID, userID: userID}].revision > start ||
+		s.channelsRemoved[channelID].revision > start
+}
+
+// invalidationLocked records the current revision at the service's clock.
+func (s *Service) invalidationLocked() invalidation {
+	return invalidation{revision: s.rev, at: s.now()}
+}
+
 // The helpers below require s.mu. Events are published under it, so they
 // go out in the order the states changed; Publish never blocks.
 

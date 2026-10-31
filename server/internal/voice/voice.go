@@ -189,6 +189,7 @@ type session struct {
 // intent is a user's latest join: the channel and the generation its
 // token carries. The zero intent means they left: no token may connect.
 type intent struct {
+	guildID   snowflake.ID
 	channelID snowflake.ID
 	join      string
 }
@@ -208,6 +209,18 @@ type removal struct {
 	due      time.Time
 }
 
+// memberKey scopes a removal to the guild the member left.
+type memberKey struct {
+	guildID snowflake.ID
+	userID  snowflake.ID
+}
+
+// invalidation rejects admission reads started before a committed removal.
+type invalidation struct {
+	revision uint64
+	at       time.Time
+}
+
 // Service implements voice. Create it with NewService and start its
 // background work with Run.
 type Service struct {
@@ -225,11 +238,15 @@ type Service struct {
 	intents  map[snowflake.ID]intent
 	// rev counts state changes; revs holds the rev of each user's last
 	// change, so a reconcile does not undo what happened during it.
-	rev      uint64
-	revs     map[snowflake.ID]uint64
-	seen     map[string]time.Time
-	removals map[removalKey]*removal
-	wake     chan struct{}
+	rev             uint64
+	revs            map[snowflake.ID]uint64
+	seen            map[string]time.Time
+	inflight        map[string]chan struct{}
+	departed        map[string]time.Time
+	membersRemoved  map[memberKey]invalidation
+	channelsRemoved map[snowflake.ID]invalidation
+	removals        map[removalKey]*removal
+	wake            chan struct{}
 }
 
 // NewService builds a Service from o. It starts nothing and calls nothing.
@@ -239,6 +256,10 @@ func NewService(o Options) *Service {
 		sessions: make(map[snowflake.ID]*session), intents: make(map[snowflake.ID]intent),
 		revs: make(map[snowflake.ID]uint64), seen: make(map[string]time.Time),
 		removals: make(map[removalKey]*removal), wake: make(chan struct{}, 1)}
+	s.inflight = make(map[string]chan struct{})
+	s.departed = make(map[string]time.Time)
+	s.membersRemoved = make(map[memberKey]invalidation)
+	s.channelsRemoved = make(map[snowflake.ID]invalidation)
 	s.enabled = s.rooms != nil && s.key != "" && s.secret != ""
 	if s.log == nil {
 		s.log = slog.New(slog.DiscardHandler)
