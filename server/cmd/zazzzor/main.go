@@ -37,6 +37,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/gateway"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/db"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
+	"github.com/whoaskedssselery/zazzzor/server/internal/voice"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
@@ -159,12 +160,14 @@ func serve(ctx context.Context, logger *slog.Logger, cfg config.Config, pool *pg
 		}
 		deps.Ready = dbReady(pool)
 		deps.Modules = m
-		deps.Gateway = m.NewGateway(bus, cfg, logger, reg, gateway.Options{})
+		deps.Gateway = m.NewGateway(bus, cfg, logger, reg, gateway.Options{}) //nolint:contextcheck // reported once the LiveKit SDK was linked, with no change on this path; the gateway owns its contexts.
 	}
 	// Trash is purged while the API serves; shutdown waits for the job.
 	if deps.Modules != nil {
 		stopPurge := startFilePurge(ctx, deps.Modules.Files, logger)
 		defer stopPurge()
+		stopVoice := startVoice(ctx, deps.Modules.Voice, logger)
+		defer stopVoice()
 	}
 	api := newServer(newRouter(deps), logger)
 
@@ -195,6 +198,26 @@ func serve(ctx context.Context, logger *slog.Logger, cfg config.Config, pool *pg
 	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
 	defer cancel()
 	return errors.Join(runErr, api.Shutdown(shutdownCtx), metrics.Shutdown(shutdownCtx))
+}
+
+// startVoice runs the background work of voice (reconciling with LiveKit,
+// removing participants) while the API serves, or logs once that voice is
+// off. The returned function stops the work and waits for it.
+func startVoice(ctx context.Context, v *voice.Service, logger *slog.Logger) (stop func()) {
+	if !v.Enabled() {
+		logger.Warn("voice is off: set LIVEKIT_API_KEY and LIVEKIT_API_SECRET to enable it")
+		return func() {}
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		v.Run(ctx)
+	}()
+	return func() {
+		cancel()
+		<-done
+	}
 }
 
 func newServer(h http.Handler, logger *slog.Logger) *http.Server {

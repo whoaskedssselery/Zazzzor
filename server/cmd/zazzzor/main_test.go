@@ -233,3 +233,20 @@ func TestServeShutsDownGracefully(t *testing.T) {
 		t.Fatal("serve did not stop after context cancel")
 	}
 }
+
+// LiveKit posts its webhook without an Origin; only that route may skip
+// the check.
+func TestOnlyTheLiveKitWebhookSkipsTheOriginCheck(t *testing.T) {
+	h, _, _ := newTestRouter(t)
+	for path, want := range map[string]int{
+		"/api/v1/livekit/webhook":  http.StatusNotFound, // past the check; no modules here
+		"/api/v1/livekit/webhook/": http.StatusForbidden,
+		"/api/v1/channels/1/voice": http.StatusForbidden,
+	} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, nil))
+		if rec.Code != want {
+			t.Errorf("POST %s without Origin: status = %d, want %d", path, rec.Code, want)
+		}
+	}
+}

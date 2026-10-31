@@ -26,6 +26,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/ratelimit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 	"github.com/whoaskedssselery/zazzzor/server/internal/users"
+	"github.com/whoaskedssselery/zazzzor/server/internal/voice"
 )
 
 // Reads (GET) per signed-in user: 120 per minute, burst 60.
@@ -45,13 +46,18 @@ type Modules struct {
 	Messages *messages.Service
 	Admin    *admin.Service
 	Files    *files.Disk
+	// Voice is unavailable (every operation 503) without LiveKit
+	// credentials; its Run must be started by the caller.
+	Voice *voice.Service
 	// ReadLimiter limits the GETs of each signed-in user (auth.LimitReads);
 	// NewModules sets the default, 120 per minute with a burst of 60.
 	ReadLimiter *ratelimit.Limiter
 }
 
 // NewModules wires the domain modules to the configuration and to each
-// other. Images live under cfg.DataDir, which is created if missing.
+// other. Images live under cfg.DataDir, which is created if missing. Voice
+// talks to LiveKit at cfg.LiveKitURL when its credentials are set and logs
+// its background failures to slog.Default().
 func NewModules(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator, pub events.Publisher) (*Modules, error) {
 	disk, err := files.NewDisk(cfg.DataDir, files.Options{Retention: cfg.FileRetention})
 	if err != nil {
@@ -76,6 +82,12 @@ func NewModules(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator,
 	channelSvc := channels.NewService(channels.Options{Pool: pool, IDs: ids, Guilds: guildSvc, Publisher: pub})
 	messageSvc := messages.NewService(messages.Options{Pool: pool, IDs: ids, Channels: channelSvc, Users: authSvc,
 		Publisher: pub})
+	vo := voice.Options{Channels: channelSvc, Publisher: pub, Logger: slog.Default()}
+	if cfg.VoiceEnabled() {
+		vo.Rooms = voice.NewLiveKit(cfg.LiveKitURL, cfg.LiveKitAPIKey, cfg.LiveKitAPISecret)
+		vo.APIKey, vo.APISecret = cfg.LiveKitAPIKey, cfg.LiveKitAPISecret
+	}
+	voiceSvc := voice.NewService(vo)
 	return &Modules{
 		Auth:        authSvc,
 		Users:       users.NewService(users.Options{Accounts: authSvc, Files: disk, Publisher: pub}),
@@ -85,6 +97,7 @@ func NewModules(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator,
 		Messages:    messageSvc,
 		Admin:       admin.NewService(admin.Options{Settings: settings, Accounts: authSvc}),
 		Files:       disk,
+		Voice:       voiceSvc,
 		ReadLimiter: ratelimit.New(readRate, readBurst, readTTL),
 	}, nil
 }
@@ -112,10 +125,12 @@ func (m *Modules) NewGateway(bus *events.Bus, cfg config.Config, logger *slog.Lo
 
 // Routes mounts the domain routes, and the gateway at /gateway unless gw is
 // nil, on r (the /api/v1 router). The gateway is the only route without
-// the per-request deadlines, and it authenticates by itself.
+// the per-request deadlines, and it authenticates by itself; the LiveKit
+// webhook has no session but a signature.
 func (m *Modules) Routes(r chi.Router, gw *gateway.Gateway) {
 	// Public images need no session lookup.
 	files.Mount(r, m.Files)
+	voice.MountWebhook(r, m.Voice)
 	if gw != nil {
 		r.With(httpx.WithoutDeadlines).Get("/gateway", gw.ServeHTTP)
 	}
@@ -128,5 +143,6 @@ func (m *Modules) Routes(r chi.Router, gw *gateway.Gateway) {
 		channels.Mount(r, m.Channels)
 		invites.Mount(r, m.Invites)
 		messages.Mount(r, m.Messages)
+		voice.Mount(r, m.Voice)
 	})
 }
