@@ -194,7 +194,7 @@ func New(o Options) *Gateway {
 		conns: make(map[*conn]struct{}), reservedUser: make(map[snowflake.ID]int), presence: newPresence(), dispatchDone: make(chan struct{})}
 	ch, unsub := o.Bus.Subscribe(o.BusBuffer)
 	g.unsub = unsub
-	go g.dispatchLoop(ch)
+	go g.dispatchLoop(g.ctx, ch)
 	return g
 }
 

@@ -16,10 +16,10 @@ import (
 // behind and lost events) closes every connection with 4008 so the clients
 // resync by reconnecting, then subscribes again; a closed subscription
 // means the gateway or the bus is shutting down and closes them with 1012.
-func (g *Gateway) dispatchLoop(ch <-chan events.Event) {
+func (g *Gateway) dispatchLoop(ctx context.Context, ch <-chan events.Event) {
 	defer close(g.dispatchDone)
 	for {
-		if !g.consume(ch) {
+		if !g.consume(ctx, ch) {
 			g.mu.Lock()
 			g.closed = true
 			g.presence.stop()
@@ -52,12 +52,12 @@ func (g *Gateway) dispatchLoop(ch <-chan events.Event) {
 
 // consume dispatches events until Overflow (true) or the channel closes
 // (false).
-func (g *Gateway) consume(ch <-chan events.Event) bool {
+func (g *Gateway) consume(ctx context.Context, ch <-chan events.Event) bool {
 	for e := range ch {
 		if e.Type == events.Overflow {
 			return true
 		}
-		g.dispatch(e)
+		g.dispatch(ctx, e)
 	}
 	return false
 }
@@ -67,8 +67,8 @@ func (g *Gateway) consume(ch <-chan events.Event) bool {
 // detail to anyone) and drops the event; for a guild event the connections
 // that hold the guild, or that needed its state, are closed with 4008 so
 // their clients reconnect and resync instead of silently missing it.
-func (g *Gateway) dispatch(e events.Event) {
-	if g.ctx.Err() != nil {
+func (g *Gateway) dispatch(ctx context.Context, e events.Event) {
+	if ctx.Err() != nil {
 		return // shutting down
 	}
 	if e.Type == events.SessionRevoked {
@@ -79,7 +79,7 @@ func (g *Gateway) dispatch(e events.Event) {
 	if len(conns) == 0 {
 		return // nobody to tell: no queries
 	}
-	ctx, cancel := context.WithTimeout(g.ctx, dispatchTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dispatchTimeout)
 	defer cancel()
 
 	recipients, err := g.recipients(ctx, e)

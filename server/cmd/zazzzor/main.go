@@ -160,7 +160,7 @@ func serve(ctx context.Context, logger *slog.Logger, cfg config.Config, pool *pg
 		}
 		deps.Ready = dbReady(pool)
 		deps.Modules = m
-		deps.Gateway = m.NewGateway(bus, cfg, logger, reg, gateway.Options{}) //nolint:contextcheck // reported once the LiveKit SDK was linked, with no change on this path; the gateway owns its contexts.
+		deps.Gateway = m.NewGateway(bus, cfg, logger, reg, gateway.Options{})
 	}
 	// Trash is purged while the API serves; shutdown waits for the job.
 	if deps.Modules != nil {
