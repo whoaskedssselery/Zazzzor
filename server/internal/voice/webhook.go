@@ -47,7 +47,7 @@ func (s *Service) handleWebhook(w http.ResponseWriter, r *http.Request) error {
 	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxWebhookBytes))
 	if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
-		return httpx.BadRequest("body_too_large", "request body exceeds 1 MiB")
+		return httpx.BadRequest("body_too_large", fmt.Sprintf("request body exceeds %d bytes", MaxWebhookBytes))
 	}
 	if err != nil {
 		return fmt.Errorf("voice: read webhook: %w", err)
@@ -104,9 +104,13 @@ func (s *Service) apply(ctx context.Context, ev *livekit.WebhookEvent) error {
 	if !apply {
 		return nil
 	}
-	err = s.applyEvent(ctx, ev)
-	s.finishEvent(ev.GetId(), err == nil)
-	return err
+	completed := false
+	defer func() { s.finishEvent(ev.GetId(), completed) }()
+	if err = s.applyEvent(ctx, ev); err != nil {
+		return fmt.Errorf("voice: apply webhook: %w", err)
+	}
+	completed = true
+	return nil
 }
 
 // applyEvent applies an event owned by this delivery, without holding the
