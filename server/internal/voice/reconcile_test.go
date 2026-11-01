@@ -1,6 +1,7 @@
 package voice_test
 
 import (
+	"errors"
 	"slices"
 	"testing"
 	"time"
@@ -96,7 +97,9 @@ func TestReconcileKeepsStatesOfRoomsItCouldNotList(t *testing.T) {
 	e.connect(alice, a, vc.ID, "RM_1", "PA_1")
 	e.rooms.put(voice.Room{SID: "RM_1", Name: vc.ID}, participant(a, "PA_1", time.Now()))
 	e.rooms.failList[vc.ID] = true
-	e.reconcile()
+	if err := e.voice.Reconcile(t.Context()); !errors.Is(err, errFake) {
+		t.Fatalf("Reconcile error = %v, want the partial listing failure", err)
+	}
 	if _, ok := e.stateOf(parseID(t, g.ID), a.id(t)); !ok {
 		t.Fatal("a failed listing cleared the room's state")
 	}

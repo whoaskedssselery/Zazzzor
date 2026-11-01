@@ -50,10 +50,14 @@ type found struct {
 // Reconcile makes the states match what LiveKit reports: admitted
 // participants of the latest join become states, participants who may not
 // be there are removed, and states without a participant go. A room that
-// could not be listed keeps its states; a state that changed while LiveKit
+// could not be checked keeps its states; a state that changed while LiveKit
 // was asked is left as it is; rooms that are not voice channels are left
-// alone. A user in two rooms keeps the one joined last.
+// alone. A user in two rooms keeps the one joined last. Room failures are
+// returned after healthy rooms are applied.
 func (s *Service) Reconcile(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("voice: reconcile: %w", err)
+	}
 	s.mu.Lock()
 	s.expireMovesLocked(ctx)
 	s.pruneRemovalsLocked()
@@ -65,14 +69,15 @@ func (s *Service) Reconcile(ctx context.Context) error {
 	rooms, err := s.rooms.ListRooms(listCtx)
 	cancel()
 	if err != nil {
-		return err
+		return fmt.Errorf("voice: reconcile: list rooms: %w", err)
 	}
 	var (
-		kept      = map[snowflake.ID]found{}
-		sources   = map[snowflake.ID]found{}
-		turnedOut []found // admitted, but not the room the user is kept in
-		refused   []found // not admitted
-		unknown   = map[snowflake.ID]bool{}
+		kept            = map[snowflake.ID]found{}
+		sources         = map[snowflake.ID]found{}
+		turnedOut       []found // admitted, but not the room the user is kept in
+		refused         []found // not admitted
+		unknown         = map[snowflake.ID]bool{}
+		reconcileErrors []error
 	)
 	for _, room := range rooms {
 		channelID, ok := roomChannel(room.Name)
@@ -84,22 +89,34 @@ func (s *Service) Reconcile(ctx context.Context) error {
 		cancel()
 		if err != nil {
 			s.log.Warn("voice: list participants", "room", room.Name, "err", err.Error())
+			reconcileErrors = append(reconcileErrors, fmt.Errorf("voice: reconcile: list participants in %s: %w", room.Name, err))
 			unknown[channelID] = true
 			continue
 		}
+		var candidates, roomRefused []found
 		for _, p := range ps {
 			guildID, mask, ok, err := s.admitted(ctx, channelID, p)
 			if err != nil {
-				return fmt.Errorf("voice: reconcile room %s: %w", room.Name, err)
+				unknown[channelID] = true
+				reconcileErrors = append(reconcileErrors, fmt.Errorf("voice: reconcile room %s: %w", room.Name, err))
+				break
 			}
 			f := found{guildID: guildID, channelID: channelID, room: room, p: p, permissions: mask}
 			if !ok {
-				refused = append(refused, f)
+				roomRefused = append(roomRefused, f)
 				continue
 			}
+			candidates = append(candidates, f)
+		}
+		if unknown[channelID] {
+			continue
+		}
+		refused = append(refused, roomRefused...)
+		for _, f := range candidates {
+			p := f.p
 			userID, _ := identityUser(p.Identity)
 			s.mu.Lock()
-			current := !s.departedLocked(p.SID) && !s.invalidatedLocked(guildID, userID, channelID, start) && s.currentParticipantLocked(userID, channelID, p)
+			current := !s.departedLocked(p.SID) && !s.invalidatedLocked(f.guildID, userID, channelID, start) && s.currentParticipantLocked(userID, channelID, p)
 			if move := s.moves[userID]; current && move != nil && p.SID == move.source.sid && channelID == move.source.state.ChannelID {
 				sources[userID] = f
 			}
@@ -119,11 +136,10 @@ func (s *Service) Reconcile(ctx context.Context) error {
 		}
 	}
 	checked, failed := map[snowflake.ID]uint64{}, map[snowflake.ID]bool{}
-	var enforcementErrors []error
 	for userID, f := range kept {
 		revision, err := s.enforceFound(ctx, userID, f, start)
 		if err != nil {
-			enforcementErrors = append(enforcementErrors, fmt.Errorf("voice: reconcile user %s permissions: %w", userID, err))
+			reconcileErrors = append(reconcileErrors, fmt.Errorf("voice: reconcile user %s permissions: %w", userID, err))
 			// A failed destination has not completed the handoff. The observed
 			// source still needs its own current permissions enforced.
 			if source, ok := sources[userID]; ok && source.p.SID != f.p.SID {
@@ -131,7 +147,7 @@ func (s *Service) Reconcile(ctx context.Context) error {
 				kept[userID] = source
 				revision, err = s.enforceFound(ctx, userID, source, start)
 				if err != nil {
-					enforcementErrors = append(enforcementErrors, fmt.Errorf("voice: reconcile source permissions: %w", err))
+					reconcileErrors = append(reconcileErrors, fmt.Errorf("voice: reconcile source permissions: %w", err))
 				}
 			}
 			if err != nil {
@@ -167,6 +183,11 @@ func (s *Service) Reconcile(ctx context.Context) error {
 		case !s.currentParticipantLocked(userID, f.channelID, f.p):
 			s.removeLocked(f.room.Name, f.p.Identity, f.p.SID)
 		default:
+			// Another room's duplicate cannot displace a session whose room
+			// could not be checked, particularly after restart without intents.
+			if current := s.sessions[userID]; current != nil && unknown[current.state.ChannelID] && current.state.ChannelID != f.channelID {
+				continue
+			}
 			s.connectLocked(ctx, f.guildID, f.channelID, f.room, f.p)
 			s.syncScreensLocked(ctx, userID, f.p)
 			if s.permissionRev != permissionRevision {
@@ -180,7 +201,13 @@ func (s *Service) Reconcile(ctx context.Context) error {
 		}
 		s.dropLocked(ctx, userID, false)
 	}
-	return errors.Join(enforcementErrors...)
+	if err := ctx.Err(); err != nil {
+		reconcileErrors = append(reconcileErrors, fmt.Errorf("voice: reconcile: %w", err))
+	}
+	if len(reconcileErrors) == 0 {
+		s.lastReconcile = s.now()
+	}
+	return errors.Join(reconcileErrors...)
 }
 
 // newer reports whether a joined after b; equal times fall back to the

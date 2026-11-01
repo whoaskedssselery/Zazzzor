@@ -264,7 +264,8 @@ type Service struct {
 	wake            chan struct{}
 	refreshes       map[snowflake.ID]*permissionRefresh
 	refreshWake     chan struct{}
-	permissionRev   uint64 // guild sync epoch, including guilds with no local state
+	permissionRev   uint64    // guild sync epoch, including guilds with no local state
+	lastReconcile   time.Time // last wholly successful scan, zero before success
 }
 
 // NewService builds a Service from o. It starts nothing and calls nothing.
