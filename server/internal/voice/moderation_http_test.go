@@ -61,7 +61,7 @@ func TestModerationHTTPRejectsInvalidFields(t *testing.T) {
 	owner, u := e.user("owner")
 	g, _, vc := newGuild(t, owner, "home")
 	e.connect(owner, u, vc.ID, "RM_1", "PA_owner")
-	for _, body := range []string{`{}`, `{"mute":null}`, `{"mute":null,"deaf":true}`, `{"mute":"true"}`, `{"mute":false,"deaf":null}`, `{"channel_id":null}`, `{"mute":true,"extra":true}`} {
+	for _, body := range []string{`{}`, `{"mute":null}`, `{"mute":null,"deaf":true}`, `{"mute":"true"}`, `{"mute":false,"deaf":null}`, `{"mute":true,"extra":true}`} {
 		t.Run(body, func(t *testing.T) {
 			expect(t, owner.Do(http.MethodPatch, moderationPath(g.ID, u.ID), []byte(body)), http.StatusBadRequest)
 		})

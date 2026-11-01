@@ -2159,7 +2159,7 @@ paths:
     patch:
       tags: [voice]
       operationId: moderateVoice
-      summary: Set a participant's server mute and deafen flags
+      summary: Moderate a participant's voice state or channel
       description: |
         Changes the supplied flags; at least one must be present. `mute`
         requires `MUTE_MEMBERS`, and `deaf` requires `DEAFEN_MEMBERS`, in the
@@ -2173,8 +2173,26 @@ paths:
         reconnects in this guild, but reset when the API restarts. A change
         is announced as `VOICE_STATE_UPDATE` only to the channel's viewers.
         Identical flags announce nothing. Upstream failure does not commit
-        or announce successful moderation. Move/disconnect is not supported
-        by this operation yet.
+        or announce successful moderation.
+
+        `channel_id: null` disconnects the participant and invalidates old
+        join tokens; it needs `MOVE_MEMBERS` in the source channel. A channel
+        ID requests a move and needs `MOVE_MEMBERS` in both source and
+        destination. The destination must be a voice channel of this guild
+        that the participant may view and `CONNECT` to. Missing destination
+        permissions return `403 missing_permission`; a hidden destination
+        is `404 not_found`, and a visible non-voice destination is
+        `400 not_a_voice_channel`. Combined patches validate all permissions
+        before effects. Server flags set alongside disconnect persist for
+        the next join.
+
+        Moving sends only the participant `VOICE_MOVE { channel_id }`.
+        Source presence remains until destination admission, which removes
+        the old participant. If no admission follows within 15 seconds,
+        that source is removed anyway. A newer move supersedes prior
+        destination tokens; an identical pending move does not extend the
+        deadline or repeat the event. Moving to the current channel is a
+        no-op. Omitted `channel_id` preserves the current channel.
       parameters:
         - $ref: "#/components/parameters/GuildID"
         - $ref: "#/components/parameters/UserID"
@@ -3286,6 +3304,11 @@ components:
           type: boolean
         deaf:
           type: boolean
+        channel_id:
+          description: Omitted preserves the channel; null disconnects; an ID requests a private handoff.
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
     UpdateVoiceStateRequest:
       type: object
       additionalProperties: false

@@ -273,3 +273,35 @@ func TestDeletingAVoiceChannelTakesEveryoneOutOfIt(t *testing.T) {
 	}
 	eventually(t, "alice's removal", func() bool { return slices.Contains(lk.removals(), vc.ID+"/"+a.ID) })
 }
+
+func TestVoiceMoveReachesOnlyItsTarget(t *testing.T) {
+	e, _ := voiceEnv(t)
+	owner, a := e.user("owner")
+	target, u := e.user("target")
+	outsider, o := e.user("outsider")
+	g, _ := newGuild(t, owner, "home")
+	e.join(g, u)
+	e.join(g, o)
+	source := voiceChannel(t, owner, g, "source")
+	destination := voiceChannel(t, owner, g, "destination")
+	overwrite(t, owner, destination.ID, g.ID, 0, 0, permissions.ViewChannel)
+	overwrite(t, owner, destination.ID, u.ID, 1, permissions.ViewChannel, 0)
+	acl, _ := connect(t, owner)
+	tcl, _ := connect(t, target)
+	ocl, _ := connect(t, outsider)
+	e.connectVoice(target, u, source.ID)
+	expect(t, owner.Do(http.MethodPatch, "/api/v1/guilds/"+g.ID+"/members/"+u.ID+"/voice", map[string]any{"channel_id": destination.ID}), http.StatusNoContent)
+	var payload struct {
+		ChannelID string `json:"channel_id"`
+	}
+	decode(t, tcl.waitFor(events.VoiceMove).D, &payload)
+	if payload.ChannelID != destination.ID {
+		t.Fatalf("VOICE_MOVE=%+v, want destination", payload)
+	}
+	if got := types(e.untilSentinel(acl, a)); slices.Contains(got, events.VoiceMove) {
+		t.Fatalf("moderator received private move: %v", got)
+	}
+	if got := types(e.untilSentinel(ocl, o)); slices.Contains(got, events.VoiceMove) {
+		t.Fatalf("non-target received hidden destination: %v", got)
+	}
+}

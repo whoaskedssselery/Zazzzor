@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/channels"
@@ -296,6 +297,19 @@ func (g *Gateway) resync(guildID snowflake.ID) {
 // removed by the caller).
 func (g *Gateway) recipients(ctx context.Context, e events.Event) ([]snowflake.ID, error) {
 	a := e.Audience
+	if e.Type == events.VoiceMove {
+		if a.Kind != events.AudienceUsers || a.ChannelID <= 0 {
+			return nil, errors.New("gateway: voice move without private destination audience")
+		}
+		viewers, err := g.opts.Channels.Viewers(ctx, a.ChannelID)
+		if errors.Is(err, channels.ErrNotFound) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("gateway: read voice move destination viewers: %w", err)
+		}
+		return slices.DeleteFunc(slices.Clone(a.UserIDs), func(userID snowflake.ID) bool { return !slices.Contains(viewers, userID) }), nil
+	}
 	switch a.Kind {
 	case events.AudienceGuild, events.AudienceGuildSync:
 		return g.opts.Guilds.MemberIDs(ctx, a.GuildID)
