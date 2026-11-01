@@ -2,6 +2,7 @@ package voice
 
 import (
 	"context"
+	"maps"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
@@ -90,14 +91,51 @@ func (s *Service) dropLocked(ctx context.Context, userID snowflake.ID, remove bo
 }
 
 // removeLocked queues the removal of a participant from LiveKit; Run
-// carries it out. A newer removal of the same room and identity replaces
-// an older one.
+// carries it out. Coalesced jobs retain every known rejected SID.
 func (s *Service) removeLocked(room, identity, sid string) {
-	s.removals[removalKey{room: room, identity: identity}] = &removal{sid: sid, due: s.now()}
+	key := removalKey{room: room, identity: identity}
+	targets := map[string]bool{sid: true}
+	job := &removal{sid: sid, targets: targets, due: s.now()}
+	if previous := s.removals[key]; previous != nil {
+		if previous.matchesSID(sid) {
+			return
+		}
+		maps.Copy(targets, previous.targets)
+		targets[previous.sid] = true
+		job.attempts, job.due = previous.attempts, previous.due
+	}
+	s.removals[key] = job
 	select {
 	case s.wake <- struct{}{}:
 	default: // already woken
 	}
+}
+
+// cancelRemovalLocked cancels only the SID that successfully reentered.
+// Replacing the job preserves immutable target sets for an in-flight RPC.
+func (s *Service) cancelRemovalLocked(key removalKey, sid string) {
+	job := s.removals[key]
+	if job == nil || !job.matchesSID(sid) {
+		return
+	}
+	targets := maps.Clone(job.targets)
+	if targets == nil {
+		targets = map[string]bool{job.sid: true}
+	}
+	delete(targets, sid)
+	if len(targets) == 0 {
+		delete(s.removals, key)
+		return
+	}
+	copyJob := *job
+	copyJob.targets = targets
+	if copyJob.sid == sid {
+		for remaining := range targets {
+			copyJob.sid = remaining
+			break
+		}
+	}
+	s.removals[key] = &copyJob
 }
 
 // roomChannel returns the channel a room is named after: the room name is

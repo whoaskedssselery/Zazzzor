@@ -229,11 +229,6 @@ func (s *Service) removeDue(ctx context.Context) (time.Time, bool) {
 			s.mu.Unlock()
 			return next, !next.IsZero()
 		}
-		if s.rejoinedLocked(key, job) {
-			delete(s.removals, key)
-			s.mu.Unlock()
-			continue
-		}
 		s.mu.Unlock()
 
 		rpcCtx, cancel := context.WithTimeout(ctx, rpcTimeout)
@@ -265,20 +260,27 @@ func (s *Service) removeDue(ctx context.Context) (time.Time, bool) {
 // have arrived yet. LiveKit's identity-based API cannot make the check and
 // removal atomic, so this narrows rather than eliminates that RPC race.
 func (s *Service) removeParticipant(ctx context.Context, key removalKey, job *removal) error {
+	found := false
 	if job.sid != "" {
 		ps, err := s.rooms.ListParticipants(ctx, key.room)
 		if err != nil {
 			return fmt.Errorf("voice: inspect removal target: %w", err)
 		}
 		for _, p := range ps {
-			if p.Identity == key.identity && p.SID != job.sid {
-				return nil
+			if p.Identity == key.identity {
+				found = true
+				if !job.matchesSID(p.SID) {
+					return nil
+				}
 			}
 		}
 	}
 	// Admission may have recovered while ListParticipants was in flight.
 	s.mu.Lock()
 	current := s.removals[key] == job
+	if !found && s.rejoinedLocked(key, job) {
+		current = false
+	}
 	s.mu.Unlock()
 	if !current {
 		return nil
@@ -295,5 +297,5 @@ func (s *Service) rejoinedLocked(key removalKey, job *removal) bool {
 		return false
 	}
 	sess := s.sessions[userID]
-	return sess != nil && sess.room == key.room && sess.sid != job.sid
+	return sess != nil && sess.room == key.room && !job.matchesSID(sess.sid)
 }

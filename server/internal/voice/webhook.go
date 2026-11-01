@@ -275,9 +275,7 @@ func (s *Service) connectLocked(ctx context.Context, guildID, channelID snowflak
 	userID, _ := identityUser(p.Identity)
 	// Successful admission supersedes a failed attempt's pending removal.
 	key := removalKey{room: room.Name, identity: p.Identity}
-	if job := s.removals[key]; job != nil && job.sid == p.SID {
-		delete(s.removals, key)
-	}
+	s.cancelRemovalLocked(key, p.SID)
 	old := s.sessions[userID]
 	if old != nil && old.sid == p.SID {
 		return

@@ -205,8 +205,17 @@ type removalKey struct {
 // attempts the failures so far, due when to try next.
 type removal struct {
 	sid      string
+	targets  map[string]bool // immutable known SIDs; empty SID means any
 	attempts int
 	due      time.Time
+}
+
+// matchesSID reports whether this job rejects the remotely listed SID.
+func (r *removal) matchesSID(sid string) bool {
+	if r.targets == nil {
+		return r.sid == "" || r.sid == sid
+	}
+	return r.targets[""] || r.targets[sid]
 }
 
 // memberKey scopes a removal to the guild the member left.
