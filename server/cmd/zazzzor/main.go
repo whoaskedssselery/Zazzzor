@@ -158,6 +158,9 @@ func serve(ctx context.Context, logger *slog.Logger, cfg config.Config, pool *pg
 		if err != nil {
 			return err
 		}
+		if err = reg.Register(m.Voice.Metrics()); err != nil {
+			return fmt.Errorf("zazzzor: register voice metrics: %w", err)
+		}
 		deps.Ready = dbReady(pool)
 		deps.Modules = m
 		deps.Gateway = m.NewGateway(bus, cfg, logger, reg, gateway.Options{})
