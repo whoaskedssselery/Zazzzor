@@ -3,10 +3,12 @@ package voice
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
+	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
 
@@ -37,10 +39,11 @@ func (s *Service) Run(ctx context.Context) {
 
 // found is an admitted participant of a managed room.
 type found struct {
-	guildID   snowflake.ID
-	channelID snowflake.ID
-	room      Room
-	p         Participant
+	guildID     snowflake.ID
+	channelID   snowflake.ID
+	room        Room
+	p           Participant
+	permissions permissions.Permission
 }
 
 // Reconcile makes the states match what LiveKit reports: admitted
@@ -81,11 +84,11 @@ func (s *Service) Reconcile(ctx context.Context) error {
 			continue
 		}
 		for _, p := range ps {
-			guildID, ok, err := s.admitted(ctx, channelID, p)
+			guildID, mask, ok, err := s.admitted(ctx, channelID, p)
 			if err != nil {
 				return fmt.Errorf("voice: reconcile room %s: %w", room.Name, err)
 			}
-			f := found{guildID: guildID, channelID: channelID, room: room, p: p}
+			f := found{guildID: guildID, channelID: channelID, room: room, p: p, permissions: mask}
 			if !ok {
 				refused = append(refused, f)
 				continue
@@ -101,10 +104,21 @@ func (s *Service) Reconcile(ctx context.Context) error {
 			kept[userID] = f
 		}
 	}
+	checked, failed := map[snowflake.ID]uint64{}, map[snowflake.ID]bool{}
+	var enforcementErrors []error
+	for userID, f := range kept {
+		revision, err := s.enforceFound(ctx, userID, f, start)
+		if err != nil {
+			failed[userID] = true
+			enforcementErrors = append(enforcementErrors, fmt.Errorf("voice: reconcile user %s permissions: %w", userID, err))
+			continue
+		}
+		checked[userID] = revision
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	changed := func(userID snowflake.ID) bool { return s.revs[userID] > start }
+	changed := func(userID snowflake.ID) bool { return s.revs[userID] > max(start, checked[userID]) }
 	for _, f := range refused {
 		s.removeLocked(f.room.Name, f.p.Identity, f.p.SID)
 	}
@@ -119,6 +133,11 @@ func (s *Service) Reconcile(ctx context.Context) error {
 		case s.invalidatedLocked(f.guildID, userID, f.channelID, start):
 			s.removeLocked(f.room.Name, f.p.Identity, f.p.SID)
 		case changed(userID):
+		case failed[userID]:
+			s.removeLocked(f.room.Name, f.p.Identity, f.p.SID)
+			if sess := s.sessions[userID]; sess != nil && sess.sid == f.p.SID {
+				s.dropLocked(ctx, userID, false)
+			}
 		case !s.currentLocked(userID, f.channelID, f.p.Join):
 			s.removeLocked(f.room.Name, f.p.Identity, f.p.SID)
 		default:
@@ -132,7 +151,7 @@ func (s *Service) Reconcile(ctx context.Context) error {
 		}
 		s.dropLocked(ctx, userID, false)
 	}
-	return nil
+	return errors.Join(enforcementErrors...)
 }
 
 // newer reports whether a joined after b; equal times fall back to the

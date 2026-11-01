@@ -39,11 +39,15 @@ func (a admissionChannels) Permissions(context.Context, snowflake.ID, snowflake.
 }
 
 // webhookEnv reuses the signed-hook helpers with only in-memory dependencies.
-func webhookEnv(t *testing.T, c voice.Channels) *env {
+func webhookEnv(t *testing.T, c voice.Channels, opts ...func(*voice.Options)) *env {
 	t.Helper()
 	e := &env{t: t, pub: &recorder{}, rooms: newFakeRooms()}
-	e.voice = voice.NewService(voice.Options{Channels: c, Rooms: e.rooms, APIKey: testKey,
-		APISecret: testSecret, Publisher: e.pub})
+	o := voice.Options{Channels: c, Rooms: e.rooms, APIKey: testKey,
+		APISecret: testSecret, Publisher: e.pub}
+	for _, opt := range opts {
+		opt(&o)
+	}
+	e.voice = voice.NewService(o)
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) { voice.MountWebhook(r, e.voice) })
 	e.h = r

@@ -27,6 +27,10 @@ func (s *Service) Join(ctx context.Context, channelID snowflake.ID, user auth.Us
 	if !s.enabled {
 		return Join{}, ErrUnavailable
 	}
+	defer s.lockUser(user.ID)()
+	if err := ctx.Err(); err != nil {
+		return Join{}, fmt.Errorf("voice: issue join token: %w", err)
+	}
 	p, _, err := s.channels.Permissions(ctx, user.ID, channelID)
 	if err != nil {
 		return Join{}, err
@@ -51,8 +55,9 @@ func (s *Service) Join(ctx context.Context, channelID snowflake.ID, user auth.Us
 	join := newJoin()
 	s.mu.Lock()
 	s.intents[user.ID] = intent{guildID: c.GuildID, channelID: channelID, join: join}
+	flags := s.moderation[memberKey{guildID: c.GuildID, userID: user.ID}]
 	s.mu.Unlock()
-	token, err := s.token(user, channelID, p, join)
+	token, err := s.token(user, channelID, p, join, flags)
 	if err != nil {
 		return Join{}, err
 	}

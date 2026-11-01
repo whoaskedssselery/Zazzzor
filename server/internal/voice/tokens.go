@@ -14,12 +14,13 @@ import (
 )
 
 // grant is what a member with permissions p may do in the room of
-// channelID: always subscribe; publish the microphone with SPEAK and the
-// screen share (video and audio) with STREAM; never data, the camera or
+// channelID: subscribe unless deafened, publish the microphone with SPEAK
+// unless muted, and the screen share (video and audio) with STREAM; never
+// data, the camera or
 // their own metadata. Every flag is explicit: LiveKit grants everything
 // when none is set.
-func grant(channelID snowflake.ID, p permissions.Permission) *lkauth.VideoGrant {
-	media := mediaPermissions(p, false, false)
+func grant(channelID snowflake.ID, p permissions.Permission, flags serverFlags) *lkauth.VideoGrant {
+	media := mediaPermissions(p, flags.mute, flags.deaf)
 	g := &lkauth.VideoGrant{RoomJoin: true, Room: channelID.String()}
 	g.SetCanSubscribe(media.Subscribe)
 	g.SetCanPublishData(false)
@@ -33,12 +34,12 @@ func grant(channelID snowflake.ID, p permissions.Permission) *lkauth.VideoGrant 
 
 // token signs the join token of user for channelID: their ID is the
 // identity, their display name the name, and join the generation attribute.
-func (s *Service) token(user auth.User, channelID snowflake.ID, p permissions.Permission, join string) (string, error) {
+func (s *Service) token(user auth.User, channelID snowflake.ID, p permissions.Permission, join string, flags serverFlags) (string, error) {
 	t, err := lkauth.NewAccessToken(s.key, s.secret).
 		SetIdentity(user.ID.String()).
 		SetName(user.DisplayName).
 		SetValidFor(TokenTTL).
-		SetVideoGrant(grant(channelID, p)).
+		SetVideoGrant(grant(channelID, p, flags)).
 		SetAttributes(map[string]string{joinAttribute: join}).
 		ToJWT()
 	if err != nil {

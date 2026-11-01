@@ -181,62 +181,83 @@ func (s *Service) finishEvent(id string, success bool) {
 // admitted reports whether p may be in the room of channelID: the channel
 // is a voice channel, the identity a member who may view it and CONNECT.
 // It returns the guild of the channel. Errors are failures to find out.
-func (s *Service) admitted(ctx context.Context, channelID snowflake.ID, p Participant) (snowflake.ID, bool, error) {
+func (s *Service) admitted(ctx context.Context, channelID snowflake.ID, p Participant) (snowflake.ID, permissions.Permission, bool, error) {
 	userID, ok := identityUser(p.Identity)
 	if !ok {
-		return 0, false, nil
+		return 0, 0, false, nil
 	}
 	c, err := s.channels.Lookup(ctx, channelID)
 	if errors.Is(err, channels.ErrNotFound) {
-		return 0, false, nil
+		return 0, 0, false, nil
 	}
 	if err != nil {
-		return 0, false, err
+		return 0, 0, false, err
 	}
 	if c.Type != channels.TypeVoice {
-		return 0, false, nil
+		return 0, 0, false, nil
 	}
 	perm, guildID, err := s.channels.Permissions(ctx, userID, channelID)
 	if errors.Is(err, channels.ErrNotFound) {
-		return 0, false, nil
+		return 0, 0, false, nil
 	}
 	if err != nil {
-		return 0, false, err
+		return 0, 0, false, err
 	}
-	return guildID, perm.Has(permissions.Connect), nil
+	return guildID, perm, perm.Has(permissions.Connect), nil
 }
 
 // joined handles participant_joined: an admitted participant whose token
 // is of the user's latest join becomes the user's state, replacing one in
 // another channel; any other participant is removed from the room.
 func (s *Service) joined(ctx context.Context, channelID snowflake.ID, room Room, p Participant) error {
+	userID, _ := identityUser(p.Identity)
+	defer s.lockUser(userID)()
 	s.mu.Lock()
 	start := s.rev
 	s.mu.Unlock()
-	guildID, ok, err := s.admitted(ctx, channelID, p)
+	guildID, mask, ok, err := s.admitted(ctx, channelID, p)
 	if err != nil {
 		return err
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if !ok {
 		s.removeLocked(room.Name, p.Identity, p.SID)
+		s.mu.Unlock()
 		return nil
 	}
-	userID, _ := identityUser(p.Identity)
-	if s.departedLocked(p.SID) {
+	if !s.admissionCurrentLocked(guildID, userID, channelID, start, room, p) {
+		s.mu.Unlock()
 		return nil
 	}
-	if s.invalidatedLocked(guildID, userID, channelID, start) {
+	flags := s.moderation[memberKey{guildID: guildID, userID: userID}]
+	s.mu.Unlock()
+	err = s.applyPermissions(ctx, room.Name, p.Identity, mask, flags)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err != nil {
 		s.removeLocked(room.Name, p.Identity, p.SID)
+		return err
+	}
+	if !s.admissionCurrentLocked(guildID, userID, channelID, start, room, p) {
 		return nil
 	}
-	if !s.currentLocked(userID, channelID, p.Join) {
-		s.removeLocked(room.Name, p.Identity, p.SID)
-		return nil
-	}
+	// A same-SID webhook still applied fresh permissions remotely.
+	s.touchLocked(userID)
 	s.connectLocked(ctx, guildID, channelID, room, p)
 	return nil
+}
+
+// admissionCurrentLocked checks both sides of an admission RPC, so an
+// intervening departure or committed removal cannot restore stale state.
+func (s *Service) admissionCurrentLocked(guildID, userID, channelID snowflake.ID, start uint64, room Room, p Participant) bool {
+	if s.departedLocked(p.SID) {
+		return false
+	}
+	if s.invalidatedLocked(guildID, userID, channelID, start) || !s.currentLocked(userID, channelID, p.Join) {
+		s.removeLocked(room.Name, p.Identity, p.SID)
+		return false
+	}
+	return true
 }
 
 // currentLocked reports whether a participant with the join generation
@@ -258,6 +279,8 @@ func (s *Service) connectLocked(ctx context.Context, guildID, channelID snowflak
 	}
 	st := State{GuildID: guildID, ChannelID: channelID, UserID: userID, JoinedAt: p.JoinedAt,
 		SelfStream: len(p.Screens) > 0}
+	flags := s.moderation[memberKey{guildID: guildID, userID: userID}]
+	st.Mute, st.Deaf = flags.mute, flags.deaf
 	if st.JoinedAt.IsZero() {
 		st.JoinedAt = s.now().UTC()
 	}

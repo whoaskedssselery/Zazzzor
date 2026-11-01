@@ -112,7 +112,7 @@ type State struct {
 	SelfMute   bool
 	SelfDeaf   bool
 	SelfStream bool
-	// Mute and Deaf are imposed by moderators; always false for now.
+	// Mute and Deaf are imposed by moderators within this guild.
 	Mute     bool
 	Deaf     bool
 	JoinedAt time.Time
@@ -232,10 +232,13 @@ type Service struct {
 	log          *slog.Logger
 	now          func() time.Time
 	writeLimiter *ratelimit.Limiter
+	// operations orders media RPCs per user without blocking state reads.
+	operations [64]sync.Mutex
 
-	mu       sync.Mutex
-	sessions map[snowflake.ID]*session
-	intents  map[snowflake.ID]intent
+	mu         sync.Mutex
+	sessions   map[snowflake.ID]*session
+	intents    map[snowflake.ID]intent
+	moderation map[memberKey]serverFlags
 	// rev counts state changes; revs holds the rev of each user's last
 	// change, so a reconcile does not undo what happened during it.
 	rev             uint64
@@ -257,6 +260,7 @@ func NewService(o Options) *Service {
 		revs: make(map[snowflake.ID]uint64), seen: make(map[string]time.Time),
 		removals: make(map[removalKey]*removal), wake: make(chan struct{}, 1)}
 	s.inflight = make(map[string]chan struct{})
+	s.moderation = make(map[memberKey]serverFlags)
 	s.departed = make(map[string]time.Time)
 	s.membersRemoved = make(map[memberKey]invalidation)
 	s.channelsRemoved = make(map[snowflake.ID]invalidation)

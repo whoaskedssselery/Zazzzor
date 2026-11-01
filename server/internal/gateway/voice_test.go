@@ -53,6 +53,8 @@ func (f *fakeLiveKit) serve(t *testing.T) string {
 			resp = &livekit.ListRoomsResponse{}
 		case "ListParticipants":
 			resp = &livekit.ListParticipantsResponse{}
+		case "UpdateParticipant":
+			resp = &livekit.ParticipantInfo{}
 		case "RemoveParticipant":
 			var req livekit.RoomParticipantIdentity
 			if err := proto.Unmarshal(body, &req); err != nil {

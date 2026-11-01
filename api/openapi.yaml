@@ -2100,7 +2100,8 @@ paths:
         Needs `VIEW_CHANNEL` and `CONNECT` in a voice channel. Returns a
         LiveKit access token for the room named by the channel ID, valid for
         10 minutes, with the caller's user ID as identity and display name as
-        name. It may subscribe; it may publish the microphone with `SPEAK`
+        name. It may subscribe unless server-deafened; it may publish the
+        microphone with `SPEAK` unless server-muted
         and the screen share (video and audio) with `STREAM`, nothing with
         neither, and never data, the camera or its own metadata. `url` is the
         LiveKit signaling URL for this origin (`wss://` for an `https://`
@@ -2108,8 +2109,10 @@ paths:
 
         Getting a token changes no voice state: the state appears, and
         `VOICE_STATE_UPDATE` is announced, when LiveKit reports the
-        connection. Only the token of the caller's latest join may connect;
-        a connection with an older one is removed. If the caller is in
+        connection. Current server mute/deaf and channel grants are reapplied on
+        admission, including when this token predates a moderation change.
+        Only the token of the caller's latest join may connect; a connection
+        with an older one is removed. If the caller is in
         another voice channel, they are removed from it first and their
         state there is cleared (`VOICE_STATE_UPDATE` with `left: true`); if
         LiveKit cannot remove them, no token is issued
@@ -3164,10 +3167,10 @@ components:
           description: The user shares their screen (from LiveKit).
         mute:
           type: boolean
-          description: Muted by a moderator; always false for now.
+          description: Server-muted in this guild; disables the microphone. Kept across reconnects until lifted or the API restarts.
         deaf:
           type: boolean
-          description: Deafened by a moderator; always false for now.
+          description: Server-deafened in this guild; disables listening. Kept across reconnects until lifted or the API restarts.
         joined_at:
           type: string
           format: date-time

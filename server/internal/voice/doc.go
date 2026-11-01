@@ -10,6 +10,9 @@
 // are rebuilt from the LiveKit server API (Run reconciles at start and
 // every ReconcileInterval); the self_mute and self_deaf flags are not known
 // to LiveKit and start false, so clients send them again after READY.
+// Server mute/deaf flags are kept per guild and user across reconnects,
+// until lifted or the API restarts. Admission reapplies current grants to
+// LiveKit, including when a token predates a moderation change.
 //
 // A room is named by its voice channel's ID; rooms with other names (the
 // connectivity test's) are left alone.
