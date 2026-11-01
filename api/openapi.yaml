@@ -2118,6 +2118,11 @@ paths:
         LiveKit cannot remove them, no token is issued
         (`503 voice_unavailable`).
 
+        A new token also supersedes the current connection in the same
+        channel: the client must reconnect using the returned token rather
+        than keep using its old connection. The pending moderator handoff
+        below explicitly preserves only its captured source session.
+
         During a moderator-requested move, a token for the pending
         destination keeps the captured source session until this token's
         connection is reported. A 15-second fallback removes that source;
@@ -3492,6 +3497,11 @@ x-gateway:
     viewers, so nobody is told. Every GuildState (READY, GUILD_CREATE,
     GUILD_SYNC) lists the voice states of the channels the receiver may
     view in `voice_states`.
+
+    On CHANNEL_DELETE or GUILD_DELETE, clients discard all cached voice
+    states of that channel or guild without waiting for a leave event.
+    GUILD_SYNC replaces the receiver's visible voice state snapshot;
+    states omitted after a channel becomes hidden must also be discarded.
 
     VOICE_MOVE is private to the participant being moved and contains only
     the destination channel ID. The destination must still be visible to
