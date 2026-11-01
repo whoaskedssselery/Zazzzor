@@ -673,6 +673,10 @@ API и LiveKit связаны в обе стороны:
    экран). LiveKit шлёт их на `http://127.0.0.1:${ZAZZZOR_API_PORT}/api/v1/livekit/webhook`,
    подписывая ключом `LIVEKIT_API_KEY`. Неподписанные запросы API отклоняет.
 
+Публичный `/api/v1/livekit/webhook` Caddy закрывает ответом `404`, в том
+числе для подписанного запроса. Это нормально: LiveKit использует адрес
+на `127.0.0.1`, а не публичный HTTPS-домен.
+
 Ключ и секрет — те же `LIVEKIT_API_KEY` и `LIVEKIT_API_SECRET` из
 `deploy/.env`. Если их нет, API всё равно запускается, но голосовые запросы
 отвечают `503 voice_unavailable`, а в логе API при старте одна строка
@@ -693,6 +697,33 @@ docker compose -f deploy/docker-compose.yml logs api | grep livekit/webhook
 В строках вебхуков должен быть `"status":204`. `401` значит, что ключ в
 настройках LiveKit и у API разный: оба берутся из одного `deploy/.env`,
 поэтому выполните `up -d`, чтобы оба сервиса его перечитали.
+
+В приватных метриках API есть
+`zazzzor_voice_reconcile_last_success_timestamp_seconds`: время последней
+полностью успешной сверки, в Unix-секундах. `0` означает, что сверка ещё
+не завершалась успешно либо голос отключён. Ошибка одной комнаты не мешает
+проверить остальные, но не обновляет эту метку. Если она отстаёт более чем
+на два `ReconcileInterval` (интервал определён в серверном коде), проверьте
+логи API и доступность LiveKit. `/api/v1/readyz` от LiveKit не зависит:
+текстовый чат продолжает работать при сбое голоса.
+
+В варианте Swarm с сетью хоста (раздел 15) метрики доступны на самом сервере:
+если меняли `ZAZZZOR_METRICS_PORT`, подставьте выбранный порт вместо `9464`.
+
+```bash
+curl --fail http://127.0.0.1:9464/metrics | grep zazzzor_voice_reconcile
+```
+
+В Compose метрики остаются внутри Docker-сети; ради этой проверки
+не публикуйте их порт наружу.
+
+Если после перезагрузки LiveKit пишет об ошибке привязки `172.31.250.1`,
+повторите создание сервисов Compose и проверьте журнал:
+
+```bash
+docker compose -f deploy/docker-compose.yml up -d
+docker compose -f deploy/docker-compose.yml logs --tail 50 livekit
+```
 
 Если подсеть `172.31.250.0/24` на сервере уже занята другой сетью
 (`docker compose up` сообщит `Pool overlaps with other one on this address
