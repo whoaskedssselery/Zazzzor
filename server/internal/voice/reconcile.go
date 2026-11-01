@@ -276,6 +276,13 @@ func (s *Service) removeParticipant(ctx context.Context, key removalKey, job *re
 			}
 		}
 	}
+	// Admission may have recovered while ListParticipants was in flight.
+	s.mu.Lock()
+	current := s.removals[key] == job
+	s.mu.Unlock()
+	if !current {
+		return nil
+	}
 	return s.rooms.RemoveParticipant(ctx, key.room, key.identity)
 }
 
