@@ -15,6 +15,7 @@ import (
 //	POST /channels/{channel_id}/voice
 //	PATCH /users/@me/voice-state
 //	DELETE /users/@me/voice
+//	PATCH /guilds/{guild_id}/members/{user_id}/voice
 //
 // The webhook is separate (MountWebhook): it has no session.
 func Mount(r chi.Router, s *Service) {
@@ -24,6 +25,7 @@ func Mount(r chi.Router, s *Service) {
 		writes.Post("/channels/{channel_id}/voice", httpx.Wrap(s.handleJoin))
 		writes.Patch("/users/@me/voice-state", httpx.Wrap(s.handleUpdateSelf))
 		writes.Delete("/users/@me/voice", httpx.Wrap(s.handleLeave))
+		writes.Patch("/guilds/{guild_id}/members/{user_id}/voice", httpx.Wrap(s.handleModerate))
 	})
 }
 

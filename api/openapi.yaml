@@ -2148,6 +2148,58 @@ paths:
         "503":
           description: "`voice_unavailable`: voice is not configured, or LiveKit could not remove the caller from their previous channel."
           $ref: "#/components/responses/Problem"
+  /guilds/{guild_id}/members/{user_id}/voice:
+    patch:
+      tags: [voice]
+      operationId: moderateVoice
+      summary: Set a participant's server mute and deafen flags
+      description: |
+        Changes the supplied flags; at least one must be present. `mute`
+        requires `MUTE_MEMBERS`, and `deaf` requires `DEAFEN_MEMBERS`, in the
+        target's current voice channel. Every requested permission is
+        checked before any update. A missing, other-guild or hidden target
+        returns `404 not_found`. Shares the per-user voice write limit.
+
+        LiveKit enforces mute by disabling the microphone and deafen by
+        disabling subscription. Unmuting never grants a microphone without
+        `SPEAK`; screen sharing still follows `STREAM`. Flags survive
+        reconnects in this guild, but reset when the API restarts. A change
+        is announced as `VOICE_STATE_UPDATE` only to the channel's viewers.
+        Identical flags announce nothing. Upstream failure does not commit
+        or announce successful moderation. Move/disconnect is not supported
+        by this operation yet.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+        - $ref: "#/components/parameters/UserID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModerateVoiceRequest"
+      responses:
+        "204":
+          description: The participant's permissions were applied.
+        "400":
+          description: "`invalid_body`, `body_too_large` or `validation_failed`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`missing_permission` or `origin_not_allowed`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no visible participant in this guild."
+          $ref: "#/components/responses/Problem"
+        "415":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+        "503":
+          description: "`voice_unavailable`: voice is disabled or enforcement failed."
+          $ref: "#/components/responses/Problem"
   /users/@me/voice-state:
     patch:
       tags: [voice]
@@ -3192,6 +3244,15 @@ components:
           type: string
           description: LiveKit signaling URL, `wss://<host>` (or `ws://` for an `http://` origin).
           examples: ["wss://zazzzor.duckdns.org"]
+    ModerateVoiceRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        mute:
+          type: boolean
+        deaf:
+          type: boolean
     UpdateVoiceStateRequest:
       type: object
       additionalProperties: false
