@@ -86,6 +86,7 @@ func (s *Service) dropLocked(ctx context.Context, userID snowflake.ID, remove bo
 	s.touchLocked(userID)
 	s.announceLocked(ctx, sess.state, true)
 	if remove {
+		delete(s.moves, userID)
 		s.removeLocked(sess.room, userID.String(), sess.sid)
 	}
 }

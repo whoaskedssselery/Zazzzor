@@ -225,7 +225,7 @@ func (s *Service) joined(ctx context.Context, channelID snowflake.ID, room Room,
 		s.mu.Unlock()
 		return nil
 	}
-	if !s.admissionCurrentLocked(guildID, userID, channelID, start, room, p) {
+	if !s.admissionCurrentLocked(ctx, guildID, userID, channelID, start, room, p) {
 		s.mu.Unlock()
 		return nil
 	}
@@ -238,7 +238,7 @@ func (s *Service) joined(ctx context.Context, channelID snowflake.ID, room Room,
 		s.removeLocked(room.Name, p.Identity, p.SID)
 		return err
 	}
-	if !s.admissionCurrentLocked(guildID, userID, channelID, start, room, p) {
+	if !s.admissionCurrentLocked(ctx, guildID, userID, channelID, start, room, p) {
 		return nil
 	}
 	// A same-SID webhook still applied fresh permissions remotely.
@@ -249,11 +249,12 @@ func (s *Service) joined(ctx context.Context, channelID snowflake.ID, room Room,
 
 // admissionCurrentLocked checks both sides of an admission RPC, so an
 // intervening departure or committed removal cannot restore stale state.
-func (s *Service) admissionCurrentLocked(guildID, userID, channelID snowflake.ID, start uint64, room Room, p Participant) bool {
+func (s *Service) admissionCurrentLocked(ctx context.Context, guildID, userID, channelID snowflake.ID, start uint64, room Room, p Participant) bool {
+	s.expireMovesLocked(ctx)
 	if s.departedLocked(p.SID) {
 		return false
 	}
-	if s.invalidatedLocked(guildID, userID, channelID, start) || !s.currentLocked(userID, channelID, p.Join) {
+	if s.invalidatedLocked(guildID, userID, channelID, start) || !s.currentParticipantLocked(userID, channelID, p) {
 		s.removeLocked(room.Name, p.Identity, p.SID)
 		return false
 	}
@@ -276,6 +277,9 @@ func (s *Service) connectLocked(ctx context.Context, guildID, channelID snowflak
 	// Successful admission supersedes a failed attempt's pending removal.
 	key := removalKey{room: room.Name, identity: p.Identity}
 	s.cancelRemovalLocked(key, p.SID)
+	if move := s.moves[userID]; move != nil && move.channelID == channelID {
+		delete(s.moves, userID)
+	}
 	old := s.sessions[userID]
 	if old != nil && old.sid == p.SID {
 		return

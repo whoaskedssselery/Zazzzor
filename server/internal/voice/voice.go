@@ -24,6 +24,8 @@ import (
 const (
 	// TokenTTL is how long a join token may be used to connect.
 	TokenTTL = 10 * time.Minute
+	// MoveTimeout is how long a participant has to finish a channel handoff.
+	MoveTimeout = 15 * time.Second
 	// ReconcileInterval is how often Run rebuilds the states from LiveKit,
 	// a safety net for lost webhooks.
 	ReconcileInterval = 5 * time.Minute
@@ -248,6 +250,7 @@ type Service struct {
 	sessions   map[snowflake.ID]*session
 	intents    map[snowflake.ID]intent
 	moderation map[memberKey]serverFlags
+	moves      map[snowflake.ID]*pendingMove
 	// rev counts state changes; revs holds the rev of each user's last
 	// change, so a reconcile does not undo what happened during it.
 	rev             uint64
@@ -270,6 +273,7 @@ func NewService(o Options) *Service {
 		removals: make(map[removalKey]*removal), wake: make(chan struct{}, 1)}
 	s.inflight = make(map[string]chan struct{})
 	s.moderation = make(map[memberKey]serverFlags)
+	s.moves = make(map[snowflake.ID]*pendingMove)
 	s.departed = make(map[string]time.Time)
 	s.membersRemoved = make(map[memberKey]invalidation)
 	s.channelsRemoved = make(map[snowflake.ID]invalidation)

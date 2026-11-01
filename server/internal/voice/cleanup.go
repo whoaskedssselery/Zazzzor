@@ -20,6 +20,9 @@ func (s *Service) RemoveMembers(ctx context.Context, guildID snowflake.ID, userI
 	defer s.mu.Unlock()
 	s.pruneRemovalsLocked()
 	for _, userID := range userIDs {
+		if move := s.moves[userID]; move != nil && move.source.state.GuildID == guildID {
+			delete(s.moves, userID)
+		}
 		s.rev++
 		s.membersRemoved[memberKey{guildID: guildID, userID: userID}] = s.invalidationLocked()
 		if s.intents[userID].guildID == guildID {

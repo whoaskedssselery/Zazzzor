@@ -23,17 +23,24 @@ import (
 
 // moderationChannels supplies independent actor and target permissions.
 type moderationChannels struct {
-	actor, target permissions.Permission
-	afterRead     func(snowflake.ID)
-	subjects      map[snowflake.ID]permissions.Permission
+	actor, target  permissions.Permission
+	afterRead      func(snowflake.ID)
+	subjects       map[snowflake.ID]permissions.Permission
+	actorChannels  map[snowflake.ID]permissions.Permission
+	targetChannels map[snowflake.ID]permissions.Permission
+	kinds          map[snowflake.ID]channels.Type
 }
 
-func (*moderationChannels) Lookup(_ context.Context, id snowflake.ID) (channels.Channel, error) {
+func (c *moderationChannels) Lookup(_ context.Context, id snowflake.ID) (channels.Channel, error) {
 	guild := snowflake.ID(7)
 	if id == 43 {
 		guild = 8
 	}
-	return channels.Channel{ID: id, GuildID: guild, Type: channels.TypeVoice}, nil
+	kind := channels.TypeVoice
+	if value, ok := c.kinds[id]; ok {
+		kind = value
+	}
+	return channels.Channel{ID: id, GuildID: guild, Type: kind}, nil
 }
 func (c *moderationChannels) Permissions(ctx context.Context, user, channel snowflake.ID) (permissions.Permission, snowflake.ID, error) {
 	ch, _ := c.Lookup(ctx, channel)
@@ -43,6 +50,15 @@ func (c *moderationChannels) Permissions(ctx context.Context, user, channel snow
 	}
 	if override, ok := c.subjects[user]; ok {
 		mask = override
+	}
+	if user == 2 {
+		if value, ok := c.actorChannels[channel]; ok {
+			mask = value
+		}
+	} else {
+		if value, ok := c.targetChannels[channel]; ok {
+			mask = value
+		}
 	}
 	if c.afterRead != nil {
 		c.afterRead(user)
@@ -56,8 +72,16 @@ func (c *moderationChannels) Permissions(ctx context.Context, user, channel snow
 // moderationRooms records media updates and can block or fail one RPC.
 type moderationRooms struct {
 	*fakeRooms
-	updates []voice.ParticipantPermissions
-	before  func(voice.ParticipantPermissions) error
+	updates      []voice.ParticipantPermissions
+	before       func(voice.ParticipantPermissions) error
+	beforeRemove func()
+}
+
+func (r *moderationRooms) RemoveParticipant(ctx context.Context, room, identity string) error {
+	if r.beforeRemove != nil {
+		r.beforeRemove()
+	}
+	return r.fakeRooms.RemoveParticipant(ctx, room, identity)
 }
 
 func (r *moderationRooms) UpdateParticipant(_ context.Context, _, _ string, p voice.ParticipantPermissions) error {
@@ -81,12 +105,13 @@ func (r *moderationRooms) last(t *testing.T) voice.ParticipantPermissions {
 	return r.updates[len(r.updates)-1]
 }
 
-func moderationEnv(t *testing.T, actor permissions.Permission) (*env, *moderationChannels, *moderationRooms) {
+func moderationEnv(t *testing.T, actor permissions.Permission, opts ...func(*voice.Options)) (*env, *moderationChannels, *moderationRooms) {
 	t.Helper()
 	c := &moderationChannels{actor: permissions.ViewChannel | actor,
 		target: permissions.ViewChannel | permissions.Connect | permissions.Speak | permissions.Stream}
 	r := &moderationRooms{fakeRooms: newFakeRooms()}
-	e := webhookEnv(t, c, func(o *voice.Options) { o.Rooms = r })
+	opts = append([]func(*voice.Options){func(o *voice.Options) { o.Rooms = r }}, opts...)
+	e := webhookEnv(t, c, opts...)
 	e.rooms = r.fakeRooms
 	e.hook(&livekit.WebhookEvent{Event: "participant_joined", Room: lkRoom("42", "RM_1"),
 		Participant: lkParticipant(userBody{ID: "1"}, "PA_1", "initial")})

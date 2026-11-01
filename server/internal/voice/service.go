@@ -70,10 +70,19 @@ func (s *Service) Join(ctx context.Context, channelID snowflake.ID, user auth.Us
 // connects again.
 func (s *Service) leaveOther(ctx context.Context, userID, channelID snowflake.ID) error {
 	s.mu.Lock()
+	s.expireMovesLocked(ctx)
 	sess := s.sessions[userID]
+	move := s.moves[userID]
+	if move != nil && move.channelID == channelID && (sess == nil || sess == move.source) {
+		s.mu.Unlock()
+		return nil
+	}
 	var room, sid string
-	if sess != nil && sess.state.ChannelID != channelID {
+	if sess != nil && (sess.state.ChannelID != channelID || move != nil) {
 		room, sid = sess.room, sess.sid
+	}
+	if sid == "" {
+		delete(s.moves, userID)
 	}
 	s.mu.Unlock()
 	if sid == "" {
@@ -88,6 +97,9 @@ func (s *Service) leaveOther(ctx context.Context, userID, channelID snowflake.ID
 	defer s.mu.Unlock()
 	if cur := s.sessions[userID]; cur != nil && cur.sid == sid {
 		s.dropLocked(ctx, userID, false)
+	}
+	if s.moves[userID] == move {
+		delete(s.moves, userID)
 	}
 	return nil
 }
@@ -138,6 +150,7 @@ func (s *Service) Leave(ctx context.Context, userID snowflake.ID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.intents[userID] = intent{}
+	delete(s.moves, userID)
 	s.dropLocked(ctx, userID, true)
 	return nil
 }

@@ -13,6 +13,8 @@ import (
 type ModerationFields struct {
 	Mute *bool
 	Deaf *bool
+	// ChannelID: nil preserves; a pointer to nil disconnects.
+	ChannelID **snowflake.ID
 }
 
 // serverFlags survive reconnects within a guild until explicitly lifted.
@@ -37,8 +39,8 @@ func (s *Service) Moderate(ctx context.Context, guildID, actorID, userID snowfla
 	if !s.enabled {
 		return ErrUnavailable
 	}
-	if f.Mute == nil && f.Deaf == nil {
-		return invalid("mute", "set mute, deaf or both")
+	if f.Mute == nil && f.Deaf == nil && f.ChannelID == nil {
+		return invalid("mute", "set mute, deaf or channel_id")
 	}
 	defer s.lockUser(userID)()
 	if err := ctx.Err(); err != nil {
@@ -53,6 +55,7 @@ func (s *Service) Moderate(ctx context.Context, guildID, actorID, userID snowfla
 	channelID, room := sess.state.ChannelID, sess.room
 	key := memberKey{guildID: guildID, userID: userID}
 	flags := s.moderation[key]
+	start := s.rev
 	s.mu.Unlock()
 	p, gid, err := s.channels.Permissions(ctx, actorID, channelID)
 	if err != nil {
@@ -61,15 +64,13 @@ func (s *Service) Moderate(ctx context.Context, guildID, actorID, userID snowfla
 	if gid != guildID {
 		return channels.ErrNotFound
 	}
-	if (f.Mute != nil && !p.Has(permissions.MuteMembers)) || (f.Deaf != nil && !p.Has(permissions.DeafenMembers)) {
+	if (f.Mute != nil && !p.Has(permissions.MuteMembers)) || (f.Deaf != nil && !p.Has(permissions.DeafenMembers)) || (f.ChannelID != nil && !p.Has(permissions.MoveMembers)) {
 		return ErrMissingPerm
 	}
-	p, gid, err = s.channels.Permissions(ctx, userID, channelID)
-	if err != nil {
-		return fmt.Errorf("voice: read participant permissions: %w", err)
-	}
-	if gid != guildID || !p.Has(permissions.Connect) {
-		return channels.ErrNotFound
+	if f.ChannelID != nil && *f.ChannelID != nil {
+		if err = s.checkDestination(ctx, guildID, actorID, userID, **f.ChannelID); err != nil {
+			return err
+		}
 	}
 	if f.Mute != nil {
 		flags.mute = *f.Mute
@@ -77,27 +78,50 @@ func (s *Service) Moderate(ctx context.Context, guildID, actorID, userID snowfla
 	if f.Deaf != nil {
 		flags.deaf = *f.Deaf
 	}
-	if err = s.applyPermissions(ctx, room, userID.String(), p, flags); err != nil {
-		return err
+	if f.ChannelID != nil && *f.ChannelID == nil {
+		return s.disconnect(ctx, guildID, userID, sess, flags, start)
+	}
+	flagsRequested := f.Mute != nil || f.Deaf != nil
+	if flagsRequested {
+		p, gid, err = s.channels.Permissions(ctx, userID, channelID)
+		if err != nil {
+			return fmt.Errorf("voice: read participant permissions: %w", err)
+		}
+		if gid != guildID || !p.Has(permissions.Connect) {
+			return channels.ErrNotFound
+		}
+		if err = s.applyPermissions(ctx, room, userID.String(), p, flags); err != nil {
+			return err
+		}
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.sessions[userID] != sess {
 		return channels.ErrNotFound
 	}
+	if flagsRequested {
+		s.storeModerationLocked(key, flags)
+		// Even identical flags may have applied newer channel permissions.
+		// An older reconcile snapshot must not undo that successful RPC.
+		s.touchLocked(userID)
+		if sess.state.Mute != flags.mute || sess.state.Deaf != flags.deaf {
+			sess.state.Mute, sess.state.Deaf = flags.mute, flags.deaf
+			s.announceLocked(ctx, sess.state, false)
+		}
+	}
+	if f.ChannelID != nil {
+		s.requestMoveLocked(ctx, userID, **f.ChannelID, sess)
+	}
+	return nil
+}
+
+// storeModerationLocked retains only active server restrictions.
+func (s *Service) storeModerationLocked(key memberKey, flags serverFlags) {
 	if flags == (serverFlags{}) {
 		delete(s.moderation, key)
 	} else {
 		s.moderation[key] = flags
 	}
-	// Even identical flags may have applied newer channel permissions.
-	// An older reconcile snapshot must not undo that successful RPC.
-	s.touchLocked(userID)
-	if sess.state.Mute != flags.mute || sess.state.Deaf != flags.deaf {
-		sess.state.Mute, sess.state.Deaf = flags.mute, flags.deaf
-		s.announceLocked(ctx, sess.state, false)
-	}
-	return nil
 }
 
 // applyPermissions replaces remote grants under a caller-held user lock.
@@ -116,7 +140,7 @@ func (s *Service) applyPermissions(ctx context.Context, room, identity string, p
 func (s *Service) enforceFound(ctx context.Context, userID snowflake.ID, f found, start uint64) (uint64, error) {
 	defer s.lockUser(userID)()
 	s.mu.Lock()
-	if s.revs[userID] > start || !s.admissionCurrentLocked(f.guildID, userID, f.channelID, start, f.room, f.p) {
+	if s.revs[userID] > start || !s.admissionCurrentLocked(ctx, f.guildID, userID, f.channelID, start, f.room, f.p) {
 		s.mu.Unlock()
 		return 0, nil
 	}
@@ -127,7 +151,7 @@ func (s *Service) enforceFound(ctx context.Context, userID snowflake.ID, f found
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	allowed := s.admissionCurrentLocked(f.guildID, userID, f.channelID, start, f.room, f.p)
+	allowed := s.admissionCurrentLocked(ctx, f.guildID, userID, f.channelID, start, f.room, f.p)
 	unchanged := s.revs[userID] <= start
 	// Record this successful RPC even for an existing SID, so another
 	// reconcile cannot overwrite it with an older permissions snapshot.

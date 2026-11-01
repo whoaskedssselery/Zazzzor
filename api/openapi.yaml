@@ -2118,6 +2118,13 @@ paths:
         LiveKit cannot remove them, no token is issued
         (`503 voice_unavailable`).
 
+        During a moderator-requested move, a token for the pending
+        destination keeps the captured source session until this token's
+        connection is reported. A 15-second fallback removes that source;
+        an already-issued destination token may still complete afterward.
+        Joining another channel cancels the handoff after removing the
+        old source, including when requesting a fresh source-room token.
+
         Voice writes (this operation, the voice state PATCH and leaving)
         share a limit of 2 per second (bursts of 10) per user.
       parameters:
@@ -3131,6 +3138,25 @@ components:
           minimum: 1
         d:
           description: The payload; null for HEARTBEAT_ACK.
+          anyOf:
+            - type: "null"
+            - $ref: "#/components/schemas/GatewayHello"
+            - $ref: "#/components/schemas/GatewayReady"
+            - $ref: "#/components/schemas/GuildState"
+            - $ref: "#/components/schemas/Guild"
+            - $ref: "#/components/schemas/GuildDeleteEvent"
+            - $ref: "#/components/schemas/MemberEvent"
+            - $ref: "#/components/schemas/MemberRemoveEvent"
+            - $ref: "#/components/schemas/RoleEvent"
+            - $ref: "#/components/schemas/RoleDeleteEvent"
+            - $ref: "#/components/schemas/Channel"
+            - $ref: "#/components/schemas/Message"
+            - $ref: "#/components/schemas/MessageDeleteEvent"
+            - $ref: "#/components/schemas/TypingStartEvent"
+            - $ref: "#/components/schemas/Presence"
+            - $ref: "#/components/schemas/User"
+            - $ref: "#/components/schemas/VoiceState"
+            - $ref: "#/components/schemas/VoiceMove"
     GatewayHello:
       type: object
       additionalProperties: false
@@ -3232,6 +3258,13 @@ components:
             Only in VOICE_STATE_UPDATE, where it is always present: true when
             the user is no longer in `channel_id` (the other fields are their
             last state there).
+    VoiceMove:
+      type: object
+      additionalProperties: false
+      required: [channel_id]
+      properties:
+        channel_id:
+          $ref: "#/components/schemas/Snowflake"
     VoiceJoin:
       type: object
       additionalProperties: false
@@ -3436,6 +3469,13 @@ x-gateway:
     viewers, so nobody is told. Every GuildState (READY, GUILD_CREATE,
     GUILD_SYNC) lists the voice states of the channels the receiver may
     view in `voice_states`.
+
+    VOICE_MOVE is private to the participant being moved and contains only
+    the destination channel ID. The destination must still be visible to
+    that user at dispatch; otherwise the event is dropped. Other source
+    or destination viewers, including the initiating moderator, do not
+    receive it. The client fetches a destination voice token and reconnects;
+    source-left and destination-joined states use their own channel viewers.
   ops:
     "0": DISPATCH
     "1": HEARTBEAT
@@ -3495,3 +3535,5 @@ x-gateway:
       $ref: "#/components/schemas/User"
     VOICE_STATE_UPDATE:
       $ref: "#/components/schemas/VoiceState"
+    VOICE_MOVE:
+      $ref: "#/components/schemas/VoiceMove"

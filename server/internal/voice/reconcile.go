@@ -54,6 +54,7 @@ type found struct {
 // alone. A user in two rooms keeps the one joined last.
 func (s *Service) Reconcile(ctx context.Context) error {
 	s.mu.Lock()
+	s.expireMovesLocked(ctx)
 	s.pruneRemovalsLocked()
 	start := s.rev
 	s.mu.Unlock()
@@ -66,6 +67,7 @@ func (s *Service) Reconcile(ctx context.Context) error {
 	}
 	var (
 		kept      = map[snowflake.ID]found{}
+		sources   = map[snowflake.ID]found{}
 		turnedOut []found // admitted, but not the room the user is kept in
 		refused   []found // not admitted
 		unknown   = map[snowflake.ID]bool{}
@@ -94,6 +96,16 @@ func (s *Service) Reconcile(ctx context.Context) error {
 				continue
 			}
 			userID, _ := identityUser(p.Identity)
+			s.mu.Lock()
+			current := !s.departedLocked(p.SID) && !s.invalidatedLocked(guildID, userID, channelID, start) && s.currentParticipantLocked(userID, channelID, p)
+			if move := s.moves[userID]; current && move != nil && p.SID == move.source.sid && channelID == move.source.state.ChannelID {
+				sources[userID] = f
+			}
+			s.mu.Unlock()
+			if !current {
+				refused = append(refused, f)
+				continue
+			}
 			if prev, dup := kept[userID]; dup {
 				if newer(f.p, prev.p) {
 					kept[userID], f = f, prev
@@ -109,9 +121,21 @@ func (s *Service) Reconcile(ctx context.Context) error {
 	for userID, f := range kept {
 		revision, err := s.enforceFound(ctx, userID, f, start)
 		if err != nil {
-			failed[userID] = true
 			enforcementErrors = append(enforcementErrors, fmt.Errorf("voice: reconcile user %s permissions: %w", userID, err))
-			continue
+			// A failed destination has not completed the handoff. The observed
+			// source still needs its own current permissions enforced.
+			if source, ok := sources[userID]; ok && source.p.SID != f.p.SID {
+				refused = append(refused, f)
+				kept[userID] = source
+				revision, err = s.enforceFound(ctx, userID, source, start)
+				if err != nil {
+					enforcementErrors = append(enforcementErrors, fmt.Errorf("voice: reconcile source permissions: %w", err))
+				}
+			}
+			if err != nil {
+				failed[userID] = true
+				continue
+			}
 		}
 		checked[userID] = revision
 	}
@@ -123,7 +147,7 @@ func (s *Service) Reconcile(ctx context.Context) error {
 		s.removeLocked(f.room.Name, f.p.Identity, f.p.SID)
 	}
 	for _, f := range turnedOut {
-		if userID, _ := identityUser(f.p.Identity); !changed(userID) {
+		if userID, _ := identityUser(f.p.Identity); !changed(userID) && kept[userID].p.SID != f.p.SID {
 			s.removeLocked(f.room.Name, f.p.Identity, f.p.SID)
 		}
 	}
@@ -138,7 +162,7 @@ func (s *Service) Reconcile(ctx context.Context) error {
 			if sess := s.sessions[userID]; sess != nil && sess.sid == f.p.SID {
 				s.dropLocked(ctx, userID, false)
 			}
-		case !s.currentLocked(userID, f.channelID, f.p.Join):
+		case !s.currentParticipantLocked(userID, f.channelID, f.p):
 			s.removeLocked(f.room.Name, f.p.Identity, f.p.SID)
 		default:
 			s.connectLocked(ctx, f.guildID, f.channelID, f.room, f.p)
@@ -194,7 +218,7 @@ func (s *Service) runRemovals(ctx context.Context) {
 			return
 		}
 		if ok {
-			timer.Reset(time.Until(next))
+			timer.Reset(next.Sub(s.now()))
 		}
 		select {
 		case <-ctx.Done():
@@ -215,6 +239,7 @@ func (s *Service) removeDue(ctx context.Context) (time.Time, bool) {
 			job  *removal
 			next time.Time
 		)
+		next = s.expireMovesLocked(ctx)
 		now := s.now()
 		for k, r := range s.removals {
 			if !r.due.After(now) {
