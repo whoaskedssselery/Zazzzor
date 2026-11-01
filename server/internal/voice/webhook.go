@@ -214,6 +214,7 @@ func (s *Service) joined(ctx context.Context, channelID snowflake.ID, room Room,
 	defer s.lockUser(userID)()
 	s.mu.Lock()
 	start := s.rev
+	permissionRevision := s.permissionRev
 	s.mu.Unlock()
 	guildID, mask, ok, err := s.admitted(ctx, channelID, p)
 	if err != nil {
@@ -244,6 +245,9 @@ func (s *Service) joined(ctx context.Context, channelID snowflake.ID, room Room,
 	// A same-SID webhook still applied fresh permissions remotely.
 	s.touchLocked(userID)
 	s.connectLocked(ctx, guildID, channelID, room, p)
+	if s.permissionRev != permissionRevision {
+		s.queueRefreshLocked(guildID)
+	}
 	return nil
 }
 

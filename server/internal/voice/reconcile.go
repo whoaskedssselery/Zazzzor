@@ -21,6 +21,7 @@ func (s *Service) Run(ctx context.Context) {
 	}
 	var wg sync.WaitGroup
 	wg.Go(func() { s.runRemovals(ctx) })
+	wg.Go(func() { s.runRefreshes(ctx) })
 	defer wg.Wait()
 
 	ticker := time.NewTicker(ReconcileInterval)
@@ -57,6 +58,7 @@ func (s *Service) Reconcile(ctx context.Context) error {
 	s.expireMovesLocked(ctx)
 	s.pruneRemovalsLocked()
 	start := s.rev
+	permissionRevision := s.permissionRev
 	s.mu.Unlock()
 
 	listCtx, cancel := context.WithTimeout(ctx, rpcTimeout)
@@ -167,6 +169,9 @@ func (s *Service) Reconcile(ctx context.Context) error {
 		default:
 			s.connectLocked(ctx, f.guildID, f.channelID, f.room, f.p)
 			s.syncScreensLocked(ctx, userID, f.p)
+			if s.permissionRev != permissionRevision {
+				s.queueRefreshLocked(f.guildID)
+			}
 		}
 	}
 	for userID, sess := range s.sessions {

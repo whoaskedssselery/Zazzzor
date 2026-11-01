@@ -262,6 +262,9 @@ type Service struct {
 	channelsRemoved map[snowflake.ID]invalidation
 	removals        map[removalKey]*removal
 	wake            chan struct{}
+	refreshes       map[snowflake.ID]*permissionRefresh
+	refreshWake     chan struct{}
+	permissionRev   uint64 // guild sync epoch, including guilds with no local state
 }
 
 // NewService builds a Service from o. It starts nothing and calls nothing.
@@ -274,6 +277,8 @@ func NewService(o Options) *Service {
 	s.inflight = make(map[string]chan struct{})
 	s.moderation = make(map[memberKey]serverFlags)
 	s.moves = make(map[snowflake.ID]*pendingMove)
+	s.refreshes = make(map[snowflake.ID]*permissionRefresh)
+	s.refreshWake = make(chan struct{}, 1)
 	s.departed = make(map[string]time.Time)
 	s.membersRemoved = make(map[memberKey]invalidation)
 	s.channelsRemoved = make(map[snowflake.ID]invalidation)
