@@ -3499,6 +3499,14 @@ x-gateway:
     or destination viewers, including the initiating moderator, do not
     receive it. The client fetches a destination voice token and reconnects;
     source-left and destination-joined states use their own channel viewers.
+
+    After GUILD_SYNC, a background worker recomputes voice permissions for
+    that guild's active participants without waiting for the periodic
+    LiveKit reconciliation. Lost VIEW_CHANNEL or CONNECT removes the
+    participant; lost SPEAK or STREAM revokes the corresponding publish
+    sources. Server mute and deaf restrictions remain overlaid. Failures
+    retry without blocking other participants; local changes are announced
+    only after successful media enforcement, through channel viewers.
   ops:
     "0": DISPATCH
     "1": HEARTBEAT

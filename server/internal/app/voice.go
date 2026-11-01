@@ -27,6 +27,9 @@ type voiceCleanup struct {
 // users leave its voice channels.
 func (p *voiceCleanup) Publish(ctx context.Context, e events.Event) {
 	if p.voice != nil {
+		if e.Type == events.GuildSync && e.Audience.Kind == events.AudienceGuildSync {
+			p.voice.RefreshGuild(e.Audience.GuildID)
+		}
 		switch pl := e.Payload.(type) {
 		case guilds.GuildDeletePayload:
 			if e.Type == events.GuildDelete {

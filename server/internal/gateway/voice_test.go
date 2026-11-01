@@ -35,6 +35,19 @@ const (
 type fakeLiveKit struct {
 	mu      sync.Mutex
 	removed []string
+	updates []*livekit.UpdateParticipantRequest
+}
+
+// grants returns the latest immutable permission update for identity.
+func (f *fakeLiveKit) grants(identity string) *livekit.ParticipantPermission {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, update := range slices.Backward(f.updates) {
+		if update.GetIdentity() == identity {
+			return update.GetPermission()
+		}
+	}
+	return nil
 }
 
 func (f *fakeLiveKit) removals() []string {
@@ -54,6 +67,13 @@ func (f *fakeLiveKit) serve(t *testing.T) string {
 		case "ListParticipants":
 			resp = &livekit.ListParticipantsResponse{}
 		case "UpdateParticipant":
+			var req livekit.UpdateParticipantRequest
+			if err := proto.Unmarshal(body, &req); err != nil {
+				t.Errorf("UpdateParticipant request: %v", err)
+			}
+			f.mu.Lock()
+			f.updates = append(f.updates, &req)
+			f.mu.Unlock()
 			resp = &livekit.ParticipantInfo{}
 		case "RemoveParticipant":
 			var req livekit.RoomParticipantIdentity
