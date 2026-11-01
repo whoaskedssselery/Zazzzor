@@ -3431,6 +3431,11 @@ x-gateway:
   frame:
     $ref: "#/components/schemas/GatewayFrame"
   description: |
+    HTTP body-read and response-write deadlines apply until the connection
+    is successfully upgraded. Rejected handshakes remain ordinary bounded
+    HTTP requests; an established WebSocket uses the heartbeat and frame
+    limits below instead.
+
     Server to client: `op 10 HELLO` first (`d`: GatewayHello), then
     `op 0 DISPATCH` frames with the event type `t`, the per-connection
     sequence number `s` (from 1) and the payload `d`; READY is always the

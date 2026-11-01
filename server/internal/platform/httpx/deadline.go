@@ -1,6 +1,9 @@
 package httpx
 
 import (
+	"bufio"
+	"fmt"
+	"net"
 	"net/http"
 	"time"
 )
@@ -21,8 +24,8 @@ type DeadlineOptions struct {
 // receive its response, so a drip-fed body cannot hold a handler forever. The
 // server deliberately has no ReadTimeout/WriteTimeout (they would cut
 // long-lived WebSockets), so the deadlines are set per request here. Every
-// request gets them, whatever its headers; a route that manages its own
-// connection (the gateway) opts out with WithoutDeadlines.
+// request gets them, whatever its headers. A successful gateway upgrade
+// clears them on its hijacked connection through WithoutDeadlines.
 func Deadlines(opts DeadlineOptions) func(http.Handler) http.Handler {
 	if opts.Read <= 0 {
 		opts.Read = DefaultReadDeadline
@@ -43,14 +46,30 @@ func Deadlines(opts DeadlineOptions) func(http.Handler) http.Handler {
 	}
 }
 
-// WithoutDeadlines clears the deadlines Deadlines set, for the one route
-// that takes over its connection and bounds every read and write itself (the
-// WebSocket gateway). Mount it on that route only.
+// WithoutDeadlines clears deadlines only after next hijacks its connection.
+// Rejected handshakes and ordinary HTTP requests retain their deadlines.
+// Mount it only on a route that bounds its own hijacked reads and writes.
 func WithoutDeadlines(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		rc := http.NewResponseController(w)
-		_ = rc.SetReadDeadline(time.Time{})
-		_ = rc.SetWriteDeadline(time.Time{})
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(&hijackDeadlineWriter{ResponseWriter: w}, r)
 	})
+}
+
+// hijackDeadlineWriter preserves HTTP limits until ownership leaves net/http.
+type hijackDeadlineWriter struct{ http.ResponseWriter }
+
+// Unwrap lets response controllers reach the original writer's capabilities.
+func (w *hijackDeadlineWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+// Hijack delegates through middleware and clears only the returned connection.
+func (w *hijackDeadlineWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	conn, rw, err := http.NewResponseController(w.ResponseWriter).Hijack()
+	if err != nil {
+		return nil, nil, fmt.Errorf("httpx: hijack connection: %w", err)
+	}
+	if err := conn.SetDeadline(time.Time{}); err != nil {
+		_ = conn.Close()
+		return nil, nil, fmt.Errorf("httpx: clear hijacked deadlines: %w", err)
+	}
+	return conn, rw, nil
 }

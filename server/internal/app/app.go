@@ -128,8 +128,8 @@ func (m *Modules) NewGateway(bus *events.Bus, cfg config.Config, logger *slog.Lo
 }
 
 // Routes mounts the domain routes, and the gateway at /gateway unless gw is
-// nil, on r (the /api/v1 router). The gateway is the only route without
-// the per-request deadlines, and it authenticates by itself; the LiveKit
+// nil, on r (the /api/v1 router). The gateway clears HTTP deadlines only
+// after upgrading, and it authenticates by itself; the LiveKit
 // webhook has no session but a signature.
 func (m *Modules) Routes(r chi.Router, gw *gateway.Gateway) {
 	// Public images need no session lookup.

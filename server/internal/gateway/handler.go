@@ -205,8 +205,8 @@ func New(o Options) *Gateway {
 // (503 server_busy) before it upgrades; every refusal is a problem+json
 // response. It returns as soon as the connection is upgraded (the request
 // is logged as 101); the connection lives on in its own goroutines. The
-// route must be wrapped in httpx.WithoutDeadlines: the gateway bounds every
-// read and write itself.
+// route must be wrapped in httpx.WithoutDeadlines: only a successful hijack
+// clears HTTP deadlines, then the gateway bounds every read and write itself.
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !httpx.OriginAllowed(g.opts.AllowedOrigins, r) {
 		httpx.WriteProblem(w, httpx.Forbidden("origin_not_allowed"))

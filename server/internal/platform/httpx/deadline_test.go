@@ -1,7 +1,6 @@
 package httpx_test
 
 import (
-	"bufio"
 	"io"
 	"net"
 	"net/http"
@@ -77,8 +76,7 @@ func TestDeadlinesCutOffSlowBody(t *testing.T) {
 	}
 }
 
-// An Upgrade header does not buy a request out of the deadlines: only routes
-// wrapped in WithoutDeadlines (the gateway) are exempt.
+// An Upgrade header does not buy a request out of the deadlines.
 func TestDeadlinesApplyToUpgradeRequests(t *testing.T) {
 	const deadline = 200 * time.Millisecond
 	srv, results := slowBodyServer(t, httpx.DeadlineOptions{Read: deadline, Write: time.Second})
@@ -94,38 +92,27 @@ func TestDeadlinesApplyToUpgradeRequests(t *testing.T) {
 	}
 }
 
-func TestWithoutDeadlinesClearsThem(t *testing.T) {
+func TestWithoutDeadlinesKeepsOrdinaryHTTPBounded(t *testing.T) {
 	const deadline = 100 * time.Millisecond
 	results := make(chan readResult, 1)
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		_, err := io.Copy(io.Discard, r.Body)
 		results <- readResult{err: err, elapsed: time.Since(start)}
-		// Answer only after the write deadline would have passed.
-		time.Sleep(2 * deadline)
 		w.WriteHeader(http.StatusOK)
 	})
 	h := httpx.Deadlines(httpx.DeadlineOptions{Read: deadline, Write: deadline})(httpx.WithoutDeadlines(inner))
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	conn := sendStalled(t, srv.Listener.Addr().String(), "", 4*deadline)
+	sendStalled(t, srv.Listener.Addr().String(), "", 4*deadline)
 
 	select {
 	case res := <-results:
-		if res.err != nil {
-			t.Fatalf("exempt route got a read deadline: body read failed after %v: %v", res.elapsed, res.err)
+		if res.err == nil {
+			t.Fatal("ordinary HTTP body escaped the deadline without a hijack")
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("handler did not finish")
-	}
-	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
-	if err != nil {
-		t.Fatalf("read response (write deadline not cleared?): %v", err)
-	}
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("status = %d, want 200", resp.StatusCode)
 	}
 }
 
