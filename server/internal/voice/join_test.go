@@ -1,8 +1,11 @@
 package voice_test
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -44,7 +47,46 @@ func TestJoinGrantsFollowPermissions(t *testing.T) {
 				overwrite(t, alice, vc.ID, g.ID, 0, 0, tc.deny)
 			}
 
-			gr := claims(t, joinVoice(t, bob, vc.ID).Token)
+			token := joinVoice(t, bob, vc.ID).Token
+			gr := claims(t, token)
+			// Inspect wire claims as well as SDK getters: omitted grants may
+			// have permissive defaults in LiveKit.
+			parts := strings.Split(token, ".")
+			if len(parts) != 3 {
+				t.Fatalf("JWT parts = %d, want 3", len(parts))
+			}
+			payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+			if err != nil {
+				t.Fatalf("decode JWT payload: %v", err)
+			}
+			var wire struct {
+				Video struct {
+					Publish   *bool    `json:"canPublish"`
+					Subscribe *bool    `json:"canSubscribe"`
+					Data      *bool    `json:"canPublishData"`
+					Metadata  *bool    `json:"canUpdateOwnMetadata"`
+					Sources   []string `json:"canPublishSources"`
+				} `json:"video"`
+			}
+			if err := json.Unmarshal(payload, &wire); err != nil {
+				t.Fatalf("decode JWT grants: %v", err)
+			}
+			for name, flag := range map[string]struct {
+				got  *bool
+				want bool
+			}{
+				"canPublish":           {wire.Video.Publish, tc.sources != nil},
+				"canSubscribe":         {wire.Video.Subscribe, true},
+				"canPublishData":       {wire.Video.Data, false},
+				"canUpdateOwnMetadata": {wire.Video.Metadata, false},
+			} {
+				if flag.got == nil || *flag.got != flag.want {
+					t.Errorf("wire %s = %v, want explicit %v", name, flag.got, flag.want)
+				}
+			}
+			if !slices.Equal(wire.Video.Sources, tc.sources) {
+				t.Errorf("wire sources = %v, want %v", wire.Video.Sources, tc.sources)
+			}
 			if gr.Identity != b.ID || gr.Name != "bob" {
 				t.Errorf("identity, name = %q, %q, want %q, bob", gr.Identity, gr.Name, b.ID)
 			}
