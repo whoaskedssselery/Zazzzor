@@ -85,7 +85,7 @@ func NewModules(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator,
 	channelSvc := channels.NewService(channels.Options{Pool: pool, IDs: ids, Guilds: guildSvc, Publisher: cleanup})
 	messageSvc := messages.NewService(messages.Options{Pool: pool, IDs: ids, Channels: channelSvc, Users: authSvc,
 		Publisher: pub})
-	vo := voice.Options{Channels: channelSvc, Publisher: pub, Logger: slog.Default()}
+	vo := voice.Options{Channels: channelSvc, Members: guildSvc, Publisher: pub, Logger: slog.Default()}
 	if cfg.VoiceEnabled() {
 		vo.Rooms = voice.NewLiveKit(cfg.LiveKitURL, cfg.LiveKitAPIKey, cfg.LiveKitAPISecret)
 		vo.APIKey, vo.APISecret = cfg.LiveKitAPIKey, cfg.LiveKitAPISecret

@@ -47,6 +47,7 @@ func (s *Service) checkDestination(ctx context.Context, guildID, actorID, userID
 	if err != nil {
 		return fmt.Errorf("voice: read move destination: %w", err)
 	}
+	// Defence in depth: the actor permission read already checked this guild.
 	if c.GuildID != guildID {
 		return channels.ErrNotFound
 	}
@@ -178,8 +179,16 @@ func (s *Service) disconnect(ctx context.Context, guildID, userID snowflake.ID, 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	current := s.sessions[userID]
-	if (current != nil && current != source) || s.invalidatedLocked(guildID, userID, source.state.ChannelID, start) {
-		return channels.ErrNotFound
+	if s.invalidatedLocked(guildID, userID, source.state.ChannelID, start) {
+		return nil
+	}
+	if current != nil && current != source {
+		s.commitModerationLocked(ctx, memberKey{guildID: guildID, userID: userID}, flags)
+		// The identity RPC addressed the captured room, never this new call.
+		if current.state.GuildID == guildID {
+			s.queueRefreshLocked(guildID)
+		}
+		return nil
 	}
 	s.storeModerationLocked(memberKey{guildID: guildID, userID: userID}, flags)
 	s.intents[userID] = intent{}

@@ -215,7 +215,11 @@ func (s *Service) admitted(ctx context.Context, channelID snowflake.ID, p Partic
 // another channel; any other participant is removed from the room.
 func (s *Service) joined(ctx context.Context, channelID snowflake.ID, room Room, p Participant) error {
 	userID, _ := identityUser(p.Identity)
-	defer s.lockUser(userID)()
+	unlock, lockErr := s.lockUser(ctx, userID)
+	if lockErr != nil {
+		return lockErr
+	}
+	defer unlock()
 	s.mu.Lock()
 	start := s.rev
 	permissionRevision := s.permissionRev

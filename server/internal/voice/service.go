@@ -27,7 +27,11 @@ func (s *Service) Join(ctx context.Context, channelID snowflake.ID, user auth.Us
 	if !s.enabled {
 		return Join{}, ErrUnavailable
 	}
-	defer s.lockUser(user.ID)()
+	unlock, lockErr := s.lockUser(ctx, user.ID)
+	if lockErr != nil {
+		return Join{}, lockErr
+	}
+	defer unlock()
 	if err := ctx.Err(); err != nil {
 		return Join{}, fmt.Errorf("voice: issue join token: %w", err)
 	}

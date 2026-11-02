@@ -52,6 +52,7 @@ func (s *Service) RemoveChannel(ctx context.Context, channelID snowflake.ID) {
 			s.cancelMoveLocked(ctx, userID)
 		}
 	}
+	// Defence in depth: admission also rejects deleted channels.
 	for userID, pending := range s.intents {
 		if pending.channelID == channelID {
 			s.intents[userID] = intent{}

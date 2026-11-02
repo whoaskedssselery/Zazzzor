@@ -110,7 +110,10 @@ func moderationEnv(t *testing.T, actor permissions.Permission, opts ...func(*voi
 	c := &moderationChannels{actor: permissions.ViewChannel | actor,
 		target: permissions.ViewChannel | permissions.Connect | permissions.Speak | permissions.Stream}
 	r := &moderationRooms{fakeRooms: newFakeRooms()}
-	opts = append([]func(*voice.Options){func(o *voice.Options) { o.Rooms = r }}, opts...)
+	opts = append([]func(*voice.Options){func(o *voice.Options) {
+		o.Rooms = r
+		o.Members = hierarchyMembers{1: hierarchySubject(1, 9, 0), 2: hierarchySubject(2, 9, 1)}
+	}}, opts...)
 	e := webhookEnv(t, c, opts...)
 	e.rooms = r.fakeRooms
 	e.hook(&livekit.WebhookEvent{Event: "participant_joined", Room: lkRoom("42", "RM_1"),
@@ -277,8 +280,8 @@ func TestRemovalDuringMediaRPCDoesNotRestoreState(t *testing.T) {
 			e.voice.RemoveMembers(t.Context(), 7, []snowflake.ID{1})
 			unblock()
 			err := awaitError(t, done)
-			if operation == "moderation" && !errors.Is(err, channels.ErrNotFound) {
-				t.Fatalf("Moderate error=%v, want not found", err)
+			if operation == "moderation" && err != nil {
+				t.Fatalf("Moderate error=%v, want success after applied RPC", err)
 			}
 			if operation == "webhook" && err != nil {
 				t.Fatalf("webhook: %v", err)

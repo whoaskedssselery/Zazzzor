@@ -14,6 +14,7 @@ import (
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/channels"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
+	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
 	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/ratelimit"
@@ -36,9 +37,8 @@ const (
 
 	// rpcTimeout bounds one call to the LiveKit server API.
 	rpcTimeout = 5 * time.Second
-	// A failed removal from LiveKit is tried removeAttempts times in all,
-	// waiting removeBackoff, then twice as long each time up to
-	// maxRemoveBackoff.
+	// Failed removals retry until confirmed, warning once at removeAttempts.
+	// Backoff doubles from removeBackoff up to maxRemoveBackoff.
 	removeAttempts   = 5
 	removeBackoff    = time.Second
 	maxRemoveBackoff = time.Minute
@@ -155,11 +155,29 @@ type Channels interface {
 
 var _ Channels = (*channels.Service)(nil)
 
-// Options configures a Service. Channels is required. Voice is available
-// only with Rooms, APIKey and APISecret; otherwise every operation is
-// ErrUnavailable.
+// Members is what voice needs from the guilds module: members as
+// permission subjects, for the role hierarchy of moderation.
+type Members interface {
+	// Subject returns userID as a subject in guildID, or
+	// guilds.ErrNotMember.
+	Subject(ctx context.Context, guildID, userID snowflake.ID) (permissions.Subject, error)
+}
+
+var _ Members = (*guilds.Service)(nil)
+
+// noMembers knows no member, so moderation without Members finds nobody.
+type noMembers struct{}
+
+func (noMembers) Subject(context.Context, snowflake.ID, snowflake.ID) (permissions.Subject, error) {
+	return permissions.Subject{}, guilds.ErrNotMember
+}
+
+// Options configures a Service. Channels is required; without Members
+// every moderation request is 404. Voice is available only with Rooms,
+// APIKey and APISecret; otherwise every operation is ErrUnavailable.
 type Options struct {
 	Channels Channels
+	Members  Members
 	// Rooms is the LiveKit server API.
 	Rooms RoomClient
 	// APIKey and APISecret sign the join tokens and verify the webhooks.
@@ -236,6 +254,7 @@ type invalidation struct {
 // background work with Run.
 type Service struct {
 	channels     Channels
+	members      Members
 	rooms        RoomClient
 	key, secret  string
 	enabled      bool
@@ -244,37 +263,51 @@ type Service struct {
 	now          func() time.Time
 	writeLimiter *ratelimit.Limiter
 	// operations orders media RPCs per user without blocking state reads.
-	operations [64]sync.Mutex
+	operations [64]chan struct{}
 
-	mu         sync.Mutex
-	sessions   map[snowflake.ID]*session
-	intents    map[snowflake.ID]intent
+	mu sync.Mutex
+	// sessions are cleared by departures, cleanup, disconnect and reconcile.
+	sessions map[snowflake.ID]*session
+	// intents retain revocations for the process lifetime: absent means restart,
+	// while zero means revoked. Cancellation restores or deletes its own token.
+	intents map[snowflake.ID]intent
+	// moderation is cleared when lifted or when guild membership ends.
 	moderation map[memberKey]serverFlags
-	moves      map[snowflake.ID]*pendingMove
+	// moves are cleared by completion, cancellation, expiry and cleanup.
+	moves map[snowflake.ID]*pendingMove
 	// rev counts state changes; revs holds the rev of each user's last
 	// change, so a reconcile does not undo what happened during it.
-	rev             uint64
-	revs            map[snowflake.ID]uint64
-	seen            map[string]time.Time
-	inflight        map[string]chan struct{}
+	rev uint64
+	// revs retains the last revision per user for the process lifetime.
+	revs map[snowflake.ID]uint64
+	// seen is pruned at webhook admission after seenTTL.
+	seen map[string]time.Time
+	// inflight is released by the webhook delivery owner, including on panic.
+	inflight map[string]chan struct{}
+	// departed and removal tombstones are pruned by pruneRemovalsLocked.
 	departed        map[string]time.Time
 	membersRemoved  map[memberKey]invalidation
 	channelsRemoved map[snowflake.ID]invalidation
-	removals        map[removalKey]*removal
-	wake            chan struct{}
-	refreshes       map[snowflake.ID]*permissionRefresh
-	refreshWake     chan struct{}
-	permissionRev   uint64    // guild sync epoch, including guilds with no local state
-	lastReconcile   time.Time // last wholly successful scan, zero before success
+	// removals are deleted after successful removal or recovered admission.
+	removals map[removalKey]*removal
+	wake     chan struct{}
+	// refreshes are replaced on sync and deleted after all participants succeed.
+	refreshes     map[snowflake.ID]*permissionRefresh
+	refreshWake   chan struct{}
+	permissionRev uint64    // guild sync epoch, including guilds with no local state
+	lastReconcile time.Time // last wholly successful scan, zero before success
 }
 
 // NewService builds a Service from o. It starts nothing and calls nothing.
 func NewService(o Options) *Service {
-	s := &Service{channels: o.Channels, rooms: o.Rooms, key: o.APIKey, secret: o.APISecret, pub: o.Publisher,
+	s := &Service{channels: o.Channels, members: o.Members, rooms: o.Rooms, key: o.APIKey, secret: o.APISecret, pub: o.Publisher,
 		log: o.Logger, now: o.Now, writeLimiter: o.WriteLimiter,
 		sessions: make(map[snowflake.ID]*session), intents: make(map[snowflake.ID]intent),
 		revs: make(map[snowflake.ID]uint64), seen: make(map[string]time.Time),
 		removals: make(map[removalKey]*removal), wake: make(chan struct{}, 1)}
+	for i := range s.operations {
+		s.operations[i] = make(chan struct{}, 1)
+	}
 	s.inflight = make(map[string]chan struct{})
 	s.moderation = make(map[memberKey]serverFlags)
 	s.moves = make(map[snowflake.ID]*pendingMove)
@@ -284,6 +317,9 @@ func NewService(o Options) *Service {
 	s.membersRemoved = make(map[memberKey]invalidation)
 	s.channelsRemoved = make(map[snowflake.ID]invalidation)
 	s.enabled = s.rooms != nil && s.key != "" && s.secret != ""
+	if s.members == nil {
+		s.members = noMembers{}
+	}
 	if s.log == nil {
 		s.log = slog.New(slog.DiscardHandler)
 	}

@@ -127,7 +127,11 @@ func (s *Service) refreshGuild(ctx context.Context, guildID snowflake.ID, job *p
 // refreshParticipant orders permission RPCs with admission and moderation.
 // Captured session and generation checks prevent stale local completion.
 func (s *Service) refreshParticipant(ctx context.Context, guildID, userID snowflake.ID, job *permissionRefresh, captured *session) error {
-	defer s.lockUser(userID)()
+	unlock, lockErr := s.lockUser(ctx, userID)
+	if lockErr != nil {
+		return lockErr
+	}
+	defer unlock()
 	s.mu.Lock()
 	if s.sessions[userID] != captured || s.refreshes[guildID] != job {
 		s.mu.Unlock()
