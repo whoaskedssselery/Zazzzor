@@ -52,7 +52,8 @@ jobs:
   image:
     name: Server image (docker build)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Also builds the web client and xcaddy on a cold runner (no cache).
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -74,6 +75,14 @@ jobs:
             echo "::error::unexpanded variables in the rendered stack"
             exit 1
           fi
+      - name: Swarm stacks, TURN, deploy guards and the README path (fake values)
+        run: bash deploy/scripts/stack-test.sh
+      - name: Build the static web image and test plain HTTP
+        run: |
+          docker build -f deploy/caddy/Dockerfile -t zazzzor-caddy:ci .
+          docker run --rm --env-file deploy/.env.ci zazzzor-caddy:ci \
+            caddy validate --config /etc/caddy/Caddyfile
+          bash deploy/scripts/web-test.sh zazzzor-caddy:ci
 
   restore:
     name: Backups and restore (deploy/scripts)

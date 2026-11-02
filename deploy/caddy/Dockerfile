@@ -35,3 +35,5 @@ COPY --from=caddy-builder /usr/bin/caddy /usr/bin/caddy
 COPY --from=web /app/tools/connectivity-test/dist /srv/connectivity-test
 COPY --from=web /app/web/dist /srv/web
 COPY deploy/caddy/Caddyfile /etc/caddy/Caddyfile
+COPY deploy/caddy/Caddyfile.web /etc/caddy/Caddyfile.web
+COPY deploy/caddy/static.caddy /etc/caddy/static.caddy

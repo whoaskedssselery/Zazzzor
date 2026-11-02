@@ -1,0 +1,12 @@
+# Optional TURN/TLS router. stack.sh includes it only with TURN enabled.
+# Traefik terminates TLS; LiveKit advertises turns:<domain>:443.
+services:
+  livekit:
+    deploy:
+      labels:
+        - "traefik.tcp.routers.zazzzor-turn.rule=HostSNI(`${LIVEKIT_TURN_DOMAIN:?задайте LIVEKIT_TURN_DOMAIN}`)"
+        - "traefik.tcp.routers.zazzzor-turn.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+        - "traefik.tcp.routers.zazzzor-turn.tls=true"
+        - "traefik.tcp.routers.zazzzor-turn.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}"
+        - "traefik.tcp.routers.zazzzor-turn.service=zazzzor-turn"
+        - "traefik.tcp.services.zazzzor-turn.loadbalancer.server.port=443"

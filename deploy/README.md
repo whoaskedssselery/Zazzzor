@@ -860,6 +860,247 @@ docker login ghcr.io -u whoaskedssselery
 
 ---
 
+## 17. Развёртывание за Traefik (Docker Swarm)
+
+Этот вариант — для сервера, где в Docker Swarm уже работает Traefik. Стек
+описан в `deploy/docker-stack.traefik.yml`, команды — те же `stack.sh`.
+Edge Caddy и DuckDNS не запускаются: TLS и порт 443 остаются у Traefik.
+Веб-контейнер отдаёт клиент по обычному HTTP на 8080 внутри overlay-сети,
+наружу этот порт не открыт. Тома — те же `zazzzor_pgdata` и `zazzzor_apidata`.
+
+> **Внимание.** Если на сервере уже работает ручной стек Zazzzor
+> (`docker stack ls` показывает `zazzzor`), сначала прочитайте
+> [«Переход с ручного стека»](#переход-с-ручного-стека) в конце раздела.
+> **Пароль базы переносится оттуда как есть. Не генерируйте новый
+> `POSTGRES_PASSWORD` из §5**: с другим паролем API не подключится к
+> существующей базе.
+
+1. На менеджере должна существовать внешняя overlay-сеть `traefik`.
+   Traefik должен быть подключён к ней и читать service labels Swarm.
+   Нужны HTTPS entrypoint `websecure` и certresolver `letsencrypt`.
+   Если в вашем Traefik они называются иначе, раскомментируйте и измените
+   в `deploy/.env` `TRAEFIK_NETWORK`, `TRAEFIK_ENTRYPOINT` и
+   `TRAEFIK_CERTRESOLVER`. Оба provider labels (`docker.network` и
+   `swarm.network`) указывают одну сеть, поэтому подходит и старый, и
+   современный Swarm provider.
+
+2. Новая установка: создайте `deploy/.env` по §5 и заполните в нём
+   `ZAZZZOR_DOMAIN` (домен приложения), `LIVEKIT_API_KEY`,
+   `LIVEKIT_API_SECRET`, `POSTGRES_PASSWORD` и `ZAZZZOR_ADMIN_USERNAMES`.
+   `DUCKDNS_*` и `ACME_EMAIL` здесь не нужны, оставьте их пустыми. Создайте
+   каталог копий (§12, шаг 1). Затем найдите в `deploy/.env` строки ниже,
+   **раскомментируйте** их (уберите `# ` в начале) **и измените**:
+
+   <!-- traefik-env -->
+   ```bash
+   ZAZZZOR_EDGE=traefik
+   LIVEKIT_NODE_IP=<публичный IPv4 сервера>
+   TRAEFIK_SUBNET=<CIDR сети traefik>
+   ZAZZZOR_API_REPOSITORY=ghcr.io/whoaskedssselery/zazzzor-api
+   ZAZZZOR_CADDY_REPOSITORY=ghcr.io/whoaskedssselery/zazzzor-caddy
+   ```
+
+   Не дописывайте эти строки в конец файла: если ключ встретится дважды,
+   `stack.sh` остановится и назовёт обе строки.
+
+   CIDR сети Traefik:
+
+   ```bash
+   docker network inspect traefik --format '{{range .IPAM.Config}}{{.Subnet}} {{end}}'
+   ```
+
+   Не указывайте весь `10.0.0.0/8`: API верит адресам клиентов из
+   `X-Forwarded-For` только от адресов этой сети. В Traefik не включайте
+   `forwardedHeaders.insecure`. Ещё две оговорки:
+   - Любой контейнер в сети `traefik` тоже входит в этот CIDR: он может
+     обратиться к `api:8080` напрямую и подделать `X-Forwarded-For`.
+     Подключайте к сети `traefik` только сервисы, которым доверяете.
+   - Traefik должен публиковать 443 в режиме `host`. В режиме `ingress`
+     Swarm подменяет адрес клиента, и для API все друзья — один адрес с
+     общими лимитами. Проверка (у 443 должно быть `"PublishMode":"host"`):
+
+     ```bash
+     docker service inspect <сервис traefik> --format '{{json .Endpoint.Ports}}'
+     ```
+
+   PostgreSQL, метрики и административный API Caddy наружу не публикуются.
+   `LIVEKIT_NODE_IP` обязателен: здесь медиа идут через docker_gwbridge
+   (`rtc.ips.includes: 172.16.0.0/12`), STUN не переопределяет адрес.
+   При смене публичного IP обновите переменную и повторите deploy.
+
+3. Сохраните предыдущие теги для отката. Разверните опубликованную пару
+   образов одного коммита (§16):
+
+   ```bash
+   export ZAZZZOR_API_TAG=sha-<12 знаков коммита>
+   export ZAZZZOR_CADDY_TAG=sha-<те же 12 знаков>
+   bash deploy/scripts/stack.sh deploy
+   bash deploy/scripts/stack.sh ps
+   bash deploy/scripts/stack.sh logs web --follow
+   ```
+
+   Скрипт скачивает отсутствующие GHCR-образы; для приватных нужен
+   `docker login ghcr.io`. Все сервисы и локальные тома закреплены за этим
+   менеджером, поэтому образы не требуется раздавать другим узлам.
+   Используйте неизменяемые `sha-…` теги; `main` и `latest` не подходят.
+   Для локальной сборки оставьте строки `*_REPOSITORY` закомментированными
+   и не задавайте теги: используется прежний расчёт тега по содержимому.
+   `*_REPOSITORY` действуют только при `ZAZZZOR_EDGE=traefik`; edge Caddy
+   откажется запускаться с другими репозиториями. Переменная Compose
+   `ZAZZZOR_API_IMAGE` по-прежнему означает полный образ с тегом.
+   `config` печатает секреты — не публикуйте его вывод.
+
+4. Для обновления подтяните код (в том числе backup-скрипты), задайте новую
+   пару тегов и повторите deploy. Ошибка обновления откатывает сервис.
+   Для ручного отката задайте предыдущие два тега и повторите deploy.
+   Миграции идут только вперёд: предыдущая версия должна понимать текущую
+   схему. Восстановление данных — отдельная операция по §12.
+   `ps`, `logs <api|web|postgres|livekit|backup>` и `rm` работают как в §15.
+   `rm` останавливает только этот стек, внешняя сеть Traefik остаётся.
+
+5. Проброс MikroTik и firewall — как в §7: 443/TCP до Traefik,
+   7881/TCP и 7882/UDP непосредственно до узла с LiveKit (host mode).
+   Порты 5432, 8080, 7880 и 9464 наружу не открывайте.
+   `/rtc` направляется в LiveKit, `/api/` — в API (включая gateway).
+   Остальные пути получает web с меньшим приоритетом маршрута.
+
+6. TURN/TLS нужен друзьям, у которых UDP заблокирован (VPN, строгие сети).
+   Создайте отдельную DNS-запись на тот же IP, затем в `deploy/.env`
+   раскомментируйте и измените:
+
+   <!-- traefik-turn-env -->
+   ```bash
+   LIVEKIT_TURN_ENABLED=true
+   LIVEKIT_TURN_DOMAIN=<отдельный домен TURN>
+   ```
+
+   Повторите deploy. Скрипт добавит `docker-stack.traefik-turn.yml`:
+   TCP-router по SNI на `websecure`, TLS у Traefik, `external_tls: true` у
+   LiveKit. Внутренний TURN listener на 443 не публикуется на хост; наружный
+   443 занят Traefik. Домен TURN обязан отличаться от домена приложения,
+   иначе TCP-router перехватит HTTPS приложения. Проверьте, что TURN
+   запустился:
+
+   ```bash
+   bash deploy/scripts/stack.sh logs livekit | grep 'Starting TURN server'
+   ```
+
+   В строке должно быть `"turn.portTLS": 443`. Если вместо неё в логах
+   `bind: permission denied`, на узле изменён sysctl
+   `net.ipv4.ip_unprivileged_port_start` (Docker по умолчанию ставит 0), и
+   LiveKit без capabilities не может слушать 443: напишите разработчику.
+
+   Чтобы выключить TURN, задайте `LIVEKIT_TURN_ENABLED=false` и повторите
+   deploy: TCP-router будет удалён из labels сервиса. Если строка осталась
+   закомментированной, а в работающем стеке TURN есть, deploy остановится
+   и попросит выбрать явно: обновление не выключает TURN молча.
+
+7. Проверьте `https://<домен>/api/v1/healthz`, главную страницу, вход и
+   gateway в DevTools → Network → WS (`/api/v1/gateway`, статус 101).
+   Оставьте вкладку открытой несколько минут: heartbeat должен продолжаться.
+   Затем откройте `/connectivity-test/` и выполните проверку связи ниже,
+   в том числе из сети с заблокированным UDP при включённом TURN.
+
+   Traefik поддерживает WebSocket upgrade автоматически. Его стандартные
+   `respondingTimeouts.readTimeout=60s` относятся к чтению HTTP-запроса,
+   `writeTimeout=0s` не ограничивает запись ответа. Не добавляйте middleware
+   с общим deadline для gateway. Если в существующем Traefik переопределены
+   таймауты, проверьте entrypoint `websecure` и его `serversTransport`:
+   оставьте `writeTimeout=0s`, `responseHeaderTimeout=0s`, а при наличии
+   transport read/write timeouts — `0s`. `idleConnTimeout` относится к
+   свободным keep-alive соединениям, а не к активному WebSocket.
+   Настройки меняет владелец существующего Traefik, этот стек их не заменяет.
+   Источники: [WebSocket](https://doc.traefik.io/traefik/user-guides/websocket/),
+   [entrypoints](https://doc.traefik.io/traefik/reference/install-configuration/entrypoints/),
+   [serversTransport](https://doc.traefik.io/traefik/reference/routing-configuration/http/load-balancing/serverstransport/).
+
+8. Бэкапы и restore из §12 работают через те же команды `stack.sh backup`,
+   `stack.sh restore <копия> --yes`, `stack.sh reconcile`. При
+   `ZAZZZOR_EDGE=traefik` задания подключаются к внутренней attachable-сети
+   `<STACK_NAME>_db`, Postgres доступен как `postgres:5432`.
+   Сеть не имеет внешнего доступа; в ней только API, Postgres и backup.
+
+### Переход с ручного стека
+
+Ручной стек (`docker-stack.traefik.yml`, переменные в командной строке
+`docker stack deploy`) обновляется на этот обычным `stack.sh deploy`: без
+`stack rm` и без простоя дольше перезапуска сервисов. Тома остаются.
+Команды ниже — для стека `zazzzor`; если `docker stack ls` показывает другое
+имя, подставьте его и перед каждой командой `stack.sh` выполните
+`export STACK_NAME=<имя>`.
+
+1. На всякий случай снимите дамп базы (API останавливать не нужно):
+
+   ```bash
+   PG=$(docker ps -q --filter label=com.docker.swarm.service.name=zazzzor_postgres)
+   docker exec "$PG" pg_dump -U zazzzor -d zazzzor -Fc > ~/zazzzor-before-traefik.dump
+   ls -l ~/zazzzor-before-traefik.dump
+   ```
+
+2. Посмотрите старые значения в работающих сервисах. **В выводе секреты —
+   не публикуйте его:**
+
+   ```bash
+   for s in api postgres livekit; do
+     docker service inspect "zazzzor_$s" --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}'
+   done
+   docker service inspect zazzzor_api zazzzor_web --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}'
+   ```
+
+3. Создайте `deploy/.env` (`cp deploy/.env.example deploy/.env` и
+   `chmod 600 deploy/.env`) и перенесите значения по таблице.
+   **Команды `openssl rand` из §5 здесь не запускайте: все секреты уже есть.**
+
+   | Было в ручном стеке | Стало в `deploy/.env` | Что писать |
+   |---|---|---|
+   | `DB_PASSWORD` (`POSTGRES_PASSWORD` у `zazzzor_postgres`) | `POSTGRES_PASSWORD` | **то же значение; новый пароль не генерировать** |
+   | `ZAZZZOR_DOMAIN` | `ZAZZZOR_DOMAIN` | то же значение |
+   | `PUBLIC_IP` (`node_ip` в `LIVEKIT_CONFIG`) | `LIVEKIT_NODE_IP` | то же значение, раскомментировать |
+   | `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` (ключ и секрет в `keys:`) | `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | те же значения |
+   | `TURN_DOMAIN` (TURN был включён всегда) | `LIVEKIT_TURN_ENABLED`, `LIVEKIT_TURN_DOMAIN` | **`true`** и тот же домен (п. 6), иначе друзья за VPN потеряют голос |
+   | `ADMIN_USERNAMES` | `ZAZZZOR_ADMIN_USERNAMES` | то же значение |
+   | `TRAEFIK_SUBNET` (по умолчанию было `10.0.0.0/8`) | `TRAEFIK_SUBNET` | CIDR сети `traefik` (п. 2), не `10.0.0.0/8` |
+   | `API_TAG` (образ `zazzzor-api:<тег>`) | `ZAZZZOR_API_TAG` | новый `sha-…` из GHCR (п. 3); старый тег запишите для отката |
+   | `WEB_TAG` (образ `zazzzor-caddy:<тег>`) | `ZAZZZOR_CADDY_TAG` | тот же новый `sha-…`: в старом образе нет веб-клиента |
+   | сеть `traefik`, `websecure`, `letsencrypt` | `TRAEFIK_NETWORK`, `TRAEFIK_ENTRYPOINT`, `TRAEFIK_CERTRESOLVER` | ничего: это значения по умолчанию |
+   | `postgres:18.6-alpine`, `livekit/livekit-server:v1.13.10` | `POSTGRES_VERSION`, `LIVEKIT_VERSION` | ничего: те же версии уже в примере |
+   | тома `zazzzor_pgdata`, `zazzzor_apidata` | те же тома | ничего: имя стека то же |
+   | сеть `zazzzor_zazzzor` | сеть `zazzzor_db` | ничего: создаётся сама, старую удалите в п. 7 |
+   | — | `ZAZZZOR_EDGE`, `*_REPOSITORY` | блок из п. 2 |
+   | — | `ZAZZZOR_BACKUP_DIR` | каталог копий (§12, шаг 1) |
+
+4. Проверьте, что пароль совпал (сам пароль не печатается):
+
+   ```bash
+   old=$(docker service inspect zazzzor_postgres --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}' | sed -n 's/^POSTGRES_PASSWORD=//p')
+   new=$(sed -n 's/^POSTGRES_PASSWORD=//p' deploy/.env)
+   if [ -n "$old" ] && [ "$old" = "$new" ]; then echo 'пароль совпадает'; else echo 'НЕ совпадает: исправьте POSTGRES_PASSWORD до deploy'; fi
+   ```
+
+5. Разверните по п. 3. Swarm обновит сервисы на месте: создаст сеть
+   `zazzzor_db` и переведёт в неё API, Postgres и backup, каждый сервис
+   перезапустится один раз. API сам ждёт базу до 60 секунд.
+
+6. Проверьте п. 7, TURN по п. 6 и копию: `bash deploy/scripts/stack.sh backup`.
+
+7. Удалите старую сеть, она больше не нужна:
+
+   ```bash
+   docker network rm zazzzor_zazzzor
+   ```
+
+   Если Docker отвечает `has active endpoints`, в ней ещё есть контейнер:
+   `docker network inspect zazzzor_zazzzor --format '{{range .Containers}}{{.Name}} {{end}}'`.
+
+Если deploy не удался, Swarm откатывает упавший сервис. Откаченный API
+окажется в старой сети, где базы уже нет, и сам не поднимется: найдите
+причину (`bash deploy/scripts/stack.sh logs api`, чаще всего — пароль),
+исправьте `deploy/.env` и повторите deploy. Вернуть ручной стек целиком:
+разверните старый YAML прежней командой, тома те же. Если новый API уже
+обновил схему базы, старый может с ней не запуститься; тогда восстановите
+дамп из п. 1 по §12 «Ручная копия, если скрипты не работают» с поправками
+для стека из §15.
+
 ## Проверка связи (этап 1.1)
 
 Страница `https://<домен>/connectivity-test/` проверяет, как у друзей

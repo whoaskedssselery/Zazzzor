@@ -62,6 +62,15 @@ stack="${STACK_NAME:-${COMPOSE_PROJECT_NAME:-zazzzor}}"
 if [[ "$(uname -s)" == Linux ]]; then
   require_backup_dir "$ZAZZZOR_BACKUP_DIR"
 fi
+# В Traefik-варианте Postgres доступен только по внутренней overlay-сети.
+job_network=host
+pg_host=127.0.0.1
+pg_port="${POSTGRES_PORT:-55432}"
+if [[ "$mode" == swarm && "${ZAZZZOR_EDGE:-caddy}" == traefik ]]; then
+  job_network="${stack}_$traefik_db_network"
+  pg_host=postgres
+  pg_port=5432
+fi
 volume="${stack}_apidata"
 pg_image="postgres:${POSTGRES_VERSION:?заполните POSTGRES_VERSION в $env_file}"
 # Чтобы Git Bash на Windows не превращал пути внутри контейнера (/opt/backup,
@@ -96,8 +105,8 @@ run_job() {
     fi
     "${compose[@]}" "${files[@]}" run --rm --no-deps -T -e "ZAZZZOR_SCHEMA_VERSION=${schema:-}" backup "$@"
   else
-    docker run --rm --user "$backup_uid:$backup_uid" --network host \
-      -e PGHOST=127.0.0.1 -e "PGPORT=${POSTGRES_PORT:-55432}" -e PGUSER=zazzzor -e PGDATABASE=zazzzor \
+    docker run --rm --user "$backup_uid:$backup_uid" --network "$job_network" \
+      -e "PGHOST=$pg_host" -e "PGPORT=$pg_port" -e PGUSER=zazzzor -e PGDATABASE=zazzzor \
       -e "PGPASSWORD=${POSTGRES_PASSWORD:?заполните POSTGRES_PASSWORD в $env_file}" \
       -e ZAZZZOR_APP_IMAGE -e "ZAZZZOR_SCHEMA_VERSION=${schema:-}" -e "BACKUP_HOST_DIR=$ZAZZZOR_BACKUP_DIR" \
       -e TZ -e ZAZZZOR_BACKUP_KEEP_DAILY -e ZAZZZOR_BACKUP_KEEP_WEEKLY \
@@ -249,7 +258,7 @@ reconciled=1
 if [[ "$mode" == compose ]]; then
   "${compose[@]}" run --rm --no-deps -T api files reconcile || reconciled=0
 else
-  docker run --rm --network host --env-file "$api_env" -v "$volume:/data" "$ZAZZZOR_APP_IMAGE" files reconcile || reconciled=0
+  docker run --rm --network "$job_network" --env-file "$api_env" -v "$volume:/data" "$ZAZZZOR_APP_IMAGE" files reconcile || reconciled=0
 fi
 start_api
 
