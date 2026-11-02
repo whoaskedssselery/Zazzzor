@@ -1,31 +1,39 @@
 import { useId, useMemo } from "react";
 import { useGuilds } from "@/entities/guild";
+import { MemberMenu } from "@/features/manage-member";
 import { Avatar, cn, roleTextStyle } from "@/shared/ui";
 import { groupMembers, type MemberGroup, type MemberRow } from "../model/groups";
 
-const Row = ({ member }: { member: MemberRow }) => {
+const Row = ({ guildId, member }: { guildId: string; member: MemberRow }) => {
   const offline = member.status === "offline";
   return (
-    <li className="flex h-11 items-center gap-3 rounded-md px-2 hover:bg-hover">
-      <Avatar
-        name={member.name}
-        src={member.avatarUrl}
-        size={32}
-        status={member.status}
-        className={cn(offline && "opacity-45")}
-      />
-      <span
-        data-member-name
-        className={cn("min-w-0 truncate text-base font-medium", offline ? "text-fg-faint" : "role-text")}
-        style={offline ? undefined : roleTextStyle(member.color)}
-      >
-        {member.name}
-      </span>
+    <li>
+      <MemberMenu guildId={guildId} userId={member.userId} mode="dropdown">
+        <button
+          type="button"
+          className="flex h-11 w-full cursor-pointer items-center gap-3 rounded-md px-2 text-left hover:bg-hover data-[state=open]:bg-selected"
+        >
+          <Avatar
+            name={member.name}
+            src={member.avatarUrl}
+            size={32}
+            status={member.status}
+            className={cn(offline && "opacity-45")}
+          />
+          <span
+            data-member-name
+            className={cn("min-w-0 truncate text-base font-medium", offline ? "text-fg-faint" : "role-text")}
+            style={offline ? undefined : roleTextStyle(member.color)}
+          >
+            {member.name}
+          </span>
+        </button>
+      </MemberMenu>
     </li>
   );
 };
 
-const Group = ({ group }: { group: MemberGroup }) => {
+const Group = ({ guildId, group }: { guildId: string; group: MemberGroup }) => {
   const headingId = useId();
   return (
     <section>
@@ -34,7 +42,7 @@ const Group = ({ group }: { group: MemberGroup }) => {
       </h3>
       <ul aria-labelledby={headingId}>
         {group.members.map((m) => (
-          <Row key={m.userId} member={m} />
+          <Row key={m.userId} guildId={guildId} member={m} />
         ))}
       </ul>
     </section>
@@ -45,6 +53,7 @@ const Group = ({ group }: { group: MemberGroup }) => {
  * The members of a server beside the chat (see groupMembers for the order):
  * avatar with presence, then the nickname or display name in the colour of
  * the highest coloured role. Offline members are dimmed and uncoloured.
+ * A member opens their card with what the user may do to them.
  */
 export const MemberList = ({ guildId }: { guildId: string }) => {
   const entry = useGuilds((s) => s.guilds[guildId]);
@@ -53,7 +62,7 @@ export const MemberList = ({ guildId }: { guildId: string }) => {
   return (
     <aside aria-label="Участники" className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
       {groups.map((g) => (
-        <Group key={g.id} group={g} />
+        <Group key={g.id} guildId={guildId} group={g} />
       ))}
     </aside>
   );

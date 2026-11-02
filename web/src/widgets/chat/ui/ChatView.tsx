@@ -10,6 +10,7 @@ import {
   useMessages,
   usePendingMessages,
 } from "@/entities/message";
+import { MemberMenu } from "@/features/manage-member";
 import {
   DeleteMessageDialog,
   MessageContextMenu,
@@ -192,6 +193,18 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
             grouped={grouped && editing !== m.id}
             now={now}
             highlighted={highlighted === m.id}
+            renderName={(nameNode) => {
+              const authorId = m.author?.id;
+              // A member's name opens their card; a former member's is only a name.
+              if (authorId === undefined || !(authorId in entry.members)) return nameNode;
+              return (
+                <MemberMenu guildId={guildId} userId={authorId} mode="dropdown">
+                  <button type="button" className="min-w-0 cursor-pointer truncate hover:underline">
+                    {nameNode}
+                  </button>
+                </MemberMenu>
+              );
+            }}
             editor={
               editing === m.id ? (
                 <MessageEditor

@@ -12,6 +12,7 @@ import {
 import { DeleteGuild } from "@/features/delete-guild";
 import { ConfirmDialog, cn, IconButton, Skeleton } from "@/shared/ui";
 import { LEAVE_UNSAVED } from "./leave";
+import { MembersTab } from "./MembersTab";
 import { OverviewTab } from "./OverviewTab";
 import { RolesTab } from "./RolesTab";
 
@@ -32,6 +33,8 @@ const TabContent = ({
       return <OverviewTab key={entry.guild.id} guild={entry.guild} onDirtyChange={onDirtyChange} />;
     case "roles":
       return <RolesTab entry={entry} meId={meId} onDirtyChange={onDirtyChange} />;
+    case "members":
+      return <MembersTab entry={entry} />;
     default:
       return <p className="text-base text-fg-muted">{`Раздел «${GUILD_SETTINGS_TITLES[tab]}» появится позже.`}</p>;
   }
