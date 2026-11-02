@@ -24,3 +24,6 @@ export const useDraft = (channelId: string): string => useDrafts((s) => s.drafts
 export const resetDrafts = (): void => {
   useDrafts.setState({ drafts: {} });
 };
+
+/** The draft of `channelId` now, outside React (read at the moment of sending, not from a render). */
+export const getDraft = (channelId: string): string => useDrafts.getState().drafts[channelId] ?? "";

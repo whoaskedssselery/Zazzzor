@@ -8,6 +8,7 @@ type Channel = S["Channel"];
 type Member = S["Member"];
 type GuildState = S["GuildState"];
 type GatewayReady = S["GatewayReady"];
+type Message = S["Message"];
 
 /**
  * Builders of contract-shaped objects for tests (types from schema.gen.ts):
@@ -68,4 +69,24 @@ export function makeGuildState(guildId: string, me: User, over: Partial<GuildSta
 
 export function makeReady(me: User, guilds: GuildState[] = []): GatewayReady {
   return { user: me, guilds, presences: [{ user_id: me.id, status: "online" }] };
+}
+
+/** When message `id` was sent: one second per ID unit after 23.10.2026 18:00 UTC, so IDs in order are seconds apart. */
+const messageTime = (id: string): string =>
+  new Date(Date.UTC(2026, 9, 23, 18) + (Number(id) % 1_000_000) * 1000).toISOString();
+
+/** A message in channel `channelId` of server 10 by `author` (null: a deleted account). */
+export function makeMessage(id: string, channelId: string, author: User | null, over: Partial<Message> = {}): Message {
+  return {
+    id,
+    channel_id: channelId,
+    guild_id: "10",
+    author,
+    content: `сообщение ${id}`,
+    created_at: messageTime(id),
+    edited_at: null,
+    reply_to_id: null,
+    referenced_message: null,
+    ...over,
+  };
 }

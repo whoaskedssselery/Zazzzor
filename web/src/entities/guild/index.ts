@@ -1,3 +1,4 @@
+export { byRank, memberColor, rolesOf, type UserDisplay, userDisplay } from "./model/display";
 export {
   ALL,
   canActOn,
@@ -26,9 +27,11 @@ export {
 } from "./model/reducer";
 export {
   applyGatewayDispatch,
+  getConnectionStatus,
   getGuildsState,
   resetGuilds,
   setConnectionStatus,
+  subscribeConnectionStatus,
   useConnectionStatus,
   useGuilds,
 } from "./model/store";

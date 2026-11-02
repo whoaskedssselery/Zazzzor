@@ -9,9 +9,15 @@ type FieldError = components["schemas"]["FieldError"];
 /**
  * One MSW server for every test file; handlers are added per test with
  * `server.use`. The gateway WebSocket answers by default with a silent
- * server (see `silentGateway`), so any screen behind sign-in can connect.
+ * server (see `silentGateway`), so any screen behind sign-in can connect,
+ * and every channel is empty and takes typing notices, so any open channel
+ * renders its chat. A test that needs messages adds its own handler.
  */
-export const server = setupServer(silentGateway);
+export const server = setupServer(
+  silentGateway,
+  http.get("/api/v1/channels/:channel_id/messages", () => HttpResponse.json([])),
+  http.post("/api/v1/channels/:channel_id/typing", () => new HttpResponse(null, { status: 204 })),
+);
 
 type HttpMethod = "get" | "put" | "post" | "delete" | "patch";
 

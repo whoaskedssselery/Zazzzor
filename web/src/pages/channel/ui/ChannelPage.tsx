@@ -3,6 +3,7 @@ import { type Channel, useGuilds } from "@/entities/guild";
 import { Skeleton } from "@/shared/ui";
 import { MembersButton, NavButton, ShellHeader } from "@/widgets/app-shell";
 import { ChannelSidebar } from "@/widgets/channel-sidebar";
+import { ChatView } from "@/widgets/chat";
 import { MemberList } from "@/widgets/member-list";
 import { useChannelAccess } from "../model/useChannelAccess";
 
@@ -28,11 +29,8 @@ export const ServerMembers = ({ guildId }: { guildId: string }) => {
   return known ? <MemberList guildId={guildId} /> : null;
 };
 
-/**
- * The open text channel: its header (name and topic) and, until the chat
- * arrives (Task 6), the start of the channel where the messages will be.
- */
-const ChannelView = ({ channel }: { channel: Channel }) => (
+/** The open text channel: its header (name, topic, the member toggle) and its chat. */
+const ChannelView = ({ guildId, channel }: { guildId: string; channel: Channel }) => (
   <>
     <ShellHeader>
       <NavButton />
@@ -50,15 +48,7 @@ const ChannelView = ({ channel }: { channel: Channel }) => (
         <MembersButton />
       </div>
     </ShellHeader>
-    <div className="flex min-h-0 flex-1 flex-col justify-end overflow-y-auto">
-      <div className="mx-4 mt-6 mb-6">
-        <span aria-hidden className="flex size-17 items-center justify-center rounded-full bg-control">
-          <Hash className="size-10 text-fg" strokeWidth={1.75} />
-        </span>
-        <h2 className="mt-3 text-xl font-bold break-words">{`Добро пожаловать в #${channel.name}!`}</h2>
-        <p className="mt-1 text-base text-fg-muted">{`Это начало канала #${channel.name}.`}</p>
-      </div>
-    </div>
+    <ChatView key={channel.id} guildId={guildId} channel={channel} />
   </>
 );
 
@@ -84,7 +74,7 @@ export const ChannelPage = ({ guildId, channelId = null }: { guildId: string; ch
   const openable = useChannelAccess(guildId, channelId);
   const known = useGuilds((s) => guildId in s.guilds);
   const channel = useGuilds((s) => (channelId === null ? undefined : s.guilds[guildId]?.channels[channelId]));
-  if (openable && channel !== undefined) return <ChannelView channel={channel} />;
+  if (openable && channel !== undefined) return <ChannelView guildId={guildId} channel={channel} />;
   return (
     <EmptyView text={known && channelId === null ? "На этом сервере нет текстовых каналов, доступных вам." : null} />
   );

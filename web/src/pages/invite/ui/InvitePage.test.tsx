@@ -94,10 +94,19 @@ describe("InvitePage", () => {
       }),
     );
     const { user, router } = await open();
+    // A render that flashes «already a member» between the join and the
+    // navigation is caught here, however briefly it lasts.
+    let flashed = false;
+    const observer = new MutationObserver(() => {
+      flashed ||= document.body.textContent.includes("Вы уже на этом сервере");
+    });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
     await user.click(await screen.findByRole("button", { name: "Принять приглашение" }));
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/channels/50/62");
     });
+    observer.disconnect();
+    expect(flashed).toBe(false);
   });
 
   it("says «Вы заблокированы на этом сервере» to a banned user", async () => {

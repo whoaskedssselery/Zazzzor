@@ -212,6 +212,17 @@ describe("switching servers", () => {
   });
 });
 
+describe("before READY", () => {
+  it("leaves out the member column while the server is not known", async () => {
+    setViewportWidth(1440);
+    // The default gateway never sends READY.
+    server.use(sessionHandler(testUser));
+    renderApp(`/channels/${G}/101`);
+    expect(await screen.findByRole("navigation", { name: "Серверы" })).toBeTruthy();
+    expect(document.querySelector('[class*="--members-width"]')).toBeNull();
+  });
+});
+
 describe("loss of access, more cases", () => {
   it("says it once: exactly one toast when a GUILD_SYNC hides the open channel", async () => {
     const send = signedIn();

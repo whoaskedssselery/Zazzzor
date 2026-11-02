@@ -1,4 +1,5 @@
 import { Outlet, useParams } from "@tanstack/react-router";
+import { useGuilds } from "@/entities/guild";
 import { ServerMembers, ServerSidebar } from "@/pages/channel";
 import { HomeSidebar } from "@/pages/channels-home";
 import { AppShell } from "@/widgets/app-shell";
@@ -13,6 +14,8 @@ import { UserPanel } from "@/widgets/user-panel";
  */
 export const ShellLayout = () => {
   const { guildId, channelId } = useParams({ strict: false });
+  // No member list (and no toggle for it) until the server is in the store.
+  const known = useGuilds((s) => guildId !== undefined && guildId in s.guilds);
   return (
     <AppShell
       rail={<GuildRail activeGuildId={guildId ?? null} />}
@@ -20,7 +23,7 @@ export const ShellLayout = () => {
         guildId === undefined ? <HomeSidebar /> : <ServerSidebar guildId={guildId} channelId={channelId ?? null} />
       }
       userPanel={<UserPanel />}
-      {...(guildId === undefined ? {} : { members: <ServerMembers guildId={guildId} /> })}
+      {...(guildId === undefined || !known ? {} : { members: <ServerMembers guildId={guildId} /> })}
     >
       <Outlet />
     </AppShell>

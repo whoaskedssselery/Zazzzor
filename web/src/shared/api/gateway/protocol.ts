@@ -88,8 +88,7 @@ export function decodeFrame(data: unknown): ServerFrame | null {
 }
 
 // Event payloads (`x-gateway.events`) the guild store applies. Messages and
-// typing go to the subscribers of the connection as they came; their decoder
-// joins this map with the chat (Task 6).
+// typing have their own map below (ChatEvents).
 
 /** A snowflake: a decimal string, kept a string. */
 const snowflake = z.string().check(z.regex(/^\d{1,20}$/));
@@ -225,6 +224,54 @@ const eventSchemas: { [K in keyof GatewayEvents]: z.ZodMiniType<GatewayEvents[K]
  */
 export function parseEvent<K extends keyof GatewayEvents>(t: K, d: unknown): GatewayEvents[K] | null {
   const result = eventSchemas[t].safeParse(d);
+  if (result.success) return result.data;
+  console.warn(`gateway: dropped a malformed ${t}`, result.error.issues);
+  return null;
+}
+
+// Chat events: the message cache and the typing indicator apply them, the
+// guild store never does.
+
+const messageStubSchema: z.ZodMiniType<S["MessageStub"]> = z.object({
+  id: snowflake,
+  author: z.nullable(userSchema),
+  content: z.string(),
+});
+
+const messageSchema: z.ZodMiniType<S["Message"]> = z.object({
+  id: snowflake,
+  channel_id: snowflake,
+  guild_id: snowflake,
+  author: z.nullable(userSchema),
+  content: z.string(),
+  created_at: z.string(),
+  edited_at: nullableString,
+  reply_to_id: z.nullable(snowflake),
+  referenced_message: z.nullable(messageStubSchema),
+  nonce: z.optional(z.string()),
+});
+
+/** The payload type of each chat event (`x-gateway.events`). */
+export interface ChatEvents {
+  MESSAGE_CREATE: S["Message"];
+  MESSAGE_UPDATE: S["Message"];
+  MESSAGE_DELETE: S["MessageDeleteEvent"];
+  TYPING_START: S["TypingStartEvent"];
+}
+
+const chatSchemas: { [K in keyof ChatEvents]: z.ZodMiniType<ChatEvents[K]> } = {
+  MESSAGE_CREATE: messageSchema,
+  MESSAGE_UPDATE: messageSchema,
+  MESSAGE_DELETE: z.object({ id: snowflake, channel_id: snowflake, guild_id: snowflake }),
+  TYPING_START: z.object({ channel_id: snowflake, guild_id: snowflake, user_id: snowflake, timestamp: z.string() }),
+};
+
+/** Whether `t` is a chat event. */
+export const isChatEvent = (t: string): t is keyof ChatEvents => Object.hasOwn(chatSchemas, t);
+
+/** The payload of chat event `t` checked against the contract, or null (logged) when it does not match. */
+export function parseChatEvent<K extends keyof ChatEvents>(t: K, d: unknown): ChatEvents[K] | null {
+  const result = chatSchemas[t].safeParse(d);
   if (result.success) return result.data;
   console.warn(`gateway: dropped a malformed ${t}`, result.error.issues);
   return null;

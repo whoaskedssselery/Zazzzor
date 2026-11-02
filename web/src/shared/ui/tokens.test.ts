@@ -94,7 +94,15 @@ const reading = [
 
 /** Text token → the surfaces it is set on. */
 const usage: Record<string, string[]> = {
-  "--text": [...reading, "--bg-control", "--bg-control-hover", "--bg-tooltip", "--bg-rail"],
+  "--text": [
+    ...reading,
+    "--bg-control",
+    "--bg-control-hover",
+    "--bg-tooltip",
+    "--bg-rail",
+    "--bg-code",
+    "--bg-spoiler-shown over --bg-chat",
+  ],
   "--text-muted": [...reading, "--bg-control"],
   "--text-faint": reading,
   "--text-link": ["--bg-chat", "--bg-overlay", "--bg-message-hover over --bg-chat", "--bg-mention over --bg-chat"],

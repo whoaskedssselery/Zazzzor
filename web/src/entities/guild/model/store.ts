@@ -48,3 +48,12 @@ export const applyGatewayDispatch = (t: string, d: unknown): void => {
 export const resetGuilds = (): void => {
   store.setState(INITIAL, true);
 };
+
+/** The state of the gateway connection now, outside React. */
+export const getConnectionStatus = (): ConnectionStatus => store.getState().status;
+
+/** Calls `fn` with every change of the connection state; returns the unsubscribe. */
+export const subscribeConnectionStatus = (fn: (status: ConnectionStatus) => void): (() => void) =>
+  store.subscribe((st, prev) => {
+    if (st.status !== prev.status) fn(st.status);
+  });

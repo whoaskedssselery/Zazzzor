@@ -8,7 +8,7 @@ import { Button, Dialog, DialogClose, DialogContent, Field, FormAlert, Input } f
 const NAME_RULE = "Название: от 2 до 100 символов.";
 
 const createdLate = (name: string): string =>
-  `Сервер «${name}» создан, но связь прервалась. Он откроется сам, когда подключение восстановится.`;
+  `Сервер «${name}» создан, но связь прервалась. Он появится в списке серверов, когда подключение восстановится.`;
 
 interface CreateGuildDialogProps {
   open: boolean;

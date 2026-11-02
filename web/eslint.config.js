@@ -295,4 +295,11 @@ export default defineConfig([
   {
     rules: Object.fromEntries(biomeOwns.map((rule) => [rule, "off"])),
   },
+  {
+    // The chat list drives TanStack Virtual, whose one mutable instance the
+    // React Compiler cannot memoise around. The app does not build with the
+    // compiler, so the notice that it would skip this component says nothing.
+    files: ["src/widgets/chat/ui/MessageList.tsx"],
+    rules: { "react-hooks/incompatible-library": "off" },
+  },
 ]);
