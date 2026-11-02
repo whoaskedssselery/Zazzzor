@@ -105,12 +105,12 @@ func (s *Service) cancelMoveLocked(ctx context.Context, userID snowflake.ID) {
 		return
 	}
 	delete(s.moves, userID)
-	if s.intents[userID].channelID == move.channelID {
-		if move.hadPrior {
-			s.intents[userID] = move.prior
-		} else {
-			delete(s.intents, userID)
-		}
+	// Every hop of a chained move issued its own token; the latest join is
+	// again the one before the move, whichever hop the intent points at.
+	if move.hadPrior {
+		s.intents[userID] = move.prior
+	} else {
+		delete(s.intents, userID)
 	}
 	s.touchLocked(userID)
 	s.publishMoveLocked(ctx, move.source.state.GuildID, userID, move.source.state.ChannelID)
