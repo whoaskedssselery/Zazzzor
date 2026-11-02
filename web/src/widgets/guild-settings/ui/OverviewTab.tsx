@@ -3,8 +3,7 @@ import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { Guild } from "@/entities/guild";
 import { ApiError, api, errorText, unwrap } from "@/shared/api";
 import { runeLength, trimContent } from "@/shared/lib";
-import { Button, Field, FormAlert, GuildIcon, Input, useToast } from "@/shared/ui";
-import { SaveBar } from "./SaveBar";
+import { Button, Field, FormAlert, GuildIcon, Input, SaveBar, useToast } from "@/shared/ui";
 
 const NAME_RULE = "Название: от 2 до 100 символов.";
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);

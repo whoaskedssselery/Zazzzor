@@ -13,13 +13,13 @@ import {
   FormAlert,
   Input,
   roleColorCss,
+  SaveBar,
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from "@/shared/ui";
 import { PermissionList } from "./PermissionList";
-import { SaveBar } from "./SaveBar";
 
 export const ROLE_LOCKED = "Эта роль не ниже вашей высшей: изменить её нельзя.";
 const NAME_RULE = "Название роли: от 1 до 100 символов.";

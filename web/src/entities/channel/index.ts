@@ -1,3 +1,4 @@
+export { type ChannelMove, channelMove, stepMove } from "./model/order";
 export { resetChannelUi, useChannelUi } from "./model/ui";
 export { useChannelToOpen } from "./model/useChannelToOpen";
 export { type FallbackOptions, useNavigateToFallback } from "./model/useNavigateToFallback";

@@ -1,4 +1,4 @@
-import { Button } from "@/shared/ui";
+import { Button } from "./Button";
 
 export const UNSAVED = "Есть несохранённые изменения";
 

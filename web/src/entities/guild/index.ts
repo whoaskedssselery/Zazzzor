@@ -33,6 +33,10 @@ export {
   type Role,
 } from "./model/reducer";
 export {
+  CHANNEL_SETTINGS_TABS,
+  CHANNEL_SETTINGS_TITLES,
+  type ChannelSettingsTab,
+  channelSettingsTabs,
   GUILD_SETTINGS_TABS,
   GUILD_SETTINGS_TITLES,
   type GuildSettingsTab,

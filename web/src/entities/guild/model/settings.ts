@@ -1,4 +1,4 @@
-import { computeBase, has, PERM } from "./permissions";
+import { computeBase, computeChannel, has, PERM } from "./permissions";
 import type { GuildEntry } from "./reducer";
 
 /** The sections of a server's settings, in the order the settings list them. */
@@ -33,4 +33,26 @@ export const isGuildSettingsTab = (s: string): s is GuildSettingsTab =>
 export function guildSettingsTabs(entry: GuildEntry, userId: string): GuildSettingsTab[] {
   const base = computeBase(entry, userId);
   return GUILD_SETTINGS_TABS.filter((tab) => NEEDS[tab].some((bit) => has(base, bit)));
+}
+
+/** The sections of a channel's settings. */
+export const CHANNEL_SETTINGS_TABS = ["overview", "permissions"] as const;
+export type ChannelSettingsTab = (typeof CHANNEL_SETTINGS_TABS)[number];
+
+export const CHANNEL_SETTINGS_TITLES: Record<ChannelSettingsTab, string> = {
+  overview: "Обзор",
+  permissions: "Права доступа",
+};
+
+/**
+ * The channel settings sections `userId` may open: the overview with
+ * MANAGE_CHANNELS in the channel, its permissions with MANAGE_ROLES there.
+ */
+export function channelSettingsTabs(entry: GuildEntry, channelId: string, userId: string): ChannelSettingsTab[] {
+  if (!(channelId in entry.channels)) return [];
+  const p = computeChannel(entry, channelId, userId);
+  const tabs: ChannelSettingsTab[] = [];
+  if (has(p, PERM.MANAGE_CHANNELS)) tabs.push("overview");
+  if (has(p, PERM.MANAGE_ROLES)) tabs.push("permissions");
+  return tabs;
 }

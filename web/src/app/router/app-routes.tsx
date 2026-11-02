@@ -78,6 +78,21 @@ export const guildSettingsRoute = createRoute({
   },
 });
 
+const ChannelSettingsPage = lazyRouteComponent(() => import("@/pages/channel-settings"), "ChannelSettingsPage");
+
+/** A channel's settings, over the whole window like the server's. */
+export const channelSettingsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/guilds/$guildId/channels/$channelId/settings/$tab",
+  loader: async () => {
+    await ChannelSettingsPage.preload?.();
+  },
+  component: () => {
+    const { guildId, channelId, tab } = channelSettingsRoute.useParams();
+    return <ChannelSettingsPage guildId={guildId} channelId={channelId} tab={tab} />;
+  },
+});
+
 export const settingsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/settings/$",
@@ -94,6 +109,7 @@ export const appRoutes = appRoute.addChildren([
   shellRoute.addChildren([homeRoute, guildRoute, channelRoute]),
   inviteRoute,
   guildSettingsRoute,
+  channelSettingsRoute,
   settingsRoute,
   adminRoute,
 ]);
