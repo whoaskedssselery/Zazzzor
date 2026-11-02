@@ -56,6 +56,9 @@
   --color-mention-chip: var(--bg-mention-chip);
   --color-scrim: var(--bg-scrim);
   --color-skeleton: var(--bg-skeleton);
+  --color-code: var(--bg-code);
+  --color-spoiler: var(--bg-spoiler);
+  --color-spoiler-shown: var(--bg-spoiler-shown);
 
   --color-fg: var(--text);
   --color-fg-muted: var(--text-muted);

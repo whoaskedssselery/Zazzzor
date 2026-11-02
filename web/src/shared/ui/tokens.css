@@ -41,6 +41,11 @@
   --bg-scrim: rgb(0 0 0 / 0.7);
   --bg-skeleton: rgb(236 228 216 / 0.08);
 
+  /* Message markdown: code sits a step below the chat; a hidden spoiler is a solid bar. */
+  --bg-code: #151412;
+  --bg-spoiler: #45423d;
+  --bg-spoiler-shown: rgb(236 228 216 / 0.08);
+
   /* Text. */
   --text: #ebe7e1;
   --text-muted: #b3ada5;
@@ -113,6 +118,10 @@
   --bg-mention-chip: rgb(26 127 85 / 0.14);
   --bg-scrim: rgb(20 16 12 / 0.55);
   --bg-skeleton: rgb(60 50 40 / 0.09);
+
+  --bg-code: #eeebe6;
+  --bg-spoiler: #cfcac3;
+  --bg-spoiler-shown: rgb(60 50 40 / 0.07);
 
   --text: #1c1a17;
   --text-muted: #4d4842;
