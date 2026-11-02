@@ -88,7 +88,12 @@ func isLive(t *testing.T, root string, r files.Reference) bool {
 func trashCount(t *testing.T, root string) int {
 	t.Helper()
 	n := 0
+	// A purge may run while this counts: entries it removed meanwhile are
+	// simply gone, not an error.
 	err := filepath.WalkDir(filepath.Join(root, "trash"), func(_ string, entry fs.DirEntry, err error) error {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
 		if err == nil && entry.Type().IsRegular() {
 			n++
 		}

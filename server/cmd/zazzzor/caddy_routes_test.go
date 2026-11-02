@@ -95,7 +95,7 @@ func TestCaddyKeepsLiveKitWebhookInternal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("start Caddy routing test: %v", err)
 	}
-	base, err := container.Endpoint(ctx, "http")
+	base, err := container.PortEndpoint(ctx, "8080/tcp", "http")
 	if err != nil {
 		t.Fatalf("Caddy endpoint: %v", err)
 	}
