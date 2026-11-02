@@ -80,7 +80,7 @@ func awaitPeerLog(ctx context.Context, t *testing.T, peer testcontainers.Contain
 	}
 }
 
-// awaitLiveSubscriptions observes the SFU's active subscription gauge. This
+// awaitLiveSubscriptions observes the SFU's active audio subscription gauge. This
 // measures server downtrack lifecycle independently of CLI callback metadata.
 func awaitLiveSubscriptions(ctx context.Context, t *testing.T, endpoint string, want float64) {
 	t.Helper()
@@ -103,7 +103,8 @@ func awaitLiveSubscriptions(ctx context.Context, t *testing.T, endpoint string, 
 				t.Fatalf("read SFU metrics: %v", readErr)
 			}
 			for _, line := range strings.Split(string(body), "\n") {
-				if !strings.HasPrefix(line, "livekit_track_subscribed_total{") {
+				// The gauge is per track kind; only the microphone series counts.
+				if !strings.HasPrefix(line, "livekit_track_subscribed_total{") || !strings.Contains(line, `kind="AUDIO"`) {
 					continue
 				}
 				last = line
