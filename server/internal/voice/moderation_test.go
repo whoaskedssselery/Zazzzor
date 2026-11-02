@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"slices"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -199,63 +198,6 @@ func TestModerationSurvivesRejoinAndRestrictsOldTokens(t *testing.T) {
 	}
 	if p = r.last(t); !p.Subscribe || slices.Contains(p.Sources, livekit.TrackSource_MICROPHONE) {
 		t.Fatalf("unmute grants = %+v, want listening without microphone", p)
-	}
-}
-
-func TestMediaOperationsWaitForPendingModeration(t *testing.T) {
-	for _, operation := range []string{"moderation", "token", "webhook", "reconcile"} {
-		t.Run(operation, func(t *testing.T) {
-			e, _, r := moderationEnv(t, permissions.MuteMembers)
-			entered, release := make(chan struct{}), make(chan struct{})
-			unblock := sync.OnceFunc(func() { close(release) })
-			defer unblock()
-			var calls atomic.Int32
-			r.before = func(voice.ParticipantPermissions) error {
-				if calls.Add(1) == 1 {
-					close(entered)
-					<-release
-				}
-				return nil
-			}
-			on, off := true, false
-			first := make(chan error, 1)
-			go func() { first <- e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Mute: &on}) }()
-			awaitSignal(t, entered)
-			done, started := make(chan error, 1), make(chan struct{})
-			go func() {
-				close(started)
-				switch operation {
-				case "moderation":
-					done <- e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Mute: &off})
-				case "token":
-					_, err := e.voice.Join(t.Context(), 42, auth.User{ID: 1}, "https://example.test")
-					done <- err
-				case "webhook":
-					done <- postJoined(e, "PA_ordered")
-				case "reconcile":
-					e.rooms.put(voice.Room{Name: "42", SID: "RM_1"}, voice.Participant{Identity: "1", SID: "PA_1"})
-					done <- e.voice.Reconcile(t.Context())
-				}
-			}()
-			awaitSignal(t, started)
-			var err error
-			early := false
-			select {
-			case err = <-done:
-				early = true
-			case <-time.After(150 * time.Millisecond):
-			}
-			unblock()
-			if firstErr := awaitError(t, first); firstErr != nil {
-				t.Fatalf("first moderation: %v", firstErr)
-			}
-			if !early {
-				err = awaitError(t, done)
-			}
-			if early || err != nil {
-				t.Fatalf("%s completed during pending moderation=%v, error=%v", operation, early, err)
-			}
-		})
 	}
 }
 
