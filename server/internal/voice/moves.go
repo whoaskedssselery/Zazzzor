@@ -19,7 +19,8 @@ type MovePayload struct {
 
 // pendingMove pins the source until destination admission or the deadline.
 // prior is the user's intent when the move was requested (none: hadPrior is
-// false); cancelling restores it if a destination token was issued since.
+// false); cancelling restores it, so destination tokens issued since are
+// refused.
 type pendingMove struct {
 	source    *session
 	channelID snowflake.ID
@@ -107,9 +108,15 @@ func (s *Service) cancelMoveLocked(ctx context.Context, userID snowflake.ID) {
 	delete(s.moves, userID)
 	// Every hop of a chained move issued its own token; the latest join is
 	// again the one before the move, whichever hop the intent points at.
-	if move.hadPrior {
+	// Without one (the API restarted since the source joined), the source's
+	// own join takes its place, so a destination token is still refused.
+	switch {
+	case move.hadPrior:
 		s.intents[userID] = move.prior
-	} else {
+	case move.source.join != "":
+		s.intents[userID] = intent{guildID: move.source.state.GuildID,
+			channelID: move.source.state.ChannelID, join: move.source.join}
+	default:
 		delete(s.intents, userID)
 	}
 	s.touchLocked(userID)

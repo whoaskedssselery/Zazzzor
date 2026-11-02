@@ -202,6 +202,9 @@ type session struct {
 	room    string
 	roomSID string
 	sid     string
+	// join is the participant's join generation; a cancelled move with no
+	// prior intent pins the user back to it.
+	join string
 	// screens are the SIDs of the screen share tracks published.
 	screens map[string]bool
 }

@@ -324,7 +324,8 @@ func (s *Service) connectLocked(ctx context.Context, guildID, channelID snowflak
 	} else if old != nil {
 		s.dropLocked(ctx, userID, true)
 	}
-	sess := &session{state: st, room: room.Name, roomSID: room.SID, sid: p.SID, screens: map[string]bool{}}
+	sess := &session{state: st, room: room.Name, roomSID: room.SID, sid: p.SID, join: p.Join,
+		screens: map[string]bool{}}
 	for _, sid := range p.Screens {
 		sess.screens[sid] = true
 	}
