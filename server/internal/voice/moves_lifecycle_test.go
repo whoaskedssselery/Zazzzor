@@ -28,11 +28,11 @@ func TestModeratorDisconnectRevokesPendingTokens(t *testing.T) {
 		t.Fatalf("Disconnect: %v", err)
 	}
 	if len(e.voice.GuildStates(7)) != 0 || !slices.Contains(r.removals(), "42/1") {
-		t.Fatal("disconnect did not remove source")
+		t.Fatalf("states/removals = %v/%v, want none/42/1", e.voice.GuildStates(7), r.removals())
 	}
 	e.hook(&livekit.WebhookEvent{Event: "participant_joined", Room: lkRoom("42", "RM_1"), Participant: lkParticipant(userBody{ID: "1"}, "PA_stale", claims(t, old.Token).Attributes["zazzzor.join"])})
 	if len(e.voice.GuildStates(7)) != 0 {
-		t.Fatal("pre-disconnect token restored state")
+		t.Fatalf("states = %v, want none after a pre-disconnect token", e.voice.GuildStates(7))
 	}
 }
 
@@ -90,7 +90,7 @@ func TestExplicitJoinElsewhereCancelsTheMove(t *testing.T) {
 		t.Fatalf("explicit Join: %v", err)
 	}
 	if !slices.Contains(r.removals(), "42/1") {
-		t.Fatal("explicit join did not remove old source")
+		t.Fatalf("removals = %v, want 42/1 after an explicit join", r.removals())
 	}
 	e.hook(&livekit.WebhookEvent{Event: "participant_joined", Room: lkRoom("45", "RM_elsewhere"), Participant: lkParticipant(userBody{ID: "1"}, "PA_elsewhere", claims(t, j.Token).Attributes["zazzzor.join"])})
 	e.rooms.put(voice.Room{Name: "45", SID: "RM_elsewhere"}, voice.Participant{Identity: "1", SID: "PA_elsewhere", Join: claims(t, j.Token).Attributes["zazzzor.join"]})
@@ -111,8 +111,8 @@ func TestDisconnectChecksMoveAndPreservesStateOnFailure(t *testing.T) {
 	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Move: disconnect()}); !errors.Is(err, voice.ErrUnavailable) {
 		t.Fatalf("failed disconnect=%v", err)
 	}
-	if _, ok := e.stateOf(7, 1); !ok {
-		t.Fatal("failed disconnect cleared state")
+	if st, ok := e.stateOf(7, 1); !ok {
+		t.Fatalf("state = %+v/%v, want kept after a failed disconnect", st, ok)
 	}
 }
 
@@ -133,7 +133,7 @@ func TestDisconnectHandlesItsOwnLeftWebhook(t *testing.T) {
 	}
 	e.hook(&livekit.WebhookEvent{Event: "participant_joined", Room: lkRoom("44", "RM_target"), Participant: lkParticipant(userBody{ID: "1"}, "PA_revoked", claims(t, j.Token).Attributes["zazzzor.join"])})
 	if len(e.voice.GuildStates(7)) != 0 {
-		t.Fatal("disconnect's revoked destination token restored state")
+		t.Fatalf("states = %v, want none after a revoked destination token", e.voice.GuildStates(7))
 	}
 }
 
@@ -144,7 +144,7 @@ func TestMoveToCurrentChannelIsNoop(t *testing.T) {
 		t.Fatalf("same-channel Move: %v", err)
 	}
 	if len(e.pub.events) != n || len(r.updates) != updates || len(r.removals()) != 0 {
-		t.Fatal("same-channel move had effects")
+		t.Fatalf("events/updates/removals = +%d/+%d/%v, want no effects", len(e.pub.events)-n, len(r.updates)-updates, r.removals())
 	}
 }
 
@@ -158,8 +158,8 @@ func TestMoveAndMuteAppliesFlagsToTheDestination(t *testing.T) {
 	if err != nil {
 		t.Fatalf("target token: %v", err)
 	}
-	if slices.Contains(claims(t, j.Token).Video.CanPublishSources, "microphone") {
-		t.Fatal("combined move token bypassed server mute")
+	if sources := claims(t, j.Token).Video.CanPublishSources; slices.Contains(sources, "microphone") {
+		t.Fatalf("destination token sources = %v, want no microphone", sources)
 	}
 	e.hook(&livekit.WebhookEvent{Event: "participant_joined", Room: lkRoom("44", "RM_target"), Participant: lkParticipant(userBody{ID: "1"}, "PA_muted", claims(t, j.Token).Attributes["zazzzor.join"])})
 	if st, _ := e.stateOf(7, 1); !st.Mute || st.ChannelID != 44 {
@@ -190,7 +190,7 @@ func TestMovePreparationDoesNotOutliveMemberRemoval(t *testing.T) {
 	}
 	for _, ev := range e.pub.events {
 		if ev.Type == events.VoiceMove {
-			t.Fatal("removed participant received a new destination")
+			t.Fatalf("event = %+v, want no VOICE_MOVE for a removed participant", ev)
 		}
 	}
 }
