@@ -18,7 +18,8 @@ import {
   readyGateway,
   server,
 } from "@/shared/test";
-import { IMAGE_TOO_LARGE, LEAVE_UNSAVED, UNSAVED } from "@/widgets/guild-settings";
+import { LEAVE_UNSAVED } from "@/shared/ui";
+import { IMAGE_TOO_LARGE, UNSAVED } from "@/widgets/guild-settings";
 
 type Client = WebSocketHandlerConnection["client"];
 

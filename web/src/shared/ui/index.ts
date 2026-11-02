@@ -13,6 +13,7 @@ export * from "./components/IconButton";
 export * from "./components/Input";
 export * from "./components/RoleColorDot";
 export * from "./components/Select";
+export * from "./components/SettingsFrame";
 export * from "./components/Sheet";
 export * from "./components/Skeleton";
 export * from "./components/Spinner";

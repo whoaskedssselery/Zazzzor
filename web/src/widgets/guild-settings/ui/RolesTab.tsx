@@ -3,8 +3,7 @@ import { GripVertical, Lock, Plus } from "lucide-react";
 import { type DragEvent, type KeyboardEvent, useState } from "react";
 import { byRank, canManageRole, type GuildEntry, highestPosition, type Role } from "@/entities/guild";
 import { api, errorText, unwrap } from "@/shared/api";
-import { Button, ConfirmDialog, cn, RoleColorDot, useToast } from "@/shared/ui";
-import { LEAVE_UNSAVED } from "./leave";
+import { Button, ConfirmDialog, cn, LEAVE_UNSAVED, RoleColorDot, useToast } from "@/shared/ui";
 import { RoleEditor } from "./RoleEditor";
 
 const NEW_ROLE = "новая роль";
