@@ -1102,9 +1102,9 @@ export interface paths {
          *     LiveKit enforces mute by disabling the microphone and deafen by
          *     disabling subscription. Unmuting never grants a microphone without
          *     `SPEAK`; screen sharing still follows `STREAM`. Flags survive
-         *     reconnects and leaving voice in this guild, but reset on leaving,
-         *     being kicked or banned from the guild, guild deletion, or API
-         *     restart. A change
+         *     reconnects and leaving voice in this guild, but reset when the
+         *     member leaves the guild, is kicked or banned from it, on guild
+         *     deletion, or on API restart. A change
          *     is announced as `VOICE_STATE_UPDATE` only to the channel's viewers.
          *     Identical flags announce nothing. Upstream failure does not commit
          *     or announce successful moderation.
@@ -1125,8 +1125,12 @@ export interface paths {
          *     before effects. Server flags set alongside disconnect persist for
          *     the next join.
          *
-         *     Once a disconnect or permission update has succeeded remotely,
-         *     a concurrent session replacement does not turn success into 404.
+         *     A disconnect also removes a session in this guild that replaced
+         *     the target's call during the request; if the target reconnects
+         *     again meanwhile it is `503 voice_unavailable`. Flags that LiveKit
+         *     applied stay committed even when the target's session was replaced,
+         *     but a move requested with them that could not start (the session
+         *     was replaced, or the destination was deleted) is `404 not_found`.
          *     Membership invalidation still prevents storing stale flags.
          *     LiveKit removes by identity rather than session SID: a reconnect
          *     between the final SID check and the RPC can still be removed.
@@ -1142,8 +1146,8 @@ export interface paths {
          *     A pending move is cancelled by moving the participant back to their
          *     current channel, by deleting the destination, or when the
          *     participant loses `VIEW_CHANNEL` or `CONNECT` there. The source
-         *     then stays, a destination token issued for the move no longer
-         *     connects, and the participant receives `VOICE_MOVE` with the source
+         *     then stays, no destination token issued for the move or an earlier
+         *     hop of it connects, and the participant receives `VOICE_MOVE` with the source
          *     channel, so a client that already left returns. Moving to the
          *     current channel with no move pending changes nothing.
          */
