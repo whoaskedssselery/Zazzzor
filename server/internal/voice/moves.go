@@ -174,28 +174,42 @@ func (s *Service) expireMovesLocked(ctx context.Context) time.Time {
 	return next
 }
 
-// disconnect removes the captured participant synchronously. A left
-// webhook caused by that RPC may already have cleared the local state.
+// disconnect removes the captured participant synchronously. A session in
+// this guild that replaced it during the RPC is removed too, once; a left
+// webhook caused by an RPC may already have cleared the local state.
 func (s *Service) disconnect(ctx context.Context, guildID, userID snowflake.ID, source *session, flags serverFlags, start uint64) error {
+	for range 2 {
+		next, err := s.disconnectOnce(ctx, guildID, userID, source, flags, start)
+		if err != nil || next == nil {
+			return err
+		}
+		source = next
+	}
+	return fmt.Errorf("%w: voice: participant reconnected during the disconnect", ErrUnavailable)
+}
+
+// disconnectOnce removes source and returns the session in this guild that
+// replaced it meanwhile, if any; the caller holds the user's stripe.
+func (s *Service) disconnectOnce(ctx context.Context, guildID, userID snowflake.ID, source *session, flags serverFlags, start uint64) (*session, error) {
 	rpcCtx, cancel := context.WithTimeout(ctx, rpcTimeout)
 	err := s.rooms.RemoveParticipant(rpcCtx, source.room, userID.String())
 	cancel()
 	if err != nil {
-		return fmt.Errorf("%w: voice: disconnect participant: %w", ErrUnavailable, err)
+		return nil, fmt.Errorf("%w: voice: disconnect participant: %w", ErrUnavailable, err)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	current := s.sessions[userID]
 	if s.invalidatedLocked(guildID, userID, source.state.ChannelID, start) {
-		return nil
+		return nil, nil
 	}
 	if current != nil && current != source {
-		s.commitModerationLocked(ctx, memberKey{guildID: guildID, userID: userID}, flags)
-		// The identity RPC addressed the captured room, never this new call.
 		if current.state.GuildID == guildID {
-			s.queueRefreshLocked(guildID)
+			return current, nil
 		}
-		return nil
+		// In another guild the user is out of this guild's voice already.
+		s.commitModerationLocked(ctx, memberKey{guildID: guildID, userID: userID}, flags)
+		return nil, nil
 	}
 	s.storeModerationLocked(memberKey{guildID: guildID, userID: userID}, flags)
 	s.intents[userID] = intent{}
@@ -206,5 +220,5 @@ func (s *Service) disconnect(ctx context.Context, guildID, userID snowflake.ID, 
 	} else {
 		s.touchLocked(userID)
 	}
-	return nil
+	return nil, nil
 }

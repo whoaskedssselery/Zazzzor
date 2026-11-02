@@ -2203,8 +2203,12 @@ paths:
         before effects. Server flags set alongside disconnect persist for
         the next join.
 
-        Once a disconnect or permission update has succeeded remotely,
-        a concurrent session replacement does not turn success into 404.
+        A disconnect also removes a session in this guild that replaced
+        the target's call during the request; if the target reconnects
+        again meanwhile it is `503 voice_unavailable`. Flags that LiveKit
+        applied stay committed even when the target's session was replaced,
+        but a move requested with them that could not start (the session
+        was replaced, or the destination was deleted) is `404 not_found`.
         Membership invalidation still prevents storing stale flags.
         LiveKit removes by identity rather than session SID: a reconnect
         between the final SID check and the RPC can still be removed.

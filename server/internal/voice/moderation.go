@@ -150,6 +150,9 @@ func (s *Service) Moderate(ctx context.Context, guildID, actorID, userID snowfla
 			if current := s.sessions[userID]; current != nil && current.state.GuildID == guildID {
 				s.queueRefreshLocked(guildID)
 			}
+		}
+		// Applied flags stay committed, but a requested move did not start.
+		if f.Move == nil {
 			return nil
 		}
 		return channels.ErrNotFound
@@ -157,12 +160,9 @@ func (s *Service) Moderate(ctx context.Context, guildID, actorID, userID snowfla
 	if f.Move == nil {
 		return nil
 	}
-	// A destination deleted since checkDestination read it starts no move.
-	// Flags already applied by LiveKit stay committed and are reported.
+	// A destination deleted since checkDestination read it starts no move;
+	// flags already applied by LiveKit stay committed.
 	if s.invalidatedLocked(guildID, userID, f.Move.ChannelID, start) {
-		if flagsRequested {
-			return nil
-		}
 		return channels.ErrNotFound
 	}
 	s.requestMoveLocked(ctx, userID, f.Move.ChannelID, sess)
