@@ -77,10 +77,12 @@ export const renderMarkdown = (nodes: MdNode[]): ReactNode => renderNodes(nodes)
 
 /**
  * A message's text with its markdown. Line breaks are kept and any string
- * wraps, however long, so nothing widens the chat.
+ * wraps, however long, so nothing widens the chat. `after` follows the
+ * last line inline (the «(изменено)» mark).
  */
-export const Markdown = ({ source }: { source: string }) => (
+export const Markdown = ({ source, after }: { source: string; after?: ReactNode }) => (
   <div className="break-words whitespace-pre-wrap [overflow-wrap:anywhere]">
     {renderMarkdown(parseMarkdown(source))}
+    {after}
   </div>
 );

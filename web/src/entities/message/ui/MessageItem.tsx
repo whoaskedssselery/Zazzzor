@@ -115,14 +115,18 @@ export const MessageItem = ({
   const edited = message.edited_at === null ? null : new Date(message.edited_at);
   const body = editor ?? (
     <div className={cn("text-base", state === "sending" && "text-fg-muted", state === "failed" && "text-fg-danger")}>
-      <Markdown source={message.content} />
-      {edited && (
-        <Tooltip content={formatMessageTime(edited, now)}>
-          <button type="button" className="ml-1 cursor-default text-xs text-fg-faint">
-            (изменено)
-          </button>
-        </Tooltip>
-      )}
+      <Markdown
+        source={message.content}
+        after={
+          edited && (
+            <Tooltip content={formatMessageTime(edited, now)}>
+              <button type="button" className="ml-1 cursor-default align-baseline text-xs text-fg-faint">
+                (изменено)
+              </button>
+            </Tooltip>
+          )
+        }
+      />
     </div>
   );
   return (
