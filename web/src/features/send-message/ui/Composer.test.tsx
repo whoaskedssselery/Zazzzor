@@ -95,8 +95,6 @@ const renderReplying = () => {
 
 beforeEach(() => {
   setConnectionStatus("ready");
-  // Typing notices go out whenever a test types; serverCounts counts them where it matters.
-  server.use(apiHandler("post", "/channels/{channel_id}/typing", () => new HttpResponse(null, { status: 204 })));
 });
 
 afterEach(() => {

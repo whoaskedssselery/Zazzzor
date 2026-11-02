@@ -37,10 +37,11 @@ export async function fetchMessages(
 }
 
 /** The newest loaded message, if any. */
-export const newestId = (data: MessagePages): string | undefined => data.pages.find((p) => p.length > 0)?.[0]?.id;
+export const newestId = (data: Pick<MessagePages, "pages">): string | undefined =>
+  data.pages.find((p) => p.length > 0)?.[0]?.id;
 
 /** The history oldest first, as the chat shows it. */
-export const inOrder = (data: MessagePages): Message[] => data.pages.flat().reverse();
+export const inOrder = (data: Pick<MessagePages, "pages">): Message[] => data.pages.flat().reverse();
 
 /** The stub a reply carries of message `m`. */
 const stubOf = (m: Message): MessageStub => ({ id: m.id, author: m.author, content: m.content });

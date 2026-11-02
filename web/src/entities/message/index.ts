@@ -25,3 +25,4 @@ export {
   updatePending,
   usePendingMessages,
 } from "./model/pending";
+export { type AuthorView, DELETED_USER, MessageItem, type MessageItemProps, REPLY_DELETED } from "./ui/MessageItem";
