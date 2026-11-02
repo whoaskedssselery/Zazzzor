@@ -1,8 +1,16 @@
-import { Link } from "@tanstack/react-router";
-import { ChevronDown, ChevronRight, Hash, LogOut, UserPlus, Volume2 } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { ChevronDown, ChevronRight, Hash, LogOut, Settings, UserPlus, Volume2 } from "lucide-react";
 import { useState } from "react";
 import { CHANNEL_TYPE, type ChannelGroup, useChannelUi, useVisibleChannels } from "@/entities/channel";
-import { type Channel, computeChannel, type GuildEntry, has, PERM, useGuilds } from "@/entities/guild";
+import {
+  type Channel,
+  computeChannel,
+  type GuildEntry,
+  guildSettingsTabs,
+  has,
+  PERM,
+  useGuilds,
+} from "@/entities/guild";
 import { InviteDialog } from "@/features/create-invite";
 import { LeaveGuildDialog } from "@/features/leave-guild";
 import {
@@ -108,8 +116,8 @@ const Group = ({ group, openId }: { group: ChannelGroup; openId: string | null }
 };
 
 /**
- * The channel list of a server: its name with the server menu (invite,
- * leave), then the categories and channels the user may view. Categories
+ * The channel list of a server: its name with the server menu (settings,
+ * invite, leave), then the categories and channels the user may view. Categories
  * collapse and stay so across visits. Text channels are links; a voice
  * channel only says that voice comes in the next update.
  */
@@ -118,11 +126,14 @@ export const ChannelSidebar = ({ guildId, channelId }: { guildId: string; channe
   const userId = useGuilds((s) => s.me?.id);
   const { categories } = useVisibleChannels(guildId);
   const [dialog, setDialog] = useState<"invite" | "leave" | null>(null);
+  const navigate = useNavigate();
   if (!entry || !userId) return null;
 
   const { guild } = entry;
   const invite = inviteChannel(entry, userId, categories, channelId);
   const isOwner = guild.owner_id === userId;
+  // The first settings section the user may open; none: no settings in the menu.
+  const [settingsTab] = guildSettingsTabs(entry, userId);
   const close = (open: boolean) => {
     if (!open) setDialog(null);
   };
@@ -138,6 +149,16 @@ export const ChannelSidebar = ({ guildId, channelId }: { guildId: string; channe
           <ChevronDown aria-hidden className="size-5 shrink-0 text-fg-muted" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-(--radix-dropdown-menu-trigger-width) min-w-52">
+          {settingsTab && (
+            <DropdownMenuItem
+              onSelect={() => {
+                void navigate({ to: "/guilds/$guildId/settings/$tab", params: { guildId, tab: settingsTab } });
+              }}
+            >
+              Настройки сервера
+              <Settings aria-hidden />
+            </DropdownMenuItem>
+          )}
           {invite && (
             <DropdownMenuItem
               onSelect={() => {

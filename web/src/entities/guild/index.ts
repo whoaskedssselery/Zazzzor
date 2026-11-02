@@ -33,6 +33,13 @@ export {
   type Role,
 } from "./model/reducer";
 export {
+  GUILD_SETTINGS_TABS,
+  GUILD_SETTINGS_TITLES,
+  type GuildSettingsTab,
+  guildSettingsTabs,
+  isGuildSettingsTab,
+} from "./model/settings";
+export {
   applyGatewayDispatch,
   getConnectionStatus,
   getGuildsState,

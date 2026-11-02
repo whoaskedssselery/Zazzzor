@@ -151,3 +151,25 @@ describe("ChannelSidebar", () => {
     expect(screen.queryByRole("menuitem", { name: "Покинуть сервер" })).toBeNull();
   });
 });
+
+describe("server settings in the menu", () => {
+  it("opens the first section the user may open", async () => {
+    ready({ everyone: DEFAULT_EVERYONE | PERM.BAN_MEMBERS });
+    const { user, router } = await renderRouted(<ChannelSidebar guildId={G} channelId="101" />, {
+      path: "/channels/10/101",
+    });
+    await user.click(screen.getByRole("button", { name: "Меню сервера Вечерний сеанс" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Настройки сервера" }));
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/guilds/10/settings/members");
+    });
+  });
+
+  it("is not offered when no section is open to the user", async () => {
+    ready();
+    const { user } = await renderRouted(<ChannelSidebar guildId={G} channelId="101" />, { path: "/channels/10/101" });
+    await user.click(screen.getByRole("button", { name: "Меню сервера Вечерний сеанс" }));
+    await screen.findByRole("menu");
+    expect(screen.queryByRole("menuitem", { name: "Настройки сервера" })).toBeNull();
+  });
+});
