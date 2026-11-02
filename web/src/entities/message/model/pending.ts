@@ -69,3 +69,6 @@ export const confirmPending = (channelId: string, nonce: string): void => {
 export const resetPending = (): void => {
   store.setState({ byChannel: {} });
 };
+
+/** Drops a pending message the user gave up on. */
+export const removePending = confirmPending;

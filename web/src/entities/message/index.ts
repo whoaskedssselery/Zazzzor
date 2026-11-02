@@ -20,6 +20,7 @@ export {
   confirmPending,
   getPending,
   type PendingMessage,
+  removePending,
   resetPending,
   updatePending,
   usePendingMessages,
