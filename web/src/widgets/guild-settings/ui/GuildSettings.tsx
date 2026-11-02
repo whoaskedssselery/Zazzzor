@@ -11,23 +11,27 @@ import {
 } from "@/entities/guild";
 import { DeleteGuild } from "@/features/delete-guild";
 import { ConfirmDialog, cn, IconButton, Skeleton } from "@/shared/ui";
+import { LEAVE_UNSAVED } from "./leave";
 import { OverviewTab } from "./OverviewTab";
-
-export const LEAVE_UNSAVED = "Уйти без сохранения?";
+import { RolesTab } from "./RolesTab";
 
 /** The content of one section; sections still to come say so. */
 const TabContent = ({
   tab,
   entry,
+  meId,
   onDirtyChange,
 }: {
   tab: GuildSettingsTab;
   entry: GuildEntry;
+  meId: string;
   onDirtyChange: (dirty: boolean) => void;
 }): ReactNode => {
   switch (tab) {
     case "overview":
       return <OverviewTab key={entry.guild.id} guild={entry.guild} onDirtyChange={onDirtyChange} />;
+    case "roles":
+      return <RolesTab entry={entry} meId={meId} onDirtyChange={onDirtyChange} />;
     default:
       return <p className="text-base text-fg-muted">{`Раздел «${GUILD_SETTINGS_TITLES[tab]}» появится позже.`}</p>;
   }
@@ -131,7 +135,9 @@ export const GuildSettings = ({ guildId, tab }: { guildId: string; tab: string }
       <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
         <div className="flex max-w-[46rem] gap-6 px-10 py-14 max-md:px-4 max-md:py-6">
           <div className="min-w-0 flex-1">
-            {entry && current ? <TabContent tab={current} entry={entry} onDirtyChange={setDirty} /> : null}
+            {entry && current && meId !== null ? (
+              <TabContent tab={current} entry={entry} meId={meId} onDirtyChange={setDirty} />
+            ) : null}
           </div>
           <div className="flex shrink-0 flex-col items-center gap-1 max-md:fixed max-md:top-2 max-md:right-2">
             <IconButton
