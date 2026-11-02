@@ -66,14 +66,40 @@ func TestRemovalKeepsLocalRejoinMissingFromRemoteListing(t *testing.T) {
 	}
 }
 
+// failingRemovalRoom fails every removal until healed is set.
 type failingRemovalRoom struct {
 	replacementRoom
 	attempts int
+	healed   bool
 }
 
 func (r *failingRemovalRoom) RemoveParticipant(context.Context, string, string) error {
 	r.attempts++
+	if r.healed {
+		return nil
+	}
 	return errors.New("media unavailable")
+}
+
+func TestRemovalOutageWarnsPeriodicallyAndLogsRecovery(t *testing.T) {
+	r := &failingRemovalRoom{}
+	var logs bytes.Buffer
+	now := time.Now()
+	s := NewService(Options{Rooms: r, APIKey: "key", APISecret: "secret", Now: func() time.Time { return now },
+		Logger: slog.New(slog.NewJSONHandler(&logs, nil))})
+	s.removeLocked("42", "1", "PA_new")
+	for range removeAttempts + removeWarnEvery {
+		s.removeDue(t.Context())
+		now = now.Add(time.Hour)
+	}
+	if got := strings.Count(logs.String(), "could not remove a participant"); got != 2 {
+		t.Fatalf("retry warnings = %d, want 2: %s", got, logs.String())
+	}
+	r.healed = true
+	s.removeDue(t.Context())
+	if len(s.removals) != 0 || !strings.Contains(logs.String(), "removed a participant from LiveKit after retries") {
+		t.Fatalf("pending=%d log=%s, want 0 and a recovery line", len(s.removals), logs.String())
+	}
 }
 
 func TestRemovalContinuesAfterFiveFailuresAndLogsOnce(t *testing.T) {

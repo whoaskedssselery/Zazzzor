@@ -37,9 +37,11 @@ const (
 
 	// rpcTimeout bounds one call to the LiveKit server API.
 	rpcTimeout = 5 * time.Second
-	// Failed removals retry until confirmed, warning once at removeAttempts.
+	// Failed removals retry until confirmed, warning at removeAttempts and
+	// every removeWarnEvery attempts after it (about hourly at the cap).
 	// Backoff doubles from removeBackoff up to maxRemoveBackoff.
 	removeAttempts   = 5
+	removeWarnEvery  = 60
 	removeBackoff    = time.Second
 	maxRemoveBackoff = time.Minute
 	// seenTTL is how long a webhook event ID is remembered, to drop
