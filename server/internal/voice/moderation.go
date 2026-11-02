@@ -33,6 +33,8 @@ type serverFlags struct{ mute, deaf bool }
 // stripes bound the lock table; cancellation releases waiters before an RPC
 // finishes, and state reads never need a stripe.
 func (s *Service) lockUser(ctx context.Context, userID snowflake.ID) (func(), error) {
+	// Defence in depth: a free stripe would win the select below even for a
+	// cancelled ctx, and every caller rechecks ctx after locking.
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("voice: wait for participant operation: %w", err)
 	}
@@ -212,7 +214,6 @@ func (s *Service) enforceFound(ctx context.Context, userID snowflake.ID, f found
 	}
 	defer unlock()
 	s.mu.Lock()
-	// Defence in depth: Reconcile also rejects changed revisions at commit.
 	if s.revs[userID] > start || !s.admissionCurrentLocked(ctx, f.guildID, userID, f.channelID, start, f.room, f.p) {
 		s.mu.Unlock()
 		return 0, nil
@@ -229,6 +230,7 @@ func (s *Service) enforceFound(ctx context.Context, userID snowflake.ID, f found
 	// Record this successful RPC even for an existing SID, so another
 	// reconcile cannot overwrite it with an older permissions snapshot.
 	s.touchLocked(userID)
+	// Defence in depth: Reconcile also rejects changed revisions at commit.
 	if !allowed || !unchanged {
 		return 0, nil
 	}

@@ -74,6 +74,18 @@ func TestC6HierarchyForEveryModerationAction(t *testing.T) {
 	}
 }
 
+// A target who left the guild after the voice-state lookup is 404, not 500.
+func TestModerationOfATargetWhoLeftTheGuildIsNotFound(t *testing.T) {
+	actor := hierarchySubject(2, 9, 3)
+	e, _, r := moderationEnv(t, permissions.All, func(o *voice.Options) { o.Members = hierarchyMembers{2: actor} })
+	on := true
+	before := len(r.updates)
+	err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Mute: &on})
+	if !errors.Is(err, channels.ErrNotFound) || len(r.updates) != before {
+		t.Fatalf("error/updates = %v/%d, want not found/0", err, len(r.updates)-before)
+	}
+}
+
 type countingMembers struct{ calls int }
 
 func (m *countingMembers) Subject(context.Context, snowflake.ID, snowflake.ID) (permissions.Subject, error) {
