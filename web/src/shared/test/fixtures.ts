@@ -61,6 +61,7 @@ export function makeGuildState(guildId: string, me: User, over: Partial<GuildSta
     members: [myMember],
     my_member: myMember,
     presences: [{ user_id: me.id, status: "online" }],
+    voice_states: [],
     ...over,
   };
 }

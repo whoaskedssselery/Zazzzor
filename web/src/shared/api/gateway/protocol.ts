@@ -154,6 +154,19 @@ const presenceSchema: z.ZodMiniType<S["Presence"]> = z.object({
   status: z.enum(["online", "offline"]),
 });
 
+const voiceStateSchema: z.ZodMiniType<S["VoiceState"]> = z.object({
+  guild_id: snowflake,
+  channel_id: snowflake,
+  user_id: snowflake,
+  self_mute: z.boolean(),
+  self_deaf: z.boolean(),
+  self_stream: z.boolean(),
+  mute: z.boolean(),
+  deaf: z.boolean(),
+  joined_at: z.string(),
+  left: z.optional(z.boolean()),
+});
+
 const guildStateSchema: z.ZodMiniType<S["GuildState"]> = z.object({
   guild: guildSchema,
   roles: z.array(roleSchema),
@@ -161,6 +174,7 @@ const guildStateSchema: z.ZodMiniType<S["GuildState"]> = z.object({
   members: z.array(memberSchema),
   my_member: memberSchema,
   presences: z.array(presenceSchema),
+  voice_states: z.array(voiceStateSchema),
 });
 
 /** The payload type of each event the guild store applies (`x-gateway.events`). */
