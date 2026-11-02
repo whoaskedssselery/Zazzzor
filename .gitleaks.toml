@@ -5,3 +5,7 @@ useDefault = true
 [[allowlists]]
 description = "RFC 6455 sample Sec-WebSocket-Key nonce (base64 of 'the sample nonce') used by gateway tests"
 regexes = ['''^dGhlIHNhbXBsZSBub25jZQ==$''']
+
+[[allowlists]]
+description = "Placeholder LiveKit API secret in tests: the 32-character hex counting sequence, the shortest secret LiveKit accepts"
+regexes = ['''^0123456789abcdef0123456789abcdef$''']
