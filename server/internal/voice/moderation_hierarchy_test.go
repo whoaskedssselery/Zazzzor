@@ -30,7 +30,8 @@ func (m hierarchyMembers) Subject(_ context.Context, guildID, userID snowflake.I
 func hierarchySubject(userID, ownerID snowflake.ID, rank int) permissions.Subject {
 	return permissions.Subject{UserID: userID, OwnerID: ownerID, GuildID: 7, Everyone: permissions.Role{ID: 7}, Roles: []permissions.Role{{ID: 100 + userID, Position: rank}}}
 }
-func TestC6HierarchyForEveryModerationAction(t *testing.T) {
+
+func TestHierarchyForEveryModerationAction(t *testing.T) {
 	on := true
 	for _, action := range []struct {
 		name   string
@@ -86,13 +87,15 @@ func TestModerationOfATargetWhoLeftTheGuildIsNotFound(t *testing.T) {
 	}
 }
 
+// countingMembers reports every user as a non-member and counts the reads.
 type countingMembers struct{ calls int }
 
 func (m *countingMembers) Subject(context.Context, snowflake.ID, snowflake.ID) (permissions.Subject, error) {
 	m.calls++
 	return permissions.Subject{}, guilds.ErrNotMember
 }
-func TestC6NonMemberCheckedBeforeVoiceLookup(t *testing.T) {
+
+func TestNonMemberCheckedBeforeVoiceLookup(t *testing.T) {
 	for _, target := range []snowflake.ID{1, 999} {
 		t.Run(fmt.Sprint(target), func(t *testing.T) {
 			members := &countingMembers{}
@@ -108,14 +111,14 @@ func TestC6NonMemberCheckedBeforeVoiceLookup(t *testing.T) {
 	}
 }
 
-func TestC6ModerationErrorsKeepHiddenChannelPrivate(t *testing.T) {
+func TestModerationErrorsKeepHiddenChannelPrivate(t *testing.T) {
 	e := newEnv(t)
-	owner, ownerUser := e.user("c6owner")
-	moderator, modUser := e.user("c6moderator")
-	outsider, _ := e.user("c6outsider")
-	g, _, vc := newGuild(t, owner, "c6home")
+	owner, ownerUser := e.user("hierarchyowner")
+	moderator, modUser := e.user("hierarchymod")
+	outsider, _ := e.user("hierarchyoutsider")
+	g, _, vc := newGuild(t, owner, "hierarchyhome")
 	e.join(g, modUser)
-	e.connect(owner, ownerUser, vc.ID, "RM_C6", "PA_C6")
+	e.connect(owner, ownerUser, vc.ID, "RM_hierarchy", "PA_hierarchy")
 	grantRole(t, owner, g, modUser, permissions.MuteMembers)
 	path := moderationPath(g.ID, ownerUser.ID)
 	forbidden := moderator.Do(http.MethodPatch, path, map[string]bool{"mute": true})

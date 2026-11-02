@@ -10,7 +10,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/voice"
 )
 
-func TestC6FlagsRequireParticipantConnect(t *testing.T) {
+func TestFlagsRequireParticipantConnect(t *testing.T) {
 	e, c, r := moderationEnv(t, permissions.MuteMembers)
 	c.target &^= permissions.Connect
 	before := len(r.updates)
@@ -20,7 +20,8 @@ func TestC6FlagsRequireParticipantConnect(t *testing.T) {
 		t.Fatalf("error/updates = %v/%d, want not found/0", err, len(r.updates)-before)
 	}
 }
-func TestC6HiddenMoveDestinationErrorDependsOnViewer(t *testing.T) {
+
+func TestHiddenMoveDestinationErrorDependsOnViewer(t *testing.T) {
 	for _, actorHidden := range []bool{false, true} {
 		t.Run(map[bool]string{false: "target", true: "actor"}[actorHidden], func(t *testing.T) {
 			e, c, _ := moderationEnv(t, permissions.MoveMembers)

@@ -120,7 +120,7 @@ func TestMediaOperationsWaitForPendingModeration(t *testing.T) {
 	}
 }
 
-func TestC6CanceledStripeAcquisitionReturnsBeforeOwnerReleases(t *testing.T) {
+func TestCanceledStripeAcquisitionReturnsBeforeOwnerReleases(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s, _, r := orderingService(t)
 		entered, release := make(chan struct{}), make(chan struct{})

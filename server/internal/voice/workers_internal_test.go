@@ -12,18 +12,21 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
 
-type c6RemovalRoom struct {
+// scriptedRemovalRoom answers each removal with remove.
+type scriptedRemovalRoom struct {
 	replacementRoom
 	remove func() error
 }
 
-func (r *c6RemovalRoom) RemoveParticipant(context.Context, string, string) error { return r.remove() }
+func (r *scriptedRemovalRoom) RemoveParticipant(context.Context, string, string) error {
+	return r.remove()
+}
 
-func TestC6RemovalReplacementInheritsFailedAttempt(t *testing.T) {
+func TestRemovalReplacementInheritsFailedAttempt(t *testing.T) {
 	now := time.Now()
 	var s *Service
 	calls := 0
-	r := &c6RemovalRoom{remove: func() error {
+	r := &scriptedRemovalRoom{remove: func() error {
 		calls++
 		s.mu.Lock()
 		s.removeLocked("42", "1", "PA_old")
@@ -39,10 +42,10 @@ func TestC6RemovalReplacementInheritsFailedAttempt(t *testing.T) {
 	}
 }
 
-func TestC6RemovalRetriesPastReconcileUntilRecovery(t *testing.T) {
+func TestRemovalRetriesPastReconcileUntilRecovery(t *testing.T) {
 	now := time.Now()
 	failed, calls := true, 0
-	r := &c6RemovalRoom{remove: func() error {
+	r := &scriptedRemovalRoom{remove: func() error {
 		calls++
 		if failed {
 			return errors.New("media unavailable")
@@ -65,7 +68,7 @@ func TestC6RemovalRetriesPastReconcileUntilRecovery(t *testing.T) {
 	}
 }
 
-func TestC6RefreshRetriesOnlyFailedUsersAndNewSyncCoversAll(t *testing.T) {
+func TestRefreshRetriesOnlyFailedUsersAndNewSyncCoversAll(t *testing.T) {
 	now := time.Now()
 	reads := map[snowflake.ID]int{}
 	s, r := refreshService(t, func(_ context.Context, user snowflake.ID) (permissions.Permission, error) {
@@ -95,7 +98,7 @@ func TestC6RefreshRetriesOnlyFailedUsersAndNewSyncCoversAll(t *testing.T) {
 	}
 }
 
-func TestC6RefreshSupersededPermissionReadSkipsRemoteEffect(t *testing.T) {
+func TestRefreshSupersededPermissionReadSkipsRemoteEffect(t *testing.T) {
 	entered, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	unblock := sync.OnceFunc(func() { close(release) })
 	defer unblock()
@@ -121,7 +124,7 @@ func TestC6RefreshSupersededPermissionReadSkipsRemoteEffect(t *testing.T) {
 	}
 }
 
-func TestC6RefreshQueueCoalescesRepeatedSyncs(t *testing.T) {
+func TestRefreshQueueCoalescesRepeatedSyncs(t *testing.T) {
 	s, _ := refreshService(t, func(context.Context, snowflake.ID) (permissions.Permission, error) {
 		return permissions.ViewChannel | permissions.Connect, nil
 	})
@@ -138,14 +141,16 @@ func TestC6RefreshQueueCoalescesRepeatedSyncs(t *testing.T) {
 	}
 }
 
-type c6LockCheckingLog struct {
+// lockCheckingLog records whether s.mu was held when a line was logged.
+type lockCheckingLog struct {
 	s      *Service
 	calls  int
 	locked bool
 }
 
-func (*c6LockCheckingLog) Enabled(context.Context, slog.Level) bool { return true }
-func (h *c6LockCheckingLog) Handle(context.Context, slog.Record) error {
+func (*lockCheckingLog) Enabled(context.Context, slog.Level) bool { return true }
+
+func (h *lockCheckingLog) Handle(context.Context, slog.Record) error {
 	h.calls++
 	if h.s.mu.TryLock() {
 		h.s.mu.Unlock()
@@ -154,10 +159,11 @@ func (h *c6LockCheckingLog) Handle(context.Context, slog.Record) error {
 	}
 	return nil
 }
-func (h *c6LockCheckingLog) WithAttrs([]slog.Attr) slog.Handler { return h }
-func (h *c6LockCheckingLog) WithGroup(string) slog.Handler      { return h }
 
-func TestC6WorkerWarningsReleaseStateLock(t *testing.T) {
+func (h *lockCheckingLog) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *lockCheckingLog) WithGroup(string) slog.Handler      { return h }
+
+func TestWorkerWarningsReleaseStateLock(t *testing.T) {
 	for _, refresh := range []bool{false, true} {
 		t.Run(map[bool]string{false: "removal", true: "refresh"}[refresh], func(t *testing.T) {
 			now := time.Unix(1_700_000_000, 0)
@@ -175,7 +181,7 @@ func TestC6WorkerWarningsReleaseStateLock(t *testing.T) {
 			} else {
 				s.removeLocked("42", "1", "PA_new")
 			}
-			handler := &c6LockCheckingLog{s: s}
+			handler := &lockCheckingLog{s: s}
 			s.log = slog.New(handler)
 			for range 10 {
 				if refresh {
@@ -196,16 +202,17 @@ func TestC6WorkerWarningsReleaseStateLock(t *testing.T) {
 	}
 }
 
-type c6MoveChannels struct {
+// scriptedMoveChannels answers permission reads with read.
+type scriptedMoveChannels struct {
 	retryGrantChannels
 	read func(context.Context, snowflake.ID) (permissions.Permission, snowflake.ID, error)
 }
 
-func (c c6MoveChannels) Permissions(ctx context.Context, _ snowflake.ID, channelID snowflake.ID) (permissions.Permission, snowflake.ID, error) {
+func (c scriptedMoveChannels) Permissions(ctx context.Context, _ snowflake.ID, channelID snowflake.ID) (permissions.Permission, snowflake.ID, error) {
 	return c.read(ctx, channelID)
 }
 
-func TestC6RefreshCancelsMoveWhenDestinationPermissionLost(t *testing.T) {
+func TestRefreshCancelsMoveWhenDestinationPermissionLost(t *testing.T) {
 	for _, lost := range []permissions.Permission{permissions.ViewChannel, permissions.Connect} {
 		t.Run(map[permissions.Permission]string{permissions.ViewChannel: "view", permissions.Connect: "connect"}[lost], func(t *testing.T) {
 			now := time.Now()
@@ -213,7 +220,7 @@ func TestC6RefreshCancelsMoveWhenDestinationPermissionLost(t *testing.T) {
 				return permissions.ViewChannel | permissions.Connect, nil
 			})
 			s.now = func() time.Time { return now }
-			s.channels = c6MoveChannels{read: func(_ context.Context, channelID snowflake.ID) (permissions.Permission, snowflake.ID, error) {
+			s.channels = scriptedMoveChannels{read: func(_ context.Context, channelID snowflake.ID) (permissions.Permission, snowflake.ID, error) {
 				p := permissions.ViewChannel | permissions.Connect
 				if channelID == 44 {
 					p &^= lost
@@ -233,7 +240,7 @@ func TestC6RefreshCancelsMoveWhenDestinationPermissionLost(t *testing.T) {
 	}
 }
 
-func TestC6MoveRefreshRejectsSupersededDestinationRead(t *testing.T) {
+func TestMoveRefreshRejectsSupersededDestinationRead(t *testing.T) {
 	for _, replace := range []string{"new_sync", "new_session", "new_move"} {
 		t.Run(replace, func(t *testing.T) {
 			entered, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
@@ -242,7 +249,7 @@ func TestC6MoveRefreshRejectsSupersededDestinationRead(t *testing.T) {
 			s, _ := refreshService(t, func(context.Context, snowflake.ID) (permissions.Permission, error) {
 				return permissions.ViewChannel | permissions.Connect, nil
 			})
-			s.channels = c6MoveChannels{read: func(_ context.Context, channelID snowflake.ID) (permissions.Permission, snowflake.ID, error) {
+			s.channels = scriptedMoveChannels{read: func(_ context.Context, channelID snowflake.ID) (permissions.Permission, snowflake.ID, error) {
 				if channelID == 44 {
 					close(entered)
 					<-release

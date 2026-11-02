@@ -11,21 +11,25 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
 
+// outcomeChannels grants everything on voice channels of guild 7.
 type outcomeChannels struct{}
 
 func (outcomeChannels) Permissions(context.Context, snowflake.ID, snowflake.ID) (permissions.Permission, snowflake.ID, error) {
 	return permissions.All, 7, nil
 }
+
 func (outcomeChannels) Lookup(_ context.Context, id snowflake.ID) (channels.Channel, error) {
 	return channels.Channel{ID: id, GuildID: 7, Type: channels.TypeVoice}, nil
 }
 
+// outcomeMembers makes user 2 the owner, so hierarchy never refuses.
 type outcomeMembers struct{}
 
 func (outcomeMembers) Subject(_ context.Context, guildID, userID snowflake.ID) (permissions.Subject, error) {
 	return permissions.Subject{UserID: userID, GuildID: guildID, OwnerID: 2}, nil
 }
 
+// outcomeRooms runs during inside every RPC, to race it.
 type outcomeRooms struct {
 	replacementRoom
 	during func()
@@ -35,11 +39,13 @@ func (r *outcomeRooms) UpdateParticipant(context.Context, string, string, Partic
 	r.during()
 	return nil
 }
+
 func (r *outcomeRooms) RemoveParticipant(context.Context, string, string) error {
 	r.during()
 	return nil
 }
-func TestC6AppliedRPCReportsSuccessWithoutOverwritingReplacement(t *testing.T) {
+
+func TestAppliedRPCReportsSuccessWithoutOverwritingReplacement(t *testing.T) {
 	for _, disconnect := range []bool{false, true} {
 		for _, change := range []string{"replacement", "member_removed", "channel_removed", "left"} {
 			t.Run(map[bool]string{false: "flags", true: "disconnect"}[disconnect]+"/"+change, func(t *testing.T) {
@@ -151,9 +157,9 @@ func TestCombinedModerationReportsAMoveThatDidNotStart(t *testing.T) {
 	}
 }
 
-// TestC6MemberRemovalClearsMoveAfterSourceLeft exercises the move lifetime
+// TestMemberRemovalClearsMoveAfterSourceLeft exercises the move lifetime
 // independently of the source state, which participant_left already removed.
-func TestC6MemberRemovalClearsMoveAfterSourceLeft(t *testing.T) {
+func TestMemberRemovalClearsMoveAfterSourceLeft(t *testing.T) {
 	s := NewService(Options{})
 	source := &session{state: State{GuildID: 7, ChannelID: 42, UserID: 1}}
 	s.moves[1] = &pendingMove{source: source, channelID: 44}

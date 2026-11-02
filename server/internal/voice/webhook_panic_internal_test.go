@@ -12,19 +12,21 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
 
-type c6PanicPublisher struct{ panicNext bool }
+// panicPublisher panics on the next Publish, which runs under s.mu.
+type panicPublisher struct{ panicNext bool }
 
-func (p *c6PanicPublisher) Publish(context.Context, events.Event) {
+func (p *panicPublisher) Publish(context.Context, events.Event) {
 	if p.panicNext {
 		p.panicNext = false
 		panic("publish under state lock")
 	}
 }
+
 func TestWebhookLockedPublishPanicReleasesStateAndDelivery(t *testing.T) {
 	s, _ := refreshService(t, func(context.Context, snowflake.ID) (permissions.Permission, error) {
 		return permissions.ViewChannel | permissions.Connect, nil
 	})
-	s.pub = &c6PanicPublisher{true}
+	s.pub = &panicPublisher{true}
 	s.moves[1] = &pendingMove{source: s.sessions[1], channelID: 43, deadline: s.now().Add(-time.Second)}
 	ev := &livekit.WebhookEvent{Id: "locked_publish", Event: eventJoined, Room: &livekit.Room{Name: "42", Sid: "RM_1"}, Participant: &livekit.ParticipantInfo{Identity: "2", Sid: "PA_2"}}
 	done := make(chan bool, 1)
@@ -56,6 +58,7 @@ func TestWebhookLockedPublishPanicReleasesStateAndDelivery(t *testing.T) {
 		t.Fatalf("state count = %d, want 1", got)
 	}
 }
+
 func TestWebhookDestinationAdmissionClearsCompletedMove(t *testing.T) {
 	s, _ := refreshService(t, func(context.Context, snowflake.ID) (permissions.Permission, error) {
 		return permissions.ViewChannel | permissions.Connect, nil
