@@ -109,7 +109,7 @@ describe("CreateGuildDialog", () => {
     vi.advanceTimersByTime(15_000);
 
     expect((await screen.findByRole("alert")).textContent).toBe(
-      "Сервер «Дача» создан, но связь прервалась. Он откроется сам, когда подключение восстановится.",
+      "Сервер «Дача» создан, но связь прервалась. Он появится в списке серверов, когда подключение восстановится.",
     );
     expect(router.state.location.pathname).toBe("/channels/@me");
     expect(screen.getByRole("dialog", { name: "Создать сервер" })).toBeTruthy();

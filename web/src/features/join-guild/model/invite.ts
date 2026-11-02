@@ -47,7 +47,7 @@ export async function previewInvite(code: string): Promise<Invite> {
 
 /** Shown when the joined server has not arrived over the gateway in time. */
 export const JOINED_LATE =
-  "Вы вступили на сервер, но связь прервалась. Он откроется сам, когда подключение восстановится.";
+  "Вы вступили на сервер, но связь прервалась. Он появится в списке серверов, когда подключение восстановится.";
 
 /**
  * Joins through an invite and opens its channel: POST /invites/{code}, then

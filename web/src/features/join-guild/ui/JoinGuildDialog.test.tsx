@@ -121,7 +121,7 @@ describe("JoinGuildDialog", () => {
     vi.advanceTimersByTime(15_000);
 
     expect((await screen.findByRole("alert")).textContent).toBe(
-      "Вы вступили на сервер, но связь прервалась. Он откроется сам, когда подключение восстановится.",
+      "Вы вступили на сервер, но связь прервалась. Он появится в списке серверов, когда подключение восстановится.",
     );
     expect(router.state.location.pathname).toBe("/channels/@me");
     expect(screen.getByRole("button", { name: "Присоединиться" }).hasAttribute("disabled")).toBe(false);
