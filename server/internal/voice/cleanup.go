@@ -24,7 +24,10 @@ func (s *Service) RemoveMembers(ctx context.Context, guildID snowflake.ID, userI
 			delete(s.moves, userID)
 		}
 		s.rev++
-		s.membersRemoved[memberKey{guildID: guildID, userID: userID}] = s.invalidationLocked()
+		key := memberKey{guildID: guildID, userID: userID}
+		s.membersRemoved[key] = s.invalidationLocked()
+		// Server mute and deafen belong to the membership that just ended.
+		delete(s.moderation, key)
 		if s.intents[userID].guildID == guildID {
 			s.intents[userID] = intent{}
 		}
