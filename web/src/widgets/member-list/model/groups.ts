@@ -1,4 +1,4 @@
-import type { GuildEntry, Member, PresenceStatus, Role } from "@/entities/guild";
+import { byRank, type GuildEntry, memberColor, type PresenceStatus, rolesOf } from "@/entities/guild";
 
 /** One row of the member list. */
 export interface MemberRow {
@@ -19,15 +19,8 @@ export interface MemberGroup {
   members: MemberRow[];
 }
 
-/** Higher position first; equal positions (not expected) by ID, so the order is stable. */
-const byRank = (a: Role, b: Role): number => b.position - a.position || (a.id < b.id ? -1 : 1);
-
 const byName = (a: MemberRow, b: MemberRow): number =>
   a.name.localeCompare(b.name, "ru") || (a.userId < b.userId ? -1 : 1);
-
-/** The member's roles (without @everyone), highest first. */
-const rolesOf = (entry: GuildEntry, member: Member): Role[] =>
-  member.roles.flatMap((id) => entry.roles[id] ?? []).sort(byRank);
 
 /**
  * The member list of a server, as Discord groups it: the online members
@@ -50,7 +43,7 @@ export function groupMembers(entry: GuildEntry, presences: Record<string, Presen
       name: member.nick ?? member.user.display_name,
       avatarUrl: member.user.avatar_url,
       status: presences[member.user.id] ?? "offline",
-      color: roles.find((r) => r.color > 0)?.color ?? 0,
+      color: memberColor(entry, member),
     };
     if (row.status === "offline") {
       offline.push(row);

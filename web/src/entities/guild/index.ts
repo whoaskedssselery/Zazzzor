@@ -1,3 +1,4 @@
+export { byRank, memberColor, rolesOf, type UserDisplay, userDisplay } from "./model/display";
 export {
   ALL,
   canActOn,
