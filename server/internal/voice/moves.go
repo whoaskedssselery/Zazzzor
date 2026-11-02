@@ -1,0 +1,151 @@
+package voice
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/whoaskedssselery/zazzzor/server/internal/channels"
+	"github.com/whoaskedssselery/zazzzor/server/internal/events"
+	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
+)
+
+// MovePayload asks only the participant to fetch a token and reconnect.
+type MovePayload struct {
+	ChannelID snowflake.ID `json:"channel_id"`
+}
+
+// pendingMove pins the source until destination admission or the deadline.
+type pendingMove struct {
+	source    *session
+	channelID snowflake.ID
+	deadline  time.Time
+}
+
+// checkDestination checks both the actor's MOVE and the target's CONNECT.
+func (s *Service) checkDestination(ctx context.Context, guildID, actorID, userID, channelID snowflake.ID) error {
+	if channelID <= 0 {
+		return invalid("channel_id", "must be a voice channel ID or null")
+	}
+	p, gid, err := s.channels.Permissions(ctx, actorID, channelID)
+	if err != nil {
+		return fmt.Errorf("voice: read destination moderator permissions: %w", err)
+	}
+	if gid != guildID {
+		return channels.ErrNotFound
+	}
+	if !p.Has(permissions.MoveMembers) {
+		return ErrMissingPerm
+	}
+	c, err := s.channels.Lookup(ctx, channelID)
+	if err != nil {
+		return fmt.Errorf("voice: read move destination: %w", err)
+	}
+	if c.GuildID != guildID {
+		return channels.ErrNotFound
+	}
+	if c.Type != channels.TypeVoice {
+		return ErrNotVoiceChannel
+	}
+	p, gid, err = s.channels.Permissions(ctx, userID, channelID)
+	if errors.Is(err, channels.ErrNotFound) {
+		return ErrMissingPerm
+	}
+	if err != nil {
+		return fmt.Errorf("voice: read destination participant permissions: %w", err)
+	}
+	if gid != guildID || !p.Has(permissions.Connect) {
+		return ErrMissingPerm
+	}
+	return nil
+}
+
+// requestMoveLocked publishes a new private handoff without extending an
+// identical pending request. Older tokens cannot complete a superseded move.
+func (s *Service) requestMoveLocked(ctx context.Context, userID, channelID snowflake.ID, source *session) {
+	if channelID == source.state.ChannelID {
+		return
+	}
+	if old := s.moves[userID]; old != nil && old.source == source && old.channelID == channelID {
+		return
+	}
+	s.moves[userID] = &pendingMove{source: source, channelID: channelID, deadline: s.now().Add(MoveTimeout)}
+	s.intents[userID] = intent{}
+	s.touchLocked(userID)
+	if s.pub != nil {
+		s.pub.Publish(ctx, events.Event{Type: events.VoiceMove, Audience: events.Audience{Kind: events.AudienceUsers, GuildID: source.state.GuildID, ChannelID: channelID, UserIDs: []snowflake.ID{userID}}, Payload: MovePayload{ChannelID: channelID}})
+	}
+	select {
+	case s.wake <- struct{}{}:
+	default:
+	}
+}
+
+// currentParticipantLocked keeps exactly the pinned source alive while a
+// pending move permits only fresh tokens for its current destination.
+func (s *Service) currentParticipantLocked(userID, channelID snowflake.ID, p Participant) bool {
+	if move := s.moves[userID]; move != nil {
+		if channelID == move.source.state.ChannelID && p.SID == move.source.sid {
+			return true
+		}
+		if channelID != move.channelID {
+			return false
+		}
+	}
+	return s.currentLocked(userID, channelID, p.Join)
+}
+
+// expireMovesLocked queues only the captured source and returns the next
+// deadline. An already-issued destination token may complete after expiry.
+func (s *Service) expireMovesLocked(ctx context.Context) time.Time {
+	now := s.now()
+	var next time.Time
+	for userID, move := range s.moves {
+		if move.deadline.After(now) {
+			if next.IsZero() || move.deadline.Before(next) {
+				next = move.deadline
+			}
+			continue
+		}
+		delete(s.moves, userID)
+		if s.intents[userID].channelID != move.channelID {
+			s.intents[userID] = intent{}
+		}
+		if s.sessions[userID] == move.source {
+			s.dropLocked(ctx, userID, false)
+		} else {
+			s.touchLocked(userID)
+		}
+		s.removeLocked(move.source.room, userID.String(), move.source.sid)
+	}
+	return next
+}
+
+// disconnect removes the captured participant synchronously. A left
+// webhook caused by that RPC may already have cleared the local state.
+func (s *Service) disconnect(ctx context.Context, guildID, userID snowflake.ID, source *session, flags serverFlags, start uint64) error {
+	rpcCtx, cancel := context.WithTimeout(ctx, rpcTimeout)
+	err := s.rooms.RemoveParticipant(rpcCtx, source.room, userID.String())
+	cancel()
+	if err != nil {
+		return fmt.Errorf("%w: voice: disconnect participant: %w", ErrUnavailable, err)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current := s.sessions[userID]
+	if (current != nil && current != source) || s.invalidatedLocked(guildID, userID, source.state.ChannelID, start) {
+		return channels.ErrNotFound
+	}
+	s.storeModerationLocked(memberKey{guildID: guildID, userID: userID}, flags)
+	s.intents[userID] = intent{}
+	delete(s.moves, userID)
+	if current != nil {
+		current.state.Mute, current.state.Deaf = flags.mute, flags.deaf
+		s.dropLocked(ctx, userID, false)
+	} else {
+		s.touchLocked(userID)
+	}
+	return nil
+}

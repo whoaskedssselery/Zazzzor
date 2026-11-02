@@ -32,6 +32,9 @@ services:
       ZAZZZOR_METRICS_ADDR: 127.0.0.1:9464
       ZAZZZOR_FILE_RETENTION: ${ZAZZZOR_FILE_RETENTION:-}
       ZAZZZOR_DATA_DIR: /data
+      ZAZZZOR_LIVEKIT_URL: http://voice-sfu:7880
+      ZAZZZOR_LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?задайте LIVEKIT_API_KEY}
+      ZAZZZOR_LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?задайте LIVEKIT_API_SECRET}
       GOMEMLIMIT: 768MiB
     volumes:
       - apidata:/data
@@ -67,7 +70,11 @@ services:
         - "traefik.http.services.zazzzor-api.loadbalancer.server.port=8080"
         - "traefik.http.middlewares.zazzzor-headers.headers.contentTypeNosniff=true"
         - "traefik.http.middlewares.zazzzor-headers.headers.referrerPolicy=no-referrer"
-    networks: [traefik, db]
+    networks:
+      traefik:
+      db:
+      voice:
+        aliases: [voice-api]
 
   postgres:
     image: postgres:${POSTGRES_VERSION:?задайте POSTGRES_VERSION}
@@ -120,6 +127,10 @@ services:
           external_tls: true
         keys:
           "${LIVEKIT_API_KEY:?задайте LIVEKIT_API_KEY}": "${LIVEKIT_API_SECRET:?задайте LIVEKIT_API_SECRET}"
+        webhook:
+          api_key: ${LIVEKIT_API_KEY}
+          urls:
+            - http://voice-api:8080/api/v1/livekit/webhook
         logging:
           level: info
     read_only: true
@@ -156,7 +167,10 @@ services:
         - "traefik.http.services.zazzzor-rtc.loadbalancer.healthcheck.path=/"
         - "traefik.http.services.zazzzor-rtc.loadbalancer.healthcheck.interval=10s"
         - "traefik.http.services.zazzzor-rtc.loadbalancer.healthcheck.timeout=5s"
-    networks: [traefik]
+    networks:
+      traefik:
+      voice:
+        aliases: [voice-sfu]
 
   # Plain HTTP; TLS and hostname routing belong to the existing Traefik.
   web:
@@ -197,6 +211,14 @@ services:
         - "traefik.http.routers.zazzzor-web.tls=true"
         - "traefik.http.routers.zazzzor-web.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}"
         - "traefik.http.services.zazzzor-web.loadbalancer.server.port=8080"
+        # The signed callback stays on the private control network. Public
+        # requests go to Caddy's exact 404 handler before the API router.
+        - "traefik.http.routers.zazzzor-webhook.priority=200"
+        - "traefik.http.routers.zazzzor-webhook.rule=Host(`${ZAZZZOR_DOMAIN}`) && Path(`/api/v1/livekit/webhook`)"
+        - "traefik.http.routers.zazzzor-webhook.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+        - "traefik.http.routers.zazzzor-webhook.tls=true"
+        - "traefik.http.routers.zazzzor-webhook.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}"
+        - "traefik.http.routers.zazzzor-webhook.service=zazzzor-web"
     networks: [traefik]
 
   # Same retained-file backup protocol as the edge stack, on the DB overlay.
@@ -246,6 +268,10 @@ services:
           memory: 256M
 
 networks:
+  # SDK requests and signed webhooks only; no frontend or database access.
+  voice:
+    driver: overlay
+    internal: true
   traefik:
     external: true
     name: ${TRAEFIK_NETWORK:-traefik}

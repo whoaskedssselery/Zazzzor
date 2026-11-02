@@ -22,6 +22,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/ratelimit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
+	"github.com/whoaskedssselery/zazzzor/server/internal/voice"
 )
 
 // Authenticator resolves a session cookie (auth.Service).
@@ -38,6 +39,13 @@ type Bus interface {
 
 var _ Bus = (*events.Bus)(nil)
 
+// VoiceStates reads who is in the voice channels of a guild (voice.Service).
+type VoiceStates interface {
+	GuildStates(guildID snowflake.ID) []voice.State
+}
+
+var _ VoiceStates = (*voice.Service)(nil)
+
 // Options configures a Gateway. Auth, Guilds, Channels and Bus are
 // required; zero tuning fields take the defaults.
 type Options struct {
@@ -45,6 +53,9 @@ type Options struct {
 	Guilds   guilds.Directory
 	Channels channels.Resolver
 	Bus      Bus
+	// Voice fills the voice_states of every GuildState; nil leaves them
+	// empty.
+	Voice VoiceStates
 	// AllowedOrigins are the only Origin values accepted for the upgrade.
 	AllowedOrigins []string
 	// Logger is for failures; nil discards.
@@ -183,7 +194,7 @@ func New(o Options) *Gateway {
 		conns: make(map[*conn]struct{}), reservedUser: make(map[snowflake.ID]int), presence: newPresence(), dispatchDone: make(chan struct{})}
 	ch, unsub := o.Bus.Subscribe(o.BusBuffer)
 	g.unsub = unsub
-	go g.dispatchLoop(ch)
+	go g.dispatchLoop(g.ctx, ch)
 	return g
 }
 
@@ -194,8 +205,8 @@ func New(o Options) *Gateway {
 // (503 server_busy) before it upgrades; every refusal is a problem+json
 // response. It returns as soon as the connection is upgraded (the request
 // is logged as 101); the connection lives on in its own goroutines. The
-// route must be wrapped in httpx.WithoutDeadlines: the gateway bounds every
-// read and write itself.
+// route must be wrapped in httpx.WithoutDeadlines: only a successful hijack
+// clears HTTP deadlines, then the gateway bounds every read and write itself.
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !httpx.OriginAllowed(g.opts.AllowedOrigins, r) {
 		httpx.WriteProblem(w, httpx.Forbidden("origin_not_allowed"))

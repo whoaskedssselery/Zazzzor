@@ -270,8 +270,9 @@ func TestOpenSizesPool(t *testing.T) {
 // most the acquire timeout and fails with context.DeadlineExceeded, even if
 // its own context has no deadline.
 func TestAcquireIsBounded(t *testing.T) {
+	const acquireTimeout = time.Second
 	pool, err := db.OpenWith(t.Context(), withParam(t, testkit.PostgresURL(t), "pool_max_conns", "1"),
-		db.Options{AcquireTimeout: 200 * time.Millisecond})
+		db.Options{AcquireTimeout: acquireTimeout})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,18 +281,27 @@ func TestAcquireIsBounded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer held.Release()
+	queryCtx, cancel := context.WithCancel(t.Context())
+	defer cancel()
 	start := time.Now()
-	_, err = pool.Exec(context.Background(), "SELECT 1")
+	finished := make(chan error, 1)
+	go func() { _, execErr := pool.Exec(queryCtx, "SELECT 1"); finished <- execErr }()
+	select {
+	case err = <-finished:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Exec on a full pool did not honor its acquire timeout")
+	}
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("Exec on a full pool = %v, want context.DeadlineExceeded", err)
 	}
-	if d := time.Since(start); d > 3*time.Second {
+	if d := time.Since(start); d > 5*time.Second {
 		t.Fatalf("Exec waited %s, want about the acquire timeout", d)
 	}
 	held.Release()
 	// Once a connection is free again, queries run normally, and the
 	// timeout does not cut a query that got its connection in time.
-	if _, err := pool.Exec(context.Background(), "SELECT pg_sleep(0.4)"); err != nil {
+	if _, err := pool.Exec(t.Context(), "SELECT pg_sleep($1)", (acquireTimeout + 200*time.Millisecond).Seconds()); err != nil {
 		t.Fatalf("Exec after release: %v", err)
 	}
 }

@@ -27,10 +27,10 @@ fail() {
   exit 1
 }
 
-# expect_status <путь> <код>: ответ в $tmp/body, заголовки в $tmp/headers.
+# expect_status <путь> <код> [метод]: ответ и заголовки сохраняются в $tmp.
 expect_status() {
   local status
-  status="$(curl -sS --max-time 5 -o "$tmp/body" -D "$tmp/headers" -w '%{http_code}' "$url$1")" ||
+  status="$(curl -sS --max-time 5 -X "${3:-GET}" -o "$tmp/body" -D "$tmp/headers" -w '%{http_code}' "$url$1")" ||
     fail "$1: нет ответа от $url"
   [[ "$status" == "$2" ]] || fail "$1: статус $status, ожидался $2"
 }
@@ -75,10 +75,15 @@ if grep -qi 'immutable' "$tmp/headers"; then
   fail '/assets/missing-web-test.js: отсутствующий asset закэширован'
 fi
 
+for path in /api/v1/livekit/webhook '/api/v1/livekit/webhook?test=1' /api/v1/livekit/%77ebhook; do
+  expect_status "$path" 404
+  expect_status "$path" 404 POST
+done
+
 expect_status /connectivity-test/ 200
 expect_header /connectivity-test/ '^Content-Security-Policy:.*wss:'
 if cmp -s "$tmp/index" "$tmp/body"; then
   fail '/connectivity-test/ вернул SPA вместо страницы проверки связи'
 fi
 
-echo 'web test: OK (SPA, CSP, cache, asset 404, connectivity test)'
+echo 'web test: OK (SPA, CSP, cache, asset 404, webhook 404, connectivity test)'

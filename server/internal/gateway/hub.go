@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/channels"
@@ -16,10 +17,10 @@ import (
 // behind and lost events) closes every connection with 4008 so the clients
 // resync by reconnecting, then subscribes again; a closed subscription
 // means the gateway or the bus is shutting down and closes them with 1012.
-func (g *Gateway) dispatchLoop(ch <-chan events.Event) {
+func (g *Gateway) dispatchLoop(ctx context.Context, ch <-chan events.Event) {
 	defer close(g.dispatchDone)
 	for {
-		if !g.consume(ch) {
+		if !g.consume(ctx, ch) {
 			g.mu.Lock()
 			g.closed = true
 			g.presence.stop()
@@ -52,12 +53,12 @@ func (g *Gateway) dispatchLoop(ch <-chan events.Event) {
 
 // consume dispatches events until Overflow (true) or the channel closes
 // (false).
-func (g *Gateway) consume(ch <-chan events.Event) bool {
+func (g *Gateway) consume(ctx context.Context, ch <-chan events.Event) bool {
 	for e := range ch {
 		if e.Type == events.Overflow {
 			return true
 		}
-		g.dispatch(e)
+		g.dispatch(ctx, e)
 	}
 	return false
 }
@@ -67,8 +68,8 @@ func (g *Gateway) consume(ch <-chan events.Event) bool {
 // detail to anyone) and drops the event; for a guild event the connections
 // that hold the guild, or that needed its state, are closed with 4008 so
 // their clients reconnect and resync instead of silently missing it.
-func (g *Gateway) dispatch(e events.Event) {
-	if g.ctx.Err() != nil {
+func (g *Gateway) dispatch(ctx context.Context, e events.Event) {
+	if ctx.Err() != nil {
 		return // shutting down
 	}
 	if e.Type == events.SessionRevoked {
@@ -79,7 +80,7 @@ func (g *Gateway) dispatch(e events.Event) {
 	if len(conns) == 0 {
 		return // nobody to tell: no queries
 	}
-	ctx, cancel := context.WithTimeout(g.ctx, dispatchTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dispatchTimeout)
 	defer cancel()
 
 	recipients, err := g.recipients(ctx, e)
@@ -296,6 +297,19 @@ func (g *Gateway) resync(guildID snowflake.ID) {
 // removed by the caller).
 func (g *Gateway) recipients(ctx context.Context, e events.Event) ([]snowflake.ID, error) {
 	a := e.Audience
+	if e.Type == events.VoiceMove {
+		if a.Kind != events.AudienceUsers || a.ChannelID <= 0 {
+			return nil, errors.New("gateway: voice move without private destination audience")
+		}
+		viewers, err := g.opts.Channels.Viewers(ctx, a.ChannelID)
+		if errors.Is(err, channels.ErrNotFound) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("gateway: read voice move destination viewers: %w", err)
+		}
+		return slices.DeleteFunc(slices.Clone(a.UserIDs), func(userID snowflake.ID) bool { return !slices.Contains(viewers, userID) }), nil
+	}
 	switch a.Kind {
 	case events.AudienceGuild, events.AudienceGuildSync:
 		return g.opts.Guilds.MemberIDs(ctx, a.GuildID)

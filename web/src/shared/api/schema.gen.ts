@@ -1019,6 +1019,192 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/channels/{channel_id}/voice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Get a token to join a voice channel
+         * @description Needs `VIEW_CHANNEL` and `CONNECT` in a voice channel. Returns a
+         *     LiveKit access token for the room named by the channel ID, valid for
+         *     10 minutes, with the caller's user ID as identity and display name as
+         *     name. It may subscribe unless server-deafened; it may publish the
+         *     microphone with `SPEAK` unless server-muted
+         *     and the screen share (video and audio) with `STREAM`, nothing with
+         *     neither, and never data, the camera or its own metadata. `url` is the
+         *     LiveKit signaling URL for this origin (`wss://` for an `https://`
+         *     `Origin`, `ws://` for `http://`, same host and port).
+         *
+         *     Getting a token changes no voice state: the state appears, and
+         *     `VOICE_STATE_UPDATE` is announced, when LiveKit reports the
+         *     connection. Current server mute/deaf and channel grants are reapplied on
+         *     admission, including when this token predates a moderation change.
+         *     Only the token of the caller's latest join may connect; a connection
+         *     with an older one is removed. If the caller is in
+         *     another voice channel, they are removed from it first and their
+         *     state there is cleared (`VOICE_STATE_UPDATE` with `left: true`); if
+         *     LiveKit cannot remove them, no token is issued
+         *     (`503 voice_unavailable`).
+         *
+         *     A new token also supersedes the current connection in the same
+         *     channel: the client must reconnect using the returned token rather
+         *     than keep using its old connection. The pending moderator handoff
+         *     below explicitly preserves only its captured source session.
+         *
+         *     During a moderator-requested move, a token for the pending
+         *     destination keeps the captured source session until this token's
+         *     connection is reported. A 15-second fallback removes that source;
+         *     an already-issued destination token may still complete afterward.
+         *     Joining another channel cancels the handoff after removing the
+         *     old source, including when requesting a fresh source-room token.
+         *
+         *     Voice writes (this operation, the voice state PATCH and leaving)
+         *     share a limit of 2 per second (bursts of 10) per user.
+         */
+        post: operations["joinVoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/guilds/{guild_id}/members/{user_id}/voice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Moderate a participant's voice state or channel
+         * @description Changes the supplied flags; at least one must be present. `mute`
+         *     requires `MUTE_MEMBERS`, and `deaf` requires `DEAFEN_MEMBERS`, in the
+         *     target's current voice channel. Every requested permission is
+         *     checked before any update. A missing, other-guild or hidden target
+         *     returns `404 not_found`. Shares the per-user voice write limit.
+         *
+         *     LiveKit enforces mute by disabling the microphone and deafen by
+         *     disabling subscription. Unmuting never grants a microphone without
+         *     `SPEAK`; screen sharing still follows `STREAM`. Flags survive
+         *     reconnects in this guild, but reset when the API restarts. A change
+         *     is announced as `VOICE_STATE_UPDATE` only to the channel's viewers.
+         *     Identical flags announce nothing. Upstream failure does not commit
+         *     or announce successful moderation.
+         *
+         *     `channel_id: null` disconnects the participant and invalidates old
+         *     join tokens; it needs `MOVE_MEMBERS` in the source channel. A channel
+         *     ID requests a move and needs `MOVE_MEMBERS` in both source and
+         *     destination. The destination must be a voice channel of this guild
+         *     that the participant may view and `CONNECT` to. Missing destination
+         *     permissions return `403 missing_permission`; a hidden destination
+         *     is `404 not_found`, and a visible non-voice destination is
+         *     `400 not_a_voice_channel`. Combined patches validate all permissions
+         *     before effects. Server flags set alongside disconnect persist for
+         *     the next join.
+         *
+         *     Moving sends only the participant `VOICE_MOVE { channel_id }`.
+         *     Source presence remains until destination admission, which removes
+         *     the old participant. If no admission follows within 15 seconds,
+         *     that source is removed anyway. A newer move supersedes prior
+         *     destination tokens; an identical pending move does not extend the
+         *     deadline or repeat the event. Moving to the current channel is a
+         *     no-op. Omitted `channel_id` preserves the current channel.
+         */
+        patch: operations["moderateVoice"];
+        trace?: never;
+    };
+    "/users/@me/voice-state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change the caller's own mute and deafen flags
+         * @description Changes the flags that are present; at least one must be. The flags
+         *     are what the client says it does; they are not moderation. A change
+         *     is announced as `VOICE_STATE_UPDATE` to the members who can view the
+         *     channel; the same values again change and announce nothing. The
+         *     flags are kept in memory only: after the API restarts they are back
+         *     to false, so a client sends them again after every READY. Shares the
+         *     voice write limit.
+         */
+        patch: operations["updateVoiceState"];
+        trace?: never;
+    };
+    "/users/@me/voice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Leave voice
+         * @description Clears the caller's voice state at once, announcing
+         *     `VOICE_STATE_UPDATE` with `left: true`, and removes them from the
+         *     LiveKit room; a token issued before can no longer connect. Removing
+         *     from LiveKit is retried in the background when it fails. Succeeds
+         *     when the caller was in no voice channel too. Shares the voice write
+         *     limit.
+         */
+        delete: operations["leaveVoice"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/livekit/webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * LiveKit webhook (server to server)
+         * @description Called by LiveKit only. The `Authorization` header is a JWT signed
+         *     with the LiveKit API secret that carries the SHA-256 of the body;
+         *     nothing in the body is used before it is verified. No session and no
+         *     `Origin` are needed (this exact path and method only). Events are
+         *     applied idempotently against the current state, so retried and
+         *     reordered deliveries are harmless: `participant_joined`,
+         *     `participant_left`, `participant_connection_aborted`,
+         *     `track_published` and `track_unpublished` of screen shares, and
+         *     `room_finished`. Rooms whose name is not a voice channel ID are
+         *     ignored. A participant who may not connect to the channel any more,
+         *     or who connected with an outdated token, is removed from the room.
+         */
+        post: operations["receiveLiveKitWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/gateway": {
         parameters: {
             query?: never;
@@ -1350,7 +1536,7 @@ export interface components {
             t?: string;
             s?: number;
             /** @description The payload; null for HEARTBEAT_ACK. */
-            d: unknown;
+            d: null | components["schemas"]["GatewayHello"] | components["schemas"]["GatewayReady"] | components["schemas"]["GuildState"] | components["schemas"]["Guild"] | components["schemas"]["GuildDeleteEvent"] | components["schemas"]["MemberEvent"] | components["schemas"]["MemberRemoveEvent"] | components["schemas"]["RoleEvent"] | components["schemas"]["RoleDeleteEvent"] | components["schemas"]["Channel"] | components["schemas"]["Message"] | components["schemas"]["MessageDeleteEvent"] | components["schemas"]["TypingStartEvent"] | components["schemas"]["Presence"] | components["schemas"]["User"] | components["schemas"]["VoiceState"] | components["schemas"]["VoiceMove"];
         };
         GatewayHello: {
             /** @description Send HEARTBEAT this often (30000); 150 s without one closes the connection with 4009, allowing for throttled timers in hidden browser tabs. */
@@ -1377,6 +1563,57 @@ export interface components {
              *     them, not capped like `members`.
              */
             presences: components["schemas"]["Presence"][];
+            /** @description Who is in the voice channels the member may view, by user ID. */
+            voice_states: components["schemas"]["VoiceState"][];
+        };
+        /**
+         * @description A user in a voice channel; a user is in at most one. It is also the
+         *     payload of VOICE_STATE_UPDATE, which adds `left`.
+         */
+        VoiceState: {
+            guild_id: components["schemas"]["Snowflake"];
+            channel_id: components["schemas"]["Snowflake"];
+            user_id: components["schemas"]["Snowflake"];
+            /** @description The user muted their microphone (set by the client). */
+            self_mute: boolean;
+            /** @description The user deafened themselves (set by the client). */
+            self_deaf: boolean;
+            /** @description The user shares their screen (from LiveKit). */
+            self_stream: boolean;
+            /** @description Server-muted in this guild; disables the microphone. Kept across reconnects until lifted or the API restarts. */
+            mute: boolean;
+            /** @description Server-deafened in this guild; disables listening. Kept across reconnects until lifted or the API restarts. */
+            deaf: boolean;
+            /** Format: date-time */
+            joined_at: string;
+            /**
+             * @description Only in VOICE_STATE_UPDATE, where it is always present: true when
+             *     the user is no longer in `channel_id` (the other fields are their
+             *     last state there).
+             */
+            left?: boolean;
+        };
+        VoiceMove: {
+            channel_id: components["schemas"]["Snowflake"];
+        };
+        VoiceJoin: {
+            /** @description LiveKit access token (JWT), valid for 10 minutes. */
+            token: string;
+            /**
+             * @description LiveKit signaling URL, `wss://<host>` (or `ws://` for an `http://` origin).
+             * @example wss://zazzzor.duckdns.org
+             */
+            url: string;
+        };
+        ModerateVoiceRequest: {
+            mute?: boolean;
+            deaf?: boolean;
+            /** @description Omitted preserves the channel; null disconnects; an ID requests a private handoff. */
+            channel_id?: components["schemas"]["Snowflake"] | null;
+        };
+        UpdateVoiceStateRequest: {
+            self_mute?: boolean;
+            self_deaf?: boolean;
         };
         Presence: {
             user_id: components["schemas"]["Snowflake"];
@@ -3296,6 +3533,170 @@ export interface operations {
             404: components["responses"]["Problem"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["Problem"];
+        };
+    };
+    joinVoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The token and where to connect with it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceJoin"];
+                };
+            };
+            /** @description `not_a_voice_channel`. */
+            400: components["responses"]["Problem"];
+            /** @description `unauthenticated`. */
+            401: components["responses"]["Problem"];
+            /** @description `origin_not_allowed` or `missing_permission` (no `CONNECT`). */
+            403: components["responses"]["Problem"];
+            /** @description `not_found`: no such channel, or the caller may not view it. */
+            404: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Problem"];
+            /** @description `voice_unavailable`: voice is not configured, or LiveKit could not remove the caller from their previous channel. */
+            503: components["responses"]["Problem"];
+        };
+    };
+    moderateVoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                guild_id: components["parameters"]["GuildID"];
+                user_id: components["parameters"]["UserID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModerateVoiceRequest"];
+            };
+        };
+        responses: {
+            /** @description The participant's permissions were applied. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `invalid_body`, `body_too_large` or `validation_failed`. */
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            /** @description `missing_permission` or `origin_not_allowed`. */
+            403: components["responses"]["Problem"];
+            /** @description `not_found`: no visible participant in this guild. */
+            404: components["responses"]["Problem"];
+            415: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Problem"];
+            /** @description `voice_unavailable`: voice is disabled or enforcement failed. */
+            503: components["responses"]["Problem"];
+        };
+    };
+    updateVoiceState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateVoiceStateRequest"];
+            };
+        };
+        responses: {
+            /** @description The caller's voice state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceState"];
+                };
+            };
+            /** @description `invalid_body`, `body_too_large` or `validation_failed` (an empty object). */
+            400: components["responses"]["Problem"];
+            /** @description `unauthenticated`. */
+            401: components["responses"]["Problem"];
+            /** @description `origin_not_allowed`. */
+            403: components["responses"]["Problem"];
+            /** @description `not_in_voice`: the caller is in no voice channel (yet: the state appears when LiveKit reports the connection). */
+            409: components["responses"]["Problem"];
+            /** @description `unsupported_media_type`. */
+            415: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Problem"];
+            /** @description `voice_unavailable`: voice is not configured. */
+            503: components["responses"]["Problem"];
+        };
+    };
+    leaveVoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller is in no voice channel. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `unauthenticated`. */
+            401: components["responses"]["Problem"];
+            /** @description `origin_not_allowed`. */
+            403: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Problem"];
+            /** @description `voice_unavailable`: voice is not configured. */
+            503: components["responses"]["Problem"];
+        };
+    };
+    receiveLiveKitWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/webhook+json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description Received (also for events that change nothing). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `body_too_large` (over 1 MiB) or `invalid_body` (signed, but not a webhook event). */
+            400: components["responses"]["Problem"];
+            /** @description `invalid_signature`: a missing, malformed or wrong `Authorization`, or a body that does not match it. */
+            401: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+            /** @description `voice_unavailable`: voice is not configured. */
+            503: components["responses"]["Problem"];
         };
     };
     connectGateway: {

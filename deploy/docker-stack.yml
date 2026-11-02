@@ -78,6 +78,12 @@ services:
           enabled: false
         keys:
           "${LIVEKIT_API_KEY:?заполните LIVEKIT_API_KEY в deploy/.env (см. deploy/.env.example)}": "${LIVEKIT_API_SECRET:?заполните LIVEKIT_API_SECRET в deploy/.env (см. deploy/.env.example)}"
+        # Voice states: LiveKit tells the API on loopback (both use the host
+        # network), signed with this key.
+        webhook:
+          api_key: "${LIVEKIT_API_KEY}"
+          urls:
+            - http://127.0.0.1:${ZAZZZOR_API_PORT:-8080}/api/v1/livekit/webhook
         logging:
           level: info
     logging: *logging
@@ -155,6 +161,9 @@ services:
       ZAZZZOR_DATA_DIR: /data
       # Empty takes the server default (config.DefaultFileRetention).
       ZAZZZOR_FILE_RETENTION: ${ZAZZZOR_FILE_RETENTION:-}
+      # LiveKit's server API is on loopback (config.DefaultLiveKitURL).
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
       # Below the memory limit; see the budget in
       # server/internal/platform/upload/upload.go.
       GOMEMLIMIT: 768MiB

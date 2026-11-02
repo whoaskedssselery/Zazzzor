@@ -23,7 +23,18 @@ type Config struct {
 	DataDir        string         // ZAZZZOR_DATA_DIR, default "/data"
 	CookieSecure   bool           // ZAZZZOR_COOKIE_SECURE, default true
 	FileRetention  time.Duration  // ZAZZZOR_FILE_RETENTION, default DefaultFileRetention; over a day
+	// LiveKitURL is where the API calls the LiveKit server API
+	// (ZAZZZOR_LIVEKIT_URL, default DefaultLiveKitURL).
+	LiveKitURL string
+	// LiveKitAPIKey and LiveKitAPISecret (LIVEKIT_API_KEY,
+	// LIVEKIT_API_SECRET) sign tokens and verify webhooks. Both empty turns
+	// voice off; one without the other is an error.
+	LiveKitAPIKey    string
+	LiveKitAPISecret string
 }
+
+// VoiceEnabled reports whether the LiveKit credentials are set.
+func (c Config) VoiceEnabled() bool { return c.LiveKitAPIKey != "" }
 
 // Defaults for optional variables.
 const (
@@ -34,7 +45,12 @@ const (
 	// DefaultFileRetention keeps deleted images through eight daily
 	// backups.
 	DefaultFileRetention = 8 * 24 * time.Hour
+	// DefaultLiveKitURL is LiveKit on the same host network.
+	DefaultLiveKitURL = "http://127.0.0.1:7880"
 )
+
+// minLiveKitSecret is the shortest API secret LiveKit itself accepts.
+const minLiveKitSecret = 32
 
 // backupInterval is how often deploy/scripts/backup-job.sh backs up.
 const backupInterval = 24 * time.Hour
@@ -110,10 +126,46 @@ func Load(env func(string) string) (Config, error) {
 		cfg.FileRetention = retention
 	}
 
+	errs = append(errs, loadLiveKit(&cfg, get)...)
+
 	if len(errs) > 0 {
 		return Config{}, fmt.Errorf("invalid configuration: %w", errors.Join(errs...))
 	}
 	return cfg, nil
+}
+
+// loadLiveKit reads the LiveKit settings into cfg. Without both
+// credentials voice is off and the URL is not checked.
+func loadLiveKit(cfg *Config, get func(name, def string) string) []error {
+	cfg.LiveKitURL = get("ZAZZZOR_LIVEKIT_URL", DefaultLiveKitURL)
+	cfg.LiveKitAPIKey = get("LIVEKIT_API_KEY", "")
+	cfg.LiveKitAPISecret = get("LIVEKIT_API_SECRET", "")
+	var errs []error
+	switch {
+	case cfg.LiveKitAPIKey == "" && cfg.LiveKitAPISecret == "":
+		return nil
+	case cfg.LiveKitAPIKey == "":
+		errs = append(errs, errors.New("LIVEKIT_API_KEY: required when LIVEKIT_API_SECRET is set"))
+	case cfg.LiveKitAPISecret == "":
+		errs = append(errs, errors.New("LIVEKIT_API_SECRET: required when LIVEKIT_API_KEY is set"))
+	case len(cfg.LiveKitAPISecret) < minLiveKitSecret:
+		errs = append(errs, fmt.Errorf("LIVEKIT_API_SECRET: must be at least %d characters", minLiveKitSecret))
+	}
+	if !validServiceURL(cfg.LiveKitURL) {
+		errs = append(errs, errors.New("ZAZZZOR_LIVEKIT_URL: must be a URL like http://host:port"))
+	}
+	return errs
+}
+
+// validServiceURL accepts http(s)://host[:port] with at most a "/" path and
+// no credentials, query or fragment.
+func validServiceURL(s string) bool {
+	u, err := url.Parse(s)
+	if err != nil {
+		return false
+	}
+	return (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" && u.User == nil &&
+		(u.Path == "" || u.Path == "/") && u.RawQuery == "" && !u.ForceQuery && u.Fragment == ""
 }
 
 func splitList(s string) []string {

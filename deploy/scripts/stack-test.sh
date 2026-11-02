@@ -147,6 +147,35 @@ expect "$tmp/turn" 'traefik.tcp.routers.zazzzor-turn.rule: HostSNI' 'нет TCP-
 expect "$tmp/turn" 'image: ghcr.io/example/api:ci' 'API не из заданного репозитория'
 expect "$tmp/turn" 'image: ghcr.io/example/web:ci' 'web не из заданного репозитория'
 
+echo '- приватный голосовой control path с TURN и без него'
+for config in "$tmp/traefik" "$tmp/turn"; do
+  service "$config" api >"$tmp/api"
+  service "$config" livekit >"$tmp/livekit"
+  service "$config" web >"$tmp/web"
+  expect "$tmp/api" 'ZAZZZOR_LIVEKIT_URL: http://voice-sfu:7880' 'API не подключён к приватному LiveKit'
+  expect "$tmp/api" 'ZAZZZOR_LIVEKIT_API_KEY: APItestonly' 'API не получил ключ LiveKit'
+  expect "$tmp/api" 'ZAZZZOR_LIVEKIT_API_SECRET: deadbeef' 'API не получил секрет LiveKit'
+  expect "$tmp/api" 'voice-api' 'нет приватного alias API'
+  expect "$tmp/livekit" 'voice-sfu' 'нет приватного alias LiveKit'
+  expect "$tmp/livekit" 'api_key: APItestonly' 'webhook подписан другим ключом'
+  expect "$tmp/livekit" 'http://voice-api:8080/api/v1/livekit/webhook' 'webhook не идёт напрямую в API'
+  for name in api livekit; do
+    service "$config" "$name" | grep -q '^      voice:' || fail "$name не в control-сети voice"
+  done
+  for name in web postgres backup; do
+    service "$config" "$name" >"$tmp/other"
+    reject "$tmp/other" '^      voice:' "$name попал в control-сеть voice"
+  done
+  networks "$config" >"$tmp/networks"
+  expect "$tmp/networks" '^  voice:' 'нет отдельной control-сети'
+  grep -A3 '^  voice:' "$tmp/networks" | grep -q 'internal: true' || fail 'voice не внутренняя'
+  expect "$tmp/web" 'traefik.http.routers.zazzzor-webhook.priority: "200"' 'блокировка webhook не перекрывает API'
+  expect "$tmp/web" "Path(\`/api/v1/livekit/webhook\`)" 'нет точного router webhook'
+  expect "$tmp/web" 'traefik.http.routers.zazzzor-webhook.service: zazzzor-web' 'webhook попадает не в web404'
+  expect "$tmp/web" 'traefik.http.routers.zazzzor-webhook.tls: "true"' 'webhook router без TLS'
+  reject "$tmp/api" '^    ports:' 'API опубликовал host-порт'
+done
+
 echo '- неверные настройки отвергаются'
 if ENV_FILE="$ci_env" ZAZZZOR_EDGE=bad bash "$script_dir/stack.sh" config >"$tmp/bad" 2>&1; then
   fail 'неизвестный ZAZZZOR_EDGE принят'

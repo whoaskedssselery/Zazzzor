@@ -6,6 +6,8 @@
 import /etc/caddy/static.caddy
 
 :8080 {
+	@livekitWebhook path /api/v1/livekit/webhook
+	respond @livekitWebhook 404
 	import connectivity
 	import web-client
 }

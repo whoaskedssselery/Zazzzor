@@ -44,6 +44,13 @@ tags:
     description: Messages of text channels, replies and typing.
   - name: invites
     description: Invite links to servers.
+  - name: voice
+    description: |
+      Voice channels through LiveKit: join tokens, the caller's voice state
+      and the LiveKit webhook. Voice states live in the memory of the one
+      API process; LiveKit webhooks are the source of truth for who is
+      connected. Without LiveKit credentials every voice operation answers
+      `503 voice_unavailable`.
   - name: gateway
     description: Realtime events over WebSocket (protocol in `x-gateway`).
   - name: admin
@@ -2084,6 +2091,260 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
+  /channels/{channel_id}/voice:
+    post:
+      tags: [voice]
+      operationId: joinVoice
+      summary: Get a token to join a voice channel
+      description: |
+        Needs `VIEW_CHANNEL` and `CONNECT` in a voice channel. Returns a
+        LiveKit access token for the room named by the channel ID, valid for
+        10 minutes, with the caller's user ID as identity and display name as
+        name. It may subscribe unless server-deafened; it may publish the
+        microphone with `SPEAK` unless server-muted
+        and the screen share (video and audio) with `STREAM`, nothing with
+        neither, and never data, the camera or its own metadata. `url` is the
+        LiveKit signaling URL for this origin (`wss://` for an `https://`
+        `Origin`, `ws://` for `http://`, same host and port).
+
+        Getting a token changes no voice state: the state appears, and
+        `VOICE_STATE_UPDATE` is announced, when LiveKit reports the
+        connection. Current server mute/deaf and channel grants are reapplied on
+        admission, including when this token predates a moderation change.
+        Only the token of the caller's latest join may connect; a connection
+        with an older one is removed. If the caller is in
+        another voice channel, they are removed from it first and their
+        state there is cleared (`VOICE_STATE_UPDATE` with `left: true`); if
+        LiveKit cannot remove them, no token is issued
+        (`503 voice_unavailable`).
+
+        A new token also supersedes the current connection in the same
+        channel: the client must reconnect using the returned token rather
+        than keep using its old connection. The pending moderator handoff
+        below explicitly preserves only its captured source session.
+
+        During a moderator-requested move, a token for the pending
+        destination keeps the captured source session until this token's
+        connection is reported. A 15-second fallback removes that source;
+        an already-issued destination token may still complete afterward.
+        Joining another channel cancels the handoff after removing the
+        old source, including when requesting a fresh source-room token.
+
+        Voice writes (this operation, the voice state PATCH and leaving)
+        share a limit of 2 per second (bursts of 10) per user.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      responses:
+        "200":
+          description: The token and where to connect with it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceJoin"
+        "400":
+          description: "`not_a_voice_channel`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission` (no `CONNECT`)."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such channel, or the caller may not view it."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+        "503":
+          description: "`voice_unavailable`: voice is not configured, or LiveKit could not remove the caller from their previous channel."
+          $ref: "#/components/responses/Problem"
+  /guilds/{guild_id}/members/{user_id}/voice:
+    patch:
+      tags: [voice]
+      operationId: moderateVoice
+      summary: Moderate a participant's voice state or channel
+      description: |
+        Changes the supplied flags; at least one must be present. `mute`
+        requires `MUTE_MEMBERS`, and `deaf` requires `DEAFEN_MEMBERS`, in the
+        target's current voice channel. Every requested permission is
+        checked before any update. A missing, other-guild or hidden target
+        returns `404 not_found`. Shares the per-user voice write limit.
+
+        LiveKit enforces mute by disabling the microphone and deafen by
+        disabling subscription. Unmuting never grants a microphone without
+        `SPEAK`; screen sharing still follows `STREAM`. Flags survive
+        reconnects in this guild, but reset when the API restarts. A change
+        is announced as `VOICE_STATE_UPDATE` only to the channel's viewers.
+        Identical flags announce nothing. Upstream failure does not commit
+        or announce successful moderation.
+
+        `channel_id: null` disconnects the participant and invalidates old
+        join tokens; it needs `MOVE_MEMBERS` in the source channel. A channel
+        ID requests a move and needs `MOVE_MEMBERS` in both source and
+        destination. The destination must be a voice channel of this guild
+        that the participant may view and `CONNECT` to. Missing destination
+        permissions return `403 missing_permission`; a hidden destination
+        is `404 not_found`, and a visible non-voice destination is
+        `400 not_a_voice_channel`. Combined patches validate all permissions
+        before effects. Server flags set alongside disconnect persist for
+        the next join.
+
+        Moving sends only the participant `VOICE_MOVE { channel_id }`.
+        Source presence remains until destination admission, which removes
+        the old participant. If no admission follows within 15 seconds,
+        that source is removed anyway. A newer move supersedes prior
+        destination tokens; an identical pending move does not extend the
+        deadline or repeat the event. Moving to the current channel is a
+        no-op. Omitted `channel_id` preserves the current channel.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+        - $ref: "#/components/parameters/UserID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModerateVoiceRequest"
+      responses:
+        "204":
+          description: The participant's permissions were applied.
+        "400":
+          description: "`invalid_body`, `body_too_large` or `validation_failed`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`missing_permission` or `origin_not_allowed`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no visible participant in this guild."
+          $ref: "#/components/responses/Problem"
+        "415":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+        "503":
+          description: "`voice_unavailable`: voice is disabled or enforcement failed."
+          $ref: "#/components/responses/Problem"
+  /users/@me/voice-state:
+    patch:
+      tags: [voice]
+      operationId: updateVoiceState
+      summary: Change the caller's own mute and deafen flags
+      description: |
+        Changes the flags that are present; at least one must be. The flags
+        are what the client says it does; they are not moderation. A change
+        is announced as `VOICE_STATE_UPDATE` to the members who can view the
+        channel; the same values again change and announce nothing. The
+        flags are kept in memory only: after the API restarts they are back
+        to false, so a client sends them again after every READY. Shares the
+        voice write limit.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateVoiceStateRequest"
+      responses:
+        "200":
+          description: The caller's voice state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceState"
+        "400":
+          description: "`invalid_body`, `body_too_large` or `validation_failed` (an empty object)."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed`."
+          $ref: "#/components/responses/Problem"
+        "409":
+          description: "`not_in_voice`: the caller is in no voice channel (yet: the state appears when LiveKit reports the connection)."
+          $ref: "#/components/responses/Problem"
+        "415":
+          description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+        "503":
+          description: "`voice_unavailable`: voice is not configured."
+          $ref: "#/components/responses/Problem"
+  /users/@me/voice:
+    delete:
+      tags: [voice]
+      operationId: leaveVoice
+      summary: Leave voice
+      description: |
+        Clears the caller's voice state at once, announcing
+        `VOICE_STATE_UPDATE` with `left: true`, and removes them from the
+        LiveKit room; a token issued before can no longer connect. Removing
+        from LiveKit is retried in the background when it fails. Succeeds
+        when the caller was in no voice channel too. Shares the voice write
+        limit.
+      responses:
+        "204":
+          description: The caller is in no voice channel.
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+        "503":
+          description: "`voice_unavailable`: voice is not configured."
+          $ref: "#/components/responses/Problem"
+  /livekit/webhook:
+    post:
+      tags: [voice]
+      operationId: receiveLiveKitWebhook
+      summary: LiveKit webhook (server to server)
+      description: |
+        Called by LiveKit only. The `Authorization` header is a JWT signed
+        with the LiveKit API secret that carries the SHA-256 of the body;
+        nothing in the body is used before it is verified. No session and no
+        `Origin` are needed (this exact path and method only). Events are
+        applied idempotently against the current state, so retried and
+        reordered deliveries are harmless: `participant_joined`,
+        `participant_left`, `participant_connection_aborted`,
+        `track_published` and `track_unpublished` of screen shares, and
+        `room_finished`. Rooms whose name is not a voice channel ID are
+        ignored. A participant who may not connect to the channel any more,
+        or who connected with an outdated token, is removed from the room.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/webhook+json:
+            schema:
+              type: object
+              description: A LiveKit `WebhookEvent` in protobuf JSON, at most 1 MiB.
+      responses:
+        "204":
+          description: Received (also for events that change nothing).
+        "400":
+          description: "`body_too_large` (over 1 MiB) or `invalid_body` (signed, but not a webhook event)."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`invalid_signature`: a missing, malformed or wrong `Authorization`, or a body that does not match it."
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+        "503":
+          description: "`voice_unavailable`: voice is not configured."
+          $ref: "#/components/responses/Problem"
   /gateway:
     get:
       tags: [gateway]
@@ -2900,6 +3161,25 @@ components:
           minimum: 1
         d:
           description: The payload; null for HEARTBEAT_ACK.
+          anyOf:
+            - type: "null"
+            - $ref: "#/components/schemas/GatewayHello"
+            - $ref: "#/components/schemas/GatewayReady"
+            - $ref: "#/components/schemas/GuildState"
+            - $ref: "#/components/schemas/Guild"
+            - $ref: "#/components/schemas/GuildDeleteEvent"
+            - $ref: "#/components/schemas/MemberEvent"
+            - $ref: "#/components/schemas/MemberRemoveEvent"
+            - $ref: "#/components/schemas/RoleEvent"
+            - $ref: "#/components/schemas/RoleDeleteEvent"
+            - $ref: "#/components/schemas/Channel"
+            - $ref: "#/components/schemas/Message"
+            - $ref: "#/components/schemas/MessageDeleteEvent"
+            - $ref: "#/components/schemas/TypingStartEvent"
+            - $ref: "#/components/schemas/Presence"
+            - $ref: "#/components/schemas/User"
+            - $ref: "#/components/schemas/VoiceState"
+            - $ref: "#/components/schemas/VoiceMove"
     GatewayHello:
       type: object
       additionalProperties: false
@@ -2928,7 +3208,7 @@ components:
     GuildState:
       type: object
       additionalProperties: false
-      required: [guild, roles, channels, members, my_member, presences]
+      required: [guild, roles, channels, members, my_member, presences, voice_states]
       description: A server as the receiving member sees it.
       properties:
         guild:
@@ -2958,6 +3238,91 @@ components:
             them, not capped like `members`.
           items:
             $ref: "#/components/schemas/Presence"
+        voice_states:
+          type: array
+          description: Who is in the voice channels the member may view, by user ID.
+          items:
+            $ref: "#/components/schemas/VoiceState"
+    VoiceState:
+      type: object
+      additionalProperties: false
+      required: [guild_id, channel_id, user_id, self_mute, self_deaf, self_stream, mute, deaf, joined_at]
+      description: |
+        A user in a voice channel; a user is in at most one. It is also the
+        payload of VOICE_STATE_UPDATE, which adds `left`.
+      properties:
+        guild_id:
+          $ref: "#/components/schemas/Snowflake"
+        channel_id:
+          $ref: "#/components/schemas/Snowflake"
+        user_id:
+          $ref: "#/components/schemas/Snowflake"
+        self_mute:
+          type: boolean
+          description: The user muted their microphone (set by the client).
+        self_deaf:
+          type: boolean
+          description: The user deafened themselves (set by the client).
+        self_stream:
+          type: boolean
+          description: The user shares their screen (from LiveKit).
+        mute:
+          type: boolean
+          description: Server-muted in this guild; disables the microphone. Kept across reconnects until lifted or the API restarts.
+        deaf:
+          type: boolean
+          description: Server-deafened in this guild; disables listening. Kept across reconnects until lifted or the API restarts.
+        joined_at:
+          type: string
+          format: date-time
+        left:
+          type: boolean
+          description: |
+            Only in VOICE_STATE_UPDATE, where it is always present: true when
+            the user is no longer in `channel_id` (the other fields are their
+            last state there).
+    VoiceMove:
+      type: object
+      additionalProperties: false
+      required: [channel_id]
+      properties:
+        channel_id:
+          $ref: "#/components/schemas/Snowflake"
+    VoiceJoin:
+      type: object
+      additionalProperties: false
+      required: [token, url]
+      properties:
+        token:
+          type: string
+          description: LiveKit access token (JWT), valid for 10 minutes.
+        url:
+          type: string
+          description: LiveKit signaling URL, `wss://<host>` (or `ws://` for an `http://` origin).
+          examples: ["wss://zazzzor.duckdns.org"]
+    ModerateVoiceRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        mute:
+          type: boolean
+        deaf:
+          type: boolean
+        channel_id:
+          description: Omitted preserves the channel; null disconnects; an ID requests a private handoff.
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
+    UpdateVoiceStateRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        self_mute:
+          type: boolean
+        self_deaf:
+          type: boolean
     Presence:
       type: object
       additionalProperties: false
@@ -3066,6 +3431,11 @@ x-gateway:
   frame:
     $ref: "#/components/schemas/GatewayFrame"
   description: |
+    HTTP body-read and response-write deadlines apply until the connection
+    is successfully upgraded. Rejected handshakes remain ordinary bounded
+    HTTP requests; an established WebSocket uses the heartbeat and frame
+    limits below instead.
+
     Server to client: `op 10 HELLO` first (`d`: GatewayHello), then
     `op 0 DISPATCH` frames with the event type `t`, the per-connection
     sequence number `s` (from 1) and the payload `d`; READY is always the
@@ -3120,6 +3490,38 @@ x-gateway:
     of those members who is online. After GUILD_DELETE of a deleted server
     its former members who no longer share any server see each other go
     offline the same way.
+
+    Voice: VOICE_STATE_UPDATE reaches the members who can view the voice
+    channel when it is sent, like any channel event; a hidden channel's
+    voice states are never sent, neither as events nor in `voice_states`
+    of a GuildState. It is sent when a user connects (LiveKit
+    reported it), changes their flags, starts or stops sharing their
+    screen, and leaves (`left: true`, with the channel they left). A user
+    who leaves a server, is kicked or banned, or whose voice channel or
+    server is deleted, leaves voice the same way; a deleted channel has no
+    viewers, so nobody is told. Every GuildState (READY, GUILD_CREATE,
+    GUILD_SYNC) lists the voice states of the channels the receiver may
+    view in `voice_states`.
+
+    On CHANNEL_DELETE or GUILD_DELETE, clients discard all cached voice
+    states of that channel or guild without waiting for a leave event.
+    GUILD_SYNC replaces the receiver's visible voice state snapshot;
+    states omitted after a channel becomes hidden must also be discarded.
+
+    VOICE_MOVE is private to the participant being moved and contains only
+    the destination channel ID. The destination must still be visible to
+    that user at dispatch; otherwise the event is dropped. Other source
+    or destination viewers, including the initiating moderator, do not
+    receive it. The client fetches a destination voice token and reconnects;
+    source-left and destination-joined states use their own channel viewers.
+
+    After GUILD_SYNC, a background worker recomputes voice permissions for
+    that guild's active participants without waiting for the periodic
+    LiveKit reconciliation. Lost VIEW_CHANNEL or CONNECT removes the
+    participant; lost SPEAK or STREAM revokes the corresponding publish
+    sources. Server mute and deaf restrictions remain overlaid. Failures
+    retry without blocking other participants; local changes are announced
+    only after successful media enforcement, through channel viewers.
   ops:
     "0": DISPATCH
     "1": HEARTBEAT
@@ -3177,3 +3579,7 @@ x-gateway:
       $ref: "#/components/schemas/Presence"
     USER_UPDATE:
       $ref: "#/components/schemas/User"
+    VOICE_STATE_UPDATE:
+      $ref: "#/components/schemas/VoiceState"
+    VOICE_MOVE:
+      $ref: "#/components/schemas/VoiceMove"

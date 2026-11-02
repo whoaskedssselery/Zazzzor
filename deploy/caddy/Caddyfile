@@ -31,6 +31,9 @@ import /etc/caddy/static.caddy
 	# timeout, so long-lived connections stay open. Incoming X-Forwarded-For
 	# from clients is replaced, so the API sees the real client address.
 	handle /api/* {
+		# LiveKit posts signed webhooks over loopback, never through Caddy.
+		@livekitWebhook path /api/v1/livekit/webhook
+		respond @livekitWebhook 404
 		header {
 			X-Content-Type-Options nosniff
 			Referrer-Policy no-referrer

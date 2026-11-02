@@ -19,6 +19,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/channels"
 	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
+	"github.com/whoaskedssselery/zazzzor/server/internal/voice"
 )
 
 // Opcodes of the frames {op, t?, s?, d}.
@@ -109,7 +110,8 @@ type Presence struct {
 
 // GuildState is a guild as one member sees it: the payload of GUILD_CREATE
 // and GUILD_SYNC and an entry of READY. Channels are only those the member
-// may view; members are capped at MaxMembers, presences are not.
+// may view, and so are the voice states; members are capped at MaxMembers,
+// presences are not.
 type GuildState struct {
 	Guild    guilds.PublicGuild       `json:"guild"`
 	Roles    []guilds.PublicRole      `json:"roles"`
@@ -118,6 +120,8 @@ type GuildState struct {
 	MyMember guilds.PublicMember      `json:"my_member"`
 	// Presences are the guild's online members (the receiver included).
 	Presences []Presence `json:"presences"`
+	// VoiceStates are the states in the voice channels of Channels.
+	VoiceStates []voice.PublicState `json:"voice_states"`
 }
 
 // Ready is the payload of READY.

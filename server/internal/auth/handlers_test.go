@@ -197,10 +197,17 @@ func TestLoginDisabledAccount(t *testing.T) {
 }
 
 func TestLoginRateLimited(t *testing.T) {
-	e := newEnv(t)
+	const burst = 2
+	const refill = time.Hour
+	e := newEnv(t, func(o *auth.Options) {
+		// Isolate the per-IP handler limit from the account failure limit.
+		// Password hashing under race/load must not refill this test bucket.
+		o.LoginLimiter = ratelimit.New(rate.Every(refill), burst, burst*refill)
+		o.LoginFailureLimiter = ratelimit.New(rate.Inf, 1, refill)
+	})
 	c := e.client()
 	register(t, c, "frank", "password123")
-	for i := range 10 {
+	for i := range burst {
 		resp := c.Do(http.MethodPost, "/api/v1/auth/login", creds("frank", "wrong-"+strconv.Itoa(i)))
 		if resp.Status != http.StatusUnauthorized {
 			t.Fatalf("attempt %d = %d, want 401", i+1, resp.Status)
@@ -209,8 +216,8 @@ func TestLoginRateLimited(t *testing.T) {
 	resp := c.Do(http.MethodPost, "/api/v1/auth/login", creds("frank", "password123"))
 	problemOf(t, resp, http.StatusTooManyRequests, "rate_limited")
 	secs, err := strconv.Atoi(resp.Header.Get("Retry-After"))
-	if err != nil || secs < 1 || secs > 6 {
-		t.Fatalf("Retry-After = %q, want 1..6 seconds", resp.Header.Get("Retry-After"))
+	if err != nil || secs < 1 || secs > int(refill/time.Second) {
+		t.Fatalf("Retry-After = %q, want 1..%d seconds", resp.Header.Get("Retry-After"), int(refill/time.Second))
 	}
 }
 

@@ -20,6 +20,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/gateway"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
+	"github.com/whoaskedssselery/zazzzor/server/internal/voice"
 )
 
 type routerDeps struct {
@@ -63,7 +64,8 @@ func newRouter(d routerDeps) http.Handler {
 		withRequestLog(d.Logger, d.Config),
 		d.Metrics.middleware,
 		withRecover,
-		httpx.RequireOrigin(d.Config.AllowedOrigins),
+		// LiveKit sends no Origin; its webhook is signed instead.
+		httpx.RequireOrigin(d.Config.AllowedOrigins, http.MethodPost+" /api/v1"+voice.WebhookPath),
 	)
 
 	r.Route("/api/v1", func(r chi.Router) {

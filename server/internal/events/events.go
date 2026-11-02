@@ -34,6 +34,8 @@ const (
 	TypingStart       = "TYPING_START"
 	PresenceUpdate    = "PRESENCE_UPDATE"
 	UserUpdate        = "USER_UPDATE"
+	VoiceStateUpdate  = "VOICE_STATE_UPDATE"
+	VoiceMove         = "VOICE_MOVE"
 	SessionRevoked    = "SESSION_REVOKED"
 
 	// Overflow is the last event a subscriber receives when it fell behind

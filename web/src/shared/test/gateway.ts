@@ -22,8 +22,12 @@ export function helloFrame(heartbeatIntervalMs = 30000): string {
   return frame({ op: 10, d });
 }
 
+/**
+ * A DISPATCH frame as raw text. `d` is deliberately untyped so tests can send
+ * payloads the contract forbids and check that the decode boundary drops them.
+ */
 export function dispatchFrame(t: string, s: number, d: unknown): string {
-  return frame({ op: 0, t, s, d });
+  return JSON.stringify({ op: 0, t, s, d });
 }
 
 /**
