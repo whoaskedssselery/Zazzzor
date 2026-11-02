@@ -21,12 +21,116 @@ import (
 	"github.com/livekit/protocol/livekit"
 	lksdk "github.com/livekit/server-sdk-go/v2"
 	"github.com/moby/moby/api/types/container"
+	"github.com/pion/rtp"
+	"github.com/pion/webrtc/v4/pkg/media/oggwriter"
 	"github.com/testcontainers/testcontainers-go"
 	tcwait "github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/testkit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/voice"
 )
+
+// microphoneFixture is ten minutes of valid Opus silence. The CLI paces Ogg
+// samples in real time, so a track disappearing during moderation cannot be EOF.
+func microphoneFixture(t *testing.T) []byte {
+	t.Helper()
+	var audio bytes.Buffer
+	writer, err := oggwriter.NewWith(&audio, 48000, 1)
+	if err != nil {
+		t.Fatalf("create microphone fixture: %v", err)
+	}
+	for i := uint32(0); i < 30000; i++ {
+		if err = writer.WriteRTP(&rtp.Packet{Header: rtp.Header{Version: 2, PayloadType: 111, SequenceNumber: uint16(i), Timestamp: i * 960, SSRC: 1}, Payload: []byte{0xf8, 0xff, 0xfe}}); err != nil {
+			t.Fatalf("write microphone fixture: %v", err)
+		}
+	}
+	if err = writer.Close(); err != nil {
+		t.Fatalf("close microphone fixture: %v", err)
+	}
+	return audio.Bytes()
+}
+
+// awaitPeerLog waits for the CLI's positive subscription callback evidence.
+func awaitPeerLog(ctx context.Context, t *testing.T, peer testcontainers.Container, want string) {
+	t.Helper()
+	deadline := time.NewTimer(30 * time.Second)
+	defer deadline.Stop()
+	tick := time.NewTicker(50 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		logs, err := peer.Logs(ctx)
+		if err != nil {
+			t.Fatalf("read peer logs: %v", err)
+		}
+		body, err := io.ReadAll(logs)
+		_ = logs.Close()
+		if err != nil {
+			t.Fatalf("read peer output: %v", err)
+		}
+		if strings.Contains(string(body), want) {
+			return
+		}
+		select {
+		case <-tick.C:
+		case <-deadline.C:
+			t.Fatalf("peer log missing %q: %s", want, body)
+		case <-ctx.Done():
+			t.Fatalf("wait peer log: %v", ctx.Err())
+		}
+	}
+}
+
+// awaitLiveSubscriptions observes the SFU's active subscription gauge. This
+// measures server downtrack lifecycle independently of CLI callback metadata.
+func awaitLiveSubscriptions(ctx context.Context, t *testing.T, endpoint string, want float64) {
+	t.Helper()
+	timer := time.NewTimer(30 * time.Second)
+	defer timer.Stop()
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+	client := &http.Client{Timeout: time.Second}
+	last := "no metrics"
+	for {
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"/metrics", nil)
+		if err != nil {
+			t.Fatalf("build metrics request: %v", err)
+		}
+		response, err := client.Do(request)
+		if err == nil {
+			body, readErr := io.ReadAll(response.Body)
+			_ = response.Body.Close()
+			if readErr != nil {
+				t.Fatalf("read SFU metrics: %v", readErr)
+			}
+			for _, line := range strings.Split(string(body), "\n") {
+				if !strings.HasPrefix(line, "livekit_track_subscribed_total{") {
+					continue
+				}
+				last = line
+				fields := strings.Fields(line)
+				if len(fields) != 2 {
+					t.Fatalf("subscription metric = %q, want labels and gauge", line)
+				}
+				count, parseErr := strconv.ParseFloat(fields[1], 64)
+				if parseErr != nil {
+					t.Fatalf("parse subscription gauge: %v", parseErr)
+				}
+				if count == want {
+					return
+				}
+			}
+		} else {
+			last = err.Error()
+		}
+		select {
+		case <-ticker.C:
+		case <-timer.C:
+			t.Fatalf("subscription metric = %s, want %v", last, want)
+		case <-ctx.Done():
+			t.Fatalf("wait subscription metric: %v", ctx.Err())
+		}
+	}
+}
 
 // awaitLiveHook checks state after real callback completion, without sleeping
 // or assuming how quickly the SFU delivers its event queue.
@@ -139,6 +243,7 @@ func TestRealLiveKitAdmissionModerationAndRecovery(t *testing.T) {
 		hostAccessPorts = nil
 	}
 	config := fmt.Sprintf(`port: 7880
+prometheus_port: 6789
 rtc:
   tcp_port: 7881
   udp_port: 7882
@@ -155,7 +260,7 @@ webhook:
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image:           "livekit/livekit-server:" + versions["LIVEKIT_VERSION"],
 			Env:             map[string]string{"LIVEKIT_CONFIG": config},
-			ExposedPorts:    []string{"7880/tcp"},
+			ExposedPorts:    []string{"7880/tcp", "6789/tcp"},
 			HostAccessPorts: hostAccessPorts,
 			Labels:          map[string]string{testkit.Label: "1"},
 			WaitingFor:      tcwait.ForHTTP("/").WithPort("7880/tcp"),
@@ -166,9 +271,13 @@ webhook:
 	if err != nil {
 		t.Fatalf("start real LiveKit: %v", err)
 	}
-	url, err := sfu.Endpoint(ctx, "http")
+	url, err := sfu.PortEndpoint(ctx, "7880/tcp", "http")
 	if err != nil {
 		t.Fatalf("real LiveKit endpoint: %v", err)
+	}
+	metricsURL, err := sfu.PortEndpoint(ctx, "6789/tcp", "http")
+	if err != nil {
+		t.Fatalf("real LiveKit metrics endpoint: %v", err)
 	}
 	rooms := voice.NewLiveKit(url, testKey, testSecret)
 	var options voice.Options
@@ -187,7 +296,8 @@ webhook:
 			Env: map[string]string{
 				"LIVEKIT_URL": "http://127.0.0.1:7880", "LIVEKIT_API_KEY": testKey, "LIVEKIT_API_SECRET": testSecret,
 			},
-			Cmd:    []string{"room", "join", "--identity", user.ID, "--attribute", "zazzzor.join=" + join, channel.ID},
+			Files:  []testcontainers.ContainerFile{{Reader: bytes.NewReader(microphoneFixture(t)), ContainerFilePath: "/microphone.ogg", FileMode: 0o644}},
+			Cmd:    []string{"room", "join", "--identity", user.ID, "--attribute", "zazzzor.join=" + join, "--publish", "/microphone.ogg", "--auto-subscribe", channel.ID},
 			Labels: map[string]string{testkit.Label: "1"},
 			HostConfigModifier: func(h *container.HostConfig) {
 				h.NetworkMode = container.NetworkMode("container:" + sfu.GetContainerID())
@@ -222,9 +332,51 @@ webhook:
 	}
 	all := []livekit.TrackSource{livekit.TrackSource_MICROPHONE, livekit.TrackSource_SCREEN_SHARE, livekit.TrackSource_SCREEN_SHARE_AUDIO}
 	checkGrants(true, all...)
+	// Require an actual published MICROPHONE before shrinking its grants.
+	awaitLiveHook(t, notices, "published microphone", func() bool {
+		p, getErr := remote.GetParticipant(ctx, &livekit.RoomParticipantIdentity{Room: channel.ID, Identity: user.ID})
+		return getErr == nil && slices.ContainsFunc(p.GetTracks(), func(track *livekit.TrackInfo) bool { return track.GetSource() == livekit.TrackSource_MICROPHONE })
+	})
+	// A second real microphone gives the moderated peer an active subscription.
+	speakerClient, speaker := e.user("speaker")
+	e.join(guild, speaker)
+	speakerJoin := claims(t, joinVoice(t, speakerClient, channel.ID).Token).Attributes["zazzzor.join"]
+	speakerPeer, speakerErr := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: testcontainers.ContainerRequest{
+			Image:  "livekit/livekit-cli:" + versions["LIVEKIT_CLI_VERSION"],
+			Env:    map[string]string{"LIVEKIT_URL": "http://127.0.0.1:7880", "LIVEKIT_API_KEY": testKey, "LIVEKIT_API_SECRET": testSecret},
+			Files:  []testcontainers.ContainerFile{{Reader: bytes.NewReader(microphoneFixture(t)), ContainerFilePath: "/microphone.ogg", FileMode: 0o644}},
+			Cmd:    []string{"room", "join", "--identity", speaker.ID, "--attribute", "zazzzor.join=" + speakerJoin, "--publish", "/microphone.ogg", channel.ID},
+			Labels: map[string]string{testkit.Label: "1"},
+			HostConfigModifier: func(h *container.HostConfig) {
+				h.NetworkMode = container.NetworkMode("container:" + sfu.GetContainerID())
+			},
+		}, Started: true,
+	})
+	testcontainers.CleanupContainer(t, speakerPeer)
+	if speakerErr != nil {
+		t.Fatalf("start real speaker: %v", speakerErr)
+	}
+	awaitPeerLog(ctx, t, peer, "track subscribed")
+	awaitLiveSubscriptions(ctx, t, metricsURL, 1)
 	path := moderationPath(guild.ID, user.ID)
 	expect(t, owner.Do(http.MethodPatch, path, map[string]bool{"mute": true, "deaf": true}), http.StatusNoContent)
 	checkGrants(false, livekit.TrackSource_SCREEN_SHARE, livekit.TrackSource_SCREEN_SHARE_AUDIO)
+	awaitLiveHook(t, notices, "muted microphone unpublished", func() bool {
+		p, getErr := remote.GetParticipant(ctx, &livekit.RoomParticipantIdentity{Room: channel.ID, Identity: user.ID})
+		return getErr == nil && !slices.ContainsFunc(p.GetTracks(), func(track *livekit.TrackInfo) bool { return track.GetSource() == livekit.TrackSource_MICROPHONE })
+	})
+	// Deafen must remove the existing server subscription while both peers live.
+	awaitLiveSubscriptions(ctx, t, metricsURL, 0)
+	// Ensure the remote source remains published across deafen.
+	speakerInfo, speakerErr := remote.GetParticipant(ctx, &livekit.RoomParticipantIdentity{Room: channel.ID, Identity: speaker.ID})
+	if speakerErr != nil || !slices.ContainsFunc(speakerInfo.GetTracks(), func(track *livekit.TrackInfo) bool { return track.GetSource() == livekit.TrackSource_MICROPHONE }) {
+		t.Fatalf("speaker after deafen = %+v (%v), want active microphone", speakerInfo, speakerErr)
+	}
+	if _, speakerErr = remote.RemoveParticipant(ctx, &livekit.RoomParticipantIdentity{Room: channel.ID, Identity: speaker.ID}); speakerErr != nil {
+		t.Fatalf("remove second speaker: %v", speakerErr)
+	}
+	awaitLiveHook(t, notices, "second speaker departure", func() bool { _, ok := e.stateOf(parseID(t, guild.ID), speaker.id(t)); return !ok })
 	expect(t, owner.Do(http.MethodPatch, path, map[string]bool{"mute": false, "deaf": false}), http.StatusNoContent)
 	checkGrants(true, all...)
 
