@@ -76,7 +76,7 @@ func (r *failingRemovalRoom) RemoveParticipant(context.Context, string, string) 
 	return errors.New("media unavailable")
 }
 
-func TestRemovalStopsAfterFiveFailuresAndLogsOnce(t *testing.T) {
+func TestRemovalContinuesAfterFiveFailuresAndLogsOnce(t *testing.T) {
 	r := &failingRemovalRoom{}
 	var logs bytes.Buffer
 	now := time.Now()
@@ -88,12 +88,12 @@ func TestRemovalStopsAfterFiveFailuresAndLogsOnce(t *testing.T) {
 		now = now.Add(time.Hour)
 	}
 	s.removeDue(t.Context())
-	if r.attempts != 5 || len(s.removals) != 0 || strings.Count(logs.String(), "could not remove a participant") != 1 {
-		t.Fatalf("removal attempts=%d pending=%d log=%s, want 5/0/one terminal log", r.attempts, len(s.removals), logs.String())
+	if r.attempts != 6 || len(s.removals) != 1 || strings.Count(logs.String(), "could not remove a participant") != 1 {
+		t.Fatalf("removal attempts=%d pending=%d log=%s, want 6/1/one retry warning", r.attempts, len(s.removals), logs.String())
 	}
 	for _, field := range []string{`"room":"42"`, `"identity":"1"`, `"participant":"PA_new"`, `"attempts":5`} {
 		if !strings.Contains(logs.String(), field) {
-			t.Errorf("terminal log missing %s: %s", field, logs.String())
+			t.Errorf("retry warning missing %s: %s", field, logs.String())
 		}
 	}
 }
