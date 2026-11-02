@@ -39,13 +39,20 @@ func (s *Service) RemoveMembers(ctx context.Context, guildID snowflake.ID, userI
 	}
 }
 
-// RemoveChannel takes everyone out of a deleted voice channel.
+// RemoveChannel takes everyone out of a deleted voice channel. Pending
+// moves into it are cancelled: their participants stay in the source.
 func (s *Service) RemoveChannel(ctx context.Context, channelID snowflake.ID) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.pruneRemovalsLocked()
 	s.rev++
 	s.channelsRemoved[channelID] = s.invalidationLocked()
+	for userID, move := range s.moves {
+		if move.channelID == channelID {
+			s.cancelMoveLocked(ctx, userID)
+		}
+	}
+	// Defence in depth: admission also rejects deleted channels.
 	for userID, pending := range s.intents {
 		if pending.channelID == channelID {
 			s.intents[userID] = intent{}

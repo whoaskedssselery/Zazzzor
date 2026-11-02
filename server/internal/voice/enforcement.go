@@ -13,6 +13,7 @@ import (
 
 // permissionRefresh is one guild generation; a newer sync replaces its pointer.
 type permissionRefresh struct {
+	failed  map[snowflake.ID]bool // nil covers everyone; retries retain only failed users
 	due     time.Time
 	backoff time.Duration
 }
@@ -90,17 +91,21 @@ func (s *Service) refreshDue(ctx context.Context) (time.Time, bool) {
 			break
 		}
 		s.mu.Lock()
+		var retryIn time.Duration
 		if s.refreshes[guildID] == job {
 			if err == nil {
 				delete(s.refreshes, guildID)
 			} else {
 				job.backoff = min(max(job.backoff*2, removeBackoff), maxRemoveBackoff)
 				job.due = s.now().Add(job.backoff)
-				s.log.Warn("voice: refresh permissions; retrying", "guild", guildID,
-					"retry_in", job.backoff, "err", err.Error())
+				retryIn = job.backoff
 			}
 		}
 		s.mu.Unlock()
+		if retryIn != 0 {
+			s.log.Warn("voice: refresh permissions; retrying", "guild", guildID,
+				"retry_in", retryIn, "err", err.Error())
+		}
 	}
 	return time.Time{}, false
 }
@@ -110,24 +115,33 @@ func (s *Service) refreshGuild(ctx context.Context, guildID snowflake.ID, job *p
 	s.mu.Lock()
 	participants := map[snowflake.ID]*session{}
 	for userID, sess := range s.sessions {
-		if sess.state.GuildID == guildID {
+		if sess.state.GuildID == guildID && (job.failed == nil || job.failed[userID]) {
 			participants[userID] = sess
 		}
 	}
 	s.mu.Unlock()
 	var failures []error
+	failed := map[snowflake.ID]bool{}
 	for userID, sess := range participants {
 		if err := s.refreshParticipant(ctx, guildID, userID, job, sess); err != nil {
+			failed[userID] = true
 			failures = append(failures, fmt.Errorf("voice: refresh user %s: %w", userID, err))
 		}
 	}
+	s.mu.Lock()
+	job.failed = failed
+	s.mu.Unlock()
 	return errors.Join(failures...)
 }
 
 // refreshParticipant orders permission RPCs with admission and moderation.
 // Captured session and generation checks prevent stale local completion.
 func (s *Service) refreshParticipant(ctx context.Context, guildID, userID snowflake.ID, job *permissionRefresh, captured *session) error {
-	defer s.lockUser(userID)()
+	unlock, lockErr := s.lockUser(ctx, userID)
+	if lockErr != nil {
+		return lockErr
+	}
+	defer unlock()
 	s.mu.Lock()
 	if s.sessions[userID] != captured || s.refreshes[guildID] != job {
 		s.mu.Unlock()
@@ -135,9 +149,15 @@ func (s *Service) refreshParticipant(ctx context.Context, guildID, userID snowfl
 	}
 	channelID, room := captured.state.ChannelID, captured.room
 	flags := s.moderation[memberKey{guildID: guildID, userID: userID}]
+	move := s.moves[userID]
 	s.mu.Unlock()
 	workCtx, cancel := context.WithTimeout(ctx, rpcTimeout)
 	defer cancel()
+	if move != nil && move.source == captured {
+		if err := s.refreshMove(workCtx, guildID, userID, job, move); err != nil {
+			return err
+		}
+	}
 	p, gid, err := s.channels.Permissions(workCtx, userID, channelID)
 	lost := errors.Is(err, channels.ErrNotFound) || (err == nil && (gid != guildID || !p.Has(permissions.ViewChannel|permissions.Connect)))
 	if err != nil && !lost {
@@ -176,6 +196,24 @@ func (s *Service) refreshParticipant(ctx context.Context, guildID, userID snowfl
 		captured.screens = map[string]bool{}
 		captured.state.SelfStream = false
 		s.announceLocked(ctx, captured.state, false)
+	}
+	return nil
+}
+
+// refreshMove cancels userID's pending move once they may no longer view or
+// CONNECT to its destination; the handoff could only end in a removal.
+func (s *Service) refreshMove(ctx context.Context, guildID, userID snowflake.ID, job *permissionRefresh, move *pendingMove) error {
+	p, gid, err := s.channels.Permissions(ctx, userID, move.channelID)
+	if err != nil && !errors.Is(err, channels.ErrNotFound) {
+		return fmt.Errorf("voice: read move destination permissions: %w", err)
+	}
+	if err == nil && gid == guildID && p.Has(permissions.ViewChannel|permissions.Connect) {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.moves[userID] == move && s.sessions[userID] == move.source && s.refreshes[guildID] == job {
+		s.cancelMoveLocked(ctx, userID)
 	}
 	return nil
 }

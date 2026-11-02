@@ -18,10 +18,15 @@ type MovePayload struct {
 }
 
 // pendingMove pins the source until destination admission or the deadline.
+// prior is the user's intent when the move was requested (none: hadPrior is
+// false); cancelling restores it, so destination tokens issued since are
+// refused.
 type pendingMove struct {
 	source    *session
 	channelID snowflake.ID
 	deadline  time.Time
+	prior     intent
+	hadPrior  bool
 }
 
 // checkDestination checks both the actor's MOVE and the target's CONNECT.
@@ -43,6 +48,7 @@ func (s *Service) checkDestination(ctx context.Context, guildID, actorID, userID
 	if err != nil {
 		return fmt.Errorf("voice: read move destination: %w", err)
 	}
+	// Defence in depth: the actor permission read already checked this guild.
 	if c.GuildID != guildID {
 		return channels.ErrNotFound
 	}
@@ -64,23 +70,68 @@ func (s *Service) checkDestination(ctx context.Context, guildID, actorID, userID
 
 // requestMoveLocked publishes a new private handoff without extending an
 // identical pending request. Older tokens cannot complete a superseded move.
+// A move back to the source cancels the pending move; with none pending it
+// does nothing.
 func (s *Service) requestMoveLocked(ctx context.Context, userID, channelID snowflake.ID, source *session) {
+	old := s.moves[userID]
 	if channelID == source.state.ChannelID {
+		if old != nil && old.source == source {
+			s.cancelMoveLocked(ctx, userID)
+		}
 		return
 	}
-	if old := s.moves[userID]; old != nil && old.source == source && old.channelID == channelID {
+	if old != nil && old.source == source && old.channelID == channelID {
 		return
 	}
-	s.moves[userID] = &pendingMove{source: source, channelID: channelID, deadline: s.now().Add(MoveTimeout)}
-	s.intents[userID] = intent{}
+	move := &pendingMove{source: source, channelID: channelID, deadline: s.now().Add(MoveTimeout)}
+	move.prior, move.hadPrior = s.intents[userID]
+	if old != nil && old.source == source {
+		move.prior, move.hadPrior = old.prior, old.hadPrior
+	}
+	s.moves[userID] = move
 	s.touchLocked(userID)
-	if s.pub != nil {
-		s.pub.Publish(ctx, events.Event{Type: events.VoiceMove, Audience: events.Audience{Kind: events.AudienceUsers, GuildID: source.state.GuildID, ChannelID: channelID, UserIDs: []snowflake.ID{userID}}, Payload: MovePayload{ChannelID: channelID}})
-	}
+	s.publishMoveLocked(ctx, source.state.GuildID, userID, channelID)
 	select {
 	case s.wake <- struct{}{}:
 	default:
 	}
+}
+
+// cancelMoveLocked drops userID's pending move: the source stays, a
+// destination token issued for it no longer connects, and the participant
+// is sent back to the source, in case their client already left it.
+func (s *Service) cancelMoveLocked(ctx context.Context, userID snowflake.ID) {
+	move := s.moves[userID]
+	if move == nil {
+		return
+	}
+	delete(s.moves, userID)
+	// Every hop of a chained move issued its own token; the latest join is
+	// again the one before the move, whichever hop the intent points at.
+	// Without one (the API restarted since the source joined), the source's
+	// own join takes its place, so a destination token is still refused.
+	switch {
+	case move.hadPrior:
+		s.intents[userID] = move.prior
+	case move.source.join != "":
+		s.intents[userID] = intent{guildID: move.source.state.GuildID,
+			channelID: move.source.state.ChannelID, join: move.source.join}
+	default:
+		delete(s.intents, userID)
+	}
+	s.touchLocked(userID)
+	s.publishMoveLocked(ctx, move.source.state.GuildID, userID, move.source.state.ChannelID)
+}
+
+// publishMoveLocked sends VOICE_MOVE to the participant alone; the gateway
+// drops it unless they may view channelID.
+func (s *Service) publishMoveLocked(ctx context.Context, guildID, userID, channelID snowflake.ID) {
+	if s.pub == nil {
+		return
+	}
+	s.pub.Publish(ctx, events.Event{Type: events.VoiceMove,
+		Audience: events.Audience{Kind: events.AudienceUsers, GuildID: guildID, ChannelID: channelID, UserIDs: []snowflake.ID{userID}},
+		Payload:  MovePayload{ChannelID: channelID}})
 }
 
 // currentParticipantLocked keeps exactly the pinned source alive while a
@@ -123,20 +174,42 @@ func (s *Service) expireMovesLocked(ctx context.Context) time.Time {
 	return next
 }
 
-// disconnect removes the captured participant synchronously. A left
-// webhook caused by that RPC may already have cleared the local state.
+// disconnect removes the captured participant synchronously. A session in
+// this guild that replaced it during the RPC is removed too, once; a left
+// webhook caused by an RPC may already have cleared the local state.
 func (s *Service) disconnect(ctx context.Context, guildID, userID snowflake.ID, source *session, flags serverFlags, start uint64) error {
+	for range 2 {
+		next, err := s.disconnectOnce(ctx, guildID, userID, source, flags, start)
+		if err != nil || next == nil {
+			return err
+		}
+		source = next
+	}
+	return fmt.Errorf("%w: voice: participant reconnected during the disconnect", ErrUnavailable)
+}
+
+// disconnectOnce removes source and returns the session in this guild that
+// replaced it meanwhile, if any; the caller holds the user's stripe.
+func (s *Service) disconnectOnce(ctx context.Context, guildID, userID snowflake.ID, source *session, flags serverFlags, start uint64) (*session, error) {
 	rpcCtx, cancel := context.WithTimeout(ctx, rpcTimeout)
 	err := s.rooms.RemoveParticipant(rpcCtx, source.room, userID.String())
 	cancel()
 	if err != nil {
-		return fmt.Errorf("%w: voice: disconnect participant: %w", ErrUnavailable, err)
+		return nil, fmt.Errorf("%w: voice: disconnect participant: %w", ErrUnavailable, err)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	current := s.sessions[userID]
-	if (current != nil && current != source) || s.invalidatedLocked(guildID, userID, source.state.ChannelID, start) {
-		return channels.ErrNotFound
+	if s.invalidatedLocked(guildID, userID, source.state.ChannelID, start) {
+		return nil, nil
+	}
+	if current != nil && current != source {
+		if current.state.GuildID == guildID {
+			return current, nil
+		}
+		// In another guild the user is out of this guild's voice already.
+		s.commitModerationLocked(ctx, memberKey{guildID: guildID, userID: userID}, flags)
+		return nil, nil
 	}
 	s.storeModerationLocked(memberKey{guildID: guildID, userID: userID}, flags)
 	s.intents[userID] = intent{}
@@ -147,5 +220,5 @@ func (s *Service) disconnect(ctx context.Context, guildID, userID snowflake.ID, 
 	} else {
 		s.touchLocked(userID)
 	}
-	return nil
+	return nil, nil
 }

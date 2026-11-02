@@ -1094,13 +1094,25 @@ export interface paths {
          *     checked before any update. A missing, other-guild or hidden target
          *     returns `404 not_found`. Shares the per-user voice write limit.
          *
+         *     Acting on another member also requires a strictly higher role,
+         *     as for kick and ban; otherwise it is `403 role_hierarchy`.
+         *     `ADMINISTRATOR` does not bypass hierarchy. The guild owner may act
+         *     on anyone. Self-moderation needs the requested permissions only.
+         *
          *     LiveKit enforces mute by disabling the microphone and deafen by
          *     disabling subscription. Unmuting never grants a microphone without
          *     `SPEAK`; screen sharing still follows `STREAM`. Flags survive
-         *     reconnects in this guild, but reset when the API restarts. A change
+         *     reconnects and leaving voice in this guild, but reset when the
+         *     member leaves the guild, is kicked or banned from it, on guild
+         *     deletion, or on API restart. A change
          *     is announced as `VOICE_STATE_UPDATE` only to the channel's viewers.
          *     Identical flags announce nothing. Upstream failure does not commit
          *     or announce successful moderation.
+         *
+         *     A token issued before a mute can still publish until its join
+         *     webhook applies current grants. If that delivery is lost, the
+         *     periodic reconciliation enforces them within its five-minute
+         *     interval. An API restart also lifts server mutes on active calls.
          *
          *     `channel_id: null` disconnects the participant and invalidates old
          *     join tokens; it needs `MOVE_MEMBERS` in the source channel. A channel
@@ -1113,13 +1125,31 @@ export interface paths {
          *     before effects. Server flags set alongside disconnect persist for
          *     the next join.
          *
+         *     A disconnect also removes a session in this guild that replaced
+         *     the target's call during the request; if the target reconnects
+         *     again meanwhile it is `503 voice_unavailable`. Flags that LiveKit
+         *     applied stay committed even when the target's session was replaced,
+         *     but a move requested with them that could not start (the session
+         *     was replaced, or the destination was deleted) is `404 not_found`.
+         *     Membership invalidation still prevents storing stale flags.
+         *     LiveKit removes by identity rather than session SID: a reconnect
+         *     between the final SID check and the RPC can still be removed.
+         *
          *     Moving sends only the participant `VOICE_MOVE { channel_id }`.
          *     Source presence remains until destination admission, which removes
          *     the old participant. If no admission follows within 15 seconds,
          *     that source is removed anyway. A newer move supersedes prior
          *     destination tokens; an identical pending move does not extend the
-         *     deadline or repeat the event. Moving to the current channel is a
-         *     no-op. Omitted `channel_id` preserves the current channel.
+         *     deadline or repeat the event. Omitted `channel_id` preserves the
+         *     current channel.
+         *
+         *     A pending move is cancelled by moving the participant back to their
+         *     current channel, by deleting the destination, or when the
+         *     participant loses `VIEW_CHANNEL` or `CONNECT` there. The source
+         *     then stays, no destination token issued for the move or an earlier
+         *     hop of it connects, and the participant receives `VOICE_MOVE` with the source
+         *     channel, so a client that already left returns. Moving to the
+         *     current channel with no move pending changes nothing.
          */
         patch: operations["moderateVoice"];
         trace?: never;
@@ -1580,9 +1610,9 @@ export interface components {
             self_deaf: boolean;
             /** @description The user shares their screen (from LiveKit). */
             self_stream: boolean;
-            /** @description Server-muted in this guild; disables the microphone. Kept across reconnects until lifted or the API restarts. */
+            /** @description Server-muted in this guild; disables the microphone. Kept across voice reconnects until lifted, guild membership ends, the guild is deleted or the API restarts. */
             mute: boolean;
-            /** @description Server-deafened in this guild; disables listening. Kept across reconnects until lifted or the API restarts. */
+            /** @description Server-deafened in this guild; disables listening. Kept across voice reconnects until lifted, guild membership ends, the guild is deleted or the API restarts. */
             deaf: boolean;
             /** Format: date-time */
             joined_at: string;
@@ -3595,9 +3625,9 @@ export interface operations {
             /** @description `invalid_body`, `body_too_large` or `validation_failed`. */
             400: components["responses"]["Problem"];
             401: components["responses"]["Problem"];
-            /** @description `missing_permission` or `origin_not_allowed`. */
+            /** @description `missing_permission`, `role_hierarchy` or `origin_not_allowed`. */
             403: components["responses"]["Problem"];
-            /** @description `not_found`: no visible participant in this guild. */
+            /** @description `not_found`: actor is not a member, or there is no visible participant with CONNECT in this guild. */
             404: components["responses"]["Problem"];
             415: components["responses"]["Problem"];
             429: components["responses"]["RateLimited"];

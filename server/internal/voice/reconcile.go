@@ -243,8 +243,8 @@ func (s *Service) syncScreensLocked(ctx context.Context, userID snowflake.ID, p 
 }
 
 // runRemovals carries out the queued removals until ctx ends. A failed one
-// is tried again later, up to removeAttempts in all; the last failure is
-// logged.
+// is retried with capped backoff until success; persistent failure is logged
+// from removeAttempts failures on, and so is the recovery after it.
 func (s *Service) runRemovals(ctx context.Context) {
 	timer := time.NewTimer(0)
 	defer timer.Stop()
@@ -300,20 +300,35 @@ func (s *Service) removeDue(ctx context.Context) (time.Time, bool) {
 		}
 
 		s.mu.Lock()
-		if s.removals[key] == job {
-			job.attempts++
-			switch {
-			case err == nil:
-				delete(s.removals, key)
-			case job.attempts >= removeAttempts:
-				delete(s.removals, key)
-				s.log.Warn("voice: could not remove a participant from LiveKit", "room", key.room,
-					"identity", key.identity, "participant", job.sid, "attempts", job.attempts, "err", err.Error())
-			default:
-				job.due = s.now().Add(min(removeBackoff<<(job.attempts-1), maxRemoveBackoff))
+		current := s.removals[key]
+		warn, recovered := false, false
+		attempts, sid := 0, ""
+		if current == job && err == nil {
+			delete(s.removals, key)
+			recovered = job.attempts >= removeAttempts
+			attempts, sid = job.attempts, job.sid
+		} else if current != nil && err != nil {
+			// A replacement retains the failed RPC's attempt and deadline too.
+			current.attempts = max(current.attempts, job.attempts) + 1
+			backoff := removeBackoff
+			for attempt := 1; attempt < current.attempts && backoff < maxRemoveBackoff; attempt++ {
+				backoff = min(backoff*2, maxRemoveBackoff)
 			}
+			current.due = s.now().Add(backoff)
+			// Warn once the retries look like an outage, then again about
+			// hourly at the backoff cap while it lasts.
+			warn = current.attempts >= removeAttempts && (current.attempts-removeAttempts)%removeWarnEvery == 0
+			attempts, sid = current.attempts, current.sid
 		}
 		s.mu.Unlock()
+		if warn {
+			s.log.Warn("voice: could not remove a participant from LiveKit; retrying", "room", key.room,
+				"identity", key.identity, "participant", sid, "attempts", attempts, "err", err.Error())
+		}
+		if recovered {
+			s.log.Info("voice: removed a participant from LiveKit after retries", "room", key.room,
+				"identity", key.identity, "participant", sid, "attempts", attempts)
+		}
 	}
 }
 

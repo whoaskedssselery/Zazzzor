@@ -169,7 +169,7 @@ func newEnv(t *testing.T, opts ...func(*voice.Options)) *env {
 		CreateLimiter: unlimited(), WriteLimiter: unlimited()})
 	e.chans = channels.NewService(channels.Options{Pool: e.pool, IDs: ids, Guilds: e.guilds, Publisher: e.pub,
 		WriteLimiter: unlimited()})
-	o := voice.Options{Channels: e.chans, Rooms: e.rooms, APIKey: testKey, APISecret: testSecret,
+	o := voice.Options{Channels: e.chans, Members: e.guilds, Rooms: e.rooms, APIKey: testKey, APISecret: testSecret,
 		Publisher: e.pub, WriteLimiter: unlimited()}
 	for _, opt := range opts {
 		opt(&o)

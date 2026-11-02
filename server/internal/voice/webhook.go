@@ -143,29 +143,35 @@ func (s *Service) beginEvent(ctx context.Context, id string) (bool, error) {
 		return true, nil
 	}
 	for {
-		s.mu.Lock()
-		for k, at := range s.seen {
-			if s.now().Sub(at) > seenTTL {
-				delete(s.seen, k)
-			}
+		apply, done := s.claimEvent(id)
+		if done == nil {
+			return apply, nil
 		}
-		if _, ok := s.seen[id]; ok {
-			s.mu.Unlock()
-			return false, nil
+		select {
+		case <-ctx.Done():
+			return false, fmt.Errorf("voice: wait for webhook delivery: %w", ctx.Err())
+		case <-done:
 		}
-		if done, ok := s.inflight[id]; ok {
-			s.mu.Unlock()
-			select {
-			case <-ctx.Done():
-				return false, fmt.Errorf("voice: wait for webhook delivery: %w", ctx.Err())
-			case <-done:
-				continue
-			}
-		}
-		s.inflight[id] = make(chan struct{})
-		s.mu.Unlock()
-		return true, nil
 	}
+}
+
+// claimEvent claims an unseen delivery, or returns its current owner's completion.
+func (s *Service) claimEvent(id string) (bool, <-chan struct{}) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for k, at := range s.seen {
+		if s.now().Sub(at) > seenTTL {
+			delete(s.seen, k)
+		}
+	}
+	if _, ok := s.seen[id]; ok {
+		return false, nil
+	}
+	if done, ok := s.inflight[id]; ok {
+		return false, done
+	}
+	s.inflight[id] = make(chan struct{})
+	return true, nil
 }
 
 // finishEvent releases waiting deliveries and records only successful work.
@@ -215,27 +221,20 @@ func (s *Service) admitted(ctx context.Context, channelID snowflake.ID, p Partic
 // another channel; any other participant is removed from the room.
 func (s *Service) joined(ctx context.Context, channelID snowflake.ID, room Room, p Participant) error {
 	userID, _ := identityUser(p.Identity)
-	defer s.lockUser(userID)()
-	s.mu.Lock()
-	start := s.rev
-	permissionRevision := s.permissionRev
-	s.mu.Unlock()
+	unlock, lockErr := s.lockUser(ctx, userID)
+	if lockErr != nil {
+		return lockErr
+	}
+	defer unlock()
+	start, permissionRevision := s.admissionRevisions()
 	guildID, mask, ok, err := s.admitted(ctx, channelID, p)
 	if err != nil {
 		return err
 	}
-	s.mu.Lock()
-	if !ok {
-		s.removeLocked(room.Name, p.Identity, p.SID)
-		s.mu.Unlock()
+	flags, current := s.prepareAdmission(ctx, guildID, userID, channelID, start, room, p, ok)
+	if !current {
 		return nil
 	}
-	if !s.admissionCurrentLocked(ctx, guildID, userID, channelID, start, room, p) {
-		s.mu.Unlock()
-		return nil
-	}
-	flags := s.moderation[memberKey{guildID: guildID, userID: userID}]
-	s.mu.Unlock()
 	err = s.applyPermissions(ctx, room.Name, p.Identity, mask, flags)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -253,6 +252,27 @@ func (s *Service) joined(ctx context.Context, channelID snowflake.ID, room Room,
 		s.queueRefreshLocked(guildID)
 	}
 	return nil
+}
+
+// admissionRevisions captures revisions before permission reads.
+func (s *Service) admissionRevisions() (uint64, uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.rev, s.permissionRev
+}
+
+// prepareAdmission validates the participant before applying remote grants.
+func (s *Service) prepareAdmission(ctx context.Context, guildID, userID, channelID snowflake.ID, start uint64, room Room, p Participant, admitted bool) (serverFlags, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !admitted {
+		s.removeLocked(room.Name, p.Identity, p.SID)
+		return serverFlags{}, false
+	}
+	if !s.admissionCurrentLocked(ctx, guildID, userID, channelID, start, room, p) {
+		return serverFlags{}, false
+	}
+	return s.moderation[memberKey{guildID: guildID, userID: userID}], true
 }
 
 // admissionCurrentLocked checks both sides of an admission RPC, so an
@@ -304,7 +324,8 @@ func (s *Service) connectLocked(ctx context.Context, guildID, channelID snowflak
 	} else if old != nil {
 		s.dropLocked(ctx, userID, true)
 	}
-	sess := &session{state: st, room: room.Name, roomSID: room.SID, sid: p.SID, screens: map[string]bool{}}
+	sess := &session{state: st, room: room.Name, roomSID: room.SID, sid: p.SID, join: p.Join,
+		screens: map[string]bool{}}
 	for _, sid := range p.Screens {
 		sess.screens[sid] = true
 	}

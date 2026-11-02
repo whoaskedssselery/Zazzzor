@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"slices"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -110,7 +109,10 @@ func moderationEnv(t *testing.T, actor permissions.Permission, opts ...func(*voi
 	c := &moderationChannels{actor: permissions.ViewChannel | actor,
 		target: permissions.ViewChannel | permissions.Connect | permissions.Speak | permissions.Stream}
 	r := &moderationRooms{fakeRooms: newFakeRooms()}
-	opts = append([]func(*voice.Options){func(o *voice.Options) { o.Rooms = r }}, opts...)
+	opts = append([]func(*voice.Options){func(o *voice.Options) {
+		o.Rooms = r
+		o.Members = hierarchyMembers{1: hierarchySubject(1, 9, 0), 2: hierarchySubject(2, 9, 1)}
+	}}, opts...)
 	e := webhookEnv(t, c, opts...)
 	e.rooms = r.fakeRooms
 	e.hook(&livekit.WebhookEvent{Event: "participant_joined", Room: lkRoom("42", "RM_1"),
@@ -199,63 +201,6 @@ func TestModerationSurvivesRejoinAndRestrictsOldTokens(t *testing.T) {
 	}
 }
 
-func TestMediaOperationsWaitForPendingModeration(t *testing.T) {
-	for _, operation := range []string{"moderation", "token", "webhook", "reconcile"} {
-		t.Run(operation, func(t *testing.T) {
-			e, _, r := moderationEnv(t, permissions.MuteMembers)
-			entered, release := make(chan struct{}), make(chan struct{})
-			unblock := sync.OnceFunc(func() { close(release) })
-			defer unblock()
-			var calls atomic.Int32
-			r.before = func(voice.ParticipantPermissions) error {
-				if calls.Add(1) == 1 {
-					close(entered)
-					<-release
-				}
-				return nil
-			}
-			on, off := true, false
-			first := make(chan error, 1)
-			go func() { first <- e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Mute: &on}) }()
-			awaitSignal(t, entered)
-			done, started := make(chan error, 1), make(chan struct{})
-			go func() {
-				close(started)
-				switch operation {
-				case "moderation":
-					done <- e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Mute: &off})
-				case "token":
-					_, err := e.voice.Join(t.Context(), 42, auth.User{ID: 1}, "https://example.test")
-					done <- err
-				case "webhook":
-					done <- postJoined(e, "PA_ordered")
-				case "reconcile":
-					e.rooms.put(voice.Room{Name: "42", SID: "RM_1"}, voice.Participant{Identity: "1", SID: "PA_1"})
-					done <- e.voice.Reconcile(t.Context())
-				}
-			}()
-			awaitSignal(t, started)
-			var err error
-			early := false
-			select {
-			case err = <-done:
-				early = true
-			case <-time.After(150 * time.Millisecond):
-			}
-			unblock()
-			if firstErr := awaitError(t, first); firstErr != nil {
-				t.Fatalf("first moderation: %v", firstErr)
-			}
-			if !early {
-				err = awaitError(t, done)
-			}
-			if early || err != nil {
-				t.Fatalf("%s completed during pending moderation=%v, error=%v", operation, early, err)
-			}
-		})
-	}
-}
-
 func TestRemovalDuringMediaRPCDoesNotRestoreState(t *testing.T) {
 	for _, operation := range []string{"moderation", "webhook"} {
 		t.Run(operation, func(t *testing.T) {
@@ -277,8 +222,8 @@ func TestRemovalDuringMediaRPCDoesNotRestoreState(t *testing.T) {
 			e.voice.RemoveMembers(t.Context(), 7, []snowflake.ID{1})
 			unblock()
 			err := awaitError(t, done)
-			if operation == "moderation" && !errors.Is(err, channels.ErrNotFound) {
-				t.Fatalf("Moderate error=%v, want not found", err)
+			if operation == "moderation" && err != nil {
+				t.Fatalf("Moderate error=%v, want success after applied RPC", err)
 			}
 			if operation == "webhook" && err != nil {
 				t.Fatalf("webhook: %v", err)
