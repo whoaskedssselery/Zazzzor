@@ -66,7 +66,9 @@ export function useJoinInvite(onOpen?: () => void) {
   });
   return {
     join: join.mutate,
-    pending: join.isPending || (arrival.waiting && !arrival.late),
+    // After a successful join the server opens next: the arrival of its
+    // GUILD_CREATE must not show the member view for the render before that.
+    pending: join.isPending || (join.isSuccess && !arrival.late),
     error: join.error,
     late: arrival.late,
   };
