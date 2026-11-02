@@ -1,3 +1,10 @@
+export {
+  CHANNEL_PERMISSION_GROUPS,
+  PERMISSION_GROUPS,
+  type PermissionGroup,
+  type PermissionItem,
+  type PermissionScope,
+} from "./lib/permissionText";
 export { byRank, memberColor, rolesOf, type UserDisplay, userDisplay } from "./model/display";
 export {
   ALL,
