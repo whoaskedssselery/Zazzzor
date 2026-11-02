@@ -22,7 +22,11 @@ export function emptyConnectionEvents(): ConnectionEvents {
 export function countConnectionEvent(events: ConnectionEvents, event: ConnectionEvent): ConnectionEvents {
   switch (event.type) {
     case "disconnected":
-      return { ...events, disconnects: events.disconnects + 1, disconnectReasons: [...events.disconnectReasons, disconnectReasonName(event.reason)] };
+      return {
+        ...events,
+        disconnects: events.disconnects + 1,
+        disconnectReasons: [...events.disconnectReasons, disconnectReasonName(event.reason)],
+      };
     case "reconnecting":
       return { ...events, reconnectAttempts: events.reconnectAttempts + 1 };
     case "reconnected":
@@ -46,5 +50,7 @@ const MESSAGES: Partial<Record<DisconnectReason, string>> = {
 };
 
 export function disconnectMessage(reason: DisconnectReason | undefined): string {
-  return (reason !== undefined ? MESSAGES[reason] : undefined) ?? `Соединение потеряно (${disconnectReasonName(reason)})`;
+  return (
+    (reason !== undefined ? MESSAGES[reason] : undefined) ?? `Соединение потеряно (${disconnectReasonName(reason)})`
+  );
 }

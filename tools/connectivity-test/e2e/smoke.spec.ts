@@ -11,12 +11,13 @@
  * "60 fps" and "bitrate > 2000 kbit/s" would be flaky. Those are checked by
  * people in the real test (deploy/README.md, раздел 8).
  */
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { type Browser, expect, type Page, test } from "@playwright/test";
 import type { ConnectionEvents } from "../src/connection-events";
 import type { ConnectivityAggregate } from "../src/report";
 import { accessToken } from "./livekit";
 
-type Report = ConnectivityAggregate & ConnectionEvents & { name: string; userAgent: string; startedAt: string; durationSec: number };
+type Report = ConnectivityAggregate &
+  ConnectionEvents & { name: string; userAgent: string; startedAt: string; durationSec: number };
 
 const ROOM = `e2e-${Date.now()}`;
 const MEASURE_MS = 20_000;
@@ -89,7 +90,9 @@ test("a 1080p screen share reaches a viewer over UDP", async ({ browser }) => {
   // Opening the same link elsewhere kicks the first tab with a clear message.
   const dup = await open(browser, "alice");
   await connect(dup.page, "alice");
-  await expect(a.page.getByText("Эта ссылка открыта в другой вкладке или на другом устройстве")).toBeVisible({ timeout: 15_000 });
+  await expect(a.page.getByText("Эта ссылка открыта в другой вкладке или на другом устройстве")).toBeVisible({
+    timeout: 15_000,
+  });
   const kicked = await report(a.page);
   expect(kicked.disconnects).toBe(1);
   expect(kicked.disconnectReasons).toEqual(["DUPLICATE_IDENTITY"]);

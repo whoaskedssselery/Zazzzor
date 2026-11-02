@@ -3,7 +3,11 @@
 !package.json
 !pnpm-lock.yaml
 !pnpm-workspace.yaml
+!.pnpmfile.cjs
 !tools
+!web
 !deploy/caddy/Caddyfile
 **/node_modules
 **/dist
+**/test-results
+**/playwright-report

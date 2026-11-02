@@ -58,6 +58,40 @@
 		reverse_proxy 127.0.0.1:{$ZAZZZOR_API_PORT}
 	}
 
+	# The web client (a single-page app) on every other path. Paths it does not
+	# know get index.html with 200 and the client router shows its own page.
+	@web not path /api/* /rtc* /connectivity-test*
+	handle @web {
+		encode zstd gzip
+		header {
+			Content-Security-Policy "default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+			Referrer-Policy no-referrer
+			X-Content-Type-Options nosniff
+		}
+		root * /srv/web
+		# Built files have content hashes in their names and may be cached for
+		# long; a missing one is a plain 404 (not cached), never index.html
+		# parsed as a script.
+		@assets path /assets/*
+		@hashed {
+			path /assets/*
+			file
+		}
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+		handle @assets {
+			file_server
+		}
+		# index.html (and anything else) is revalidated, so a new build reaches
+		# everyone on the next load.
+		@notAssets not path /assets/*
+		header @notAssets Cache-Control no-cache
+		handle {
+			try_files {path} /index.html
+			file_server
+		}
+	}
+
+	# /connectivity-test followed by anything other than "/".
 	handle {
 		respond 404
 	}

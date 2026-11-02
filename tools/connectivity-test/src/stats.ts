@@ -40,7 +40,9 @@ const CANDIDATE_TYPES = ["host", "srflx", "prflx", "relay"] as const;
 
 export function summarizeStats(stats: RTCStatsLike[]): ConnectivitySummary {
   const byId = new Map(stats.map((s) => [s.id, s]));
-  const selectedId = stats.find((s) => s.type === "transport" && typeof s.selectedCandidatePairId === "string")?.selectedCandidatePairId;
+  const selectedId = stats.find(
+    (s) => s.type === "transport" && typeof s.selectedCandidatePairId === "string",
+  )?.selectedCandidatePairId;
   const pair =
     (typeof selectedId === "string" ? byId.get(selectedId) : undefined) ??
     stats.find((s) => s.type === "candidate-pair" && s.state === "succeeded" && s.nominated === true);
@@ -48,7 +50,10 @@ export function summarizeStats(stats: RTCStatsLike[]): ConnectivitySummary {
 
   const protocol = PROTOCOLS.find((p) => p === local?.protocol) ?? "unknown";
   const candidateType = CANDIDATE_TYPES.find((t) => t === local?.candidateType) ?? "unknown";
-  const rttMs = pair && typeof pair.currentRoundTripTime === "number" && Number.isFinite(pair.currentRoundTripTime) ? pair.currentRoundTripTime * 1000 : null;
+  const rttMs =
+    pair && typeof pair.currentRoundTripTime === "number" && Number.isFinite(pair.currentRoundTripTime)
+      ? pair.currentRoundTripTime * 1000
+      : null;
 
   let outbound: ConnectivitySummary["outbound"] = null;
   for (const s of stats) {

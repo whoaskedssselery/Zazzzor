@@ -1,4 +1,4 @@
-import { screenShareOptions, isPickerCancelled, roomOptions } from "./media-options";
+import { isPickerCancelled, roomOptions, screenShareOptions } from "./media-options";
 
 test("viewers receive the full 1080p layer: no adaptive stream, dynacast on", () => {
   expect(roomOptions()).toEqual({ adaptiveStream: false, dynacast: true });

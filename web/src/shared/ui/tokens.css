@@ -1,0 +1,180 @@
+/*
+ * Zazzzor design tokens. Every colour, size and layer in the UI comes from
+ * here; components reach them through the Tailwind theme in index.css.
+ *
+ * Themes: dark is the default. useTheme() resolves "system" through
+ * prefers-color-scheme and writes data-theme="dark" | "light" on <html>; any
+ * element may set data-theme to render a subtree in the other theme.
+ *
+ * The world: an evening room with the lights low. Warm near-black neutrals
+ * (never navy or slate), warm off-white text instead of pure white to keep
+ * glare down next to a bright screen share, and one hue, jade, that means
+ * "here": the primary action, the selection, links and the online light.
+ * Elevation is a lightness step, not a border: rail < sidebar < chat.
+ *
+ * tokens.test.ts checks every text token against the surfaces it sits on
+ * (4.5:1) in both themes; add new pairs there when a token gets a new use.
+ */
+
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Surfaces, darkest to lightest. */
+  --bg-rail: #0e0d0c;
+  --bg-panel: #121110;
+  --bg-sidebar: #171614;
+  --bg-chat: #1e1c1a;
+  --bg-input: #2a2825;
+  --bg-overlay: #252320;
+  --bg-tooltip: #0e0d0c;
+  --bg-guild: #262421;
+  --bg-control: #3a3733;
+  --bg-control-hover: #45423d;
+
+  /* Translucent washes, laid over whatever surface is beneath. */
+  --bg-hover: rgb(236 228 216 / 0.06);
+  --bg-selected: rgb(236 228 216 / 0.11);
+  --bg-message-hover: rgb(0 0 0 / 0.14);
+  --bg-mention: rgb(230 176 79 / 0.1);
+  --bg-mention-chip: rgb(61 186 134 / 0.2);
+  --bg-scrim: rgb(0 0 0 / 0.7);
+  --bg-skeleton: rgb(236 228 216 / 0.08);
+
+  /* Text. */
+  --text: #ebe7e1;
+  --text-muted: #b3ada5;
+  --text-faint: #9d968e;
+  --text-link: #62d0a2;
+  --text-danger: #f07068;
+  --text-warning: #e6b04f;
+  --text-success: #62d0a2;
+  --text-mention: #9be4c4;
+
+  /* The one hue, and the alarms. */
+  --accent: #3dba86;
+  --accent-hover: #4ac792;
+  --on-accent: #0b1a13;
+  --danger: #c4413a;
+  --danger-hover: #b03832;
+  --on-danger: #ffffff;
+  --warning: #e6b04f;
+  --badge-count: var(--danger);
+
+  /* Presence: online is the accent ("here"), offline a quiet grey. */
+  --status-online: var(--accent);
+  --status-offline: #7a746c;
+
+  /* Lines and focus. */
+  --border: #2f2d2a;
+  --border-strong: #4a4641;
+  /* Boundaries of controls that are empty at rest (an unchecked checkbox): 3:1. */
+  --border-control: #7a746c;
+  --focus-ring: #62d0a2;
+
+  /* Initials avatars: muted, mid-dark fills that hold white text. */
+  --avatar-1: #2f7559;
+  --avatar-2: #93543a;
+  --avatar-3: #6e4d78;
+  --avatar-4: #44627f;
+  --avatar-5: #66652c;
+  --avatar-6: #9a4559;
+  --on-avatar: #ffffff;
+  --on-guild: var(--text);
+  --switch-thumb: #f4f1ec;
+
+  /* Role-coloured names: OKLCH lightness clamped so any role colour stays readable (see .role-text). */
+  --role-l-min: 0.7;
+  --role-l-max: 1;
+
+  /* Depth: only what floats casts a shadow. */
+  --elevation-overlay: 0 8px 24px rgb(0 0 0 / 0.45);
+  --elevation-dialog: 0 16px 48px rgb(0 0 0 / 0.55);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-rail: #dcd9d4;
+  --bg-panel: #e2dfda;
+  --bg-sidebar: #ebe8e3;
+  --bg-chat: #f8f7f4;
+  --bg-input: #e8e5e0;
+  --bg-overlay: #ffffff;
+  --bg-tooltip: #ffffff;
+  --bg-guild: #f6f4f1;
+  --bg-control: #d9d5cf;
+  --bg-control-hover: #cfcac3;
+
+  --bg-hover: rgb(60 50 40 / 0.06);
+  --bg-selected: rgb(60 50 40 / 0.11);
+  --bg-message-hover: rgb(60 50 40 / 0.04);
+  --bg-mention: rgb(196 130 20 / 0.1);
+  --bg-mention-chip: rgb(26 127 85 / 0.14);
+  --bg-scrim: rgb(20 16 12 / 0.55);
+  --bg-skeleton: rgb(60 50 40 / 0.09);
+
+  --text: #1c1a17;
+  --text-muted: #4d4842;
+  --text-faint: #5f5952;
+  --text-link: #11683f;
+  --text-danger: #a82d27;
+  --text-warning: #7a4d00;
+  --text-success: #11683f;
+  --text-mention: #0d5434;
+
+  --accent: #1a7f55;
+  --accent-hover: #166d49;
+  --on-accent: #ffffff;
+  --danger: #b8352f;
+  --danger-hover: #a82f29;
+  --on-danger: #ffffff;
+  --warning: #b07610;
+  --badge-count: var(--danger);
+
+  --status-online: #1d8a5a;
+  --status-offline: #7c766e;
+
+  --border: #d6d2cc;
+  --border-strong: #b5afa7;
+  --border-control: #857f78;
+  --focus-ring: #1a7f55;
+
+  --avatar-1: #2f7559;
+  --avatar-2: #93543a;
+  --avatar-3: #6e4d78;
+  --avatar-4: #44627f;
+  --avatar-5: #66652c;
+  --avatar-6: #9a4559;
+  --on-avatar: #ffffff;
+  --on-guild: var(--text);
+  --switch-thumb: #ffffff;
+
+  --role-l-min: 0;
+  --role-l-max: 0.48;
+
+  --elevation-overlay: 0 8px 24px rgb(40 30 20 / 0.16);
+  --elevation-dialog: 0 16px 48px rgb(40 30 20 / 0.22);
+}
+
+/* Theme-independent scales. */
+:root {
+  /* Layout, Discord's proportions. */
+  --rail-width: 72px;
+  --sidebar-width: 240px;
+  --members-width: 240px;
+  --header-height: 48px;
+  --user-panel-height: 52px;
+
+  /* Layers. */
+  --z-sticky: 10;
+  --z-dropdown: 1000;
+  --z-dialog: 1100;
+  --z-toast: 1200;
+  --z-tooltip: 1300;
+
+  /* Motion: state changes only, short. */
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}

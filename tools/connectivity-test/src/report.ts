@@ -1,6 +1,6 @@
 import type { BrowserName } from "./browser";
 import type { ConnectionEvents } from "./connection-events";
-import { inboundInterval, type ConnectivitySummary, type InboundVideoStat } from "./stats";
+import { type ConnectivitySummary, type InboundVideoStat, inboundInterval } from "./stats";
 
 export interface ConnectivityAggregate {
   samples: number;

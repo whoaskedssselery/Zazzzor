@@ -1,5 +1,7 @@
 node_modules/
 dist/
+# TypeScript incremental build state.
+*.tsbuildinfo
 .idea/
 # Real deploy settings hold secrets; only the template and the fake CI values are tracked.
 deploy/.env

@@ -10,15 +10,19 @@ ARG NODE_VERSION=22.23.3-bookworm-slim
 # which Caddy 2.10+ uses).
 ARG DUCKDNS_PLUGIN_VERSION=v0.5.0
 
-# 1. Static build of the connectivity test page.
+# 1. Static builds of the web client and the connectivity test page.
 FROM node:${NODE_VERSION} AS web
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 WORKDIR /app
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# Manifests first, so a change to sources only reuses the installed layer.
+# .pnpmfile.cjs takes part in the lockfile check (it adjusts some manifests).
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .pnpmfile.cjs ./
+COPY tools/connectivity-test/package.json ./tools/connectivity-test/
+COPY web/package.json ./web/
+RUN corepack enable && pnpm install --frozen-lockfile
 COPY tools ./tools
-RUN corepack enable \
-  && pnpm install --frozen-lockfile \
-  && pnpm --filter @zazzzor/connectivity-test build
+COPY web ./web
+RUN pnpm --filter @zazzzor/connectivity-test --filter @zazzzor/web build
 
 # 2. Caddy with the DuckDNS DNS provider (for DNS-01 certificates).
 FROM caddy:${CADDY_VERSION}-builder AS caddy-builder
@@ -29,4 +33,5 @@ RUN xcaddy build --with github.com/caddy-dns/duckdns@${DUCKDNS_PLUGIN_VERSION}
 FROM caddy:${CADDY_VERSION}
 COPY --from=caddy-builder /usr/bin/caddy /usr/bin/caddy
 COPY --from=web /app/tools/connectivity-test/dist /srv/connectivity-test
+COPY --from=web /app/web/dist /srv/web
 COPY deploy/caddy/Caddyfile /etc/caddy/Caddyfile
