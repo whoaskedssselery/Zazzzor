@@ -17,7 +17,11 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/voice"
 )
 
-func destination(id snowflake.ID) **snowflake.ID { p := &id; return &p }
+// destination asks for a move to the channel id.
+func destination(id snowflake.ID) *voice.MoveRequest { return &voice.MoveRequest{ChannelID: id} }
+
+// disconnect asks to take the participant out of voice.
+func disconnect() *voice.MoveRequest { return &voice.MoveRequest{Disconnect: true} }
 
 func TestVoiceMoveChecksBothChannelsBeforeEffects(t *testing.T) {
 	for _, tc := range []struct {
@@ -41,7 +45,7 @@ func TestVoiceMoveChecksBothChannelsBeforeEffects(t *testing.T) {
 			c.kinds = map[snowflake.ID]channels.Type{tc.id: tc.kind}
 			n, updates := len(e.pub.events), len(r.updates)
 			on := true
-			err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Mute: &on, ChannelID: destination(tc.id)})
+			err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Mute: &on, Move: destination(tc.id)})
 			if !errors.Is(err, tc.want) {
 				t.Fatalf("Move error=%v, want %v", err, tc.want)
 			}
@@ -54,7 +58,7 @@ func TestVoiceMoveChecksBothChannelsBeforeEffects(t *testing.T) {
 
 func TestVoiceMoveWaitsForDestinationAdmission(t *testing.T) {
 	e, _, r := moderationEnv(t, permissions.MoveMembers)
-	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{ChannelID: destination(44)}); err != nil {
+	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Move: destination(44)}); err != nil {
 		t.Fatalf("Move: %v", err)
 	}
 	ev := e.pub.events[len(e.pub.events)-1]
@@ -85,7 +89,7 @@ func TestVoiceMoveFallbackKeepsIssuedTargetToken(t *testing.T) {
 	clock.Store(time.Now().UnixNano())
 	e, _, r := moderationEnv(t, permissions.MoveMembers, func(o *voice.Options) { o.Now = func() time.Time { return time.Unix(0, clock.Load()) } })
 	e.rooms.put(voice.Room{Name: "42", SID: "RM_1"}, voice.Participant{Identity: "1", SID: "PA_1"})
-	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{ChannelID: destination(44)}); err != nil {
+	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Move: destination(44)}); err != nil {
 		t.Fatalf("Move: %v", err)
 	}
 	j, err := e.voice.Join(t.Context(), 44, auth.User{ID: 1}, "https://example.test")
@@ -95,7 +99,7 @@ func TestVoiceMoveFallbackKeepsIssuedTargetToken(t *testing.T) {
 	clock.Add(int64(14 * time.Second))
 	e.reconcile()
 	before := len(e.pub.events)
-	if err = e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{ChannelID: destination(44)}); err != nil {
+	if err = e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Move: destination(44)}); err != nil {
 		t.Fatalf("repeat Move: %v", err)
 	}
 	if len(e.pub.events) != before {
@@ -121,7 +125,7 @@ func TestReconcilePreservesSourceUntilDestinationAdmission(t *testing.T) {
 	for _, obsolete := range []bool{true, false} {
 		t.Run(map[bool]string{true: "obsolete_token", false: "failed_grants"}[obsolete], func(t *testing.T) {
 			e, c, r := moderationEnv(t, permissions.MoveMembers)
-			if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{ChannelID: destination(44)}); err != nil {
+			if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Move: destination(44)}); err != nil {
 				t.Fatalf("Move: %v", err)
 			}
 			j, err := e.voice.Join(t.Context(), 44, auth.User{ID: 1}, "https://example.test")
@@ -129,7 +133,7 @@ func TestReconcilePreservesSourceUntilDestinationAdmission(t *testing.T) {
 				t.Fatalf("target token: %v", err)
 			}
 			if obsolete {
-				if err = e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{ChannelID: destination(45)}); err != nil {
+				if err = e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Move: destination(45)}); err != nil {
 					t.Fatalf("superseding Move: %v", err)
 				}
 			} else {

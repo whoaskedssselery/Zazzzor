@@ -32,7 +32,7 @@ type moderationRequest struct {
 }
 
 // optionalChannel distinguishes an omitted destination from disconnect.
-type optionalChannel struct{ value **snowflake.ID }
+type optionalChannel struct{ value *MoveRequest }
 
 // UnmarshalJSON accepts null or a canonical positive channel ID string.
 func (c *optionalChannel) UnmarshalJSON(raw []byte) error {
@@ -40,15 +40,15 @@ func (c *optionalChannel) UnmarshalJSON(raw []byte) error {
 	if err := json.Unmarshal(raw, &text); err != nil {
 		return fmt.Errorf("voice: decode destination: %w", err)
 	}
-	var id *snowflake.ID
-	if text != nil {
-		parsed, err := snowflake.Parse(*text)
-		if err != nil || parsed <= 0 || parsed.String() != *text {
-			return errors.New("voice: destination must be a channel ID string or null")
-		}
-		id = &parsed
+	if text == nil {
+		c.value = &MoveRequest{Disconnect: true}
+		return nil
 	}
-	c.value = &id
+	id, err := snowflake.Parse(*text)
+	if err != nil || id <= 0 || id.String() != *text {
+		return errors.New("voice: destination must be a channel ID string or null")
+	}
+	c.value = &MoveRequest{ChannelID: id}
 	return nil
 }
 
@@ -65,7 +65,7 @@ func (s *Service) handleModerate(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	if err = s.Moderate(r.Context(), guildID, auth.CurrentUser(r).ID, userID, ModerationFields{Mute: req.Mute.value, Deaf: req.Deaf.value, ChannelID: req.ChannelID.value}); err != nil {
+	if err = s.Moderate(r.Context(), guildID, auth.CurrentUser(r).ID, userID, ModerationFields{Mute: req.Mute.value, Deaf: req.Deaf.value, Move: req.ChannelID.value}); err != nil {
 		return fail(err)
 	}
 	w.WriteHeader(http.StatusNoContent)

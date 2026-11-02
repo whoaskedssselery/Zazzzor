@@ -24,8 +24,7 @@ func TestModeratorDisconnectRevokesPendingTokens(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
-	var disconnected *snowflake.ID
-	if err = e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{ChannelID: &disconnected}); err != nil {
+	if err = e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Move: disconnect()}); err != nil {
 		t.Fatalf("Disconnect: %v", err)
 	}
 	if len(e.voice.GuildStates(7)) != 0 || !slices.Contains(r.removals(), "42/1") {
@@ -39,14 +38,14 @@ func TestModeratorDisconnectRevokesPendingTokens(t *testing.T) {
 
 func TestVoiceMoveSupersedesAnOlderDestinationToken(t *testing.T) {
 	e, _, _ := moderationEnv(t, permissions.MoveMembers)
-	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{ChannelID: destination(44)}); err != nil {
+	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Move: destination(44)}); err != nil {
 		t.Fatalf("first Move: %v", err)
 	}
 	old, err := e.voice.Join(t.Context(), 44, auth.User{ID: 1}, "https://example.test")
 	if err != nil {
 		t.Fatalf("first target token: %v", err)
 	}
-	if err = e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{ChannelID: destination(45)}); err != nil {
+	if err = e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Move: destination(45)}); err != nil {
 		t.Fatalf("second Move: %v", err)
 	}
 	e.hook(&livekit.WebhookEvent{Event: "participant_joined", Room: lkRoom("44", "RM_old"), Participant: lkParticipant(userBody{ID: "1"}, "PA_old_target", claims(t, old.Token).Attributes["zazzzor.join"])})
@@ -70,7 +69,7 @@ func TestVoiceMoveRejectsNewSourceSessions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("source token: %v", err)
 	}
-	if err = e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{ChannelID: destination(44)}); err != nil {
+	if err = e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Move: destination(44)}); err != nil {
 		t.Fatalf("Move: %v", err)
 	}
 	e.hook(&livekit.WebhookEvent{Event: "participant_joined", Room: lkRoom("42", "RM_1"), Participant: lkParticipant(userBody{ID: "1"}, "PA_rejected_source", claims(t, old.Token).Attributes["zazzzor.join"])})
@@ -83,7 +82,7 @@ func TestExplicitJoinElsewhereCancelsTheMove(t *testing.T) {
 	var clock atomic.Int64
 	clock.Store(time.Now().UnixNano())
 	e, _, r := moderationEnv(t, permissions.MoveMembers, func(o *voice.Options) { o.Now = func() time.Time { return time.Unix(0, clock.Load()) } })
-	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{ChannelID: destination(44)}); err != nil {
+	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Move: destination(44)}); err != nil {
 		t.Fatalf("Move: %v", err)
 	}
 	j, err := e.voice.Join(t.Context(), 45, auth.User{ID: 1}, "https://example.test")
@@ -103,14 +102,13 @@ func TestExplicitJoinElsewhereCancelsTheMove(t *testing.T) {
 }
 
 func TestDisconnectChecksMoveAndPreservesStateOnFailure(t *testing.T) {
-	var none *snowflake.ID
 	e, c, r := moderationEnv(t, permissions.MuteMembers|permissions.DeafenMembers)
-	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{ChannelID: &none}); !errors.Is(err, voice.ErrMissingPerm) {
+	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Move: disconnect()}); !errors.Is(err, voice.ErrMissingPerm) {
 		t.Fatalf("disconnect without MOVE=%v", err)
 	}
 	c.actor |= permissions.MoveMembers
 	r.failRemovals = 1
-	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{ChannelID: &none}); !errors.Is(err, voice.ErrUnavailable) {
+	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Move: disconnect()}); !errors.Is(err, voice.ErrUnavailable) {
 		t.Fatalf("failed disconnect=%v", err)
 	}
 	if _, ok := e.stateOf(7, 1); !ok {
@@ -120,7 +118,7 @@ func TestDisconnectChecksMoveAndPreservesStateOnFailure(t *testing.T) {
 
 func TestDisconnectHandlesItsOwnLeftWebhook(t *testing.T) {
 	e, _, r := moderationEnv(t, permissions.MoveMembers)
-	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{ChannelID: destination(44)}); err != nil {
+	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Move: destination(44)}); err != nil {
 		t.Fatalf("Move: %v", err)
 	}
 	j, err := e.voice.Join(t.Context(), 44, auth.User{ID: 1}, "https://example.test")
@@ -130,8 +128,7 @@ func TestDisconnectHandlesItsOwnLeftWebhook(t *testing.T) {
 	r.beforeRemove = func() {
 		e.hook(&livekit.WebhookEvent{Event: "participant_left", Room: lkRoom("42", "RM_1"), Participant: lkParticipant(userBody{ID: "1"}, "PA_1", "")})
 	}
-	var none *snowflake.ID
-	if err = e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{ChannelID: &none}); err != nil {
+	if err = e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Move: disconnect()}); err != nil {
 		t.Fatalf("disconnect with left webhook: %v", err)
 	}
 	e.hook(&livekit.WebhookEvent{Event: "participant_joined", Room: lkRoom("44", "RM_target"), Participant: lkParticipant(userBody{ID: "1"}, "PA_revoked", claims(t, j.Token).Attributes["zazzzor.join"])})
@@ -143,7 +140,7 @@ func TestDisconnectHandlesItsOwnLeftWebhook(t *testing.T) {
 func TestMoveToCurrentChannelIsNoop(t *testing.T) {
 	e, _, r := moderationEnv(t, permissions.MoveMembers)
 	n, updates := len(e.pub.events), len(r.updates)
-	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{ChannelID: destination(42)}); err != nil {
+	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Move: destination(42)}); err != nil {
 		t.Fatalf("same-channel Move: %v", err)
 	}
 	if len(e.pub.events) != n || len(r.updates) != updates || len(r.removals()) != 0 {
@@ -154,7 +151,7 @@ func TestMoveToCurrentChannelIsNoop(t *testing.T) {
 func TestMoveAndMuteAppliesFlagsToTheDestination(t *testing.T) {
 	e, _, _ := moderationEnv(t, permissions.MoveMembers|permissions.MuteMembers)
 	on := true
-	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Mute: &on, ChannelID: destination(44)}); err != nil {
+	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Mute: &on, Move: destination(44)}); err != nil {
 		t.Fatalf("move and mute: %v", err)
 	}
 	j, err := e.voice.Join(t.Context(), 44, auth.User{ID: 1}, "https://example.test")
@@ -183,7 +180,7 @@ func TestMovePreparationDoesNotOutliveMemberRemoval(t *testing.T) {
 	}
 	done := make(chan error, 1)
 	go func() {
-		done <- e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{ChannelID: destination(44)})
+		done <- e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Move: destination(44)})
 	}()
 	awaitSignal(t, entered)
 	e.voice.RemoveMembers(t.Context(), 7, []snowflake.ID{1})

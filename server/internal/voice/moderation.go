@@ -13,8 +13,15 @@ import (
 type ModerationFields struct {
 	Mute *bool
 	Deaf *bool
-	// ChannelID: nil preserves; a pointer to nil disconnects.
-	ChannelID **snowflake.ID
+	// Move: nil preserves the participant's channel.
+	Move *MoveRequest
+}
+
+// MoveRequest takes a participant out of voice (Disconnect) or asks them
+// to move to the voice channel ChannelID.
+type MoveRequest struct {
+	Disconnect bool
+	ChannelID  snowflake.ID
 }
 
 // serverFlags survive reconnects within a guild until explicitly lifted.
@@ -39,7 +46,7 @@ func (s *Service) Moderate(ctx context.Context, guildID, actorID, userID snowfla
 	if !s.enabled {
 		return ErrUnavailable
 	}
-	if f.Mute == nil && f.Deaf == nil && f.ChannelID == nil {
+	if f.Mute == nil && f.Deaf == nil && f.Move == nil {
 		return invalid("mute", "set mute, deaf or channel_id")
 	}
 	defer s.lockUser(userID)()
@@ -64,11 +71,11 @@ func (s *Service) Moderate(ctx context.Context, guildID, actorID, userID snowfla
 	if gid != guildID {
 		return channels.ErrNotFound
 	}
-	if (f.Mute != nil && !p.Has(permissions.MuteMembers)) || (f.Deaf != nil && !p.Has(permissions.DeafenMembers)) || (f.ChannelID != nil && !p.Has(permissions.MoveMembers)) {
+	if (f.Mute != nil && !p.Has(permissions.MuteMembers)) || (f.Deaf != nil && !p.Has(permissions.DeafenMembers)) || (f.Move != nil && !p.Has(permissions.MoveMembers)) {
 		return ErrMissingPerm
 	}
-	if f.ChannelID != nil && *f.ChannelID != nil {
-		if err = s.checkDestination(ctx, guildID, actorID, userID, **f.ChannelID); err != nil {
+	if f.Move != nil && !f.Move.Disconnect {
+		if err = s.checkDestination(ctx, guildID, actorID, userID, f.Move.ChannelID); err != nil {
 			return err
 		}
 	}
@@ -78,7 +85,7 @@ func (s *Service) Moderate(ctx context.Context, guildID, actorID, userID snowfla
 	if f.Deaf != nil {
 		flags.deaf = *f.Deaf
 	}
-	if f.ChannelID != nil && *f.ChannelID == nil {
+	if f.Move != nil && f.Move.Disconnect {
 		return s.disconnect(ctx, guildID, userID, sess, flags, start)
 	}
 	flagsRequested := f.Mute != nil || f.Deaf != nil
@@ -109,8 +116,8 @@ func (s *Service) Moderate(ctx context.Context, guildID, actorID, userID snowfla
 			s.announceLocked(ctx, sess.state, false)
 		}
 	}
-	if f.ChannelID != nil {
-		s.requestMoveLocked(ctx, userID, **f.ChannelID, sess)
+	if f.Move != nil {
+		s.requestMoveLocked(ctx, userID, f.Move.ChannelID, sess)
 	}
 	return nil
 }
