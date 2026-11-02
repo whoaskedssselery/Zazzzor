@@ -176,10 +176,14 @@ func (s *Service) Reconcile(ctx context.Context) error {
 			s.removeLocked(f.room.Name, f.p.Identity, f.p.SID)
 		case changed(userID):
 		case failed[userID]:
-			s.removeLocked(f.room.Name, f.p.Identity, f.p.SID)
+			// A connected session keeps its call through a LiveKit blip; the
+			// refresh worker retries its grants. A participant not yet admitted
+			// has no known grants and is removed.
 			if sess := s.sessions[userID]; sess != nil && sess.sid == f.p.SID {
-				s.dropLocked(ctx, userID, false)
+				s.queueRefreshLocked(f.guildID)
+				continue
 			}
+			s.removeLocked(f.room.Name, f.p.Identity, f.p.SID)
 		case !s.currentParticipantLocked(userID, f.channelID, f.p):
 			s.removeLocked(f.room.Name, f.p.Identity, f.p.SID)
 		default:

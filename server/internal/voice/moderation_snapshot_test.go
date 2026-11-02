@@ -61,7 +61,9 @@ func TestReconcileIsolatesFailedPermissionUpdate(t *testing.T) {
 	e, c, r := moderationEnv(t, permissions.MuteMembers|permissions.Connect)
 	c.subjects = map[snowflake.ID]permissions.Permission{3: permissions.ViewChannel}
 	room := voice.Room{Name: "42", SID: "RM_1"}
-	for _, p := range []voice.Participant{{Identity: "1", SID: "PA_1"}, {Identity: "2", SID: "PA_2"}, {Identity: "3", SID: "PA_3"}} {
+	// 1 is already connected, 2 and 4 are new, 3 may no longer connect.
+	for _, p := range []voice.Participant{{Identity: "1", SID: "PA_1"}, {Identity: "2", SID: "PA_2"},
+		{Identity: "3", SID: "PA_3"}, {Identity: "4", SID: "PA_4"}} {
 		e.rooms.put(room, p)
 	}
 	r.before = func(p voice.ParticipantPermissions) error {
@@ -73,15 +75,21 @@ func TestReconcileIsolatesFailedPermissionUpdate(t *testing.T) {
 	if err := e.voice.Reconcile(t.Context()); !errors.Is(err, errFake) {
 		t.Fatalf("Reconcile error=%v, want failed update cause", err)
 	}
-	if _, ok := e.stateOf(7, 1); ok {
+	if _, ok := e.stateOf(7, 4); ok {
 		t.Fatal("failed admission kept public state")
+	}
+	if _, ok := e.stateOf(7, 1); !ok {
+		t.Fatal("a failed update dropped a connected participant")
 	}
 	if _, ok := e.stateOf(7, 2); !ok {
 		t.Fatal("one failed update prevented healthy admission")
 	}
 	e.run()
-	e.rooms.waitRemoved(t, "42/1")
+	e.rooms.waitRemoved(t, "42/4")
 	e.rooms.waitRemoved(t, "42/3")
+	if slices.Contains(e.rooms.removals(), "42/1") {
+		t.Fatal("removed the connected participant whose grants failed")
+	}
 }
 
 func TestFailedAdmissionRemovesParticipantInsteadOfPublishingState(t *testing.T) {
