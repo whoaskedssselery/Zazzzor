@@ -2196,8 +2196,16 @@ paths:
         the old participant. If no admission follows within 15 seconds,
         that source is removed anyway. A newer move supersedes prior
         destination tokens; an identical pending move does not extend the
-        deadline or repeat the event. Moving to the current channel is a
-        no-op. Omitted `channel_id` preserves the current channel.
+        deadline or repeat the event. Omitted `channel_id` preserves the
+        current channel.
+
+        A pending move is cancelled by moving the participant back to their
+        current channel, by deleting the destination, or when the
+        participant loses `VIEW_CHANNEL` or `CONNECT` there. The source
+        then stays, a destination token issued for the move no longer
+        connects, and the participant receives `VOICE_MOVE` with the source
+        channel, so a client that already left returns. Moving to the
+        current channel with no move pending changes nothing.
       parameters:
         - $ref: "#/components/parameters/GuildID"
         - $ref: "#/components/parameters/UserID"
@@ -3509,7 +3517,8 @@ x-gateway:
     states omitted after a channel becomes hidden must also be discarded.
 
     VOICE_MOVE is private to the participant being moved and contains only
-    the destination channel ID. The destination must still be visible to
+    the destination channel ID (the source channel when a pending move is
+    cancelled). The destination must still be visible to
     that user at dispatch; otherwise the event is dropped. Other source
     or destination viewers, including the initiating moderator, do not
     receive it. The client fetches a destination voice token and reconnects;

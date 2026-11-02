@@ -135,9 +135,15 @@ func (s *Service) refreshParticipant(ctx context.Context, guildID, userID snowfl
 	}
 	channelID, room := captured.state.ChannelID, captured.room
 	flags := s.moderation[memberKey{guildID: guildID, userID: userID}]
+	move := s.moves[userID]
 	s.mu.Unlock()
 	workCtx, cancel := context.WithTimeout(ctx, rpcTimeout)
 	defer cancel()
+	if move != nil && move.source == captured {
+		if err := s.refreshMove(workCtx, guildID, userID, move); err != nil {
+			return err
+		}
+	}
 	p, gid, err := s.channels.Permissions(workCtx, userID, channelID)
 	lost := errors.Is(err, channels.ErrNotFound) || (err == nil && (gid != guildID || !p.Has(permissions.ViewChannel|permissions.Connect)))
 	if err != nil && !lost {
@@ -176,6 +182,24 @@ func (s *Service) refreshParticipant(ctx context.Context, guildID, userID snowfl
 		captured.screens = map[string]bool{}
 		captured.state.SelfStream = false
 		s.announceLocked(ctx, captured.state, false)
+	}
+	return nil
+}
+
+// refreshMove cancels userID's pending move once they may no longer view or
+// CONNECT to its destination; the handoff could only end in a removal.
+func (s *Service) refreshMove(ctx context.Context, guildID, userID snowflake.ID, move *pendingMove) error {
+	p, gid, err := s.channels.Permissions(ctx, userID, move.channelID)
+	if err != nil && !errors.Is(err, channels.ErrNotFound) {
+		return fmt.Errorf("voice: read move destination permissions: %w", err)
+	}
+	if err == nil && gid == guildID && p.Has(permissions.ViewChannel|permissions.Connect) {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.moves[userID] == move {
+		s.cancelMoveLocked(ctx, userID)
 	}
 	return nil
 }

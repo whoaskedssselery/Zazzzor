@@ -18,10 +18,14 @@ type MovePayload struct {
 }
 
 // pendingMove pins the source until destination admission or the deadline.
+// prior is the user's intent when the move was requested (none: hadPrior is
+// false); cancelling restores it if a destination token was issued since.
 type pendingMove struct {
 	source    *session
 	channelID snowflake.ID
 	deadline  time.Time
+	prior     intent
+	hadPrior  bool
 }
 
 // checkDestination checks both the actor's MOVE and the target's CONNECT.
@@ -64,23 +68,62 @@ func (s *Service) checkDestination(ctx context.Context, guildID, actorID, userID
 
 // requestMoveLocked publishes a new private handoff without extending an
 // identical pending request. Older tokens cannot complete a superseded move.
+// A move back to the source cancels the pending move; with none pending it
+// does nothing.
 func (s *Service) requestMoveLocked(ctx context.Context, userID, channelID snowflake.ID, source *session) {
+	old := s.moves[userID]
 	if channelID == source.state.ChannelID {
+		if old != nil && old.source == source {
+			s.cancelMoveLocked(ctx, userID)
+		}
 		return
 	}
-	if old := s.moves[userID]; old != nil && old.source == source && old.channelID == channelID {
+	if old != nil && old.source == source && old.channelID == channelID {
 		return
 	}
-	s.moves[userID] = &pendingMove{source: source, channelID: channelID, deadline: s.now().Add(MoveTimeout)}
-	s.intents[userID] = intent{}
+	move := &pendingMove{source: source, channelID: channelID, deadline: s.now().Add(MoveTimeout)}
+	move.prior, move.hadPrior = s.intents[userID]
+	if old != nil && old.source == source {
+		move.prior, move.hadPrior = old.prior, old.hadPrior
+	}
+	s.moves[userID] = move
 	s.touchLocked(userID)
-	if s.pub != nil {
-		s.pub.Publish(ctx, events.Event{Type: events.VoiceMove, Audience: events.Audience{Kind: events.AudienceUsers, GuildID: source.state.GuildID, ChannelID: channelID, UserIDs: []snowflake.ID{userID}}, Payload: MovePayload{ChannelID: channelID}})
-	}
+	s.publishMoveLocked(ctx, source.state.GuildID, userID, channelID)
 	select {
 	case s.wake <- struct{}{}:
 	default:
 	}
+}
+
+// cancelMoveLocked drops userID's pending move: the source stays, a
+// destination token issued for it no longer connects, and the participant
+// is sent back to the source, in case their client already left it.
+func (s *Service) cancelMoveLocked(ctx context.Context, userID snowflake.ID) {
+	move := s.moves[userID]
+	if move == nil {
+		return
+	}
+	delete(s.moves, userID)
+	if s.intents[userID].channelID == move.channelID {
+		if move.hadPrior {
+			s.intents[userID] = move.prior
+		} else {
+			delete(s.intents, userID)
+		}
+	}
+	s.touchLocked(userID)
+	s.publishMoveLocked(ctx, move.source.state.GuildID, userID, move.source.state.ChannelID)
+}
+
+// publishMoveLocked sends VOICE_MOVE to the participant alone; the gateway
+// drops it unless they may view channelID.
+func (s *Service) publishMoveLocked(ctx context.Context, guildID, userID, channelID snowflake.ID) {
+	if s.pub == nil {
+		return
+	}
+	s.pub.Publish(ctx, events.Event{Type: events.VoiceMove,
+		Audience: events.Audience{Kind: events.AudienceUsers, GuildID: guildID, ChannelID: channelID, UserIDs: []snowflake.ID{userID}},
+		Payload:  MovePayload{ChannelID: channelID}})
 }
 
 // currentParticipantLocked keeps exactly the pinned source alive while a

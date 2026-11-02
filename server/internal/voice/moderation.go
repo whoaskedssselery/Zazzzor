@@ -116,9 +116,18 @@ func (s *Service) Moderate(ctx context.Context, guildID, actorID, userID snowfla
 			s.announceLocked(ctx, sess.state, false)
 		}
 	}
-	if f.Move != nil {
-		s.requestMoveLocked(ctx, userID, f.Move.ChannelID, sess)
+	if f.Move == nil {
+		return nil
 	}
+	// A destination deleted since checkDestination read it starts no move.
+	// Flags already applied by LiveKit stay committed and are reported.
+	if s.invalidatedLocked(guildID, userID, f.Move.ChannelID, start) {
+		if flagsRequested {
+			return nil
+		}
+		return channels.ErrNotFound
+	}
+	s.requestMoveLocked(ctx, userID, f.Move.ChannelID, sess)
 	return nil
 }
 
