@@ -11,12 +11,14 @@ import {
 } from "@/entities/guild";
 import { DeleteGuild } from "@/features/delete-guild";
 import { ConfirmDialog, cn, IconButton, Skeleton } from "@/shared/ui";
+import { BansTab } from "./BansTab";
+import { InvitesTab } from "./InvitesTab";
 import { LEAVE_UNSAVED } from "./leave";
 import { MembersTab } from "./MembersTab";
 import { OverviewTab } from "./OverviewTab";
 import { RolesTab } from "./RolesTab";
 
-/** The content of one section; sections still to come say so. */
+/** The content of one section. */
 const TabContent = ({
   tab,
   entry,
@@ -35,8 +37,10 @@ const TabContent = ({
       return <RolesTab entry={entry} meId={meId} onDirtyChange={onDirtyChange} />;
     case "members":
       return <MembersTab entry={entry} />;
-    default:
-      return <p className="text-base text-fg-muted">{`Раздел «${GUILD_SETTINGS_TITLES[tab]}» появится позже.`}</p>;
+    case "bans":
+      return <BansTab guildId={entry.guild.id} />;
+    case "invites":
+      return <InvitesTab guildId={entry.guild.id} />;
   }
 };
 
