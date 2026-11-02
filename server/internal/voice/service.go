@@ -73,22 +73,7 @@ func (s *Service) Join(ctx context.Context, channelID snowflake.ID, user auth.Us
 // again needs nothing: LiveKit replaces a participant whose identity
 // connects again.
 func (s *Service) leaveOther(ctx context.Context, userID, channelID snowflake.ID) error {
-	s.mu.Lock()
-	s.expireMovesLocked(ctx)
-	sess := s.sessions[userID]
-	move := s.moves[userID]
-	if move != nil && move.channelID == channelID && (sess == nil || sess == move.source) {
-		s.mu.Unlock()
-		return nil
-	}
-	var room, sid string
-	if sess != nil && (sess.state.ChannelID != channelID || move != nil) {
-		room, sid = sess.room, sess.sid
-	}
-	if sid == "" {
-		delete(s.moves, userID)
-	}
-	s.mu.Unlock()
+	room, sid, move := s.previousRoom(ctx, userID, channelID)
 	if sid == "" {
 		return nil
 	}
@@ -106,6 +91,28 @@ func (s *Service) leaveOther(ctx context.Context, userID, channelID snowflake.ID
 		delete(s.moves, userID)
 	}
 	return nil
+}
+
+// previousRoom returns the participant leaveOther must remove before
+// userID joins channelID, if any, and the pending move it saw. It unlocks
+// by defer: expiring moves can publish, and a panicking publisher must not
+// leave s.mu held.
+func (s *Service) previousRoom(ctx context.Context, userID, channelID snowflake.ID) (room, sid string, move *pendingMove) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.expireMovesLocked(ctx)
+	sess := s.sessions[userID]
+	move = s.moves[userID]
+	if move != nil && move.channelID == channelID && (sess == nil || sess == move.source) {
+		return "", "", move
+	}
+	if sess != nil && (sess.state.ChannelID != channelID || move != nil) {
+		room, sid = sess.room, sess.sid
+	}
+	if sid == "" {
+		delete(s.moves, userID)
+	}
+	return room, sid, move
 }
 
 // SelfFields are the self flags to change; nil leaves one as it is.
