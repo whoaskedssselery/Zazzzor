@@ -93,10 +93,16 @@ export const channelSettingsRoute = createRoute({
   },
 });
 
+const UserSettingsPage = lazyRouteComponent(() => import("@/pages/settings"), "UserSettingsPage");
+
+/** The user's own settings, over the whole window; the splat is the section. */
 export const settingsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/settings/$",
-  component: lazyRouteComponent(() => import("@/pages/settings"), "SettingsPage"),
+  loader: async () => {
+    await UserSettingsPage.preload?.();
+  },
+  component: () => <UserSettingsPage tab={settingsRoute.useParams()._splat ?? ""} />,
 });
 
 export const adminRoute = createRoute({

@@ -75,6 +75,8 @@ export const FIELD_ERROR_TEXTS: Readonly<Record<string, string>> = {
   username: "Логин: 2–32 символа, латиница, цифры, «_» и «.».",
   password: "Пароль: от 8 до 128 символов.",
   display_name: "Имя: от 1 до 32 символов, без управляющих и невидимых символов.",
+  current_password: "Неверный текущий пароль.",
+  new_password: "Пароль: от 8 до 128 символов.",
 };
 
 /** Russian text for a field error of the API (`ApiError.fields`). */
