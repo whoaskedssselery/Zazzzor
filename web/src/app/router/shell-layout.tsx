@@ -6,6 +6,7 @@ import { HomeSidebar } from "@/pages/channels-home";
 import { AppShell } from "@/widgets/app-shell";
 import { GuildRail } from "@/widgets/guild-rail";
 import { UserPanel } from "@/widgets/user-panel";
+import { VoicePanel } from "@/widgets/voice-panel";
 
 /**
  * The layout of home and the server screens: the app shell, rendered once
@@ -23,7 +24,12 @@ export const ShellLayout = () => {
       sidebar={
         guildId === undefined ? <HomeSidebar /> : <ServerSidebar guildId={guildId} channelId={channelId ?? null} />
       }
-      userPanel={<UserPanel />}
+      userPanel={
+        <>
+          <VoicePanel />
+          <UserPanel />
+        </>
+      }
       {...(guildId === undefined || !known ? {} : { members: <ServerMembers guildId={guildId} /> })}
     >
       <Outlet />

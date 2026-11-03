@@ -1,1 +1,1 @@
-export { ChannelSidebar } from "./ui/ChannelSidebar";
+export { ChannelSidebar, NO_CONNECT } from "./ui/ChannelSidebar";

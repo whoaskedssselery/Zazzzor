@@ -1,21 +1,27 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import type { WebSocketHandlerConnection } from "msw";
 import { HttpResponse } from "msw";
 import { renderApp, sessionHandler, testUser } from "@/app/test";
-import { getCall, resetCall } from "@/entities/call";
-import { resetGuilds } from "@/entities/guild";
+import { getCall, resetCall, setCall } from "@/entities/call";
+import { DEFAULT_EVERYONE, formatMask, PERM, resetGuilds } from "@/entities/guild";
 import { CALL_REPLACED, joinVoice, setTransportFactory } from "@/features/voice-call";
 import {
   apiHandler,
   dispatchFrame,
   FakeTransport,
   makeChannel,
+  makeEveryone,
+  makeGuild,
   makeGuildState,
+  makeMember,
   makeReady,
+  makeUser,
   makeVoiceState,
   readyGateway,
   server,
 } from "@/shared/test";
+import { NO_CONNECT } from "@/widgets/channel-sidebar";
+import { MODERATOR_MUTED } from "@/widgets/user-panel";
 
 type Client = WebSocketHandlerConnection["client"];
 
@@ -28,10 +34,20 @@ let fake: FakeTransport;
 let tokens: string[];
 let flags: unknown[];
 let send: (t: string, d: unknown) => void;
+/** What READY tells; a test may set its own before rendering. */
+let guildState: () => ReturnType<typeof makeGuildState>;
 
 beforeEach(() => {
   fake = new FakeTransport();
   setTransportFactory(() => fake);
+  guildState = () =>
+    makeGuildState(G, testUser, {
+      channels: [
+        makeChannel(TEXT, G, { name: "общий" }),
+        makeChannel(LOUNGE, G, { type: 2, name: "Лаунж" }),
+        makeChannel(GAMES, G, { type: 2, name: "Игры" }),
+      ],
+    });
   tokens = [];
   flags = [];
   let client: Client | undefined;
@@ -43,15 +59,7 @@ beforeEach(() => {
   server.use(
     sessionHandler(testUser),
     readyGateway(
-      makeReady(testUser, [
-        makeGuildState(G, testUser, {
-          channels: [
-            makeChannel(TEXT, G, { name: "общий" }),
-            makeChannel(LOUNGE, G, { type: 2, name: "Лаунж" }),
-            makeChannel(GAMES, G, { type: 2, name: "Игры" }),
-          ],
-        }),
-      ]),
+      () => makeReady(testUser, [guildState()]),
       (c) => {
         client = c;
       },
@@ -119,5 +127,116 @@ describe("voice in the app", () => {
       expect(getCall().status).toBe("idle");
     });
     expect(fake.argsOf("disconnect").length).toBeGreaterThan(1);
+  });
+});
+
+describe("voice in the sidebar and the panels", () => {
+  const petya = makeUser("200", { display_name: "Петя" });
+  const masha = makeUser("300", { display_name: "Маша" });
+
+  /** Server 10 with Petya muted in the lounge and Masha deafened and streaming there. */
+  const crowd = (everyone = DEFAULT_EVERYONE, mine: Partial<ReturnType<typeof makeVoiceState>> | null = null) => {
+    guildState = () =>
+      makeGuildState(G, testUser, {
+        guild: makeGuild(G, petya.id),
+        roles: [makeEveryone(G, formatMask(everyone))],
+        channels: [
+          makeChannel(TEXT, G, { name: "общий" }),
+          makeChannel(LOUNGE, G, { type: 2, name: "Лаунж" }),
+          makeChannel(GAMES, G, { type: 2, name: "Игры" }),
+        ],
+        members: [makeMember(testUser), makeMember(petya), makeMember(masha)],
+        voice_states: [
+          makeVoiceState(G, LOUNGE, petya.id, { self_mute: true }),
+          makeVoiceState(G, LOUNGE, masha.id, { deaf: true, self_stream: true }),
+          ...(mine ? [makeVoiceState(G, LOUNGE, testUser.id, mine)] : []),
+        ],
+      });
+  };
+
+  const lounge = () => screen.findByRole("list", { name: "В канале Лаунж" });
+
+  it("lists who is in a voice channel with their switches", async () => {
+    crowd();
+    renderApp(`/channels/${G}/${TEXT}`);
+    const list = await lounge();
+    const rows = within(list).getAllByRole("listitem");
+    expect(rows.map((r) => r.textContent)).toEqual([expect.stringContaining("Петя"), expect.stringContaining("Маша")]);
+    expect(within(rows[0] as HTMLElement).getByRole("img", { name: "Микрофон выключен" })).toBeTruthy();
+    expect(within(rows[1] as HTMLElement).getByRole("img", { name: "Звук выключен модератором" })).toBeTruthy();
+    expect(within(rows[1] as HTMLElement).getByText("В ЭФИРЕ")).toBeTruthy();
+  });
+
+  it("rings whoever speaks", async () => {
+    crowd();
+    renderApp(`/channels/${G}/${TEXT}`);
+    const list = await lounge();
+    act(() => {
+      setCall({ speaking: [petya.id] });
+    });
+    const [first, second] = within(list).getAllByRole("listitem");
+    expect(first?.querySelector("[data-speaking]")).not.toBeNull();
+    expect(second?.querySelector("[data-speaking]")).toBeNull();
+  });
+
+  it("joins a voice channel on a click", async () => {
+    crowd();
+    const { user } = renderApp(`/channels/${G}/${TEXT}`);
+    await user.click(await screen.findByRole("button", { name: "Голосовой канал Игры" }));
+    await waitFor(() => {
+      expect(tokens).toEqual([GAMES]);
+    });
+  });
+
+  it("will not join without CONNECT, and says why", async () => {
+    crowd(DEFAULT_EVERYONE & ~PERM.CONNECT);
+    const { user } = renderApp(`/channels/${G}/${TEXT}`);
+    await user.click(await screen.findByRole("button", { name: "Голосовой канал Игры" }));
+    expect(await screen.findByText(NO_CONNECT, { exact: true })).toBeTruthy();
+    expect(tokens).toEqual([]);
+  });
+
+  it("shows the call panel and leaves from it", async () => {
+    let left = 0;
+    crowd();
+    server.use(
+      apiHandler("delete", "/users/@me/voice", () => {
+        left += 1;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const { user } = renderApp(`/channels/${G}/${TEXT}`);
+    await lounge();
+    await act(() => joinVoice(G, GAMES));
+    const panel = await screen.findByRole("region", { name: "Голосовая связь" });
+    expect(within(panel).getByText("Голос подключён")).toBeTruthy();
+    expect(within(panel).getByRole("link", { name: /Игры/ })).toBeTruthy();
+    await user.click(within(panel).getByRole("button", { name: "Отключиться" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("region", { name: "Голосовая связь" })).toBeNull();
+    });
+    expect(left).toBe(1);
+  });
+
+  it("switches the microphone and sound; undeafening brings the microphone back as it was", async () => {
+    crowd();
+    const { user } = renderApp(`/channels/${G}/${TEXT}`);
+    const profile = await screen.findByRole("region", { name: "Ваш профиль" });
+    await user.click(within(profile).getByRole("button", { name: "Выключить звук" }));
+    expect(getCall()).toMatchObject({ selfDeaf: true, selfMute: false });
+    expect(within(profile).getByRole("button", { name: "Включить микрофон" })).toHaveProperty("ariaPressed", "true");
+    await user.click(within(profile).getByRole("button", { name: "Включить звук" }));
+    expect(within(profile).getByRole("button", { name: "Выключить микрофон" })).toHaveProperty("ariaPressed", "false");
+    await user.click(within(profile).getByRole("button", { name: "Выключить микрофон" }));
+    expect(getCall().selfMute).toBe(true);
+  });
+
+  it("locks the microphone a moderator turned off", async () => {
+    crowd(DEFAULT_EVERYONE, { mute: true });
+    renderApp(`/channels/${G}/${TEXT}`);
+    const profile = await screen.findByRole("region", { name: "Ваш профиль" });
+    await waitFor(() => {
+      expect(within(profile).getByRole("button", { name: MODERATOR_MUTED })).toHaveProperty("disabled", true);
+    });
   });
 });
