@@ -11,12 +11,14 @@ type FieldError = components["schemas"]["FieldError"];
  * `server.use`. The gateway WebSocket answers by default with a silent
  * server (see `silentGateway`), so any screen behind sign-in can connect,
  * and every channel is empty and takes typing notices, so any open channel
- * renders its chat. A test that needs messages adds its own handler.
+ * renders its chat. A test that needs messages adds its own handler. Nobody
+ * administers the instance unless a test says so.
  */
 export const server = setupServer(
   silentGateway,
   http.get("/api/v1/channels/:channel_id/messages", () => HttpResponse.json([])),
   http.post("/api/v1/channels/:channel_id/typing", () => new HttpResponse(null, { status: 204 })),
+  http.get("/api/v1/admin/settings", () => problem(403, "admin_only")),
 );
 
 type HttpMethod = "get" | "put" | "post" | "delete" | "patch";
