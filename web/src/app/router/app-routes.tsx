@@ -105,10 +105,16 @@ export const settingsRoute = createRoute({
   component: () => <UserSettingsPage tab={settingsRoute.useParams()._splat ?? ""} />,
 });
 
+const AdminPage = lazyRouteComponent(() => import("@/pages/admin"), "AdminPage");
+
+/** The instance administration, for its administrators; the splat is the section. */
 export const adminRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/admin/$",
-  component: lazyRouteComponent(() => import("@/pages/admin"), "AdminPage"),
+  loader: async () => {
+    await AdminPage.preload?.();
+  },
+  component: () => <AdminPage tab={adminRoute.useParams()._splat ?? ""} />,
 });
 
 export const appRoutes = appRoute.addChildren([

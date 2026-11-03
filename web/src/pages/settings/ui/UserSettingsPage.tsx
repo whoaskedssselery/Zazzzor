@@ -1,6 +1,6 @@
 import { Link, useCanGoBack, useNavigate, useRouter } from "@tanstack/react-router";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
-import { type User, useSession } from "@/entities/session";
+import { type User, useIsAdmin, useSession } from "@/entities/session";
 import { LogoutItem } from "@/features/auth";
 import { PasswordTab } from "@/features/change-password";
 import { AppearanceTab } from "@/features/choose-theme";
@@ -49,6 +49,7 @@ export const UserSettingsPage = ({ tab }: { tab: string }) => {
   const navigate = useNavigate();
   const router = useRouter();
   const canGoBack = useCanGoBack();
+  const isAdmin = useIsAdmin();
   const current = isTab(tab) ? tab : undefined;
   const [dirty, setDirty] = useState(false);
   const { guard, dialog } = useLeaveGuard(dirty, () => {
@@ -98,6 +99,23 @@ export const UserSettingsPage = ({ tab }: { tab: string }) => {
               </Link>
             ))}
             <span aria-hidden className="mx-2.5 my-2 h-px bg-border max-md:hidden" />
+            {isAdmin && (
+              <Link
+                to="/admin/$"
+                params={{ _splat: "instance" }}
+                replace
+                className={settingsNavItemClass(false)}
+                onClick={(e) => {
+                  if (!dirty) return;
+                  e.preventDefault();
+                  guard(() => {
+                    void navigate({ to: "/admin/$", params: { _splat: "instance" }, replace: true });
+                  });
+                }}
+              >
+                Администрирование
+              </Link>
+            )}
             <LogoutItem
               className={cn(
                 settingsNavItemClass(false),

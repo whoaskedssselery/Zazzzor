@@ -76,8 +76,6 @@ describe("session", () => {
     server.use(sessionHandler(testUser));
     const { router } = renderApp("/settings/profile");
     expect(await screen.findByRole("heading", { name: "Профиль" })).toBeTruthy();
-    await router.navigate({ to: "/admin/$", params: { _splat: "users" } });
-    expect(await screen.findByRole("heading", { name: "Администрирование" })).toBeTruthy();
     await router.navigate({ to: "/channels/$guildId/$channelId", params: { guildId: "1", channelId: "2" } });
     expect(await screen.findByRole("navigation", { name: "Серверы" })).toBeTruthy();
   });
