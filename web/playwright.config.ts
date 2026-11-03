@@ -57,9 +57,9 @@ export default defineConfig({
           firefoxUserPrefs: {
             "media.navigator.streams.fake": true,
             "media.navigator.permission.disabled": true,
-            // LiveKit offers 127.0.0.1 (e2e/compose.yml), and Firefox skips loopback ICE candidates by default
-            // (and gathers them only while the page captures: see enter() in e2e/voice.spec.ts).
-            "media.peerconnection.ice.loopback": true,
+            // The microphone is allowed, as Chromium's fake UI does. Without the permission Firefox hides its
+            // addresses behind mDNS names, and ICE with LiveKit on 127.0.0.1 (e2e/compose.yml) never connects.
+            "permissions.default.microphone": 1,
           },
         },
         // Where Playwright's Firefox does not start (some Windows builds), it

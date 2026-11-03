@@ -19,76 +19,12 @@ const voiceChannel = async (owner: Person, guildId: string) => {
 
 /** Opens the voice channel and joins it from its own screen. */
 const enter = async (page: Page, guildId: string, channel: { id: string; name: string }) => {
-  // TEMPORARY diagnostics for Firefox ICE in CI.
-  await page.addInitScript(() => {
-    const Orig = window.RTCPeerConnection;
-    const log = (...a: unknown[]) => {
-      console.log("[ice]", ...a);
-    };
-    window.RTCPeerConnection = class extends Orig {
-      constructor(cfg?: RTCConfiguration) {
-        super(cfg);
-        const id = Math.random().toString(36).slice(2, 6);
-        log(id, "config", JSON.stringify(cfg));
-        this.addEventListener("icecandidate", (e) => {
-          log(id, "local", e.candidate?.candidate ?? "end");
-        });
-        this.addEventListener("iceconnectionstatechange", () => {
-          log(id, "ice", this.iceConnectionState);
-        });
-        this.addEventListener("connectionstatechange", () => {
-          log(id, "conn", this.connectionState);
-        });
-        this.addEventListener("icegatheringstatechange", () => {
-          log(id, "gathering", this.iceGatheringState);
-        });
-        setTimeout(() => {
-          void this.getStats().then((s) => {
-            s.forEach((r: { type: string }) => {
-              if (r.type.includes("candidate")) log(id, "stat", JSON.stringify(r));
-            });
-          });
-        }, 8000);
-      }
-      override setRemoteDescription(d: RTCSessionDescriptionInit) {
-        log(
-          "remote-sdp",
-          (d.sdp ?? "")
-            .split("\n")
-            .filter((l) => l.startsWith("a=candidate"))
-            .join(" | "),
-        );
-        return super.setRemoteDescription(d);
-      }
-      override addIceCandidate(c?: RTCIceCandidateInit | null) {
-        log("remote", c?.candidate);
-        return super.addIceCandidate(c ?? undefined);
-      }
-    };
-  });
   await page.goto(`/channels/${guildId}/${channel.id}`);
-  // Firefox gathers ICE candidates on the default route only while a page neither captures nor may capture,
-  // and LiveKit's first connection comes before the microphone. Here LiveKit is on 127.0.0.1, so in Firefox
-  // the page holds a capture until the call is up (Playwright cannot grant Firefox the microphone). Not in
-  // Chromium: a second capture of its fake device leaves the call's microphone silent. Real servers are not
-  // on loopback.
-  const firefox = page.context().browser()?.browserType().name() === "firefox";
-  if (firefox) {
-    await page.evaluate(async () => {
-      Object.assign(window, { heldMicrophone: await navigator.mediaDevices.getUserMedia({ audio: true }) });
-    });
-  }
   await page
     .getByRole("region", { name: `Голосовой канал ${channel.name}` })
     .getByRole("button", { name: "Присоединиться" })
     .click();
   await expect(page.getByRole("region", { name: "Голосовая связь" })).toContainText("Голос подключён");
-  if (firefox) {
-    await page.evaluate(() => {
-      const held = (window as { heldMicrophone?: MediaStream }).heldMicrophone;
-      for (const t of held?.getTracks() ?? []) t.stop();
-    });
-  }
 };
 
 /**
