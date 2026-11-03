@@ -2,11 +2,12 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { HttpResponse } from "msw";
 import { renderApp, sessionHandler, testUser } from "@/app/test";
 import { resetGuilds } from "@/entities/guild";
+import { LOGOUT_CONFIRM } from "@/features/auth";
 import { PASSWORD_CHANGED, PASSWORDS_DIFFER } from "@/features/change-password";
 import { NAME_RULE } from "@/features/edit-profile";
 import { WRONG_IMAGE } from "@/shared/lib";
 import { apiHandler, dispatchFrame, makeReady, problem, readyGateway, server } from "@/shared/test";
-import { LEAVE_UNSAVED, UNSAVED } from "@/shared/ui";
+import { LEAVE_UNSAVED, THEME_STORAGE_KEY, UNSAVED } from "@/shared/ui";
 
 const AVATAR = "/api/v1/files/avatars/1234567890123456789/0123456789abcdef.png";
 
@@ -213,5 +214,45 @@ describe("password", () => {
     await fill(user, "not-it", "new-secret-1", "new-secret-1");
     expect(await screen.findByText("Неверный текущий пароль.")).toBeTruthy();
     expect(document.activeElement).toBe(screen.getByLabelText("Текущий пароль"));
+  });
+});
+
+describe("appearance", () => {
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("switches the theme at once and keeps the choice", async () => {
+    signedIn();
+    const { user } = renderApp("/settings/appearance");
+    const light = await screen.findByRole("radio", { name: "Светлая" });
+    expect(screen.getByRole("radio", { name: "Тёмная" })).toHaveProperty("ariaChecked", "true");
+    await user.click(light);
+    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("light");
+    await user.click(screen.getByRole("radio", { name: "Как в системе" }));
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("system");
+  });
+});
+
+describe("sign-out", () => {
+  it("asks first, then signs out", async () => {
+    let out = false;
+    signedIn();
+    server.use(
+      apiHandler("post", "/auth/logout", () => {
+        out = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const { user, router } = renderApp("/settings/profile");
+    await user.click(await screen.findByRole("button", { name: "Выйти" }));
+    const dialog = await screen.findByRole("alertdialog", { name: LOGOUT_CONFIRM });
+    expect(out).toBe(false);
+    await user.click(within(dialog).getByRole("button", { name: "Выйти" }));
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/login");
+    });
+    expect(out).toBe(true);
   });
 });
