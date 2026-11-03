@@ -1,5 +1,6 @@
 import { Outlet, useParams } from "@tanstack/react-router";
 import { useGuilds } from "@/entities/guild";
+import { CallNotices } from "@/features/voice-call";
 import { ServerMembers, ServerSidebar } from "@/pages/channel";
 import { HomeSidebar } from "@/pages/channels-home";
 import { AppShell } from "@/widgets/app-shell";
@@ -26,6 +27,7 @@ export const ShellLayout = () => {
       {...(guildId === undefined || !known ? {} : { members: <ServerMembers guildId={guildId} /> })}
     >
       <Outlet />
+      <CallNotices />
     </AppShell>
   );
 };

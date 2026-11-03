@@ -10,8 +10,8 @@ import {
   RoomEvent,
   Track,
 } from "livekit-client";
+import type { CallLink, CallTransport, CallTransportEvents, ScreenShareResult } from "@/shared/lib";
 import type { VoicePrefs } from "../model/prefs";
-import type { CallLink, CallTransport, CallTransportEvents, ScreenShareResult } from "../model/transport";
 import { canRestrictOwnAudio, currentBrowser } from "./browser";
 import { connectOptions, endCause, microphoneOptions, roomOptions, screenShareOptions } from "./media";
 

@@ -25,8 +25,8 @@ export interface CallTransportEvents {
 }
 
 /**
- * A voice call as the app uses it. The LiveKit implementation is in
- * lib/livekit.ts; tests use FakeTransport from shared/test.
+ * A voice call as the app uses it. The LiveKit implementation is in entities/call
+ * (lib/livekit.ts); tests use FakeTransport from shared/test.
  */
 export interface CallTransport {
   connect(url: string, token: string): Promise<void>;

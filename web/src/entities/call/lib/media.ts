@@ -5,8 +5,8 @@ import {
   type RoomOptions,
   type TrackPublishOptions,
 } from "livekit-client";
+import type { EndCause } from "@/shared/lib";
 import type { VoicePrefs } from "../model/prefs";
-import type { EndCause } from "../model/transport";
 import type { Browser } from "./browser";
 
 /**

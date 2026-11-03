@@ -5,7 +5,8 @@ import { applyGatewayDispatch, getGuildsState, resetGuilds, setConnectionStatus 
 import { applyMessageDispatch, catchUpMessages, resetPending } from "@/entities/message";
 import { onSessionEnd, onUnauthorized, setSignedIn } from "@/entities/session";
 import { resetDrafts } from "@/features/send-message";
-import { getGateway } from "@/shared/api";
+import { endCall, onVoiceMove, reconcileVoiceFlags } from "@/features/voice-call";
+import { getGateway, isCallEvent, parseCallEvent } from "@/shared/api";
 
 /**
  * Runs the gateway while `active` (the session is authenticated): its events
@@ -25,11 +26,16 @@ export const useGatewaySession = (active: boolean): void => {
     let wasReconnecting = false;
     const unlisten = gateway.listen({
       onDispatch: (t, d) => {
-        const before = getGuildsState().me;
+        const before = getGuildsState();
         applyGatewayDispatch(t, d);
         applyMessageDispatch(queryClient, t, d);
-        const me = getGuildsState().me;
-        if (me && me !== before) setSignedIn(queryClient, me);
+        const after = getGuildsState();
+        if (after.me && after.me !== before.me) setSignedIn(queryClient, after.me);
+        // Voice: follow a moderator's move; keep the server's view of the switches in step.
+        if (isCallEvent(t)) {
+          const move = parseCallEvent(t, d);
+          if (move) void onVoiceMove(move.channel_id);
+        } else if (after !== before) void reconcileVoiceFlags();
       },
       onStatus: (status) => {
         setConnectionStatus(status);
@@ -41,6 +47,7 @@ export const useGatewaySession = (active: boolean): void => {
     });
     const offSessionEnd = onSessionEnd(() => {
       gateway.stop();
+      void endCall("left");
       resetGuilds();
       resetChannelUi();
       resetDrafts();

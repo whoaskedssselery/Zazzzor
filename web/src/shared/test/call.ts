@@ -1,4 +1,4 @@
-import type { CallTransport, CallTransportEvents, ScreenShareResult } from "@/entities/call";
+import type { CallTransport, CallTransportEvents, ScreenShareResult } from "@/shared/lib";
 
 type Call = { method: string; args: unknown[] };
 
