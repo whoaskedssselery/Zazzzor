@@ -62,6 +62,8 @@ for path in / /channels/@me; do
   expect_status "$path" 200
   cmp -s "$tmp/index" "$tmp/body" || fail "$path: ответ не index.html"
   expect_header "$path" '^Content-Security-Policy:.*frame-ancestors'
+  # The noise suppression models are WebAssembly; nothing more than compiling them is allowed.
+  expect_header "$path" "^Content-Security-Policy:.*script-src 'self' 'wasm-unsafe-eval';"
   expect_header "$path" '^Cache-Control: no-cache'
 done
 

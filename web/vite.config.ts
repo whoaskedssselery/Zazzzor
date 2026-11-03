@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
+import { noiseSuppressionAudioWorkletVitePlugin } from "@workadventure/noise-suppression/vite";
 import { defineConfig } from "vitest/config";
 
 // Dev only: the browser talks to the Vite origin and Vite forwards the REST
@@ -17,7 +18,8 @@ const proxy = {
 const csp = process.env.ZAZZZOR_PREVIEW_CSP;
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  // The noise suppression plugin serves its worklet, Wasm and model in dev; a build emits them to /assets.
+  plugins: [react(), tailwindcss(), noiseSuppressionAudioWorkletVitePlugin()],
   // `@/` is web/src, as in tsconfig.json "paths".
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   server: { port: 5173, strictPort: true, proxy },
