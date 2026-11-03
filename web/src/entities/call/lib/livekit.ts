@@ -32,8 +32,17 @@ const SCREEN = new Set<Track.Source>([Track.Source.ScreenShare, Track.Source.Scr
 /** How long a screen may stay unpublished before it counts as ended: a full reconnect publishes it again. */
 const REPUBLISH_MS = 1000;
 
-const isMicError = (e: unknown): boolean =>
-  e instanceof DOMException && (e.name === "NotAllowedError" || e.name === "NotFoundError");
+/** What getUserMedia throws when there is no usable microphone: refused, missing, busy, gone or blocked. */
+const MIC_ERRORS = new Set([
+  "NotAllowedError",
+  "NotFoundError",
+  "NotReadableError",
+  "OverconstrainedError",
+  "AbortError",
+  "SecurityError",
+]);
+
+const isMicError = (e: unknown): boolean => e instanceof DOMException && MIC_ERRORS.has(e.name);
 
 /**
  * The call over LiveKit. Microphones are received as soon as they are
@@ -181,10 +190,16 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
   const unpublishScreen = async (r: Room) => {
     const stream = screen;
     screen = null;
-    for (const pub of [...r.localParticipant.trackPublications.values()]) {
-      if (pub.track && SCREEN.has(pub.source)) await r.localParticipant.unpublishTrack(pub.track);
+    try {
+      for (const pub of [...r.localParticipant.trackPublications.values()]) {
+        if (pub.track && SCREEN.has(pub.source)) await r.localParticipant.unpublishTrack(pub.track);
+      }
+    } catch (e) {
+      // The room is going away; the capture must stop all the same.
+      console.warn("voice: the screen share could not be unpublished", e);
+    } finally {
+      for (const t of stream?.getTracks() ?? []) t.stop();
     }
-    for (const t of stream?.getTracks() ?? []) t.stop();
   };
 
   return {
@@ -221,8 +236,9 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
       try {
         await room.localParticipant.setMicrophoneEnabled(on, microphoneOptions(prefs()));
       } catch (e) {
+        // Callers do not wait for the microphone: nothing may escape as an unhandled rejection.
         if (isMicError(e)) emit("micDenied");
-        else throw e;
+        else console.warn("voice: the microphone could not be switched", e);
       }
     },
 
@@ -302,7 +318,8 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
 
     async useDevice(kind, deviceId) {
       // "default" follows the system's choice; an exact match would pin today's default device.
-      await room?.switchActiveDevice(kind, deviceId, deviceId !== "default");
+      const switched = await room?.switchActiveDevice(kind, deviceId, deviceId !== "default");
+      if (switched === false) throw new Error(`voice: could not switch ${kind} to ${deviceId}`);
     },
 
     on(event, fn) {

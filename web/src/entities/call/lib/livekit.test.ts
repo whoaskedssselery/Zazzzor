@@ -213,3 +213,40 @@ describe("the microphone's noise suppression", () => {
     expect(setProcessorOf(track)).not.toHaveBeenCalled();
   });
 });
+
+describe("the second review's cases", () => {
+  it("1: a busy or vanished microphone is reported, and nothing else escapes", async () => {
+    const t = await connected();
+    const denied = vi.fn();
+    t.on("micDenied", denied);
+    room().localParticipant.setMicrophoneEnabled.mockRejectedValueOnce(
+      new DOMException("Could not start audio source", "NotReadableError"),
+    );
+    await t.setMicrophone(true);
+    room().localParticipant.setMicrophoneEnabled.mockRejectedValueOnce(
+      new DOMException("no such device", "OverconstrainedError"),
+    );
+    await t.setMicrophone(true);
+    expect(denied).toHaveBeenCalledTimes(2);
+    room().localParticipant.setMicrophoneEnabled.mockRejectedValueOnce(new Error("engine closed"));
+    await expect(t.setMicrophone(true)).resolves.toBeUndefined();
+  });
+
+  it("7: the capture stops even when unpublishing it fails", async () => {
+    const t = await connected();
+    const { video, stream } = capture();
+    pickScreen(Promise.resolve(stream));
+    await t.startScreenShare();
+    (room().localParticipant as unknown as { unpublishTrack: Mock }).unpublishTrack.mockRejectedValueOnce(
+      new Error("signal closed"),
+    );
+    await expect(t.stopScreenShare()).resolves.toBeUndefined();
+    expect(video.stop).toHaveBeenCalled();
+  });
+
+  it("9: a device the room could not switch to is an error", async () => {
+    const t = await connected();
+    room().switchActiveDevice.mockResolvedValueOnce(false);
+    await expect(t.useDevice("audioinput", "mic-9")).rejects.toThrow();
+  });
+});

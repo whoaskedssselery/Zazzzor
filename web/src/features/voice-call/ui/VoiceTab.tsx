@@ -47,19 +47,34 @@ type WithOutputPicker = MediaDevices & { selectAudioOutput: () => Promise<MediaD
 /** Firefox lists outputs only through its own picker. */
 const hasOutputPicker = (): boolean => "mediaDevices" in navigator && "selectAudioOutput" in navigator.mediaDevices;
 
-/** The browser's microphones and speakers; names appear once the page may use the microphone. */
+/**
+ * The browser's microphones and speakers, read again when a device comes or
+ * goes and when a call starts: names appear only once the page may use the
+ * microphone, which joining asks for.
+ */
 const useDevices = () => {
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const inCall = useCall((s) => s.status !== "idle");
   useEffect(() => {
     if (!("mediaDevices" in navigator)) return;
+    const media = navigator.mediaDevices;
     let live = true;
-    void navigator.mediaDevices.enumerateDevices().then((list) => {
-      if (live) setDevices(list);
-    });
+    const read = () => {
+      media
+        .enumerateDevices()
+        .then((list) => {
+          if (live) setDevices(list);
+        })
+        // Without the list the tab still offers the system's devices.
+        .catch(() => undefined);
+    };
+    read();
+    media.addEventListener("devicechange", read);
     return () => {
       live = false;
+      media.removeEventListener("devicechange", read);
     };
-  }, []);
+  }, [inCall]);
   /** A device the browser handed over through its own list (Firefox's selectAudioOutput). */
   const add = (device: MediaDeviceInfo) => {
     setDevices((list) => [...list.filter((d) => d.deviceId !== device.deviceId), device]);
