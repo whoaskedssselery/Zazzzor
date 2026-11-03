@@ -45,17 +45,18 @@ export const OverviewTab = ({ guild, onDirtyChange }: { guild: Guild; onDirtyCha
   }, [dirty, onDirtyChange]);
 
   const save = useMutation({
-    mutationFn: async () => {
+    // Takes the icon it sends: another may be picked while this one uploads.
+    mutationFn: async (sent: File | null) => {
       const value = trimContent(name);
       if (value !== guild.name) {
         unwrap(
           await api.PATCH("/guilds/{guild_id}", { params: { path: { guild_id: guild.id } }, body: { name: value } }),
         );
       }
-      if (icon !== null) await uploadIcon(guild.id, icon);
+      if (sent !== null) await uploadIcon(guild.id, sent);
     },
-    onSuccess: () => {
-      setIcon(null);
+    onSuccess: (_, sent) => {
+      setIcon((current) => (current === sent ? null : current));
       toast.show({ text: "Изменения сохранены", tone: "success" });
     },
     onError: (e) => {
@@ -79,7 +80,7 @@ export const OverviewTab = ({ guild, onDirtyChange }: { guild: Guild; onDirtyCha
       return;
     }
     setNameError(undefined);
-    save.mutate();
+    save.mutate(icon);
   };
 
   const reset = () => {

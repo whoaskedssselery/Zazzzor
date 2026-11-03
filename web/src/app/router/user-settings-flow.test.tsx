@@ -77,6 +77,45 @@ describe("user settings", () => {
     expect(await screen.findByText(NAME_RULE)).toBeTruthy();
   });
 
+  it("keeps an avatar picked while the previous one uploads", async () => {
+    const sizes: number[] = [];
+    let finish = () => {};
+    signedIn();
+    server.use(
+      apiHandler("put", "/users/@me/avatar", async ({ request }) => {
+        const file = (await request.formData()).get("file");
+        sizes.push(typeof file === "object" && file !== null ? file.size : -1);
+        // The first upload waits for the test; later ones answer at once.
+        if (sizes.length === 1) {
+          await new Promise<void>((resolve) => {
+            finish = resolve;
+          });
+        }
+        return HttpResponse.json({ ...testUser, avatar_url: AVATAR });
+      }),
+    );
+    const { user } = renderApp("/settings/profile");
+    await screen.findByRole("textbox", { name: "Отображаемое имя" });
+    fireEvent.change(picker(), { target: { files: [png()] } });
+    await user.click(await screen.findByRole("button", { name: "Сохранить изменения" }));
+    await waitFor(() => {
+      expect(sizes).toEqual([8]);
+    });
+    const second = new File([new Uint8Array(16)], "second.png", { type: "image/png" });
+    fireEvent.change(picker(), { target: { files: [second] } });
+    finish();
+    // The first save is done, the second pick still waits for its own.
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Сохранить изменения" })).toHaveProperty("disabled", false);
+    });
+    expect(screen.getByRole("region", { name: UNSAVED })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Сохранить изменения" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("region", { name: UNSAVED })).toBeNull();
+    });
+    expect(sizes).toEqual([8, 16]);
+  });
+
   it("uploads a new avatar after showing it", async () => {
     let uploaded = false;
     signedIn();
