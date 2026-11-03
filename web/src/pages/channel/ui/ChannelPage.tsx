@@ -1,10 +1,12 @@
-import { Hash } from "lucide-react";
+import { Hash, Volume2 } from "lucide-react";
+import { CHANNEL_TYPE } from "@/entities/channel";
 import { type Channel, useGuilds } from "@/entities/guild";
 import { Skeleton } from "@/shared/ui";
 import { MembersButton, NavButton, ShellHeader } from "@/widgets/app-shell";
 import { ChannelSidebar } from "@/widgets/channel-sidebar";
 import { ChatView } from "@/widgets/chat";
 import { MemberList } from "@/widgets/member-list";
+import { VoiceStage } from "@/widgets/voice-stage";
 import { useChannelAccess } from "../model/useChannelAccess";
 
 /** The channel list while the server is not known yet (before READY). */
@@ -52,6 +54,21 @@ const ChannelView = ({ guildId, channel }: { guildId: string; channel: Channel }
   </>
 );
 
+/** The open voice channel: its header and its stage. */
+const VoiceChannelView = ({ guildId, channel }: { guildId: string; channel: Channel }) => (
+  <>
+    <ShellHeader>
+      <NavButton />
+      <Volume2 aria-hidden className="size-6 shrink-0 text-fg-faint" strokeWidth={1.75} />
+      <h1 className="min-w-0 truncate text-base font-semibold">{channel.name}</h1>
+      <div className="ml-auto flex shrink-0 items-center">
+        <MembersButton />
+      </div>
+    </ShellHeader>
+    <VoiceStage guildId={guildId} channel={channel} />
+  </>
+);
+
 /** The main area while the address is being checked, or of a server with no text channel to open. */
 const EmptyView = ({ text }: { text: string | null }) => (
   <>
@@ -74,7 +91,13 @@ export const ChannelPage = ({ guildId, channelId = null }: { guildId: string; ch
   const openable = useChannelAccess(guildId, channelId);
   const known = useGuilds((s) => guildId in s.guilds);
   const channel = useGuilds((s) => (channelId === null ? undefined : s.guilds[guildId]?.channels[channelId]));
-  if (openable && channel !== undefined) return <ChannelView guildId={guildId} channel={channel} />;
+  if (openable && channel !== undefined) {
+    return channel.type === CHANNEL_TYPE.VOICE ? (
+      <VoiceChannelView guildId={guildId} channel={channel} />
+    ) : (
+      <ChannelView guildId={guildId} channel={channel} />
+    );
+  }
   return (
     <EmptyView text={known && channelId === null ? "На этом сервере нет текстовых каналов, доступных вам." : null} />
   );

@@ -194,6 +194,7 @@ export interface GatewayEvents {
   CHANNEL_DELETE: S["Channel"];
   PRESENCE_UPDATE: S["Presence"];
   USER_UPDATE: S["User"];
+  VOICE_STATE_UPDATE: S["VoiceState"];
 }
 
 const memberEventSchema: z.ZodMiniType<S["MemberEvent"]> = z.object({ guild_id: snowflake, member: memberSchema });
@@ -216,6 +217,7 @@ const eventSchemas: { [K in keyof GatewayEvents]: z.ZodMiniType<GatewayEvents[K]
   CHANNEL_DELETE: channelSchema,
   PRESENCE_UPDATE: presenceSchema,
   USER_UPDATE: userSchema,
+  VOICE_STATE_UPDATE: voiceStateSchema,
 };
 
 /**
@@ -272,6 +274,29 @@ export const isChatEvent = (t: string): t is keyof ChatEvents => Object.hasOwn(c
 /** The payload of chat event `t` checked against the contract, or null (logged) when it does not match. */
 export function parseChatEvent<K extends keyof ChatEvents>(t: K, d: unknown): ChatEvents[K] | null {
   const result = chatSchemas[t].safeParse(d);
+  if (result.success) return result.data;
+  console.warn(`gateway: dropped a malformed ${t}`, result.error.issues);
+  return null;
+}
+
+// Call events: only the voice call applies them (VOICE_MOVE is private to
+// the participant being moved), never the guild store.
+
+/** The payload type of each call event (`x-gateway.events`). */
+export interface CallEvents {
+  VOICE_MOVE: S["VoiceMove"];
+}
+
+const callSchemas: { [K in keyof CallEvents]: z.ZodMiniType<CallEvents[K]> } = {
+  VOICE_MOVE: z.object({ channel_id: snowflake }),
+};
+
+/** Whether `t` is a call event. */
+export const isCallEvent = (t: string): t is keyof CallEvents => Object.hasOwn(callSchemas, t);
+
+/** The payload of call event `t` checked against the contract, or null (logged) when it does not match. */
+export function parseCallEvent<K extends keyof CallEvents>(t: K, d: unknown): CallEvents[K] | null {
+  const result = callSchemas[t].safeParse(d);
   if (result.success) return result.data;
   console.warn(`gateway: dropped a malformed ${t}`, result.error.issues);
   return null;

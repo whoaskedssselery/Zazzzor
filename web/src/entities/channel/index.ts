@@ -12,5 +12,6 @@ export {
   channelToOpen,
   fallbackPath,
   isOpenableChannel,
+  isVisitableChannel,
   visibleChannelGroups,
 } from "./model/visible";

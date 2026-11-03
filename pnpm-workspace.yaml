@@ -3,6 +3,9 @@ packages:
   - "web"
 # unrs-resolver (under eslint-import-resolver-typescript) ships prebuilt
 # bindings as optional dependencies; its postinstall is only a fallback
-# downloader, so it does not run.
+# downloader, so it does not run. protobufjs (under the noise suppression
+# package, via onnxruntime-web, which the client does not load) only checks
+# its own install in postinstall.
 allowBuilds:
+  protobufjs: false
   unrs-resolver: false

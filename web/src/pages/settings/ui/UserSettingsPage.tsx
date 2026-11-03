@@ -5,15 +5,17 @@ import { LogoutItem } from "@/features/auth";
 import { PasswordTab } from "@/features/change-password";
 import { AppearanceTab } from "@/features/choose-theme";
 import { ProfileTab } from "@/features/edit-profile";
+import { VoiceTab } from "@/features/voice-call";
 import { cn, SettingsFrame, settingsNavItemClass, useLeaveGuard } from "@/shared/ui";
 
-const TABS = ["profile", "account", "appearance"] as const;
+const TABS = ["profile", "account", "appearance", "voice"] as const;
 type UserSettingsTab = (typeof TABS)[number];
 
 export const USER_SETTINGS_TITLES: Record<UserSettingsTab, string> = {
   profile: "Профиль",
   account: "Учётная запись",
   appearance: "Внешний вид",
+  voice: "Голос и видео",
 };
 
 const isTab = (tab: string): tab is UserSettingsTab => (TABS as readonly string[]).includes(tab);
@@ -34,6 +36,8 @@ const TabContent = ({
       return <PasswordTab />;
     case "appearance":
       return <AppearanceTab />;
+    case "voice":
+      return <VoiceTab />;
   }
 };
 

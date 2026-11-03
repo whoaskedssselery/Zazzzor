@@ -1,5 +1,16 @@
 import { useMutation } from "@tanstack/react-query";
-import { byRank, canActOn, canManageRole, computeBase, type GuildEntry, has, PERM, type Role } from "@/entities/guild";
+import { CHANNEL_TYPE } from "@/entities/channel";
+import {
+  byRank,
+  canActOn,
+  canManageRole,
+  computeBase,
+  computeChannel,
+  type GuildEntry,
+  has,
+  PERM,
+  type Role,
+} from "@/entities/guild";
 import { api, errorText, unwrap } from "@/shared/api";
 import { useToast } from "@/shared/ui";
 
@@ -72,4 +83,77 @@ export const useMemberMutations = (guildId: string) => {
     onError,
   });
   return { update, kick, ban };
+};
+
+/** What the user may do to a member who is in voice, and how that member is now. */
+export interface VoiceActions {
+  /** Muted or deafened by a moderator now: the items say «включить» then. */
+  muted: boolean;
+  deafened: boolean;
+  mute: boolean;
+  deafen: boolean;
+  disconnect: boolean;
+  /** Voice channels to move them to, in channel order. */
+  moveTo: string[];
+}
+
+/**
+ * The voice moderation `actorId` may apply to `targetId`, who is in a voice
+ * channel of `entry` (null when they are not, or nothing is allowed):
+ * MUTE_MEMBERS and DEAFEN_MEMBERS in their channel; MOVE_MEMBERS there to
+ * disconnect, and also in a destination they may view and connect to, to
+ * move. On anyone but themself the actor also needs a higher role (the
+ * owner acts on all). The server checks all of it again.
+ */
+export function voiceActions(entry: GuildEntry, actorId: string, targetId: string): VoiceActions | null {
+  const state = entry.voice[targetId];
+  if (!state) return null;
+  if (actorId !== targetId && !canActOn(entry, actorId, targetId)) return null;
+  const here = computeChannel(entry, state.channel_id, actorId);
+  const canMove = has(here, PERM.MOVE_MEMBERS);
+  const moveTo = canMove
+    ? Object.values(entry.channels)
+        .filter(
+          (c) =>
+            c.type === CHANNEL_TYPE.VOICE &&
+            c.id !== state.channel_id &&
+            has(computeChannel(entry, c.id, actorId), PERM.MOVE_MEMBERS) &&
+            has(computeChannel(entry, c.id, targetId), PERM.VIEW_CHANNEL | PERM.CONNECT),
+        )
+        .sort((a, b) => a.position - b.position || (a.id < b.id ? -1 : 1))
+        .map((c) => c.id)
+    : [];
+  const actions = {
+    muted: state.mute,
+    deafened: state.deaf,
+    mute: has(here, PERM.MUTE_MEMBERS),
+    deafen: has(here, PERM.DEAFEN_MEMBERS),
+    disconnect: canMove,
+    moveTo,
+  };
+  return actions.mute || actions.deafen || actions.disconnect ? actions : null;
+}
+
+/** The voice moderation requests of one server; a refusal is a toast in the words of errors.ts. */
+export const useVoiceModeration = (guildId: string) => {
+  const toast = useToast();
+  return useMutation({
+    mutationFn: async ({
+      userId,
+      body,
+    }: {
+      userId: string;
+      body: { mute?: boolean; deaf?: boolean; channel_id?: string | null };
+    }) => {
+      unwrap(
+        await api.PATCH("/guilds/{guild_id}/members/{user_id}/voice", {
+          params: { path: { guild_id: guildId, user_id: userId } },
+          body,
+        }),
+      );
+    },
+    onError: (e) => {
+      toast.show({ text: errorText(e), tone: "error" });
+    },
+  });
 };

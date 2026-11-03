@@ -9,6 +9,8 @@ export type Member = S["Member"];
 export type GuildState = S["GuildState"];
 export type ReadyPayload = S["GatewayReady"];
 export type PresenceStatus = S["Presence"]["status"];
+/** Someone in a voice channel; `left` exists only on the event. */
+export type VoiceState = Omit<S["VoiceState"], "left">;
 
 /** One server as the signed-in user sees it, keyed by ID for upserts. */
 export interface GuildEntry {
@@ -18,6 +20,8 @@ export interface GuildEntry {
   /** The members the server sent (the first 1000) plus `myMember`. */
   members: Record<string, Member>;
   myMember: Member;
+  /** Who is in which voice channel of the server, by user ID (a user is in one at most). */
+  voice: Record<string, VoiceState>;
 }
 
 /** Everything the gateway tells about the user's servers. */
@@ -38,7 +42,8 @@ const byId = <T extends { id: string }>(items: T[]): Record<string, T> =>
 function entryOf(g: GuildState): GuildEntry {
   const members: Record<string, Member> = Object.fromEntries(g.members.map((m) => [m.user.id, m]));
   members[g.my_member.user.id] = g.my_member;
-  return { guild: g.guild, roles: byId(g.roles), channels: byId(g.channels), members, myMember: g.my_member };
+  const voice = Object.fromEntries(g.voice_states.map(({ left: _left, ...v }) => [v.user_id, v]));
+  return { guild: g.guild, roles: byId(g.roles), channels: byId(g.channels), members, myMember: g.my_member, voice };
 }
 
 /**
@@ -131,7 +136,11 @@ const handlers: Handlers = {
     if (!entry) return s;
     // The user left, was kicked or banned: the server is gone for them.
     if (d.user.id === entry.myMember.user.id) return removeGuild(s, d.guild_id);
-    return updateGuild(s, d.guild_id, (e) => ({ ...e, members: without(e.members, d.user.id) }));
+    return updateGuild(s, d.guild_id, (e) => ({
+      ...e,
+      members: without(e.members, d.user.id),
+      voice: without(e.voice, d.user.id),
+    }));
   },
   GUILD_ROLE_CREATE: (s, d) =>
     updateGuild(s, d.guild_id, (e) => ({ ...e, roles: { ...e.roles, [d.role.id]: d.role } })),
@@ -146,13 +155,24 @@ const handlers: Handlers = {
     })),
   CHANNEL_CREATE: (s, c) => updateGuild(s, c.guild_id, (e) => ({ ...e, channels: { ...e.channels, [c.id]: c } })),
   CHANNEL_UPDATE: (s, c) => updateGuild(s, c.guild_id, (e) => ({ ...e, channels: { ...e.channels, [c.id]: c } })),
-  CHANNEL_DELETE: (s, c) => updateGuild(s, c.guild_id, (e) => ({ ...e, channels: without(e.channels, c.id) })),
+  CHANNEL_DELETE: (s, c) =>
+    updateGuild(s, c.guild_id, (e) => ({
+      ...e,
+      channels: without(e.channels, c.id),
+      voice: Object.fromEntries(Object.entries(e.voice).filter(([, v]) => v.channel_id !== c.id)),
+    })),
   PRESENCE_UPDATE: (s, p) => ({ ...s, presences: { ...s.presences, [p.user_id]: p.status } }),
   USER_UPDATE: (s, user) => ({
     ...s,
     me: s.me?.id === user.id ? user : s.me,
     guilds: Object.fromEntries(Object.entries(s.guilds).map(([id, e]) => [id, renameUser(e, user)])),
   }),
+  VOICE_STATE_UPDATE: (s, { left, ...v }) =>
+    updateGuild(s, v.guild_id, (e) => {
+      if (!left) return { ...e, voice: { ...e.voice, [v.user_id]: v } };
+      // A leave of a channel the user already moved out of changes nothing.
+      return e.voice[v.user_id]?.channel_id === v.channel_id ? { ...e, voice: without(e.voice, v.user_id) } : e;
+    }),
 };
 
 const isHandled = (t: string): t is keyof Handlers => Object.hasOwn(handlers, t);

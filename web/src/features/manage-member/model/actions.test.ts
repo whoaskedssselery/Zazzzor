@@ -1,6 +1,15 @@
 import { applyReady, formatMask, PERM } from "@/entities/guild";
-import { makeEveryone, makeGuild, makeGuildState, makeMember, makeRole, makeUser } from "@/shared/test";
-import { assignableRoles, memberActions } from "./actions";
+import {
+  makeChannel,
+  makeEveryone,
+  makeGuild,
+  makeGuildState,
+  makeMember,
+  makeRole,
+  makeUser,
+  makeVoiceState,
+} from "@/shared/test";
+import { assignableRoles, memberActions, voiceActions } from "./actions";
 
 const owner = makeUser("1");
 const me = makeUser("2");
@@ -65,5 +74,69 @@ describe("memberActions", () => {
   it("assigns only the roles below the actor's highest", () => {
     expect(assignableRoles(entry(PERM.MANAGE_ROLES), me.id).map((r) => r.name)).toEqual(["Новичок"]);
     expect(assignableRoles(entry(PERM.MANAGE_ROLES), owner.id).map((r) => r.name)).toEqual(["Модератор", "Новичок"]);
+  });
+});
+
+describe("voiceActions", () => {
+  const LOUNGE = "102";
+  const GAMES = "103";
+  const ATTIC = "104";
+
+  /** As `entry`, with voice channels: `junior` and `peer` in the lounge, the attic hidden from @everyone. */
+  const voiceEntry = (perms: bigint) => {
+    const role = { ...mid, permissions: formatMask(perms) };
+    const mine = makeMember(me, { roles: [mid.id] });
+    const state = makeGuildState(G, me, {
+      guild: makeGuild(G, owner.id),
+      roles: [makeEveryone(G, formatMask(PERM.VIEW_CHANNEL | PERM.CONNECT)), low, role],
+      channels: [
+        makeChannel(LOUNGE, G, { type: 2, name: "Лаунж" }),
+        makeChannel(GAMES, G, { type: 2, name: "Игры" }),
+        makeChannel(ATTIC, G, {
+          type: 2,
+          name: "Чердак",
+          permission_overwrites: [{ id: G, type: 0, allow: "0", deny: formatMask(PERM.VIEW_CHANNEL) }],
+        }),
+      ],
+      members: [
+        mine,
+        makeMember(owner),
+        makeMember(peer, { roles: [mid.id] }),
+        makeMember(junior, { roles: [low.id] }),
+      ],
+      my_member: mine,
+      voice_states: [makeVoiceState(G, LOUNGE, junior.id, { mute: true }), makeVoiceState(G, LOUNGE, peer.id)],
+    });
+    const e = applyReady({ user: me, guilds: [state], presences: [] }).guilds[G];
+    if (!e) throw new Error("no entry");
+    return e;
+  };
+
+  const VOICE_MOD = PERM.MUTE_MEMBERS | PERM.DEAFEN_MEMBERS | PERM.MOVE_MEMBERS | PERM.VIEW_CHANNEL | PERM.CONNECT;
+
+  it("offers mute, deafen, disconnect and the channels the member may join, on someone ranked below", () => {
+    expect(voiceActions(voiceEntry(VOICE_MOD), me.id, junior.id)).toEqual({
+      muted: true,
+      deafened: false,
+      mute: true,
+      deafen: true,
+      disconnect: true,
+      moveTo: [GAMES],
+    });
+  });
+
+  it("offers nothing on an equal rank, or on someone not in voice", () => {
+    expect(voiceActions(voiceEntry(VOICE_MOD), me.id, peer.id)).toBeNull();
+    expect(voiceActions(voiceEntry(VOICE_MOD), me.id, owner.id)).toBeNull();
+  });
+
+  it("follows each permission on its own", () => {
+    expect(voiceActions(voiceEntry(PERM.MUTE_MEMBERS), me.id, junior.id)).toMatchObject({
+      mute: true,
+      deafen: false,
+      disconnect: false,
+      moveTo: [],
+    });
+    expect(voiceActions(voiceEntry(0n), me.id, junior.id)).toBeNull();
   });
 });

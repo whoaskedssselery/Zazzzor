@@ -82,16 +82,6 @@ describe("ChannelSidebar", () => {
     expect(list().getByRole("button", { name: "Текстовые каналы" }).getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("says voice channels come in the next update when one is clicked", async () => {
-    ready();
-    const { user, router } = await renderRouted(<ChannelSidebar guildId={G} channelId="101" />, {
-      path: `/channels/${G}/101`,
-    });
-    await user.click(list().getByRole("button", { name: "Голосовой канал Кинозал" }));
-    expect(await screen.findByText("Голосовые каналы появятся в следующем обновлении")).toBeTruthy();
-    expect(router.state.location.pathname).toBe(`/channels/${G}/101`);
-  });
-
   it("offers «Пригласить людей» only with CREATE_INVITE", async () => {
     ready();
     const { user, unmount } = await renderRouted(<ChannelSidebar guildId={G} channelId="101" />);

@@ -1,4 +1,14 @@
-import { Ellipsis, Gavel, Pencil, Shield, UserMinus } from "lucide-react";
+import {
+  ArrowRightLeft,
+  Ellipsis,
+  Gavel,
+  HeadphoneOff,
+  MicOff,
+  Pencil,
+  PhoneOff,
+  Shield,
+  UserMinus,
+} from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { type GuildEntry, useGuilds } from "@/entities/guild";
 import {
@@ -17,7 +27,7 @@ import {
   DropdownMenuTrigger,
   IconButton,
 } from "@/shared/ui";
-import { memberActions } from "../model/actions";
+import { memberActions, useVoiceModeration, type VoiceActions, voiceActions } from "../model/actions";
 import { type MemberDialog, MemberDialogs } from "./MemberDialogs";
 
 interface Item {
@@ -35,6 +45,77 @@ const itemsFor = (entry: GuildEntry, meId: string, userId: string): Item[] => {
   if (can.kick) items.push({ key: "kick", label: "Выгнать", icon: UserMinus, danger: true });
   if (can.ban) items.push({ key: "ban", label: "Забанить", icon: Gavel, danger: true });
   return items;
+};
+
+/**
+ * The voice moderation items of a member in voice. A component of its own,
+ * so its request hook mounts only while the menu is open (a list has a menu
+ * on every row).
+ */
+const VoiceItems = ({
+  guildId,
+  userId,
+  entry,
+  voice,
+  kind,
+}: {
+  guildId: string;
+  userId: string;
+  entry: GuildEntry;
+  voice: VoiceActions;
+  kind: "context" | "dropdown";
+}) => {
+  const moderate = useVoiceModeration(guildId);
+  const Row = kind === "context" ? ContextMenuItem : DropdownMenuItem;
+  const act = (body: { mute?: boolean; deaf?: boolean; channel_id?: string | null }) => {
+    moderate.mutate({ userId, body });
+  };
+  return (
+    <>
+      {voice.mute && (
+        <Row
+          onSelect={() => {
+            act({ mute: !voice.muted });
+          }}
+        >
+          {voice.muted ? "Включить микрофон на сервере" : "Выключить микрофон на сервере"}
+          <MicOff aria-hidden />
+        </Row>
+      )}
+      {voice.deafen && (
+        <Row
+          onSelect={() => {
+            act({ deaf: !voice.deafened });
+          }}
+        >
+          {voice.deafened ? "Включить звук на сервере" : "Выключить звук на сервере"}
+          <HeadphoneOff aria-hidden />
+        </Row>
+      )}
+      {voice.moveTo.map((id) => (
+        <Row
+          key={id}
+          onSelect={() => {
+            act({ channel_id: id });
+          }}
+        >
+          {`Переместить в «${entry.channels[id]?.name ?? "канал"}»`}
+          <ArrowRightLeft aria-hidden />
+        </Row>
+      ))}
+      {voice.disconnect && (
+        <Row
+          variant="danger"
+          onSelect={() => {
+            act({ channel_id: null });
+          }}
+        >
+          Отключить от голоса
+          <PhoneOff aria-hidden />
+        </Row>
+      )}
+    </>
+  );
 };
 
 /** The card at the top of the menu: who it is about. */
@@ -81,6 +162,7 @@ export const MemberMenu = ({
   if (!entry || meId === null || !member) return <>{children}</>;
 
   const items = itemsFor(entry, meId, userId);
+  const voice = voiceActions(entry, meId, userId);
   // Mounted only while one is open: a list has a menu on every row.
   const dialogs = dialog !== null && (
     <MemberDialogs
@@ -112,6 +194,12 @@ export const MemberMenu = ({
             <i.icon aria-hidden />
           </Row>
         ))}
+        {voice && (
+          <>
+            <Separator />
+            <VoiceItems guildId={guildId} userId={userId} entry={entry} voice={voice} kind={kind} />
+          </>
+        )}
       </>
     );
   };
@@ -138,7 +226,7 @@ export const MemberMenu = ({
       </>
     );
   }
-  if (items.length === 0) return null;
+  if (items.length === 0 && !voice) return null;
   return (
     <>
       <DropdownMenu>

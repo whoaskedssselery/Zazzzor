@@ -5,7 +5,9 @@ import {
   ChevronRight,
   FolderPlus,
   Hash,
+  HeadphoneOff,
   LogOut,
+  MicOff,
   Plus,
   PlusCircle,
   Settings,
@@ -13,6 +15,7 @@ import {
   Volume2,
 } from "lucide-react";
 import { createContext, type DragEvent, type KeyboardEvent, type ReactNode, use, useState } from "react";
+import { useCall } from "@/entities/call";
 import {
   CHANNEL_TYPE,
   type ChannelGroup,
@@ -32,12 +35,19 @@ import {
   has,
   PERM,
   useGuilds,
+  userDisplay,
+  type VoiceState,
+  voiceMembers,
 } from "@/entities/guild";
 import { CreateChannelDialog, type NewChannelKind } from "@/features/create-channel";
 import { InviteDialog } from "@/features/create-invite";
 import { LeaveGuildDialog } from "@/features/leave-guild";
+import { MemberMenu } from "@/features/manage-member";
+import { joinVoice, NO_CONNECT } from "@/features/voice-call";
 import { api, errorText, unwrap } from "@/shared/api";
 import {
+  Avatar,
+  Badge,
   cn,
   DropdownMenu,
   DropdownMenuContent,
@@ -47,8 +57,6 @@ import {
   IconButton,
   useToast,
 } from "@/shared/ui";
-
-const VOICE_LATER = "Голосовые каналы появятся в следующем обновлении";
 
 /**
  * The channel to invite into: the open one when the user may invite there,
@@ -70,6 +78,9 @@ const inviteChannel = (
 /** What the list lets the user do, shared by every row. */
 interface ListActions {
   guildId: string;
+  entry: GuildEntry;
+  /** VIEW_CHANNEL and CONNECT in a voice channel. */
+  canConnect: (channelId: string) => boolean;
   /** MANAGE_CHANNELS in the server: channels move and categories take new ones. */
   canArrange: boolean;
   /** The first settings section of a channel the user may open, if any. */
@@ -145,6 +156,8 @@ const useArrange = (channel: Channel, siblings: Channel[]) => {
 const ChannelRow = ({ channel, siblings, selected }: { channel: Channel; siblings: Channel[]; selected: boolean }) => {
   const toast = useToast();
   const list = useList();
+  const navigate = useNavigate();
+  const inCall = useCall((s) => s.channelId);
   const { row, control } = useArrange(channel, siblings);
   const tab = list.settingsTabOf(channel.id);
   const voice = channel.type === CHANNEL_TYPE.VOICE;
@@ -169,7 +182,15 @@ const ChannelRow = ({ channel, siblings, selected }: { channel: Channel; sibling
           aria-label={`Голосовой канал ${channel.name}`}
           className={cn(look, "cursor-pointer")}
           onClick={() => {
-            toast.show({ text: VOICE_LATER });
+            if (!list.canConnect(channel.id)) {
+              toast.show({ text: NO_CONNECT });
+              return;
+            }
+            void navigate({
+              to: "/channels/$guildId/$channelId",
+              params: { guildId: list.guildId, channelId: channel.id },
+            });
+            if (inCall !== channel.id) void joinVoice(list.guildId, channel.id);
           }}
           {...control}
         >
@@ -187,7 +208,65 @@ const ChannelRow = ({ channel, siblings, selected }: { channel: Channel; sibling
         </Link>
       )}
       {tab && <SettingsLink channel={channel} tab={tab} visible={selected} />}
+      {voice && <VoiceMembers entry={list.entry} channel={channel} />}
     </li>
+  );
+};
+
+/** A switch someone has off, as an icon with its meaning for screen readers; red when a moderator did it. */
+const VoiceFlag = ({
+  icon: Icon,
+  label,
+  byModerator,
+}: {
+  icon: typeof MicOff;
+  label: string;
+  byModerator: boolean;
+}) => (
+  <Icon
+    role="img"
+    aria-label={byModerator ? `${label} модератором` : label}
+    className={cn("size-4 shrink-0", byModerator ? "text-fg-danger" : "text-fg-faint")}
+    strokeWidth={2}
+  />
+);
+
+const VoiceMember = ({ entry, state, speaking }: { entry: GuildEntry; state: VoiceState; speaking: boolean }) => {
+  const user = entry.members[state.user_id]?.user;
+  const view = user ? userDisplay(entry, user) : { name: "Участник", avatarUrl: null };
+  return (
+    <MemberMenu guildId={state.guild_id} userId={state.user_id}>
+      <li className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-sm text-fg-muted hover:bg-hover">
+        <span
+          data-speaking={speaking || undefined}
+          className={cn("shrink-0 rounded-full ring-2 ring-transparent transition-shadow", speaking && "ring-online")}
+        >
+          <Avatar name={view.name} src={view.avatarUrl} size={24} />
+        </span>
+        <span className={cn("min-w-0 flex-1 truncate", speaking && "text-fg")}>{view.name}</span>
+        {state.self_stream && <Badge variant="live">В ЭФИРЕ</Badge>}
+        {(state.mute || state.self_mute) && (
+          <VoiceFlag icon={MicOff} label="Микрофон выключен" byModerator={state.mute} />
+        )}
+        {(state.deaf || state.self_deaf) && (
+          <VoiceFlag icon={HeadphoneOff} label="Звук выключен" byModerator={state.deaf} />
+        )}
+      </li>
+    </MemberMenu>
+  );
+};
+
+/** Who is in a voice channel, under its row, as in Discord. */
+const VoiceMembers = ({ entry, channel }: { entry: GuildEntry; channel: Channel }) => {
+  const speaking = useCall((s) => s.speaking);
+  const members = voiceMembers(entry, channel.id);
+  if (members.length === 0) return null;
+  return (
+    <ul aria-label={`В канале ${channel.name}`} className="mb-1 ml-6 flex flex-col gap-0.5">
+      {members.map((v) => (
+        <VoiceMember key={v.user_id} entry={entry} state={v} speaking={speaking.includes(v.user_id)} />
+      ))}
+    </ul>
   );
 };
 
@@ -311,6 +390,8 @@ export const ChannelSidebar = ({ guildId, channelId }: { guildId: string; channe
   };
   const actions: ListActions = {
     guildId,
+    entry,
+    canConnect: (id) => has(computeChannel(entry, id, userId), PERM.VIEW_CHANNEL | PERM.CONNECT),
     canArrange,
     settingsTabOf: (id) => channelSettingsTabs(entry, id, userId)[0],
     dragging,

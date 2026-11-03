@@ -55,6 +55,12 @@ export const visibleChannelGroups = (entry: GuildEntry, userId: string): Channel
 export const isOpenableChannel = (entry: GuildEntry, channelId: string, userId: string): boolean =>
   entry.channels[channelId]?.type === CHANNEL_TYPE.TEXT && canView(entry, channelId, userId);
 
+/** A text or voice channel the user may view: what the channel address can show. */
+export const isVisitableChannel = (entry: GuildEntry, channelId: string, userId: string): boolean => {
+  const type = entry.channels[channelId]?.type;
+  return (type === CHANNEL_TYPE.TEXT || type === CHANNEL_TYPE.VOICE) && canView(entry, channelId, userId);
+};
+
 /** The path of a text channel. */
 export const channelPath = (guildId: string, channelId: string): string => `/channels/${guildId}/${channelId}`;
 

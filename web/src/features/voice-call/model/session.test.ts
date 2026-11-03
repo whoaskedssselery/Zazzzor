@@ -1,0 +1,402 @@
+import { HttpResponse } from "msw";
+
+import { DEFAULT_VOICE_PREFS, getCall, resetCall, writeVoicePrefs } from "@/entities/call";
+import { applyGatewayDispatch, DEFAULT_EVERYONE, formatMask, PERM, resetGuilds } from "@/entities/guild";
+import { ApiError, errorText } from "@/shared/api";
+import {
+  apiHandler,
+  FakeTransport,
+  makeChannel,
+  makeEveryone,
+  makeGuild,
+  makeGuildState,
+  makeReady,
+  makeUser,
+  makeVoiceState,
+  problem,
+  server,
+} from "@/shared/test";
+import {
+  applyVoicePrefs,
+  CALL_REMOVED,
+  CALL_REPLACED,
+  DEVICE_FAILED,
+  endCall,
+  joinVoice,
+  leaveVoice,
+  MIC_DENIED,
+  onCallNotice,
+  onVoiceMove,
+  reconcileVoiceFlags,
+  setSelfDeaf,
+  setSelfMute,
+  setTransportFactory,
+  startScreenShare,
+  switchAudioDevice,
+} from "./session";
+
+const me = makeUser("100");
+const G = "10";
+const LOUNGE = "102";
+const GAMES = "103";
+const SIGNAL = "ws://localhost:4173";
+
+type Voice = ReturnType<typeof makeVoiceState>;
+
+let fake: FakeTransport;
+let notices: string[];
+let tokens: string[];
+let left: number;
+let flags: unknown[];
+
+/** The server as READY tells it, with these voice states. */
+const ready = (voice: Voice[] = []) => {
+  applyGatewayDispatch(
+    "READY",
+    makeReady(me, [
+      makeGuildState(G, me, {
+        channels: [makeChannel(LOUNGE, G, { type: 2 }), makeChannel(GAMES, G, { type: 2 })],
+        voice_states: voice,
+      }),
+    ]),
+  );
+};
+
+/** The server reports me in `channelId` with these flags. */
+const meIn = (channelId: string, over: Partial<Voice> = {}) => {
+  applyGatewayDispatch("VOICE_STATE_UPDATE", { ...makeVoiceState(G, channelId, me.id, over), left: false });
+};
+
+beforeEach(() => {
+  fake = new FakeTransport();
+  setTransportFactory(() => fake);
+  notices = [];
+  tokens = [];
+  left = 0;
+  flags = [];
+  onTestFinished(
+    onCallNotice((text) => {
+      notices.push(text);
+    }),
+  );
+  server.use(
+    apiHandler("post", "/channels/{channel_id}/voice", ({ params }) => {
+      tokens.push(params.channel_id);
+      return HttpResponse.json({ token: `t-${params.channel_id}`, url: SIGNAL });
+    }),
+    apiHandler("delete", "/users/@me/voice", () => {
+      left += 1;
+      return new HttpResponse(null, { status: 204 });
+    }),
+    apiHandler("patch", "/users/@me/voice-state", async ({ request }) => {
+      flags.push(await request.json());
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
+  ready();
+});
+
+afterEach(() => {
+  resetCall();
+  resetGuilds();
+});
+
+describe("voice session", () => {
+  it("joins with a fresh token and turns the microphone and sound on", async () => {
+    await joinVoice(G, LOUNGE);
+    expect(tokens).toEqual([LOUNGE]);
+    expect(fake.argsOf("connect")).toEqual([[SIGNAL, `t-${LOUNGE}`]]);
+    expect(fake.argsOf("setMicrophone")).toEqual([[true]]);
+    expect(fake.argsOf("setListening")).toEqual([[true]]);
+    expect(getCall()).toMatchObject({ status: "connected", guildId: G, channelId: LOUNGE });
+  });
+
+  it("joins muted and deafened with the microphone and sound off", async () => {
+    setSelfMute(true);
+    setSelfDeaf(true);
+    await joinVoice(G, LOUNGE);
+    expect(fake.argsOf("setMicrophone").at(-1)).toEqual([false]);
+    expect(fake.argsOf("setListening").at(-1)).toEqual([false]);
+  });
+
+  it("moves to another channel over one connection", async () => {
+    await joinVoice(G, LOUNGE);
+    await joinVoice(G, GAMES);
+    expect(tokens).toEqual([LOUNGE, GAMES]);
+    const links = fake.calls.map((c) => c.method).filter((m) => m === "connect" || m === "disconnect");
+    expect(links).toEqual(["disconnect", "connect", "disconnect", "connect"]);
+    expect(getCall().channelId).toBe(GAMES);
+  });
+
+  it("leaves: tells the server, drops the connection and keeps the switches", async () => {
+    setSelfMute(true);
+    await joinVoice(G, LOUNGE);
+    await leaveVoice();
+    expect(left).toBe(1);
+    expect(fake.argsOf("disconnect").length).toBeGreaterThan(1);
+    expect(getCall()).toMatchObject({ status: "idle", channelId: null, selfMute: true });
+  });
+
+  it("stays in the call without a microphone when it is refused", async () => {
+    await joinVoice(G, LOUNGE);
+    fake.emit("micDenied");
+    expect(getCall()).toMatchObject({ status: "connected", micDenied: true });
+    expect(notices).toEqual([MIC_DENIED]);
+  });
+
+  it("follows a move to the channel VOICE_MOVE names", async () => {
+    await joinVoice(G, LOUNGE);
+    await onVoiceMove(GAMES);
+    expect(tokens).toEqual([LOUNGE, GAMES]);
+    expect(getCall().channelId).toBe(GAMES);
+  });
+
+  it("tells the server its own switches when its state differs, also after READY", async () => {
+    setSelfMute(true);
+    await joinVoice(G, LOUNGE);
+    meIn(LOUNGE);
+    await reconcileVoiceFlags();
+    expect(flags).toEqual([{ self_mute: true, self_deaf: false }]);
+    meIn(LOUNGE, { self_mute: true });
+    await reconcileVoiceFlags();
+    expect(flags).toHaveLength(1);
+    // The API restarted: READY has the state with its flags back at false.
+    ready([makeVoiceState(G, LOUNGE, me.id)]);
+    await reconcileVoiceFlags();
+    expect(flags).toHaveLength(2);
+  });
+
+  it("says why it could not join and stays out", async () => {
+    server.use(apiHandler("post", "/channels/{channel_id}/voice", () => problem(403, "missing_permission")));
+    await joinVoice(G, LOUNGE);
+    expect(getCall().status).toBe("idle");
+    expect(notices).toEqual([errorText(new ApiError(403, "missing_permission"))]);
+    expect(fake.argsOf("connect")).toHaveLength(0);
+  });
+
+  it("drops the call without asking the server when the session ends", async () => {
+    await joinVoice(G, LOUNGE);
+    await endCall("left");
+    expect(getCall().status).toBe("idle");
+    expect(left).toBe(0);
+    expect(notices).toEqual([]);
+  });
+
+  it("keeps who speaks and who shares a screen", async () => {
+    await joinVoice(G, LOUNGE);
+    fake.emit("speaking", [me.id]);
+    fake.emit("streams", ["200"]);
+    expect(getCall()).toMatchObject({ speaking: [me.id], streams: ["200"] });
+  });
+});
+
+describe("voice settings in the call", () => {
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  const key = (type: "keydown" | "keyup") => {
+    window.dispatchEvent(new KeyboardEvent(type, { code: "KeyV" }));
+  };
+
+  it("talks only while the push-to-talk key is held", async () => {
+    writeVoicePrefs({ ...DEFAULT_VOICE_PREFS, mode: "ptt" });
+    await joinVoice(G, LOUNGE);
+    expect(fake.argsOf("setMicrophone").at(-1)).toEqual([false]);
+    key("keydown");
+    expect(fake.argsOf("setMicrophone").at(-1)).toEqual([true]);
+    key("keyup");
+    expect(fake.argsOf("setMicrophone").at(-1)).toEqual([false]);
+    await leaveVoice();
+    key("keydown");
+    expect(fake.argsOf("setMicrophone").at(-1)).toEqual([false]);
+  });
+
+  it("uses push-to-talk where voice activity is not allowed", async () => {
+    applyGatewayDispatch(
+      "READY",
+      makeReady(me, [
+        makeGuildState(G, me, {
+          guild: makeGuild(G, "999"),
+          roles: [makeEveryone(G, formatMask(DEFAULT_EVERYONE & ~PERM.USE_VOICE_ACTIVITY))],
+          channels: [makeChannel(LOUNGE, G, { type: 2 })],
+        }),
+      ]),
+    );
+    await joinVoice(G, LOUNGE);
+    expect(fake.argsOf("setMicrophone").at(-1)).toEqual([false]);
+    key("keydown");
+    expect(fake.argsOf("setMicrophone").at(-1)).toEqual([true]);
+    key("keyup");
+  });
+
+  it("plays through the chosen output from the start", async () => {
+    writeVoicePrefs({ ...DEFAULT_VOICE_PREFS, outputId: "out-1" });
+    await joinVoice(G, LOUNGE);
+    expect(fake.argsOf("useDevice")).toEqual([["audiooutput", "out-1"]]);
+  });
+
+  it("applies a change of mode in the call at once", async () => {
+    await joinVoice(G, LOUNGE);
+    expect(fake.argsOf("setMicrophone").at(-1)).toEqual([true]);
+    writeVoicePrefs({ ...DEFAULT_VOICE_PREFS, mode: "ptt" });
+    applyVoicePrefs();
+    expect(fake.argsOf("setMicrophone").at(-1)).toEqual([false]);
+  });
+});
+
+describe("the final review's cases", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** A promise and the function that settles it. */
+  const gate = () => {
+    let open = () => {};
+    const promise = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    return { promise, open };
+  };
+
+  it("C1: switches channels silently even when the server drops the old room before answering", async () => {
+    await joinVoice(G, LOUNGE);
+    meIn(LOUNGE);
+    server.use(
+      apiHandler("post", "/channels/{channel_id}/voice", ({ params }) => {
+        tokens.push(params.channel_id);
+        // The server removes the old participant from LiveKit before it answers.
+        fake.emit("link", "disconnected", "removed");
+        return HttpResponse.json({ token: `t-${params.channel_id}`, url: SIGNAL });
+      }),
+    );
+    await joinVoice(G, GAMES);
+    expect(notices).toEqual([]);
+    expect(getCall()).toMatchObject({ status: "connected", channelId: GAMES });
+  });
+
+  it("C2: a double click on the first join makes one transport and one call", async () => {
+    let made = 0;
+    setTransportFactory(async () => {
+      made += 1;
+      await Promise.resolve();
+      return fake;
+    });
+    await Promise.all([joinVoice(G, LOUNGE), joinVoice(G, LOUNGE)]);
+    expect(made).toBe(1);
+    expect(getCall()).toMatchObject({ status: "connected", guildId: G, channelId: LOUNGE });
+    expect(notices).toEqual([]);
+  });
+
+  it("I5: leaving while the connection is still being made says nothing", async () => {
+    const held = gate();
+    fake.connectGate = held.promise;
+    const joining = joinVoice(G, LOUNGE);
+    await vi.waitFor(() => {
+      expect(fake.argsOf("connect")).toHaveLength(1);
+    });
+    await leaveVoice();
+    held.open();
+    await joining;
+    expect(notices).toEqual([]);
+    expect(getCall().status).toBe("idle");
+  });
+
+  it("I1: a moderator's disconnect says the user was disconnected, once the server says they left", async () => {
+    await joinVoice(G, LOUNGE);
+    meIn(LOUNGE);
+    fake.emit("link", "disconnected", "removed");
+    expect(notices).toEqual([]);
+    applyGatewayDispatch("VOICE_STATE_UPDATE", { ...makeVoiceState(G, LOUNGE, me.id), left: true });
+    await reconcileVoiceFlags();
+    expect(notices).toEqual([CALL_REMOVED]);
+  });
+
+  it("I1: a removal while the server still has the user in voice is a takeover, after a moment", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    await joinVoice(G, LOUNGE);
+    meIn(LOUNGE);
+    fake.emit("link", "disconnected", "removed");
+    expect(notices).toEqual([]);
+    await vi.advanceTimersByTimeAsync(2500);
+    expect(notices).toEqual([CALL_REPLACED]);
+  });
+
+  it("I2: turns the microphone back on when a moderator lifts the mute", async () => {
+    await joinVoice(G, LOUNGE);
+    meIn(LOUNGE, { mute: true });
+    await reconcileVoiceFlags();
+    expect(fake.argsOf("setMicrophone").at(-1)).toEqual([false]);
+    meIn(LOUNGE, { mute: false });
+    await reconcileVoiceFlags();
+    expect(fake.argsOf("setMicrophone").at(-1)).toEqual([true]);
+  });
+
+  it("I3: a switch flipped back while its PATCH is in flight still reaches the server", async () => {
+    const held = gate();
+    server.use(
+      apiHandler("patch", "/users/@me/voice-state", async ({ request }) => {
+        flags.push(await request.json());
+        if (flags.length === 1) await held.promise;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    await joinVoice(G, LOUNGE);
+    meIn(LOUNGE);
+    setSelfMute(true);
+    await vi.waitFor(() => {
+      expect(flags).toHaveLength(1);
+    });
+    setSelfMute(false);
+    // The echo of the first PATCH arrives while it is still in flight.
+    meIn(LOUNGE, { self_mute: true });
+    await reconcileVoiceFlags();
+    held.open();
+    await vi.waitFor(() => {
+      expect(flags.at(-1)).toEqual({ self_mute: false, self_deaf: false });
+    });
+  });
+
+  it("I9: after the call ended from outside, the switches do not touch the microphone", async () => {
+    await joinVoice(G, LOUNGE);
+    fake.emit("link", "disconnected", "failed");
+    const before = fake.argsOf("setMicrophone").length;
+    setSelfMute(true);
+    setSelfMute(false);
+    expect(fake.argsOf("setMicrophone")).toHaveLength(before);
+  });
+
+  it("I6: a share picked after the call ended is stopped at once", async () => {
+    await joinVoice(G, LOUNGE);
+    let pick: (r: { ok: true; surface: "browser"; audio: boolean }) => void = () => {};
+    fake.screenResult = new Promise((resolve) => {
+      pick = resolve;
+    });
+    const sharing = startScreenShare();
+    await leaveVoice();
+    pick({ ok: true, surface: "browser", audio: true });
+    await sharing;
+    expect(getCall().sharing).toBe(false);
+    expect(fake.argsOf("stopScreenShare")).toHaveLength(1);
+  });
+
+  it("I7: says when a device cannot be switched", async () => {
+    await joinVoice(G, LOUNGE);
+    fake.deviceError = new DOMException("no such device", "OverconstrainedError");
+    await switchAudioDevice("audioinput", "default");
+    expect(notices).toEqual([DEVICE_FAILED]);
+  });
+});
+
+describe("noise suppression in the call", () => {
+  it("keeps what cleans the microphone, and forgets it when the call ends", async () => {
+    await joinVoice(G, LOUNGE);
+    fake.emit("noise", { running: "loading" });
+    fake.emit("noise", { running: "rnnoise", reason: "overload" });
+    expect(getCall().noise).toEqual({ running: "rnnoise", reason: "overload" });
+    await leaveVoice();
+    expect(getCall().noise).toBeNull();
+    fake.emit("noise", { running: "enhanced" });
+    expect(getCall().noise).toBeNull();
+  });
+});

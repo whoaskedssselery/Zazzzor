@@ -37,11 +37,10 @@ describe("UserPanel", () => {
     });
   });
 
-  it("has no microphone or headphones buttons until voice arrives", async () => {
+  it("has the microphone and sound switches, on by default", async () => {
     await show();
-    await screen.findByRole("button", { name: "Настройки пользователя" });
-    expect(screen.queryByRole("button", { name: /микрофон/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /звук|наушник/i })).toBeNull();
+    expect(await screen.findByRole("button", { name: "Выключить микрофон" })).toHaveProperty("ariaPressed", "false");
+    expect(screen.getByRole("button", { name: "Выключить звук" })).toHaveProperty("ariaPressed", "false");
   });
 });
 

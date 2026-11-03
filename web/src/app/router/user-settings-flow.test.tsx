@@ -1,10 +1,12 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { HttpResponse } from "msw";
 import { renderApp, sessionHandler, testUser } from "@/app/test";
+import { readVoicePrefs, resetCall, setCall } from "@/entities/call";
 import { resetGuilds } from "@/entities/guild";
 import { LOGOUT_CONFIRM } from "@/features/auth";
 import { PASSWORD_CHANGED, PASSWORDS_DIFFER } from "@/features/change-password";
 import { NAME_RULE } from "@/features/edit-profile";
+import { PTT_FOCUS_HINT } from "@/features/voice-call";
 import { WRONG_IMAGE } from "@/shared/lib";
 import { apiHandler, dispatchFrame, makeReady, problem, readyGateway, server } from "@/shared/test";
 import { LEAVE_UNSAVED, THEME_STORAGE_KEY, UNSAVED } from "@/shared/ui";
@@ -293,5 +295,123 @@ describe("sign-out", () => {
       expect(router.state.location.pathname).toBe("/login");
     });
     expect(out).toBe(true);
+  });
+});
+
+describe("voice and video", () => {
+  const devices = [
+    { kind: "audioinput", deviceId: "mic-1", label: "Микрофон USB", groupId: "a" },
+    { kind: "audiooutput", deviceId: "out-1", label: "Наушники", groupId: "b" },
+  ];
+
+  beforeEach(() => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { enumerateDevices: () => Promise.resolve(devices), getSupportedConstraints: () => ({}) },
+    });
+    Object.defineProperty(HTMLMediaElement.prototype, "setSinkId", {
+      configurable: true,
+      value: () => Promise.resolve(),
+    });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    Reflect.deleteProperty(navigator, "mediaDevices");
+    Reflect.deleteProperty(HTMLMediaElement.prototype, "setSinkId");
+  });
+
+  const pick = async (user: ReturnType<typeof renderApp>["user"], label: string, option: string) => {
+    await user.click(await screen.findByRole("combobox", { name: label }));
+    await user.click(await screen.findByRole("option", { name: option }));
+  };
+
+  it("lists the devices and keeps the chosen ones", async () => {
+    signedIn();
+    const { user } = renderApp("/settings/voice");
+    await pick(user, "Устройство ввода", "Микрофон USB");
+    await pick(user, "Устройство вывода", "Наушники");
+    expect(readVoicePrefs()).toMatchObject({ inputId: "mic-1", outputId: "out-1" });
+  });
+
+  it("switches to push-to-talk on a key the user presses", async () => {
+    signedIn();
+    const { user } = renderApp("/settings/voice");
+    await user.click(await screen.findByRole("radio", { name: "Push-to-talk" }));
+    expect(readVoicePrefs().mode).toBe("ptt");
+    expect(screen.getByText(PTT_FOCUS_HINT)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Изменить клавишу" }));
+    expect(screen.getByText("Нажмите клавишу…")).toBeTruthy();
+    await user.keyboard("b");
+    expect(readVoicePrefs().pttKey).toBe("KeyB");
+    expect(screen.getByText("B", { selector: "kbd" })).toBeTruthy();
+  });
+
+  it("chooses the noise suppression, enhanced by default", async () => {
+    signedIn();
+    const { user } = renderApp("/settings/voice");
+    const noise = await screen.findByRole("combobox", { name: "Шумоподавление" });
+    expect(noise.textContent).toContain("Улучшенное");
+    await pick(user, "Шумоподавление", "Стандартное");
+    expect(readVoicePrefs().noise).toBe("standard");
+    await pick(user, "Шумоподавление", "Выкл");
+    expect(readVoicePrefs().noise).toBe("off");
+    await pick(user, "Шумоподавление", "Улучшенное");
+    expect(readVoicePrefs().noise).toBe("enhanced");
+  });
+
+  it("shows what cleans the microphone in the call, and why it fell back", async () => {
+    onTestFinished(resetCall);
+    signedIn();
+    renderApp("/settings/voice");
+    await screen.findByRole("combobox", { name: "Шумоподавление" });
+    expect(screen.queryByText(/^Сейчас:/)).toBeNull();
+    act(() => {
+      setCall({ status: "connected", guildId: "10", channelId: "102", noise: { running: "loading" } });
+    });
+    expect(screen.getByText("Сейчас: загружается улучшенное, пока без шумоподавления")).toBeTruthy();
+    act(() => {
+      setCall({ noise: { running: "enhanced" } });
+    });
+    expect(screen.getByText("Сейчас: улучшенное")).toBeTruthy();
+    act(() => {
+      setCall({ noise: { running: "rnnoise", reason: "overload" } });
+    });
+    expect(screen.getByText("Сейчас: запасное — компьютер не успевает с улучшенным")).toBeTruthy();
+    act(() => {
+      setCall({ noise: { running: "standard", reason: "failed" } });
+    });
+    expect(screen.getByText("Сейчас: стандартное — улучшенное не загрузилось")).toBeTruthy();
+  });
+});
+
+describe("voice output in Firefox", () => {
+  afterEach(() => {
+    localStorage.clear();
+    Reflect.deleteProperty(navigator, "mediaDevices");
+    Reflect.deleteProperty(HTMLMediaElement.prototype, "setSinkId");
+  });
+
+  it("picks the output through the browser's own list", async () => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices: () => Promise.resolve([]),
+        getSupportedConstraints: () => ({}),
+        selectAudioOutput: () =>
+          Promise.resolve({ kind: "audiooutput", deviceId: "out-9", label: "Колонки", groupId: "c" }),
+      },
+    });
+    Object.defineProperty(HTMLMediaElement.prototype, "setSinkId", {
+      configurable: true,
+      value: () => Promise.resolve(),
+    });
+    signedIn();
+    const { user } = renderApp("/settings/voice");
+    await user.click(await screen.findByRole("button", { name: "Выбрать устройство вывода" }));
+    await waitFor(() => {
+      expect(readVoicePrefs().outputId).toBe("out-9");
+    });
+    expect(screen.getByRole("combobox", { name: "Устройство вывода" }).textContent).toContain("Колонки");
   });
 });

@@ -35,11 +35,33 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    {
+      name: "chromium",
+      use: {
+        ...devices["Desktop Chrome"],
+        // Fake microphone (a tone) and screen, and no permission prompts.
+        launchOptions: {
+          args: [
+            "--use-fake-ui-for-media-stream",
+            "--use-fake-device-for-media-stream",
+            "--auto-select-desktop-capture-source=Entire screen",
+          ],
+        },
+      },
+    },
     {
       name: "firefox",
       use: {
         ...devices["Desktop Firefox"],
+        launchOptions: {
+          firefoxUserPrefs: {
+            "media.navigator.streams.fake": true,
+            "media.navigator.permission.disabled": true,
+            // The microphone is allowed, as Chromium's fake UI does. Without the permission Firefox hides its
+            // addresses behind mDNS names, and ICE with LiveKit on 127.0.0.1 (e2e/compose.yml) never connects.
+            "permissions.default.microphone": 1,
+          },
+        },
         // Where Playwright's Firefox does not start (some Windows builds), it
         // runs in Playwright's Linux image instead and still reaches this
         // machine's localhost:
