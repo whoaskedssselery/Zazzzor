@@ -1,0 +1,29 @@
+import { Monitor, MonitorOff } from "lucide-react";
+import { useCall } from "@/entities/call";
+import { computeChannel, has, PERM, useGuilds } from "@/entities/guild";
+import { cn, IconButton } from "@/shared/ui";
+import { NO_STREAM, startScreenShare, stopScreenShare } from "../model/session";
+
+/** «Демонстрация экрана» in the call panel; locked without STREAM in the call's channel. */
+export const ScreenShareButton = () => {
+  const sharing = useCall((s) => s.sharing);
+  const guildId = useCall((s) => s.guildId);
+  const channelId = useCall((s) => s.channelId);
+  const allowed = useGuilds((s) => {
+    const entry = guildId === null ? undefined : s.guilds[guildId];
+    if (!entry || channelId === null || s.me === null) return false;
+    return has(computeChannel(entry, channelId, s.me.id), PERM.STREAM);
+  });
+  if (!allowed) return <IconButton label={NO_STREAM} icon={Monitor} disabled />;
+  return (
+    <IconButton
+      label={sharing ? "Остановить демонстрацию" : "Демонстрация экрана"}
+      icon={sharing ? MonitorOff : Monitor}
+      aria-pressed={sharing}
+      className={cn(sharing && "text-fg-success")}
+      onClick={() => {
+        void (sharing ? stopScreenShare() : startScreenShare());
+      }}
+    />
+  );
+};

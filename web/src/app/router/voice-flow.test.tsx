@@ -4,7 +4,14 @@ import { HttpResponse } from "msw";
 import { renderApp, sessionHandler, testUser } from "@/app/test";
 import { getCall, resetCall, setCall } from "@/entities/call";
 import { DEFAULT_EVERYONE, formatMask, PERM, resetGuilds } from "@/entities/guild";
-import { CALL_REPLACED, joinVoice, NO_CONNECT, setTransportFactory } from "@/features/voice-call";
+import {
+  CALL_REPLACED,
+  joinVoice,
+  NO_CONNECT,
+  NO_STREAM,
+  setTransportFactory,
+  WINDOW_NO_AUDIO,
+} from "@/features/voice-call";
 import {
   apiHandler,
   dispatchFrame,
@@ -330,5 +337,74 @@ describe("the voice channel screen", () => {
     });
     const tile = within(view).getByRole("listitem", { name: "Петя" });
     expect(tile.querySelector("[data-speaking]")).not.toBeNull();
+  });
+});
+
+describe("screen sharing", () => {
+  /** Server 10 owned by someone else, @everyone with `everyone`. */
+  const withEveryone = (everyone: bigint) => {
+    guildState = () =>
+      makeGuildState(G, testUser, {
+        guild: makeGuild(G, "999"),
+        roles: [makeEveryone(G, formatMask(everyone))],
+        channels: [makeChannel(TEXT, G, { name: "общий" }), makeChannel(LOUNGE, G, { type: 2, name: "Лаунж" })],
+      });
+  };
+
+  const panel = () => screen.findByRole("region", { name: "Голосовая связь" });
+
+  it("shares a screen and stops it", async () => {
+    withEveryone(DEFAULT_EVERYONE);
+    const { user } = renderApp(`/channels/${G}/${TEXT}`);
+    await screen.findByRole("textbox", { name: "Сообщение в #общий" });
+    await act(() => joinVoice(G, LOUNGE));
+    await user.click(within(await panel()).getByRole("button", { name: "Демонстрация экрана" }));
+    expect(fake.argsOf("startScreenShare")).toHaveLength(1);
+    expect(getCall().sharing).toBe(true);
+    await user.click(within(await panel()).getByRole("button", { name: "Остановить демонстрацию" }));
+    expect(fake.argsOf("stopScreenShare")).toHaveLength(1);
+    expect(getCall().sharing).toBe(false);
+  });
+
+  it("changes nothing and says nothing when the picker is closed", async () => {
+    withEveryone(DEFAULT_EVERYONE);
+    fake.screenResult = { ok: false, reason: "cancelled" };
+    const { user } = renderApp(`/channels/${G}/${TEXT}`);
+    await screen.findByRole("textbox", { name: "Сообщение в #общий" });
+    await act(() => joinVoice(G, LOUNGE));
+    await user.click(within(await panel()).getByRole("button", { name: "Демонстрация экрана" }));
+    expect(getCall().sharing).toBe(false);
+    expect(screen.queryByRole("status", { name: /Уведомление/ })).toBeNull();
+  });
+
+  it("says when a window is shared without its sound", async () => {
+    withEveryone(DEFAULT_EVERYONE);
+    fake.screenResult = { ok: true, surface: "window", audio: false };
+    const { user } = renderApp(`/channels/${G}/${TEXT}`);
+    await screen.findByRole("textbox", { name: "Сообщение в #общий" });
+    await act(() => joinVoice(G, LOUNGE));
+    await user.click(within(await panel()).getByRole("button", { name: "Демонстрация экрана" }));
+    expect(await screen.findByText(WINDOW_NO_AUDIO, { exact: true })).toBeTruthy();
+  });
+
+  it("goes off the air when the browser stops the share", async () => {
+    withEveryone(DEFAULT_EVERYONE);
+    const { user } = renderApp(`/channels/${G}/${TEXT}`);
+    await screen.findByRole("textbox", { name: "Сообщение в #общий" });
+    await act(() => joinVoice(G, LOUNGE));
+    await user.click(within(await panel()).getByRole("button", { name: "Демонстрация экрана" }));
+    act(() => {
+      fake.emit("screenEnded");
+    });
+    expect(getCall().sharing).toBe(false);
+    expect(within(await panel()).getByRole("button", { name: "Демонстрация экрана" })).toBeTruthy();
+  });
+
+  it("is not offered without STREAM", async () => {
+    withEveryone(DEFAULT_EVERYONE & ~PERM.STREAM);
+    renderApp(`/channels/${G}/${TEXT}`);
+    await screen.findByRole("textbox", { name: "Сообщение в #общий" });
+    await act(() => joinVoice(G, LOUNGE));
+    expect(within(await panel()).getByRole("button", { name: NO_STREAM })).toHaveProperty("disabled", true);
   });
 });

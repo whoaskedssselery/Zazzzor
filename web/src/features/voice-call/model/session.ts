@@ -1,12 +1,24 @@
-import { type CallTransport, clearCall, type EndCause, getCall, loadLiveKitTransport, setCall } from "@/entities/call";
+import {
+  type CallTransport,
+  canRestrictOwnAudio,
+  clearCall,
+  currentBrowser,
+  type EndCause,
+  getCall,
+  loadLiveKitTransport,
+  setCall,
+} from "@/entities/call";
 import { getGuildsState, myVoice } from "@/entities/guild";
 import { api, errorText, unwrap } from "@/shared/api";
+import { shareNotice } from "./notice";
 
 export const CALL_REPLACED = "Вы подключились к голосу в другом месте";
 export const CALL_REMOVED = "Вас отключили от голосового канала";
 export const CALL_FAILED = "Не удалось подключиться к голосу";
 export const MIC_DENIED = "Нет доступа к микрофону";
 export const NO_CONNECT = "Нет права подключаться к этому каналу";
+export const NO_STREAM = "Нет права на демонстрацию экрана";
+export const SHARE_FAILED = "Не удалось начать демонстрацию";
 
 type Factory = () => CallTransport | Promise<CallTransport>;
 
@@ -176,3 +188,24 @@ export const watchStream = (userId: string, on: boolean): void => {
 /** Shows `userId`'s screen share in `el`; the returned function lets go of it. */
 export const attachStream = (userId: string, el: HTMLVideoElement): (() => void) =>
   transport?.attachScreen(userId, el) ?? (() => undefined);
+
+/**
+ * Starts sharing a screen, a window or a tab (the browser's picker) and says
+ * what the viewers will hear. A closed picker changes nothing.
+ */
+export const startScreenShare = async (): Promise<void> => {
+  if (!transport || getCall().status === "idle") return;
+  const result = await transport.startScreenShare();
+  if (!result.ok) {
+    if (result.reason === "failed") notify(SHARE_FAILED);
+    return;
+  }
+  setCall({ sharing: true });
+  const notice = shareNotice(result, currentBrowser(), canRestrictOwnAudio());
+  if (notice !== null) notify(notice);
+};
+
+export const stopScreenShare = async (): Promise<void> => {
+  setCall({ sharing: false });
+  await transport?.stopScreenShare();
+};
