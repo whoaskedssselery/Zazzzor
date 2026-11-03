@@ -307,7 +307,11 @@ describe("voice and video", () => {
   beforeEach(() => {
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
-      value: { enumerateDevices: () => Promise.resolve(devices), getSupportedConstraints: () => ({}) },
+      // MediaDevices is an EventTarget (devicechange).
+      value: Object.assign(new EventTarget(), {
+        enumerateDevices: () => Promise.resolve(devices),
+        getSupportedConstraints: () => ({}),
+      }),
     });
     Object.defineProperty(HTMLMediaElement.prototype, "setSinkId", {
       configurable: true,
@@ -385,6 +389,48 @@ describe("voice and video", () => {
   });
 });
 
+describe("voice devices that change", () => {
+  afterEach(() => {
+    localStorage.clear();
+    Reflect.deleteProperty(navigator, "mediaDevices");
+  });
+
+  /** The browser's devices as an event target, with the list it reports now. */
+  const devicesBrowser = (list: () => Promise<MediaDeviceInfo[]>) => {
+    const target = new EventTarget();
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: Object.assign(target, { enumerateDevices: list, getSupportedConstraints: () => ({}) }),
+    });
+    return target;
+  };
+
+  const device = (deviceId: string, label: string) =>
+    ({ kind: "audioinput", deviceId, label, groupId: deviceId }) as MediaDeviceInfo;
+
+  it("lists a headset plugged in while the tab is open", async () => {
+    let devices = [device("mic-1", "Микрофон USB")];
+    const target = devicesBrowser(() => Promise.resolve(devices));
+    signedIn();
+    const { user } = renderApp("/settings/voice");
+    await user.click(await screen.findByRole("combobox", { name: "Устройство ввода" }));
+    expect(screen.queryByRole("option", { name: "Гарнитура" })).toBeNull();
+    await user.keyboard("{Escape}");
+    devices = [...devices, device("mic-2", "Гарнитура")];
+    target.dispatchEvent(new Event("devicechange"));
+    await user.click(await screen.findByRole("combobox", { name: "Устройство ввода" }));
+    expect(await screen.findByRole("option", { name: "Гарнитура" })).toBeTruthy();
+  });
+
+  it("still opens when the browser cannot list the devices", async () => {
+    devicesBrowser(() => Promise.reject(new DOMException("blocked", "NotAllowedError")));
+    signedIn();
+    const { user } = renderApp("/settings/voice");
+    await user.click(await screen.findByRole("combobox", { name: "Устройство ввода" }));
+    expect(await screen.findByRole("option", { name: "Как в системе" })).toBeTruthy();
+  });
+});
+
 describe("voice output in Firefox", () => {
   afterEach(() => {
     localStorage.clear();
@@ -395,12 +441,12 @@ describe("voice output in Firefox", () => {
   it("picks the output through the browser's own list", async () => {
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
-      value: {
+      value: Object.assign(new EventTarget(), {
         enumerateDevices: () => Promise.resolve([]),
         getSupportedConstraints: () => ({}),
         selectAudioOutput: () =>
           Promise.resolve({ kind: "audiooutput", deviceId: "out-9", label: "Колонки", groupId: "c" }),
-      },
+      }),
     });
     Object.defineProperty(HTMLMediaElement.prototype, "setSinkId", {
       configurable: true,

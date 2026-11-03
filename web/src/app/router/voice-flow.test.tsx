@@ -402,6 +402,18 @@ describe("screen sharing", () => {
     expect(within(await panel()).getByRole("button", { name: "Демонстрация экрана" })).toBeTruthy();
   });
 
+  it("can still be stopped after STREAM is taken away", async () => {
+    withEveryone(DEFAULT_EVERYONE & ~PERM.STREAM);
+    renderApp(`/channels/${G}/${TEXT}`);
+    await screen.findByRole("textbox", { name: "Сообщение в #общий" });
+    await act(() => joinVoice(G, LOUNGE));
+    act(() => {
+      setCall({ sharing: true });
+    });
+    const stop = within(await panel()).getByRole("button", { name: "Остановить демонстрацию" });
+    expect(stop).toHaveProperty("disabled", false);
+  });
+
   it("is not offered without STREAM", async () => {
     withEveryone(DEFAULT_EVERYONE & ~PERM.STREAM);
     renderApp(`/channels/${G}/${TEXT}`);

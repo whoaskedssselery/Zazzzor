@@ -7,6 +7,7 @@ import {
   getCall,
   loadLiveKitTransport,
   readVoicePrefs,
+  type ScreenShareResult,
   setCall,
 } from "@/entities/call";
 import { computeChannel, getGuildsState, has, myVoice, PERM } from "@/entities/guild";
@@ -118,6 +119,12 @@ const settleRemoval = (final: boolean) => {
   notify(inVoice ? CALL_REPLACED : CALL_REMOVED);
 };
 
+/** A join or a leave makes a removal still being settled beside the point. */
+const forgetRemoval = () => {
+  if (pendingRemoval !== null) clearTimeout(pendingRemoval);
+  pendingRemoval = null;
+};
+
 const ended = (cause: EndCause) => {
   if (getCall().status === "idle") return;
   clearCall();
@@ -151,7 +158,10 @@ const wire = (t: CallTransport): CallTransport => {
     setCall({ speaking });
   });
   t.on("streams", (streams) => {
-    setCall({ streams, watching: getCall().watching.filter((id) => streams.includes(id)) });
+    const { watching } = getCall();
+    setCall({ streams, watching: watching.filter((id) => streams.includes(id)) });
+    // A share that ends is not received again when it comes back, until «Смотреть».
+    for (const id of watching) if (!streams.includes(id)) t.watch(id, false);
   });
   t.on("micDenied", () => {
     if (getCall().micDenied) return;
@@ -177,6 +187,7 @@ export const joinVoice = async (guildId: string, channelId: string): Promise<voi
   const mine = ++generation;
   const latest = () => mine === generation;
   joining = true;
+  forgetRemoval();
   try {
     let joined: { token: string; url: string };
     try {
@@ -217,10 +228,13 @@ export const joinVoice = async (guildId: string, channelId: string): Promise<voi
       return;
     }
     if (!latest()) return;
+    // Connected: from here a disconnect is this call's own, and ends it.
+    joining = false;
     setCall({ status: "connected" });
     t.setListening(!getCall().selfDeaf);
     const { outputId } = readVoicePrefs();
     if (outputId !== null) await switchAudioDevice("audiooutput", outputId);
+    if (!latest() || getCall().status === "idle") return;
     applyVoicePrefs();
   } finally {
     if (latest()) joining = false;
@@ -231,6 +245,7 @@ export const joinVoice = async (guildId: string, channelId: string): Promise<voi
 export const leaveVoice = async (): Promise<void> => {
   generation += 1;
   joining = false;
+  forgetRemoval();
   clearCall();
   applyVoicePrefs();
   await transport?.disconnect();
@@ -334,11 +349,20 @@ export const attachStream = (userId: string, el: HTMLVideoElement): (() => void)
  * Starts sharing a screen, a window or a tab (the browser's picker) and says
  * what the viewers will hear. A closed picker changes nothing.
  */
+let picking = false;
+
 export const startScreenShare = async (): Promise<void> => {
-  if (!transport || getCall().status === "idle") return;
+  // One picker at a time: a second click would start a second capture.
+  if (!transport || picking || getCall().status === "idle") return;
   const t = transport;
   const mine = generation;
-  const result = await t.startScreenShare();
+  picking = true;
+  let result: ScreenShareResult;
+  try {
+    result = await t.startScreenShare();
+  } finally {
+    picking = false;
+  }
   // The call ended or changed while the picker was open: stop what was picked.
   if (result.ok && (mine !== generation || getCall().status === "idle")) {
     await t.stopScreenShare();

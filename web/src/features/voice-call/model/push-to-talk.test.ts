@@ -25,6 +25,19 @@ describe("push-to-talk", () => {
     expect(seen).toEqual([true, false]);
   });
 
+  it("lets go when the tab is hidden with the key down (the key comes up in another tab)", () => {
+    const seen: boolean[] = [];
+    const stop = startPushToTalk("KeyV", (held) => seen.push(held));
+    press("keydown", "KeyV");
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+    document.dispatchEvent(new Event("visibilitychange"));
+    Reflect.deleteProperty(document, "hidden");
+    press("keydown", "KeyV");
+    window.dispatchEvent(new Event("pagehide"));
+    stop();
+    expect(seen).toEqual([true, false, true, false]);
+  });
+
   it("does not repeat while the key is held", () => {
     const seen: boolean[] = [];
     const stop = startPushToTalk("KeyV", (held) => seen.push(held));

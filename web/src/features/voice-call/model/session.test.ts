@@ -33,6 +33,7 @@ import {
   setTransportFactory,
   startScreenShare,
   switchAudioDevice,
+  watchStream,
 } from "./session";
 
 const me = makeUser("100");
@@ -398,5 +399,58 @@ describe("noise suppression in the call", () => {
     expect(getCall().noise).toBeNull();
     fake.emit("noise", { running: "enhanced" });
     expect(getCall().noise).toBeNull();
+  });
+});
+
+describe("the second review's cases", () => {
+  it("5: a call that dies right after connecting ends instead of showing as connected", async () => {
+    writeVoicePrefs({ ...DEFAULT_VOICE_PREFS, outputId: "out-1" });
+    onTestFinished(() => {
+      localStorage.clear();
+    });
+    // The room goes away while the output device is switched, after the connection.
+    fake.useDevice = () => {
+      fake.emit("link", "disconnected", "replaced");
+      return Promise.resolve();
+    };
+    await joinVoice(G, LOUNGE);
+    expect(getCall().status).toBe("idle");
+    expect(notices).toEqual([CALL_REPLACED]);
+  });
+
+  it("6: a second click while the picker is open does not open another capture", async () => {
+    await joinVoice(G, LOUNGE);
+    let pick: (r: { ok: true; surface: "browser"; audio: boolean }) => void = () => {};
+    fake.screenResult = new Promise((resolve) => {
+      pick = resolve;
+    });
+    const first = startScreenShare();
+    const second = startScreenShare();
+    pick({ ok: true, surface: "browser", audio: true });
+    await Promise.all([first, second]);
+    expect(fake.argsOf("startScreenShare")).toHaveLength(1);
+  });
+
+  it("8: a stream that ends stops being watched in the transport too", async () => {
+    await joinVoice(G, LOUNGE);
+    fake.emit("streams", ["200"]);
+    watchStream("200", true);
+    fake.emit("streams", []);
+    expect(getCall().watching).toEqual([]);
+    expect(fake.argsOf("watch").at(-1)).toEqual(["200", false]);
+  });
+
+  it("11: joining again soon after a removal does not say the call moved elsewhere", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    await joinVoice(G, LOUNGE);
+    meIn(LOUNGE);
+    fake.emit("link", "disconnected", "removed");
+    await joinVoice(G, LOUNGE);
+    meIn(LOUNGE);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(notices).toEqual([]);
   });
 });
