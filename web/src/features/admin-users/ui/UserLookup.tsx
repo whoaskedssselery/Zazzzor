@@ -5,12 +5,14 @@ import {
   Badge,
   Button,
   ConfirmDialog,
+  CopyButton,
   Dialog,
   DialogClose,
   DialogContent,
   Field,
   FormAlert,
   Input,
+  useCopy,
   useToast,
 } from "@/shared/ui";
 
@@ -18,8 +20,7 @@ type AdminUser = components["schemas"]["AdminUser"];
 
 export const NO_SUCH_USER = "Пользователь с таким логином не найден.";
 export const PASSWORD_ONCE = "Пароль показывается только сейчас. Передайте его пользователю и попросите сменить.";
-const COPIED = "Пароль скопирован";
-const COPY_FAILED = "Не получилось скопировать. Пароль выделен: скопируйте его вручную.";
+const COPY_FAILED = "Не получилось скопировать: пароль выделен, скопируйте его вручную.";
 
 const joined = new Intl.DateTimeFormat("ru", { day: "numeric", month: "long", year: "numeric" });
 
@@ -194,45 +195,45 @@ const TemporaryPassword = ({
   password: string | null;
   username: string;
   onClose: () => void;
-}) => {
-  const toast = useToast();
+}) => (
+  <Dialog
+    open={password !== null}
+    onOpenChange={(o) => {
+      if (!o) onClose();
+    }}
+  >
+    {password !== null && <PasswordShown password={password} username={username} />}
+  </Dialog>
+);
+
+const PasswordShown = ({ password, username }: { password: string; username: string }) => {
   const field = useRef<HTMLInputElement>(null);
-  const copy = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast.show({ text: COPIED, tone: "success" });
-    } catch {
-      // No clipboard (HTTP) or no permission: the administrator copies it themselves.
-      field.current?.focus();
-      field.current?.select();
-      toast.show({ text: COPY_FAILED });
-    }
-  };
+  // No clipboard (HTTP) or no permission: the password is selected to copy by hand.
+  const { state: copied, copy } = useCopy(() => {
+    field.current?.focus();
+    field.current?.select();
+  });
   return (
-    <Dialog
-      open={password !== null}
-      onOpenChange={(o) => {
-        if (!o) onClose();
-      }}
+    <DialogContent
+      title={`Временный пароль ${username}`}
+      description={PASSWORD_ONCE}
+      footer={
+        <DialogClose asChild>
+          <Button>Готово</Button>
+        </DialogClose>
+      }
     >
-      {password !== null && (
-        <DialogContent
-          title={`Временный пароль ${username}`}
-          description={PASSWORD_ONCE}
-          footer={
-            <>
-              <DialogClose asChild>
-                <Button variant="ghost">Готово</Button>
-              </DialogClose>
-              <Button onClick={() => void copy(password)}>Скопировать</Button>
-            </>
-          }
-        >
-          <Field htmlFor="temporary-password" label="Пароль">
-            <Input ref={field} readOnly value={password} className="font-mono" />
-          </Field>
-        </DialogContent>
-      )}
-    </Dialog>
+      <Field htmlFor="temporary-password" label="Пароль" {...(copied === "failed" ? { hint: COPY_FAILED } : {})}>
+        <div className="flex gap-2">
+          <Input ref={field} readOnly value={password} className="font-mono" />
+          <CopyButton
+            state={copied}
+            onClick={() => {
+              void copy(password);
+            }}
+          />
+        </div>
+      </Field>
+    </DialogContent>
   );
 };

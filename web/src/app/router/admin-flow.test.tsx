@@ -120,7 +120,7 @@ describe("administration", () => {
     const shown = await screen.findByRole("dialog", { name: "Временный пароль petya" });
     expect(within(shown).getByText(PASSWORD_ONCE)).toBeTruthy();
     expect(within(shown).getByRole("textbox", { name: "Пароль" })).toHaveProperty("value", "Aaaaaaaa11111111");
-    await user.click(within(shown).getByRole("button", { name: "Скопировать" }));
+    await user.click(within(shown).getByRole("button", { name: "Копировать" }));
     expect(await navigator.clipboard.readText()).toBe("Aaaaaaaa11111111");
     await user.click(within(shown).getByRole("button", { name: "Готово" }));
     await waitFor(() => {
