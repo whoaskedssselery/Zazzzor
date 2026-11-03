@@ -6,15 +6,18 @@ import { defineConfig } from "vitest/config";
 // Dev only: the browser talks to the Vite origin and Vite forwards the REST
 // API and the gateway WebSocket to a local `go run ./cmd/zazzzor` (in
 // production Caddy serves both on one origin). The API must allow the origin
-// http://localhost:5173, hence the fixed port.
-const proxy = { "/api": { target: "http://127.0.0.1:8080", ws: true } };
+// http://localhost:5173, hence the fixed port. The browser tests point the
+// proxy at their own API (e2e/compose.yml) and serve the production CSP from
+// deploy/caddy/static.caddy, so the bundle is checked under it.
+const proxy = { "/api": { target: process.env.ZAZZZOR_API_TARGET ?? "http://127.0.0.1:8080", ws: true } };
+const csp = process.env.ZAZZZOR_PREVIEW_CSP;
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   // `@/` is web/src, as in tsconfig.json "paths".
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   server: { port: 5173, strictPort: true, proxy },
-  preview: { proxy },
+  preview: { proxy, headers: csp ? { "Content-Security-Policy": csp } : {} },
   test: {
     globals: true,
     environment: "jsdom",

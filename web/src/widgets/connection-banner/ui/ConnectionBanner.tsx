@@ -15,6 +15,7 @@ export const ConnectionBanner = () => {
   return (
     <div
       role="status"
+      data-connection-banner
       className={cn(
         text &&
           "flex h-6 shrink-0 items-center justify-center gap-2 border-b border-border bg-panel px-4 text-xs font-medium",
