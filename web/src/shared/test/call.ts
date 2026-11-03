@@ -4,12 +4,19 @@ type Call = { method: string; args: unknown[] };
 
 /**
  * A CallTransport for tests: records what the app asked of it in `calls`,
- * and `emit` plays what LiveKit would report. `screenResult` is what the
- * next startScreenShare gives.
+ * and `emit` plays what LiveKit would report. Like LiveKit, dropping a live
+ * connection reports it ("disconnected", "left"), and a disconnect cancels a
+ * connect still in progress. `connectGate` holds connects back until it
+ * resolves; `screenResult` is what the next startScreenShare gives (or a
+ * promise of it); `deviceError` makes useDevice fail.
  */
 export class FakeTransport implements CallTransport {
   readonly calls: Call[] = [];
-  screenResult: ScreenShareResult = { ok: true, surface: "browser", audio: true };
+  screenResult: ScreenShareResult | Promise<ScreenShareResult> = { ok: true, surface: "browser", audio: true };
+  connectGate: Promise<void> | null = null;
+  deviceError: Error | null = null;
+  private connected = false;
+  private attempt = 0;
   private readonly listeners = new Map<keyof CallTransportEvents, Set<(...args: never[]) => void>>();
 
   private record(method: string, ...args: unknown[]) {
@@ -26,14 +33,22 @@ export class FakeTransport implements CallTransport {
       (fn as (...a: Parameters<CallTransportEvents[K]>) => void)(...args);
   }
 
-  connect(url: string, token: string): Promise<void> {
+  async connect(url: string, token: string): Promise<void> {
     this.record("connect", url, token);
+    const attempt = ++this.attempt;
+    if (this.connectGate) await this.connectGate;
+    if (attempt !== this.attempt) throw new Error("cancelled by a newer connect or a disconnect");
+    this.connected = true;
     this.emit("link", "connected");
-    return Promise.resolve();
   }
 
   disconnect(): Promise<void> {
     this.record("disconnect");
+    this.attempt += 1;
+    if (this.connected) {
+      this.connected = false;
+      this.emit("link", "disconnected", "left");
+    }
     return Promise.resolve();
   }
 
@@ -69,7 +84,7 @@ export class FakeTransport implements CallTransport {
 
   useDevice(kind: "audioinput" | "audiooutput", deviceId: string): Promise<void> {
     this.record("useDevice", kind, deviceId);
-    return Promise.resolve();
+    return this.deviceError ? Promise.reject(this.deviceError) : Promise.resolve();
   }
 
   on<K extends keyof CallTransportEvents>(event: K, fn: CallTransportEvents[K]): () => void {

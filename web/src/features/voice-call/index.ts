@@ -5,6 +5,7 @@ export {
   CALL_FAILED,
   CALL_REMOVED,
   CALL_REPLACED,
+  DEVICE_FAILED,
   endCall,
   joinVoice,
   leaveVoice,

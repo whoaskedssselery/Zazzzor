@@ -124,7 +124,7 @@ describe("voice in the app", () => {
     await waitFor(() => {
       expect(getCall().status).toBe("connected");
     });
-    fake.emit("link", "disconnected", "removed");
+    fake.emit("link", "disconnected", "replaced");
     expect(await screen.findByText(CALL_REPLACED, { exact: true })).toBeTruthy();
   });
 
@@ -462,5 +462,19 @@ describe("voice moderation", () => {
     await user.pointer({ keys: "[MouseRight]", target: await petyaRow() });
     await user.click(await screen.findByRole("menuitem", { name: "Выключить звук на сервере" }));
     expect(await screen.findByText(errorText(new ApiError(403, "role_hierarchy")), { exact: true })).toBeTruthy();
+  });
+});
+
+describe("call notices outside the shell", () => {
+  it("I8: tells why the call ended while the user is in the settings", async () => {
+    const { router } = renderApp(`/channels/${G}/${TEXT}`);
+    await screen.findByRole("textbox", { name: "Сообщение в #общий" });
+    await act(() => joinVoice(G, LOUNGE));
+    await act(() => router.navigate({ to: "/settings/$", params: { _splat: "profile" } }));
+    await screen.findByRole("heading", { name: "Профиль" });
+    act(() => {
+      fake.emit("link", "disconnected", "replaced");
+    });
+    expect(await screen.findByText(CALL_REPLACED, { exact: true })).toBeTruthy();
   });
 });

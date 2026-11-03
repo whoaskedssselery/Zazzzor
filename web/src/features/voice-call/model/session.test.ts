@@ -20,6 +20,7 @@ import {
   applyVoicePrefs,
   CALL_REMOVED,
   CALL_REPLACED,
+  DEVICE_FAILED,
   endCall,
   joinVoice,
   leaveVoice,
@@ -30,6 +31,8 @@ import {
   setSelfDeaf,
   setSelfMute,
   setTransportFactory,
+  startScreenShare,
+  switchAudioDevice,
 } from "./session";
 
 const me = makeUser("100");
@@ -132,21 +135,6 @@ describe("voice session", () => {
     expect(left).toBe(1);
     expect(fake.argsOf("disconnect").length).toBeGreaterThan(1);
     expect(getCall()).toMatchObject({ status: "idle", channelId: null, selfMute: true });
-  });
-
-  it("ends with a notice and no reconnect when the call is taken elsewhere", async () => {
-    await joinVoice(G, LOUNGE);
-    meIn(LOUNGE);
-    fake.emit("link", "disconnected", "removed");
-    expect(getCall().status).toBe("idle");
-    expect(notices).toEqual([CALL_REPLACED]);
-    expect(fake.argsOf("connect")).toHaveLength(1);
-  });
-
-  it("says the user was disconnected when the server no longer has them in voice", async () => {
-    await joinVoice(G, LOUNGE);
-    fake.emit("link", "disconnected", "removed");
-    expect(notices).toEqual([CALL_REMOVED]);
   });
 
   it("stays in the call without a microphone when it is refused", async () => {
@@ -254,5 +242,148 @@ describe("voice settings in the call", () => {
     writeVoicePrefs({ ...DEFAULT_VOICE_PREFS, mode: "ptt" });
     applyVoicePrefs();
     expect(fake.argsOf("setMicrophone").at(-1)).toEqual([false]);
+  });
+});
+
+describe("the final review's cases", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** A promise and the function that settles it. */
+  const gate = () => {
+    let open = () => {};
+    const promise = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    return { promise, open };
+  };
+
+  it("C1: switches channels silently even when the server drops the old room before answering", async () => {
+    await joinVoice(G, LOUNGE);
+    meIn(LOUNGE);
+    server.use(
+      apiHandler("post", "/channels/{channel_id}/voice", ({ params }) => {
+        tokens.push(params.channel_id);
+        // The server removes the old participant from LiveKit before it answers.
+        fake.emit("link", "disconnected", "removed");
+        return HttpResponse.json({ token: `t-${params.channel_id}`, url: SIGNAL });
+      }),
+    );
+    await joinVoice(G, GAMES);
+    expect(notices).toEqual([]);
+    expect(getCall()).toMatchObject({ status: "connected", channelId: GAMES });
+  });
+
+  it("C2: a double click on the first join makes one transport and one call", async () => {
+    let made = 0;
+    setTransportFactory(async () => {
+      made += 1;
+      await Promise.resolve();
+      return fake;
+    });
+    await Promise.all([joinVoice(G, LOUNGE), joinVoice(G, LOUNGE)]);
+    expect(made).toBe(1);
+    expect(getCall()).toMatchObject({ status: "connected", guildId: G, channelId: LOUNGE });
+    expect(notices).toEqual([]);
+  });
+
+  it("I5: leaving while the connection is still being made says nothing", async () => {
+    const held = gate();
+    fake.connectGate = held.promise;
+    const joining = joinVoice(G, LOUNGE);
+    await vi.waitFor(() => {
+      expect(fake.argsOf("connect")).toHaveLength(1);
+    });
+    await leaveVoice();
+    held.open();
+    await joining;
+    expect(notices).toEqual([]);
+    expect(getCall().status).toBe("idle");
+  });
+
+  it("I1: a moderator's disconnect says the user was disconnected, once the server says they left", async () => {
+    await joinVoice(G, LOUNGE);
+    meIn(LOUNGE);
+    fake.emit("link", "disconnected", "removed");
+    expect(notices).toEqual([]);
+    applyGatewayDispatch("VOICE_STATE_UPDATE", { ...makeVoiceState(G, LOUNGE, me.id), left: true });
+    await reconcileVoiceFlags();
+    expect(notices).toEqual([CALL_REMOVED]);
+  });
+
+  it("I1: a removal while the server still has the user in voice is a takeover, after a moment", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    await joinVoice(G, LOUNGE);
+    meIn(LOUNGE);
+    fake.emit("link", "disconnected", "removed");
+    expect(notices).toEqual([]);
+    await vi.advanceTimersByTimeAsync(2500);
+    expect(notices).toEqual([CALL_REPLACED]);
+  });
+
+  it("I2: turns the microphone back on when a moderator lifts the mute", async () => {
+    await joinVoice(G, LOUNGE);
+    meIn(LOUNGE, { mute: true });
+    await reconcileVoiceFlags();
+    expect(fake.argsOf("setMicrophone").at(-1)).toEqual([false]);
+    meIn(LOUNGE, { mute: false });
+    await reconcileVoiceFlags();
+    expect(fake.argsOf("setMicrophone").at(-1)).toEqual([true]);
+  });
+
+  it("I3: a switch flipped back while its PATCH is in flight still reaches the server", async () => {
+    const held = gate();
+    server.use(
+      apiHandler("patch", "/users/@me/voice-state", async ({ request }) => {
+        flags.push(await request.json());
+        if (flags.length === 1) await held.promise;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    await joinVoice(G, LOUNGE);
+    meIn(LOUNGE);
+    setSelfMute(true);
+    await vi.waitFor(() => {
+      expect(flags).toHaveLength(1);
+    });
+    setSelfMute(false);
+    // The echo of the first PATCH arrives while it is still in flight.
+    meIn(LOUNGE, { self_mute: true });
+    await reconcileVoiceFlags();
+    held.open();
+    await vi.waitFor(() => {
+      expect(flags.at(-1)).toEqual({ self_mute: false, self_deaf: false });
+    });
+  });
+
+  it("I9: after the call ended from outside, the switches do not touch the microphone", async () => {
+    await joinVoice(G, LOUNGE);
+    fake.emit("link", "disconnected", "failed");
+    const before = fake.argsOf("setMicrophone").length;
+    setSelfMute(true);
+    setSelfMute(false);
+    expect(fake.argsOf("setMicrophone")).toHaveLength(before);
+  });
+
+  it("I6: a share picked after the call ended is stopped at once", async () => {
+    await joinVoice(G, LOUNGE);
+    let pick: (r: { ok: true; surface: "browser"; audio: boolean }) => void = () => {};
+    fake.screenResult = new Promise((resolve) => {
+      pick = resolve;
+    });
+    const sharing = startScreenShare();
+    await leaveVoice();
+    pick({ ok: true, surface: "browser", audio: true });
+    await sharing;
+    expect(getCall().sharing).toBe(false);
+    expect(fake.argsOf("stopScreenShare")).toHaveLength(1);
+  });
+
+  it("I7: says when a device cannot be switched", async () => {
+    await joinVoice(G, LOUNGE);
+    fake.deviceError = new DOMException("no such device", "OverconstrainedError");
+    await switchAudioDevice("audioinput", "default");
+    expect(notices).toEqual([DEVICE_FAILED]);
   });
 });

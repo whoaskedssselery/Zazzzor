@@ -21,17 +21,27 @@ export const MIC_DENIED = "Нет доступа к микрофону";
 export const NO_CONNECT = "Нет права подключаться к этому каналу";
 export const NO_STREAM = "Нет права на демонстрацию экрана";
 export const SHARE_FAILED = "Не удалось начать демонстрацию";
+export const DEVICE_FAILED = "Не удалось переключить устройство";
+
+/** How long a removal waits for the server to say whether the user left voice (a moderator) or not (a newer join). */
+const REMOVAL_SETTLE_MS = 2000;
 
 type Factory = () => CallTransport | Promise<CallTransport>;
 
 let factory: Factory = async () => (await loadLiveKitTransport())(readVoicePrefs);
 let transport: CallTransport | null = null;
+let transportPromise: Promise<CallTransport> | null = null;
+/** Bumped by every join and leave: a join that is no longer the latest stays silent. */
+let generation = 0;
+/** A join is between its token request and its connection: the old room's disconnect is part of it. */
+let joining = false;
 const notices = new Set<(text: string) => void>();
 
 /** How calls are made: LiveKit by default, a fake in tests. Forgets the current transport. */
 export const setTransportFactory = (f: Factory): void => {
   factory = f;
   transport = null;
+  transportPromise = null;
 };
 
 /** Calls `fn` with each message the user should see about the call (a toast). */
@@ -89,7 +99,23 @@ export const applyVoicePrefs = (): void => {
 
 /** Switches the microphone or the speakers of the call (the setting is saved by the caller). */
 export const switchAudioDevice = async (kind: "audioinput" | "audiooutput", deviceId: string): Promise<void> => {
-  await transport?.useDevice(kind, deviceId);
+  try {
+    await transport?.useDevice(kind, deviceId);
+  } catch {
+    notify(DEVICE_FAILED);
+  }
+};
+
+let pendingRemoval: ReturnType<typeof setTimeout> | null = null;
+
+/** Says why a removed call ended once the server tells: it dropped the user from voice (a moderator) or kept them (a newer join elsewhere). */
+const settleRemoval = (final: boolean) => {
+  if (pendingRemoval === null) return;
+  const inVoice = myVoice(getGuildsState()) !== null;
+  if (inVoice && !final) return;
+  clearTimeout(pendingRemoval);
+  pendingRemoval = null;
+  notify(inVoice ? CALL_REPLACED : CALL_REMOVED);
 };
 
 const ended = (cause: EndCause) => {
@@ -97,20 +123,29 @@ const ended = (cause: EndCause) => {
   clearCall();
   applyVoicePrefs();
   if (cause === "replaced") notify(CALL_REPLACED);
+  else if (cause === "failed") notify(CALL_FAILED);
   else if (cause === "removed") {
-    // LiveKit says "removed" both for a moderator and for a newer token of
-    // the same user: if the server still has the user in voice, it is the latter.
-    notify(myVoice(getGuildsState()) === null ? CALL_REMOVED : CALL_REPLACED);
-  } else if (cause === "failed") notify(CALL_FAILED);
+    // LiveKit says "removed" for a moderator and for a newer token alike, and
+    // the server announces the leave only after removing: wait for it.
+    if (pendingRemoval !== null) clearTimeout(pendingRemoval);
+    pendingRemoval = setTimeout(() => {
+      settleRemoval(true);
+    }, REMOVAL_SETTLE_MS);
+  }
 };
 
 /** The transport, made once and wired to the call store. */
-const ensureTransport = async (): Promise<CallTransport> => {
-  if (transport) return transport;
-  const t = await factory();
+const ensureTransport = (): Promise<CallTransport> => {
+  transportPromise ??= Promise.resolve(factory()).then(wire);
+  return transportPromise;
+};
+
+const wire = (t: CallTransport): CallTransport => {
   t.on("link", (state, cause) => {
-    if (state === "disconnected") ended(cause ?? "failed");
-    else if (getCall().status !== "idle") setCall({ status: state });
+    // During a join the old room goes away on purpose (or the server drops it first).
+    if (state === "disconnected") {
+      if (!joining) ended(cause ?? "failed");
+    } else if (getCall().status !== "idle") setCall({ status: state });
   });
   t.on("speaking", (speaking) => {
     setCall({ speaking });
@@ -136,32 +171,62 @@ const ensureTransport = async (): Promise<CallTransport> => {
  * the user's switches applied. A refused token is said in a notice.
  */
 export const joinVoice = async (guildId: string, channelId: string): Promise<void> => {
-  let joined: { token: string; url: string };
+  const mine = ++generation;
+  const latest = () => mine === generation;
+  joining = true;
   try {
-    joined = unwrap(await api.POST("/channels/{channel_id}/voice", { params: { path: { channel_id: channelId } } }));
-  } catch (e) {
-    notify(errorText(e));
-    return;
+    let joined: { token: string; url: string };
+    try {
+      joined = unwrap(await api.POST("/channels/{channel_id}/voice", { params: { path: { channel_id: channelId } } }));
+    } catch (e) {
+      if (latest()) notify(errorText(e));
+      return;
+    }
+    let t: CallTransport;
+    try {
+      t = await ensureTransport();
+    } catch {
+      transportPromise = null;
+      if (latest()) notify(CALL_FAILED);
+      return;
+    }
+    if (!latest()) return;
+    await t.disconnect();
+    if (!latest()) return;
+    setCall({
+      status: "connecting",
+      guildId,
+      channelId,
+      micDenied: false,
+      speaking: [],
+      streams: [],
+      watching: [],
+      sharing: false,
+    });
+    try {
+      await t.connect(joined.url, joined.token);
+    } catch {
+      // A newer join or a leave cancelled this one: it says nothing.
+      if (!latest()) return;
+      clearCall();
+      notify(CALL_FAILED);
+      return;
+    }
+    if (!latest()) return;
+    setCall({ status: "connected" });
+    t.setListening(!getCall().selfDeaf);
+    const { outputId } = readVoicePrefs();
+    if (outputId !== null) await switchAudioDevice("audiooutput", outputId);
+    applyVoicePrefs();
+  } finally {
+    if (latest()) joining = false;
   }
-  const t = await ensureTransport();
-  await t.disconnect();
-  setCall({ status: "connecting", guildId, channelId, micDenied: false, speaking: [], streams: [], watching: [] });
-  try {
-    await t.connect(joined.url, joined.token);
-  } catch {
-    clearCall();
-    notify(CALL_FAILED);
-    return;
-  }
-  setCall({ status: "connected" });
-  t.setListening(!getCall().selfDeaf);
-  const { outputId } = readVoicePrefs();
-  if (outputId !== null) await t.useDevice("audiooutput", outputId);
-  applyVoicePrefs();
 };
 
 /** Leaves voice: the server forgets the state at once, and the connection goes. */
 export const leaveVoice = async (): Promise<void> => {
+  generation += 1;
+  joining = false;
   clearCall();
   applyVoicePrefs();
   await transport?.disconnect();
@@ -174,6 +239,8 @@ export const leaveVoice = async (): Promise<void> => {
 
 /** Ends the call here without telling the server (the session ended; the server knows). */
 export const endCall = async (cause: EndCause): Promise<void> => {
+  generation += 1;
+  joining = false;
   ended(cause);
   clearCall();
   applyVoicePrefs();
@@ -189,39 +256,62 @@ export const onVoiceMove = async (channelId: string): Promise<void> => {
 /** The microphone switch; applied at once in a call. */
 export const setSelfMute = (on: boolean): void => {
   setCall({ selfMute: on });
-  void transport?.setMicrophone(micOn());
+  if (getCall().status !== "idle") void transport?.setMicrophone(micOn());
   void reconcileVoiceFlags();
 };
 
 /** The sound switch; deafened also means no microphone, as in Discord. */
 export const setSelfDeaf = (on: boolean): void => {
   setCall({ selfDeaf: on });
-  transport?.setListening(!on);
-  void transport?.setMicrophone(micOn());
+  if (getCall().status !== "idle") {
+    transport?.setListening(!on);
+    void transport?.setMicrophone(micOn());
+  }
   void reconcileVoiceFlags();
 };
 
 let syncing = false;
+/** The moderator's mute as last applied to the microphone. */
+let modMuted = false;
 
 /**
- * Tells the server the user's switches when the voice state it has differs:
- * after joining (the state starts with both off) and after READY (the API
- * keeps them in memory only). Also turns the microphone off when a moderator
- * mutes the user.
+ * Keeps the server's view of the user's switches in step: it tells the
+ * server when the voice state there differs (after joining, the state starts
+ * with both off; after READY, the API forgot them), one request at a time,
+ * and again when a switch changed while one was in flight or it failed. Also
+ * follows a moderator's mute both ways, and settles why a removed call ended.
  */
 export const reconcileVoiceFlags = async (): Promise<void> => {
+  settleRemoval(false);
   const mine = myVoice(getGuildsState());
   const { status, channelId, selfMute, selfDeaf } = getCall();
-  if (status === "idle" || mine?.channel_id !== channelId || syncing) return;
-  if (mine.mute) void transport?.setMicrophone(false);
-  if (mine.self_mute === selfMute && mine.self_deaf === selfDeaf) return;
+  if (status === "idle" || mine?.channel_id !== channelId) return;
+  if (mine.mute !== modMuted) {
+    modMuted = mine.mute;
+    void transport?.setMicrophone(micOn());
+  }
+  if (syncing || (mine.self_mute === selfMute && mine.self_deaf === selfDeaf)) return;
+  await sendFlags();
+};
+
+/** PATCHes the switches as they are now; then once more if they changed meanwhile, or a second later if it failed. */
+const sendFlags = async (): Promise<void> => {
+  const { selfMute, selfDeaf } = getCall();
   syncing = true;
+  let failed = false;
   try {
     unwrap(await api.PATCH("/users/@me/voice-state", { body: { self_mute: selfMute, self_deaf: selfDeaf } }));
   } catch {
-    // The next state from the server, or the next switch, tries again.
+    failed = true;
   } finally {
     syncing = false;
+  }
+  const now = getCall();
+  if (now.status === "idle") return;
+  if (now.selfMute !== selfMute || now.selfDeaf !== selfDeaf) await sendFlags();
+  else if (failed) {
+    // The voice write limit is 2/s; the next state from the server also retries.
+    setTimeout(() => void reconcileVoiceFlags(), 1000);
   }
 };
 
@@ -242,7 +332,14 @@ export const attachStream = (userId: string, el: HTMLVideoElement): (() => void)
  */
 export const startScreenShare = async (): Promise<void> => {
   if (!transport || getCall().status === "idle") return;
-  const result = await transport.startScreenShare();
+  const t = transport;
+  const mine = generation;
+  const result = await t.startScreenShare();
+  // The call ended or changed while the picker was open: stop what was picked.
+  if (result.ok && (mine !== generation || getCall().status === "idle")) {
+    await t.stopScreenShare();
+    return;
+  }
   if (!result.ok) {
     if (result.reason === "failed") notify(SHARE_FAILED);
     return;

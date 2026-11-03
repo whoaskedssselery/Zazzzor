@@ -26,6 +26,9 @@ const LINK: Partial<Record<ConnectionState, CallLink>> = {
 
 const SCREEN = new Set<Track.Source>([Track.Source.ScreenShare, Track.Source.ScreenShareAudio]);
 
+/** How long a screen may stay unpublished before it counts as ended: a full reconnect publishes it again. */
+const REPUBLISH_MS = 1000;
+
 const isMicError = (e: unknown): boolean =>
   e instanceof DOMException && (e.name === "NotAllowedError" || e.name === "NotFoundError");
 
@@ -86,6 +89,14 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
       if (link) emit("link", link);
     })
       .on(RoomEvent.Disconnected, (reason) => {
+        // The server closed the room: forget it, so nothing touches the microphone or the screen after.
+        if (!leaving && room === r) {
+          room = null;
+          stopCapture();
+          sounds.replaceChildren();
+          sounds.remove();
+          watching.clear();
+        }
         emit("link", "disconnected", leaving ? "left" : endCause(reason));
       })
       .on(RoomEvent.TrackPublished, (pub, participant) => {
@@ -112,14 +123,25 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
         );
       })
       .on(RoomEvent.LocalTrackUnpublished, (pub: LocalTrackPublication) => {
-        if (pub.source === Track.Source.ScreenShare && screen !== null) {
-          screen = null;
+        if (pub.source !== Track.Source.ScreenShare || screen === null) return;
+        const stream = screen;
+        // A full reconnect unpublishes every track and publishes it again; the server taking it down does not.
+        setTimeout(() => {
+          if (screen !== stream || r.localParticipant.getTrackPublication(Track.Source.ScreenShare)) return;
+          stopCapture();
           emit("screenEnded");
-        }
+        }, REPUBLISH_MS);
       })
       .on(RoomEvent.MediaDevicesError, (e) => {
         if (isMicError(e)) emit("micDenied");
       });
+  };
+
+  /** Stops the captured screen without touching the room. */
+  const stopCapture = () => {
+    const stream = screen;
+    screen = null;
+    for (const t of stream?.getTracks() ?? []) t.stop();
   };
 
   const unpublishScreen = async (r: Room) => {
@@ -192,7 +214,11 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
       }
       const [video] = stream.getVideoTracks();
       const [audio] = stream.getAudioTracks();
-      if (!video) return { ok: false, reason: "failed" };
+      // The call ended while the picker was open.
+      if (!video || room !== r) {
+        for (const t of stream.getTracks()) t.stop();
+        return { ok: false, reason: "failed" };
+      }
       video.contentHint = "motion";
       screen = stream;
       // The browser's own "Stop sharing" ends the track.
@@ -202,8 +228,14 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
           emit("screenEnded");
         });
       });
-      await r.localParticipant.publishTrack(video, { ...publish, source: Track.Source.ScreenShare });
-      if (audio) await r.localParticipant.publishTrack(audio, { source: Track.Source.ScreenShareAudio });
+      try {
+        await r.localParticipant.publishTrack(video, { ...publish, source: Track.Source.ScreenShare });
+        if (audio) await r.localParticipant.publishTrack(audio, { source: Track.Source.ScreenShareAudio });
+      } catch {
+        await unpublishScreen(r).catch(() => undefined);
+        for (const t of stream.getTracks()) t.stop();
+        return { ok: false, reason: "failed" };
+      }
       const surface = video.getSettings().displaySurface;
       return {
         ok: true,
@@ -235,7 +267,8 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
     },
 
     async useDevice(kind, deviceId) {
-      await room?.switchActiveDevice(kind, deviceId);
+      // "default" follows the system's choice; an exact match would pin today's default device.
+      await room?.switchActiveDevice(kind, deviceId, deviceId !== "default");
     },
 
     on(event, fn) {
