@@ -130,6 +130,9 @@ expect "$tmp/traefik" 'mode: host' 'медиа-порты не в режиме h
 expect "$tmp/traefik" 'PGHOST: postgres' 'backup ищет Postgres не по имени сервиса'
 expect "$tmp/traefik" 'enabled: false' 'TURN не выключен по умолчанию'
 reject "$tmp/traefik" 'traefik.tcp.routers.zazzzor-turn' 'TCP-router TURN есть при выключенном TURN'
+# Traefik v3 skips a service whose labels mix both providers ("both Docker and Swarm labels are defined").
+reject "$tmp/traefik" 'traefik.docker.' 'labels Docker-провайдера рядом со Swarm: Traefik пропустит сервисы'
+expect "$tmp/traefik" 'traefik.swarm.network: traefik' 'сервисы не указывают сеть Traefik для Swarm-провайдера'
 # backup.sh подключает одноразовые задания к этой же сети (lib.sh).
 networks "$tmp/traefik" | grep -A4 "^  $traefik_db_network:$" | grep -q 'attachable: true' ||
   fail "сеть $traefik_db_network не attachable: задания backup.sh к ней не подключатся"

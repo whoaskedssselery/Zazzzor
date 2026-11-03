@@ -60,7 +60,6 @@ services:
       labels:
         - "traefik.enable=true"
         - "traefik.swarm.network=${TRAEFIK_NETWORK:-traefik}"
-        - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
         - "traefik.http.routers.zazzzor-api.priority=100"
         - "traefik.http.routers.zazzzor-api.rule=Host(`${ZAZZZOR_DOMAIN}`) && PathPrefix(`/api/`)"
         - "traefik.http.routers.zazzzor-api.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
@@ -155,7 +154,6 @@ services:
       labels:
         - "traefik.enable=true"
         - "traefik.swarm.network=${TRAEFIK_NETWORK:-traefik}"
-        - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
         - "traefik.http.routers.zazzzor-rtc.priority=100"
         - "traefik.http.routers.zazzzor-rtc.rule=Host(`${ZAZZZOR_DOMAIN}`) && PathPrefix(`/rtc`)"
         - "traefik.http.routers.zazzzor-rtc.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
@@ -203,7 +201,6 @@ services:
           memory: 128M
       labels:
         - "traefik.enable=true"
-        - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik}"
         - "traefik.swarm.network=${TRAEFIK_NETWORK:-traefik}"
         - "traefik.http.routers.zazzzor-web.rule=Host(`${ZAZZZOR_DOMAIN}`)"
         - "traefik.http.routers.zazzzor-web.priority=1"
