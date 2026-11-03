@@ -27,6 +27,19 @@ const enter = async (page: Page, guildId: string, channel: { id: string; name: s
   await expect(page.getByRole("region", { name: "Голосовая связь" })).toContainText("Голос подключён");
 };
 
+/**
+ * The noise suppression setting for this person's pages, from the next load.
+ * The fake microphone plays a tone, which DeepFilterNet3 may take for noise:
+ * scenarios that check who speaks use the browser's own.
+ */
+const noiseMode = (who: Person, noise: "standard" | "enhanced") =>
+  who.context.addInitScript(
+    ({ key, value }) => {
+      localStorage.setItem(key, JSON.stringify({ noise: value }));
+    },
+    { key: "zazzzor.voice", value: noise },
+  );
+
 /** Someone's row under the voice channel in the sidebar. */
 const row = (page: Page, channelName: string, name: string) =>
   page
@@ -41,6 +54,8 @@ test("two friends talk in voice: who is there, who speaks, mute, a restart", asy
   const { guildId, channelId } = await createGuild(anna, "Голосовой вечер");
   await join(petr, await invite(anna, channelId));
   const voice = await voiceChannel(anna, guildId);
+  await noiseMode(anna, "standard");
+  await noiseMode(petr, "standard");
 
   await enter(anna.page, guildId, voice);
   await enter(petr.page, guildId, voice);
@@ -100,4 +115,26 @@ test("joining from a second tab takes the call over", async ({ browser, people }
     timeout: 20_000,
   });
   await expect(anna.page.getByRole("region", { name: "Голосовая связь" })).toHaveCount(0);
+});
+
+test("enhanced noise suppression runs under the production CSP", async ({ browser, browserName, people }) => {
+  const anna = await signUp(browser, "Аня");
+  people.push(anna);
+  const violations: string[] = [];
+  anna.page.on("console", (m) => {
+    if (/Content Security Policy|Content-Security-Policy/i.test(m.text())) violations.push(m.text());
+  });
+  const { guildId } = await createGuild(anna, "Тихий вечер");
+  const voice = await voiceChannel(anna, guildId);
+  await noiseMode(anna, "enhanced");
+  await enter(anna.page, guildId, voice);
+
+  // The call goes on in the settings, which say what runs: the model (about 23 MB) loads, then runs.
+  await anna.page.getByRole("button", { name: "Настройки пользователя" }).click();
+  await anna.page.getByRole("link", { name: "Голос и видео" }).click();
+  const now = anna.page.getByRole("status").filter({ hasText: /^Сейчас:/ });
+  if (browserName === "chromium") await expect(now).toHaveText("Сейчас: улучшенное", { timeout: 60_000 });
+  // Firefox may not run a 48 kHz context on a microphone of another rate: then a fallback, said as such.
+  else await expect(now).not.toHaveText(/загружается/, { timeout: 60_000 });
+  expect(violations).toEqual([]);
 });
