@@ -57,7 +57,8 @@ export default defineConfig({
           firefoxUserPrefs: {
             "media.navigator.streams.fake": true,
             "media.navigator.permission.disabled": true,
-            // LiveKit offers 127.0.0.1 (e2e/compose.yml), and Firefox skips loopback ICE candidates by default.
+            // LiveKit offers 127.0.0.1 (e2e/compose.yml), and Firefox skips loopback ICE candidates by default
+            // (and gathers them only while the page captures: see enter() in e2e/voice.spec.ts).
             "media.peerconnection.ice.loopback": true,
           },
         },

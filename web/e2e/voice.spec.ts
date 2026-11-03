@@ -20,19 +20,37 @@ const voiceChannel = async (owner: Person, guildId: string) => {
 /** Opens the voice channel and joins it from its own screen. */
 const enter = async (page: Page, guildId: string, channel: { id: string; name: string }) => {
   await page.goto(`/channels/${guildId}/${channel.id}`);
+  // Firefox gathers ICE candidates on the default route only while a page neither captures nor may capture,
+  // and LiveKit's first connection comes before the microphone. Here LiveKit is on 127.0.0.1, so in Firefox
+  // the page holds a capture until the call is up (Playwright cannot grant Firefox the microphone). Not in
+  // Chromium: a second capture of its fake device leaves the call's microphone silent. Real servers are not
+  // on loopback.
+  const firefox = page.context().browser()?.browserType().name() === "firefox";
+  if (firefox) {
+    await page.evaluate(async () => {
+      Object.assign(window, { heldMicrophone: await navigator.mediaDevices.getUserMedia({ audio: true }) });
+    });
+  }
   await page
     .getByRole("region", { name: `Голосовой канал ${channel.name}` })
     .getByRole("button", { name: "Присоединиться" })
     .click();
   await expect(page.getByRole("region", { name: "Голосовая связь" })).toContainText("Голос подключён");
+  if (firefox) {
+    await page.evaluate(() => {
+      const held = (window as { heldMicrophone?: MediaStream }).heldMicrophone;
+      for (const t of held?.getTracks() ?? []) t.stop();
+    });
+  }
 };
 
 /**
  * The noise suppression setting for this person's pages, from the next load.
- * The fake microphone plays a tone, which DeepFilterNet3 may take for noise:
- * scenarios that check who speaks use the browser's own.
+ * The fake microphone plays short beeps, which any noise suppression may take for
+ * noise (the browser's own too, at the start of a call): scenarios that check who
+ * speaks turn it off.
  */
-const noiseMode = (who: Person, noise: "standard" | "enhanced") =>
+const noiseMode = (who: Person, noise: "off" | "enhanced") =>
   who.context.addInitScript(
     ({ key, value }) => {
       localStorage.setItem(key, JSON.stringify({ noise: value }));
@@ -54,8 +72,8 @@ test("two friends talk in voice: who is there, who speaks, mute, a restart", asy
   const { guildId, channelId } = await createGuild(anna, "Голосовой вечер");
   await join(petr, await invite(anna, channelId));
   const voice = await voiceChannel(anna, guildId);
-  await noiseMode(anna, "standard");
-  await noiseMode(petr, "standard");
+  await noiseMode(anna, "off");
+  await noiseMode(petr, "off");
 
   await enter(anna.page, guildId, voice);
   await enter(petr.page, guildId, voice);
