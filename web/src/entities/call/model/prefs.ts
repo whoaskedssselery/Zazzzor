@@ -11,3 +11,42 @@ export interface VoicePrefs {
   /** The browser's own noise suppression ("Стандартное"), or none. */
   noise: "off" | "standard";
 }
+
+export const VOICE_PREFS_KEY = "zazzzor.voice";
+
+export const DEFAULT_VOICE_PREFS: VoicePrefs = {
+  inputId: null,
+  outputId: null,
+  mode: "voice",
+  pttKey: "KeyV",
+  noise: "standard",
+};
+
+const idOrNull = (v: unknown): string | null => (typeof v === "string" && v !== "" ? v : null);
+
+/** The voice settings of this browser; each field that is missing or not valid takes its default. */
+export const readVoicePrefs = (): VoicePrefs => {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(localStorage.getItem(VOICE_PREFS_KEY) ?? "null");
+  } catch {
+    return DEFAULT_VOICE_PREFS;
+  }
+  if (typeof raw !== "object" || raw === null) return DEFAULT_VOICE_PREFS;
+  const p = raw as Record<string, unknown>;
+  return {
+    inputId: idOrNull(p.inputId),
+    outputId: idOrNull(p.outputId),
+    mode: p.mode === "ptt" ? "ptt" : "voice",
+    pttKey: typeof p.pttKey === "string" && p.pttKey !== "" ? p.pttKey : DEFAULT_VOICE_PREFS.pttKey,
+    noise: p.noise === "off" ? "off" : "standard",
+  };
+};
+
+export const writeVoicePrefs = (prefs: VoicePrefs): void => {
+  try {
+    localStorage.setItem(VOICE_PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    // Storage blocked (private mode): the settings last for this tab only.
+  }
+};

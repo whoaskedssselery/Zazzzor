@@ -1,12 +1,14 @@
 import { HttpResponse } from "msw";
 
-import { getCall, resetCall } from "@/entities/call";
-import { applyGatewayDispatch, resetGuilds } from "@/entities/guild";
+import { DEFAULT_VOICE_PREFS, getCall, resetCall, writeVoicePrefs } from "@/entities/call";
+import { applyGatewayDispatch, DEFAULT_EVERYONE, formatMask, PERM, resetGuilds } from "@/entities/guild";
 import { ApiError, errorText } from "@/shared/api";
 import {
   apiHandler,
   FakeTransport,
   makeChannel,
+  makeEveryone,
+  makeGuild,
   makeGuildState,
   makeReady,
   makeUser,
@@ -15,6 +17,7 @@ import {
   server,
 } from "@/shared/test";
 import {
+  applyVoicePrefs,
   CALL_REMOVED,
   CALL_REPLACED,
   endCall,
@@ -196,5 +199,60 @@ describe("voice session", () => {
     fake.emit("speaking", [me.id]);
     fake.emit("streams", ["200"]);
     expect(getCall()).toMatchObject({ speaking: [me.id], streams: ["200"] });
+  });
+});
+
+describe("voice settings in the call", () => {
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  const key = (type: "keydown" | "keyup") => {
+    window.dispatchEvent(new KeyboardEvent(type, { code: "KeyV" }));
+  };
+
+  it("talks only while the push-to-talk key is held", async () => {
+    writeVoicePrefs({ ...DEFAULT_VOICE_PREFS, mode: "ptt" });
+    await joinVoice(G, LOUNGE);
+    expect(fake.argsOf("setMicrophone").at(-1)).toEqual([false]);
+    key("keydown");
+    expect(fake.argsOf("setMicrophone").at(-1)).toEqual([true]);
+    key("keyup");
+    expect(fake.argsOf("setMicrophone").at(-1)).toEqual([false]);
+    await leaveVoice();
+    key("keydown");
+    expect(fake.argsOf("setMicrophone").at(-1)).toEqual([false]);
+  });
+
+  it("uses push-to-talk where voice activity is not allowed", async () => {
+    applyGatewayDispatch(
+      "READY",
+      makeReady(me, [
+        makeGuildState(G, me, {
+          guild: makeGuild(G, "999"),
+          roles: [makeEveryone(G, formatMask(DEFAULT_EVERYONE & ~PERM.USE_VOICE_ACTIVITY))],
+          channels: [makeChannel(LOUNGE, G, { type: 2 })],
+        }),
+      ]),
+    );
+    await joinVoice(G, LOUNGE);
+    expect(fake.argsOf("setMicrophone").at(-1)).toEqual([false]);
+    key("keydown");
+    expect(fake.argsOf("setMicrophone").at(-1)).toEqual([true]);
+    key("keyup");
+  });
+
+  it("plays through the chosen output from the start", async () => {
+    writeVoicePrefs({ ...DEFAULT_VOICE_PREFS, outputId: "out-1" });
+    await joinVoice(G, LOUNGE);
+    expect(fake.argsOf("useDevice")).toEqual([["audiooutput", "out-1"]]);
+  });
+
+  it("applies a change of mode in the call at once", async () => {
+    await joinVoice(G, LOUNGE);
+    expect(fake.argsOf("setMicrophone").at(-1)).toEqual([true]);
+    writeVoicePrefs({ ...DEFAULT_VOICE_PREFS, mode: "ptt" });
+    applyVoicePrefs();
+    expect(fake.argsOf("setMicrophone").at(-1)).toEqual([false]);
   });
 });

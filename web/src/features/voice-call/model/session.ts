@@ -6,11 +6,13 @@ import {
   type EndCause,
   getCall,
   loadLiveKitTransport,
+  readVoicePrefs,
   setCall,
 } from "@/entities/call";
-import { getGuildsState, myVoice } from "@/entities/guild";
+import { computeChannel, getGuildsState, has, myVoice, PERM } from "@/entities/guild";
 import { api, errorText, unwrap } from "@/shared/api";
 import { shareNotice } from "./notice";
+import { startPushToTalk } from "./push-to-talk";
 
 export const CALL_REPLACED = "Вы подключились к голосу в другом месте";
 export const CALL_REMOVED = "Вас отключили от голосового канала";
@@ -22,7 +24,7 @@ export const SHARE_FAILED = "Не удалось начать демонстра
 
 type Factory = () => CallTransport | Promise<CallTransport>;
 
-let factory: Factory = async () => (await loadLiveKitTransport())(() => ({ inputId: null, noise: "standard" }));
+let factory: Factory = async () => (await loadLiveKitTransport())(readVoicePrefs);
 let transport: CallTransport | null = null;
 const notices = new Set<(text: string) => void>();
 
@@ -44,15 +46,56 @@ const notify = (text: string) => {
   for (const fn of notices) fn(text);
 };
 
-/** The microphone sends when the user has it on, is not deafened and is not muted by a moderator. */
+let pttHeld = false;
+let stopPtt: (() => void) | null = null;
+
+/** Push-to-talk by choice, or because the call's channel does not allow voice activity. */
+const pushToTalk = (): boolean => {
+  if (readVoicePrefs().mode === "ptt") return true;
+  const { guildId, channelId } = getCall();
+  const s = getGuildsState();
+  const entry = guildId === null ? undefined : s.guilds[guildId];
+  if (!entry || channelId === null || s.me === null) return false;
+  return !has(computeChannel(entry, channelId, s.me.id), PERM.USE_VOICE_ACTIVITY);
+};
+
+/**
+ * The microphone sends when the user has it on, is not deafened, is not
+ * muted by a moderator, and holds the key in push-to-talk.
+ */
 const micOn = (): boolean => {
   const { selfMute, selfDeaf } = getCall();
-  return !selfMute && !selfDeaf && !(myVoice(getGuildsState())?.mute ?? false);
+  if (selfMute || selfDeaf || (myVoice(getGuildsState())?.mute ?? false)) return false;
+  return !pushToTalk() || pttHeld;
+};
+
+/**
+ * Applies the voice settings to the call: push-to-talk listening on or
+ * off, and the microphone accordingly. The settings tab calls it after a
+ * change; joining calls it too.
+ */
+export const applyVoicePrefs = (): void => {
+  stopPtt?.();
+  stopPtt = null;
+  pttHeld = false;
+  if (getCall().status !== "idle" && pushToTalk()) {
+    stopPtt = startPushToTalk(readVoicePrefs().pttKey, (held) => {
+      pttHeld = held;
+      void transport?.setMicrophone(micOn());
+    });
+  }
+  if (getCall().status !== "idle") void transport?.setMicrophone(micOn());
+};
+
+/** Switches the microphone or the speakers of the call (the setting is saved by the caller). */
+export const switchAudioDevice = async (kind: "audioinput" | "audiooutput", deviceId: string): Promise<void> => {
+  await transport?.useDevice(kind, deviceId);
 };
 
 const ended = (cause: EndCause) => {
   if (getCall().status === "idle") return;
   clearCall();
+  applyVoicePrefs();
   if (cause === "replaced") notify(CALL_REPLACED);
   else if (cause === "removed") {
     // LiveKit says "removed" both for a moderator and for a newer token of
@@ -112,12 +155,15 @@ export const joinVoice = async (guildId: string, channelId: string): Promise<voi
   }
   setCall({ status: "connected" });
   t.setListening(!getCall().selfDeaf);
-  await t.setMicrophone(micOn());
+  const { outputId } = readVoicePrefs();
+  if (outputId !== null) await t.useDevice("audiooutput", outputId);
+  applyVoicePrefs();
 };
 
 /** Leaves voice: the server forgets the state at once, and the connection goes. */
 export const leaveVoice = async (): Promise<void> => {
   clearCall();
+  applyVoicePrefs();
   await transport?.disconnect();
   try {
     unwrap(await api.DELETE("/users/@me/voice"));
@@ -130,6 +176,7 @@ export const leaveVoice = async (): Promise<void> => {
 export const endCall = async (cause: EndCause): Promise<void> => {
   ended(cause);
   clearCall();
+  applyVoicePrefs();
   await transport?.disconnect();
 };
 
