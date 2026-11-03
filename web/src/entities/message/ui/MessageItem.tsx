@@ -40,6 +40,8 @@ export interface MessageItemProps {
   onJumpToReply?: (() => void) | undefined;
   /** Briefly marked after a jump to it. */
   highlighted?: boolean;
+  /** Wraps the author's name (a button that opens their card); the name alone by default. */
+  renderName?: (name: ReactNode) => ReactNode;
 }
 
 /** The preview above a reply: who and what it answers, or that the original is gone. */
@@ -108,6 +110,7 @@ export const MessageItem = ({
   toolbar,
   onJumpToReply,
   highlighted = false,
+  renderName = (n) => n,
 }: MessageItemProps) => {
   const sent = new Date(message.created_at);
   const name = author?.name ?? DELETED_USER;
@@ -152,12 +155,14 @@ export const MessageItem = ({
             <Avatar name={name} src={author?.avatarUrl} size={40} />
           </div>
           <h3 className="flex min-w-0 items-baseline gap-2">
-            <bdi
-              className={cn("truncate text-base font-semibold", author ? "role-text" : "text-fg-muted")}
-              style={author ? roleTextStyle(author.color) : undefined}
-            >
-              {name}
-            </bdi>
+            {renderName(
+              <bdi
+                className={cn("truncate text-base font-semibold", author ? "role-text" : "text-fg-muted")}
+                style={author ? roleTextStyle(author.color) : undefined}
+              >
+                {name}
+              </bdi>,
+            )}
             <time dateTime={message.created_at} className="shrink-0 text-xs text-fg-faint">
               {formatMessageTime(sent, now)}
             </time>

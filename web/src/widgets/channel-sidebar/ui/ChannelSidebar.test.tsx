@@ -151,3 +151,104 @@ describe("ChannelSidebar", () => {
     expect(screen.queryByRole("menuitem", { name: "Покинуть сервер" })).toBeNull();
   });
 });
+
+describe("server settings in the menu", () => {
+  it("opens the first section the user may open", async () => {
+    ready({ everyone: DEFAULT_EVERYONE | PERM.BAN_MEMBERS });
+    const { user, router } = await renderRouted(<ChannelSidebar guildId={G} channelId="101" />, {
+      path: "/channels/10/101",
+    });
+    await user.click(screen.getByRole("button", { name: "Меню сервера Вечерний сеанс" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Настройки сервера" }));
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/guilds/10/settings/members");
+    });
+  });
+
+  it("is not offered when no section is open to the user", async () => {
+    ready();
+    const { user } = await renderRouted(<ChannelSidebar guildId={G} channelId="101" />, { path: "/channels/10/101" });
+    await user.click(screen.getByRole("button", { name: "Меню сервера Вечерний сеанс" }));
+    await screen.findByRole("menu");
+    expect(screen.queryByRole("menuitem", { name: "Настройки сервера" })).toBeNull();
+  });
+});
+
+describe("arranging channels", () => {
+  const manager = DEFAULT_EVERYONE | PERM.MANAGE_CHANNELS;
+
+  it("creates a channel in a category from its «+»", async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      apiHandler("post", "/guilds/{guild_id}/channels", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json(makeChannel("103", G, { name: "кино" }), { status: 201 });
+      }),
+    );
+    ready({ everyone: manager });
+    const { user } = await renderRouted(<ChannelSidebar guildId={G} channelId="101" />, { path: "/channels/10/101" });
+    await user.click(screen.getByRole("button", { name: "Создать канал в Текстовые каналы" }));
+    const dialog = await screen.findByRole("dialog", { name: "Создать канал" });
+    await user.click(within(dialog).getByRole("radio", { name: /Голосовой/ }));
+    await user.type(within(dialog).getByRole("textbox", { name: "Название канала" }), "Кинозал 2");
+    await user.click(within(dialog).getByRole("button", { name: "Создать" }));
+    await waitFor(() => {
+      expect(bodies).toEqual([{ name: "Кинозал 2", type: 2, parent_id: "30" }]);
+    });
+  });
+
+  it("creates a category from the server menu", async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      apiHandler("post", "/guilds/{guild_id}/channels", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json(makeChannel("40", G, { type: 4 }), { status: 201 });
+      }),
+    );
+    ready({ everyone: manager });
+    const { user } = await renderRouted(<ChannelSidebar guildId={G} channelId="101" />, { path: "/channels/10/101" });
+    await user.click(screen.getByRole("button", { name: "Меню сервера Вечерний сеанс" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Создать категорию" }));
+    const dialog = await screen.findByRole("dialog", { name: "Создать категорию" });
+    await user.type(within(dialog).getByRole("textbox", { name: "Название категории" }), "Игры");
+    await user.click(within(dialog).getByRole("button", { name: "Создать" }));
+    await waitFor(() => {
+      expect(bodies).toEqual([{ name: "Игры", type: 4, parent_id: null }]);
+    });
+  });
+
+  it("moves a channel with Alt+↓ as one PATCH", async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      apiHandler("patch", "/guilds/{guild_id}/channels", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json([]);
+      }),
+    );
+    ready({ everyone: manager });
+    const { user } = await renderRouted(<ChannelSidebar guildId={G} channelId="101" />, { path: "/channels/10/101" });
+    screen.getByRole("link", { name: "общий" }).focus();
+    await user.keyboard("{Alt>}{ArrowDown}{/Alt}");
+    await waitFor(() => {
+      expect(bodies).toEqual([[{ id: "101", position: 9999 }]]);
+    });
+  });
+
+  it("offers no arranging and no gear without the permissions", async () => {
+    ready();
+    const { user } = await renderRouted(<ChannelSidebar guildId={G} channelId="101" />, { path: "/channels/10/101" });
+    expect(screen.queryByRole("button", { name: /^Создать канал в/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /^Настройки канала/ })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Меню сервера Вечерний сеанс" }));
+    await screen.findByRole("menu");
+    expect(screen.queryByRole("menuitem", { name: "Создать канал" })).toBeNull();
+  });
+
+  it("links each channel to its settings with MANAGE_CHANNELS", async () => {
+    ready({ everyone: manager });
+    await renderRouted(<ChannelSidebar guildId={G} channelId="101" />, { path: "/channels/10/101" });
+    expect(screen.getByRole("link", { name: "Настройки канала мемы" }).getAttribute("href")).toBe(
+      "/guilds/10/channels/102/settings/overview",
+    );
+  });
+});
