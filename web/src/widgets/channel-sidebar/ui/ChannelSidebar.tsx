@@ -42,6 +42,7 @@ import {
 import { CreateChannelDialog, type NewChannelKind } from "@/features/create-channel";
 import { InviteDialog } from "@/features/create-invite";
 import { LeaveGuildDialog } from "@/features/leave-guild";
+import { MemberMenu } from "@/features/manage-member";
 import { joinVoice, NO_CONNECT } from "@/features/voice-call";
 import { api, errorText, unwrap } from "@/shared/api";
 import {
@@ -234,22 +235,24 @@ const VoiceMember = ({ entry, state, speaking }: { entry: GuildEntry; state: Voi
   const user = entry.members[state.user_id]?.user;
   const view = user ? userDisplay(entry, user) : { name: "Участник", avatarUrl: null };
   return (
-    <li className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-sm text-fg-muted">
-      <span
-        data-speaking={speaking || undefined}
-        className={cn("shrink-0 rounded-full ring-2 ring-transparent transition-shadow", speaking && "ring-online")}
-      >
-        <Avatar name={view.name} src={view.avatarUrl} size={24} />
-      </span>
-      <span className={cn("min-w-0 flex-1 truncate", speaking && "text-fg")}>{view.name}</span>
-      {state.self_stream && <Badge variant="live">В ЭФИРЕ</Badge>}
-      {(state.mute || state.self_mute) && (
-        <VoiceFlag icon={MicOff} label="Микрофон выключен" byModerator={state.mute} />
-      )}
-      {(state.deaf || state.self_deaf) && (
-        <VoiceFlag icon={HeadphoneOff} label="Звук выключен" byModerator={state.deaf} />
-      )}
-    </li>
+    <MemberMenu guildId={state.guild_id} userId={state.user_id}>
+      <li className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-sm text-fg-muted hover:bg-hover">
+        <span
+          data-speaking={speaking || undefined}
+          className={cn("shrink-0 rounded-full ring-2 ring-transparent transition-shadow", speaking && "ring-online")}
+        >
+          <Avatar name={view.name} src={view.avatarUrl} size={24} />
+        </span>
+        <span className={cn("min-w-0 flex-1 truncate", speaking && "text-fg")}>{view.name}</span>
+        {state.self_stream && <Badge variant="live">В ЭФИРЕ</Badge>}
+        {(state.mute || state.self_mute) && (
+          <VoiceFlag icon={MicOff} label="Микрофон выключен" byModerator={state.mute} />
+        )}
+        {(state.deaf || state.self_deaf) && (
+          <VoiceFlag icon={HeadphoneOff} label="Звук выключен" byModerator={state.deaf} />
+        )}
+      </li>
+    </MemberMenu>
   );
 };
 

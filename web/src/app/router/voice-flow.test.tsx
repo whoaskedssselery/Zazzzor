@@ -12,6 +12,7 @@ import {
   setTransportFactory,
   WINDOW_NO_AUDIO,
 } from "@/features/voice-call";
+import { ApiError, errorText } from "@/shared/api";
 import {
   apiHandler,
   dispatchFrame,
@@ -24,6 +25,7 @@ import {
   makeReady,
   makeUser,
   makeVoiceState,
+  problem,
   readyGateway,
   server,
 } from "@/shared/test";
@@ -406,5 +408,59 @@ describe("screen sharing", () => {
     await screen.findByRole("textbox", { name: "Сообщение в #общий" });
     await act(() => joinVoice(G, LOUNGE));
     expect(within(await panel()).getByRole("button", { name: NO_STREAM })).toHaveProperty("disabled", true);
+  });
+});
+
+describe("voice moderation", () => {
+  const petya = makeUser("200", { display_name: "Петя" });
+  let patches: { user: string; body: unknown }[];
+
+  beforeEach(() => {
+    patches = [];
+    // I own the server, so I act on anyone.
+    guildState = () =>
+      makeGuildState(G, testUser, {
+        channels: [
+          makeChannel(TEXT, G, { name: "общий" }),
+          makeChannel(LOUNGE, G, { type: 2, name: "Лаунж" }),
+          makeChannel(GAMES, G, { type: 2, name: "Игры", position: 1 }),
+        ],
+        members: [makeMember(testUser), makeMember(petya)],
+        voice_states: [makeVoiceState(G, LOUNGE, petya.id)],
+      });
+    server.use(
+      apiHandler("patch", "/guilds/{guild_id}/members/{user_id}/voice", async ({ request, params }) => {
+        patches.push({ user: params.user_id, body: await request.json() });
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+  });
+
+  const petyaRow = async () =>
+    within(await screen.findByRole("list", { name: "В канале Лаунж" })).getByRole("listitem");
+
+  it("mutes, moves and disconnects a member in voice from their menu", async () => {
+    const { user } = renderApp(`/channels/${G}/${TEXT}`);
+    await user.pointer({ keys: "[MouseRight]", target: await petyaRow() });
+    await user.click(await screen.findByRole("menuitem", { name: "Выключить микрофон на сервере" }));
+    await user.pointer({ keys: "[MouseRight]", target: await petyaRow() });
+    await user.click(await screen.findByRole("menuitem", { name: "Переместить в «Игры»" }));
+    await user.pointer({ keys: "[MouseRight]", target: await petyaRow() });
+    await user.click(await screen.findByRole("menuitem", { name: "Отключить от голоса" }));
+    await waitFor(() => {
+      expect(patches).toEqual([
+        { user: petya.id, body: { mute: true } },
+        { user: petya.id, body: { channel_id: GAMES } },
+        { user: petya.id, body: { channel_id: null } },
+      ]);
+    });
+  });
+
+  it("says why the server refused", async () => {
+    server.use(apiHandler("patch", "/guilds/{guild_id}/members/{user_id}/voice", () => problem(403, "role_hierarchy")));
+    const { user } = renderApp(`/channels/${G}/${TEXT}`);
+    await user.pointer({ keys: "[MouseRight]", target: await petyaRow() });
+    await user.click(await screen.findByRole("menuitem", { name: "Выключить звук на сервере" }));
+    expect(await screen.findByText(errorText(new ApiError(403, "role_hierarchy")), { exact: true })).toBeTruthy();
   });
 });
