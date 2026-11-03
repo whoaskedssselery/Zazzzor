@@ -4,6 +4,7 @@ import { HttpResponse } from "msw";
 import { renderApp, sessionHandler, testUser } from "@/app/test";
 import { resetChannelUi } from "@/entities/channel";
 import { DEFAULT_EVERYONE, formatMask, PERM, resetGuilds } from "@/entities/guild";
+import { IMAGE_TOO_LARGE } from "@/shared/lib";
 import {
   apiHandler,
   dispatchFrame,
@@ -19,7 +20,6 @@ import {
   server,
 } from "@/shared/test";
 import { LEAVE_UNSAVED, UNSAVED } from "@/shared/ui";
-import { IMAGE_TOO_LARGE } from "@/widgets/guild-settings";
 
 type Client = WebSocketHandlerConnection["client"];
 

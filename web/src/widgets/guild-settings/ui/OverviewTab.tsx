@@ -1,27 +1,11 @@
 import { useMutation } from "@tanstack/react-query";
-import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, useEffect, useRef, useState } from "react";
 import type { Guild } from "@/entities/guild";
 import { ApiError, api, errorText, unwrap } from "@/shared/api";
-import { runeLength, trimContent } from "@/shared/lib";
+import { fileForm, IMAGE_ACCEPT, imageProblem, runeLength, trimContent, useObjectUrl } from "@/shared/lib";
 import { Button, Field, FormAlert, GuildIcon, Input, SaveBar, useToast } from "@/shared/ui";
 
 const NAME_RULE = "Название: от 2 до 100 символов.";
-const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
-const MAX_ICON_BYTES = 4 * 1024 * 1024;
-export const WRONG_IMAGE = "Нужна картинка PNG, JPEG, GIF или WebP.";
-export const IMAGE_TOO_LARGE = "Файл больше 4 МБ.";
-
-/** A local URL showing `file` while it is chosen, released when it changes. */
-const useObjectUrl = (file: File | null): string | null => {
-  const url = useMemo(() => (file === null ? null : URL.createObjectURL(file)), [file]);
-  useEffect(
-    () => () => {
-      if (url !== null) URL.revokeObjectURL(url);
-    },
-    [url],
-  );
-  return url;
-};
 
 /** PUT /guilds/{id}/icon with the file as multipart `file`. */
 const uploadIcon = async (guildId: string, file: File) =>
@@ -29,11 +13,7 @@ const uploadIcon = async (guildId: string, file: File) =>
     await api.PUT("/guilds/{guild_id}/icon", {
       params: { path: { guild_id: guildId } },
       body: { file: "" },
-      bodySerializer: () => {
-        const form = new FormData();
-        form.append("file", file);
-        return form;
-      },
+      bodySerializer: fileForm(file),
     }),
   );
 
@@ -87,12 +67,9 @@ export const OverviewTab = ({ guild, onDirtyChange }: { guild: Guild; onDirtyCha
     const file = e.currentTarget.files?.[0];
     e.currentTarget.value = "";
     if (!file) return;
-    if (!IMAGE_TYPES.has(file.type)) setIconError(WRONG_IMAGE);
-    else if (file.size > MAX_ICON_BYTES) setIconError(IMAGE_TOO_LARGE);
-    else {
-      setIconError(null);
-      setIcon(file);
-    }
+    const problem = imageProblem(file);
+    setIconError(problem);
+    if (problem === null) setIcon(file);
   };
 
   const submit = () => {
@@ -126,7 +103,7 @@ export const OverviewTab = ({ guild, onDirtyChange }: { guild: Guild; onDirtyCha
           <input
             ref={picker}
             type="file"
-            accept="image/png,image/jpeg,image/gif,image/webp"
+            accept={IMAGE_ACCEPT}
             className="sr-only"
             tabIndex={-1}
             aria-hidden
