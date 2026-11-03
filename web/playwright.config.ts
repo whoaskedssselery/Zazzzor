@@ -54,7 +54,12 @@ export default defineConfig({
       use: {
         ...devices["Desktop Firefox"],
         launchOptions: {
-          firefoxUserPrefs: { "media.navigator.streams.fake": true, "media.navigator.permission.disabled": true },
+          firefoxUserPrefs: {
+            "media.navigator.streams.fake": true,
+            "media.navigator.permission.disabled": true,
+            // LiveKit offers 127.0.0.1 (e2e/compose.yml), and Firefox skips loopback ICE candidates by default.
+            "media.peerconnection.ice.loopback": true,
+          },
         },
         // Where Playwright's Firefox does not start (some Windows builds), it
         // runs in Playwright's Linux image instead and still reaches this
