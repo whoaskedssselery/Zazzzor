@@ -31,6 +31,7 @@ export {
   type Member,
   type PresenceStatus,
   type Role,
+  type VoiceState,
 } from "./model/reducer";
 export {
   CHANNEL_SETTINGS_TABS,
@@ -53,3 +54,4 @@ export {
   useConnectionStatus,
   useGuilds,
 } from "./model/store";
+export { myVoice, voiceMembers } from "./model/voice";

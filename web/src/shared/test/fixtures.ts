@@ -90,3 +90,24 @@ export function makeMessage(id: string, channelId: string, author: User | null, 
     ...over,
   };
 }
+
+/** `userId` in voice channel `channelId`, nothing muted, joined at 18:00 UTC 23.10.2026 unless given. */
+export function makeVoiceState(
+  guildId: string,
+  channelId: string,
+  userId: string,
+  over: Partial<S["VoiceState"]> = {},
+): S["VoiceState"] {
+  return {
+    guild_id: guildId,
+    channel_id: channelId,
+    user_id: userId,
+    self_mute: false,
+    self_deaf: false,
+    self_stream: false,
+    mute: false,
+    deaf: false,
+    joined_at: "2026-10-23T18:00:00.000Z",
+    ...over,
+  };
+}

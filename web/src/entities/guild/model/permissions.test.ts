@@ -129,6 +129,7 @@ function entryOf(subjects: Subject[], overwrites: Overwrite[] = []): GuildEntry 
     },
     members,
     myMember,
+    voice: {},
   };
 }
 

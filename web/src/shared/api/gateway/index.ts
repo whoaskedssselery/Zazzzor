@@ -8,4 +8,13 @@ export {
   nextDelay,
 } from "./connection";
 export { getGateway, useGatewayEvent } from "./gateway";
-export { type ChatEvents, type GatewayEvents, isChatEvent, parseChatEvent, parseEvent } from "./protocol";
+export {
+  type CallEvents,
+  type ChatEvents,
+  type GatewayEvents,
+  isCallEvent,
+  isChatEvent,
+  parseCallEvent,
+  parseChatEvent,
+  parseEvent,
+} from "./protocol";
