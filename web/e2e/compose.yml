@@ -1,6 +1,7 @@
-# The backend of the browser tests: Postgres and the API, nothing else (no
-# Caddy, LiveKit or backups). The API answers on 127.0.0.1:18080, apart from
-# a dev server on 8080; `vite preview` on :4173 forwards /api to it.
+# The backend of the browser tests: Postgres, the API and LiveKit (no Caddy or
+# backups). The API answers on 127.0.0.1:18080, apart from a dev server on
+# 8080; LiveKit on 127.0.0.1:7880 (signaling), 7881/tcp and 7882/udp (media).
+# `vite preview` on :4173 forwards /api and /rtc to them.
 #
 #   docker compose -f e2e/compose.yml up -d --build --wait   (pnpm e2e:up)
 #   docker compose -f e2e/compose.yml down -v                (pnpm e2e:down)
@@ -40,6 +41,10 @@ services:
       ZAZZZOR_TRUSTED_PROXIES: 0.0.0.0/0,::/0
       ZAZZZOR_ADMIN_USERNAMES: e2e_admin
       ZAZZZOR_DATA_DIR: /data
+      # LiveKit inside this network; the secret is a test value of the required length.
+      ZAZZZOR_LIVEKIT_URL: http://livekit:7880
+      LIVEKIT_API_KEY: e2ekey
+      LIVEKIT_API_SECRET: e2e-only-e2e-only-e2e-only-e2e-only
     ports:
       - "127.0.0.1:18080:8080"
     tmpfs:
@@ -47,9 +52,36 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      livekit:
+        condition: service_started
     healthcheck:
       test: ["CMD", "/zazzzor", "healthcheck"]
       interval: 2s
       timeout: 5s
       retries: 30
     stop_grace_period: 20s
+
+  # Media goes straight from the browsers on this machine to 127.0.0.1:7882/udp.
+  # Who is in which call reaches the API by webhook, signed with the key above.
+  livekit:
+    image: livekit/livekit-server:v1.13.10
+    environment:
+      LIVEKIT_CONFIG: |
+        port: 7880
+        rtc:
+          tcp_port: 7881
+          udp_port: 7882
+          use_external_ip: false
+          node_ip: 127.0.0.1
+        keys:
+          e2ekey: e2e-only-e2e-only-e2e-only-e2e-only
+        webhook:
+          api_key: e2ekey
+          urls:
+            - http://api:8080/api/v1/livekit/webhook
+        logging:
+          level: warn
+    ports:
+      - "127.0.0.1:7880:7880"
+      - "127.0.0.1:7881:7881"
+      - "127.0.0.1:7882:7882/udp"

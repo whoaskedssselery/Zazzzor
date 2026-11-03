@@ -1,4 +1,14 @@
-import { ArrowRightLeft, Ellipsis, Gavel, HeadphoneOff, MicOff, Pencil, PhoneOff, Shield, UserMinus } from "lucide-react";
+import {
+  ArrowRightLeft,
+  Ellipsis,
+  Gavel,
+  HeadphoneOff,
+  MicOff,
+  Pencil,
+  PhoneOff,
+  Shield,
+  UserMinus,
+} from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { type GuildEntry, useGuilds } from "@/entities/guild";
 import {

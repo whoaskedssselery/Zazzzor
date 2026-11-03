@@ -35,11 +35,27 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    {
+      name: "chromium",
+      use: {
+        ...devices["Desktop Chrome"],
+        // Fake microphone (a tone) and screen, and no permission prompts.
+        launchOptions: {
+          args: [
+            "--use-fake-ui-for-media-stream",
+            "--use-fake-device-for-media-stream",
+            "--auto-select-desktop-capture-source=Entire screen",
+          ],
+        },
+      },
+    },
     {
       name: "firefox",
       use: {
         ...devices["Desktop Firefox"],
+        launchOptions: {
+          firefoxUserPrefs: { "media.navigator.streams.fake": true, "media.navigator.permission.disabled": true },
+        },
         // Where Playwright's Firefox does not start (some Windows builds), it
         // runs in Playwright's Linux image instead and still reaches this
         // machine's localhost:
