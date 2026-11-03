@@ -29,9 +29,9 @@ const enter = async (page: Page, guildId: string, channel: { id: string; name: s
 
 /**
  * The noise suppression setting for this person's pages, from the next load.
- * The fake microphone plays short beeps, which any noise suppression may take for
- * noise (the browser's own too, at the start of a call): scenarios that check who
- * speaks turn it off.
+ * The fake microphone plays a tone (in Chromium a steady one, see
+ * playwright.config.ts), which any noise suppression may take for noise:
+ * scenarios that check who speaks turn it off.
  */
 const noiseMode = (who: Person, noise: "off" | "enhanced") =>
   who.context.addInitScript(

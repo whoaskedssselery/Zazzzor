@@ -1,7 +1,39 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
 import { API_PORT, PORT } from "./e2e/env";
+
+/**
+ * The fake microphone of Chromium: a steady 440 Hz tone (2 s, 48 kHz mono,
+ * looped by Chromium). Its own fake device plays a short beep once a second,
+ * which LiveKit does not always count as speech, so «who speaks» flickered.
+ * Written to a temporary file when the config loads, so no binary is kept.
+ */
+const steadyTone = (): string => {
+  const rate = 48_000;
+  const samples = rate * 2;
+  const wav = Buffer.alloc(44 + samples * 2);
+  wav.write("RIFF", 0);
+  wav.writeUInt32LE(36 + samples * 2, 4);
+  wav.write("WAVEfmt ", 8);
+  wav.writeUInt32LE(16, 16); // fmt chunk size
+  wav.writeUInt16LE(1, 20); // PCM
+  wav.writeUInt16LE(1, 22); // mono
+  wav.writeUInt32LE(rate, 24);
+  wav.writeUInt32LE(rate * 2, 28); // bytes per second
+  wav.writeUInt16LE(2, 32); // bytes per frame
+  wav.writeUInt16LE(16, 34); // bits per sample
+  wav.write("data", 36);
+  wav.writeUInt32LE(samples * 2, 40);
+  for (let i = 0; i < samples; i++) {
+    wav.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 440 * i) / rate) * 0.5 * 32_767), 44 + i * 2);
+  }
+  const file = join(tmpdir(), "zazzzor-e2e-tone.wav");
+  writeFileSync(file, wav);
+  return file;
+};
 
 /** The CSP Caddy sends with the web client in production (the block with frame-ancestors). */
 const productionCsp = (): string => {
@@ -39,11 +71,12 @@ export default defineConfig({
       name: "chromium",
       use: {
         ...devices["Desktop Chrome"],
-        // Fake microphone (a tone) and screen, and no permission prompts.
+        // Fake microphone (a steady tone) and screen, and no permission prompts.
         launchOptions: {
           args: [
             "--use-fake-ui-for-media-stream",
             "--use-fake-device-for-media-stream",
+            `--use-file-for-fake-audio-capture=${steadyTone()}`,
             "--auto-select-desktop-capture-source=Entire screen",
           ],
         },
