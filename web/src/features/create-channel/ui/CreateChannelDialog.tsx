@@ -1,6 +1,8 @@
 import { useMutation } from "@tanstack/react-query";
 import { Hash, Volume2 } from "lucide-react";
 import { type SubmitEvent, useState } from "react";
+import { homeCategory } from "@/entities/channel";
+import { useGuilds } from "@/entities/guild";
 import { ApiError, api, errorText, unwrap } from "@/shared/api";
 import { runeLength, trimContent } from "@/shared/lib";
 import { Button, cn, Dialog, DialogClose, DialogContent, Field, FormAlert, Input } from "@/shared/ui";
@@ -19,12 +21,16 @@ interface CreateChannelDialogProps {
   onOpenChange: (open: boolean) => void;
   guildId: string;
   kind: NewChannelKind;
-  /** The category a new channel goes into (null: the top level). */
+  /**
+   * The category a new channel goes into. Null: the category that already
+   * holds channels of the chosen type, or the top level when none does.
+   */
   parent: { id: string; name: string } | null;
 }
 
 /**
- * «Создать канал» (text or voice, in a category or at the top) and
+ * «Создать канал» (text or voice, in a category or with the channels of its
+ * type) and
  * «Создать категорию». The server puts it last; a channel in a category
  * starts synced with it.
  */
@@ -97,6 +103,12 @@ const CreateForm = ({
   onDone: () => void;
 }) => {
   const [type, setType] = useState<ChannelType>(kind === "category" ? CATEGORY : TEXT);
+  // From the server menu a channel joins the channels of its type (text with text, voice with voice).
+  const home = useGuilds((s) => {
+    const entry = s.guilds[guildId];
+    return parent !== null || kind === "category" || !entry ? null : homeCategory(entry, type);
+  });
+  const into = kind === "category" ? null : (parent ?? (home ? { id: home.id, name: home.name } : null));
   const [name, setName] = useState("");
   const [fieldError, setFieldError] = useState<string | undefined>(undefined);
   const create = useMutation({
@@ -104,7 +116,7 @@ const CreateForm = ({
       unwrap(
         await api.POST("/guilds/{guild_id}/channels", {
           params: { path: { guild_id: guildId } },
-          body: { name: value, type, parent_id: kind === "category" ? null : (parent?.id ?? null) },
+          body: { name: value, type, parent_id: into?.id ?? null },
         }),
       ),
     // The list shows it with its CHANNEL_CREATE.
@@ -130,7 +142,7 @@ const CreateForm = ({
   return (
     <DialogContent
       title={kind === "category" ? "Создать категорию" : "Создать канал"}
-      {...(kind === "channel" && parent ? { description: `В категории «${parent.name}»` } : {})}
+      {...(into ? { description: `В категории «${into.name}»` } : {})}
       size="sm"
       footer={
         <>

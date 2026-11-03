@@ -51,6 +51,22 @@ export const visibleChannelGroups = (entry: GuildEntry, userId: string): Channel
   return groups;
 };
 
+/**
+ * The category a new channel of `type` goes into when none is chosen: the
+ * one of the last channel of that type in the list, so text channels join
+ * the text ones and voice channels the voice ones, whatever the categories
+ * are called. Null when no category holds a channel of that type.
+ */
+export const homeCategory = (entry: GuildEntry, type: number): Channel | null => {
+  const all = Object.values(entry.channels);
+  const categories = all.filter((c) => c.type === CHANNEL_TYPE.CATEGORY).sort(compareChannels);
+  for (let i = categories.length - 1; i >= 0; i--) {
+    const category = categories[i];
+    if (category && all.some((c) => c.type === type && c.parent_id === category.id)) return category;
+  }
+  return null;
+};
+
 /** Whether channel `channelId` is a text channel the user may view (a place to open). */
 export const isOpenableChannel = (entry: GuildEntry, channelId: string, userId: string): boolean =>
   entry.channels[channelId]?.type === CHANNEL_TYPE.TEXT && canView(entry, channelId, userId);

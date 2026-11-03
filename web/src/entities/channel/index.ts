@@ -11,6 +11,7 @@ export {
   channelPath,
   channelToOpen,
   fallbackPath,
+  homeCategory,
   isOpenableChannel,
   isVisitableChannel,
   visibleChannelGroups,

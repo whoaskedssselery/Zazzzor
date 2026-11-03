@@ -207,6 +207,54 @@ describe("arranging channels", () => {
     });
   });
 
+  it("puts a channel from the server menu with the channels of its type", async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      apiHandler("post", "/guilds/{guild_id}/channels", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json(makeChannel("202", G, { type: 2 }), { status: 201 });
+      }),
+    );
+    ready({ everyone: manager });
+    const { user } = await renderRouted(<ChannelSidebar guildId={G} channelId="101" />, { path: "/channels/10/101" });
+    await user.click(screen.getByRole("button", { name: "Меню сервера Вечерний сеанс" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Создать канал" }));
+    const dialog = await screen.findByRole("dialog", { name: "Создать канал" });
+    expect(within(dialog).getByText("В категории «Текстовые каналы»")).toBeTruthy();
+    await user.click(within(dialog).getByRole("radio", { name: /Голосовой/ }));
+    expect(within(dialog).getByText("В категории «Голосовые каналы»")).toBeTruthy();
+    await user.type(within(dialog).getByRole("textbox", { name: "Название канала" }), "Менталист");
+    await user.click(within(dialog).getByRole("button", { name: "Создать" }));
+    await waitFor(() => {
+      expect(bodies).toEqual([{ name: "Менталист", type: 2, parent_id: "31" }]);
+    });
+  });
+
+  it("keeps a channel at the top when no category holds its type", async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      apiHandler("post", "/guilds/{guild_id}/channels", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json(makeChannel("202", G, { type: 2 }), { status: 201 });
+      }),
+    );
+    ready({ everyone: manager });
+    // The voice category goes, and its channel with it.
+    applyGatewayDispatch("CHANNEL_DELETE", channels[4]);
+    applyGatewayDispatch("CHANNEL_DELETE", channels[1]);
+    const { user } = await renderRouted(<ChannelSidebar guildId={G} channelId="101" />, { path: "/channels/10/101" });
+    await user.click(screen.getByRole("button", { name: "Меню сервера Вечерний сеанс" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Создать канал" }));
+    const dialog = await screen.findByRole("dialog", { name: "Создать канал" });
+    await user.click(within(dialog).getByRole("radio", { name: /Голосовой/ }));
+    expect(within(dialog).queryByText(/^В категории/)).toBeNull();
+    await user.type(within(dialog).getByRole("textbox", { name: "Название канала" }), "Менталист");
+    await user.click(within(dialog).getByRole("button", { name: "Создать" }));
+    await waitFor(() => {
+      expect(bodies).toEqual([{ name: "Менталист", type: 2, parent_id: null }]);
+    });
+  });
+
   it("moves a channel with Alt+↓ as one PATCH", async () => {
     const bodies: unknown[] = [];
     server.use(
