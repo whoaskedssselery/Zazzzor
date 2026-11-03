@@ -1,6 +1,12 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
-import { fallbackPath, isOpenableChannel, useChannelUi, useNavigateToFallback } from "@/entities/channel";
+import {
+  fallbackPath,
+  isOpenableChannel,
+  isVisitableChannel,
+  useChannelUi,
+  useNavigateToFallback,
+} from "@/entities/channel";
 import { getGuildsState, useConnectionStatus, useGuilds } from "@/entities/guild";
 import { useToast } from "@/shared/ui";
 
@@ -46,7 +52,7 @@ export function useChannelAccess(guildId: string, channelId: string | null): boo
   const entry = useGuilds((s) => s.guilds[guildId]);
   const openable = useGuilds((s) => {
     const e = s.guilds[guildId];
-    return channelId !== null && e !== undefined && s.me !== null && isOpenableChannel(e, channelId, s.me.id);
+    return channelId !== null && e !== undefined && s.me !== null && isVisitableChannel(e, channelId, s.me.id);
   });
   const setLastChannel = useChannelUi((s) => s.setLastChannel);
   const goToFallback = useNavigateToFallback();
@@ -82,7 +88,10 @@ export function useChannelAccess(guildId: string, channelId: string | null): boo
     }
     if (openable) {
       was.channel = true;
-      if (useChannelUi.getState().lastChannel[guildId] !== channelId) setLastChannel(guildId, channelId);
+      // A server reopens on its last text channel; a voice channel is not one.
+      const me = getGuildsState().me;
+      const text = me !== null && isOpenableChannel(entry, channelId, me.id);
+      if (text && useChannelUi.getState().lastChannel[guildId] !== channelId) setLastChannel(guildId, channelId);
       return;
     }
     if (was.channel) {

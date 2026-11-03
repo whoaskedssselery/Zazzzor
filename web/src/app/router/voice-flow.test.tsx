@@ -4,7 +4,7 @@ import { HttpResponse } from "msw";
 import { renderApp, sessionHandler, testUser } from "@/app/test";
 import { getCall, resetCall, setCall } from "@/entities/call";
 import { DEFAULT_EVERYONE, formatMask, PERM, resetGuilds } from "@/entities/guild";
-import { CALL_REPLACED, joinVoice, setTransportFactory } from "@/features/voice-call";
+import { CALL_REPLACED, joinVoice, NO_CONNECT, setTransportFactory } from "@/features/voice-call";
 import {
   apiHandler,
   dispatchFrame,
@@ -20,7 +20,6 @@ import {
   readyGateway,
   server,
 } from "@/shared/test";
-import { NO_CONNECT } from "@/widgets/channel-sidebar";
 import { MODERATOR_MUTED } from "@/widgets/user-panel";
 
 type Client = WebSocketHandlerConnection["client"];
@@ -238,5 +237,98 @@ describe("voice in the sidebar and the panels", () => {
     await waitFor(() => {
       expect(within(profile).getByRole("button", { name: MODERATOR_MUTED })).toHaveProperty("disabled", true);
     });
+  });
+});
+
+describe("the voice channel screen", () => {
+  const petya = makeUser("200", { display_name: "Петя" });
+  const masha = makeUser("300", { display_name: "Маша" });
+
+  beforeEach(() => {
+    guildState = () =>
+      makeGuildState(G, testUser, {
+        channels: [
+          makeChannel(TEXT, G, { name: "общий" }),
+          makeChannel(LOUNGE, G, { type: 2, name: "Лаунж" }),
+          makeChannel(GAMES, G, { type: 2, name: "Игры" }),
+        ],
+        members: [makeMember(testUser), makeMember(petya), makeMember(masha)],
+        voice_states: [makeVoiceState(G, LOUNGE, petya.id), makeVoiceState(G, LOUNGE, masha.id, { self_stream: true })],
+      });
+  });
+
+  const stage = () => screen.findByRole("region", { name: "Голосовой канал Лаунж" });
+
+  it("opens a voice channel on its own screen with who is there and a way in", async () => {
+    const { user } = renderApp(`/channels/${G}/${LOUNGE}`);
+    const view = await stage();
+    expect(screen.getByRole("heading", { level: 1, name: "Лаунж" })).toBeTruthy();
+    expect(within(view).getByText("Петя")).toBeTruthy();
+    expect(within(view).getByText("Маша")).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: /Сообщение в/ })).toBeNull();
+    await user.click(within(view).getByRole("button", { name: "Присоединиться" }));
+    await waitFor(() => {
+      expect(tokens).toEqual([LOUNGE]);
+    });
+  });
+
+  it("opens the channel clicked in the sidebar", async () => {
+    const { user, router } = renderApp(`/channels/${G}/${TEXT}`);
+    await user.click(await screen.findByRole("button", { name: "Голосовой канал Лаунж" }));
+    await stage();
+    expect(router.state.location.pathname).toBe(`/channels/${G}/${LOUNGE}`);
+  });
+
+  it("watches a stream on demand, stops, and goes full screen", async () => {
+    const full = vi.fn(() => Promise.resolve());
+    HTMLElement.prototype.requestFullscreen = full;
+    const { user } = renderApp(`/channels/${G}/${LOUNGE}`);
+    const view = await stage();
+    await act(() => joinVoice(G, LOUNGE));
+    act(() => {
+      fake.emit("streams", [masha.id]);
+    });
+    const tile = await within(view).findByRole("article", { name: "Маша — демонстрация экрана" });
+    expect(fake.argsOf("watch")).toEqual([]);
+    await user.click(within(tile).getByRole("button", { name: "Смотреть" }));
+    expect(fake.argsOf("watch")).toEqual([[masha.id, true]]);
+    const [[who, video]] = fake.argsOf("attachScreen") as [[string, HTMLVideoElement]];
+    expect(who).toBe(masha.id);
+    expect(video.tagName).toBe("VIDEO");
+    await user.click(within(tile).getByRole("button", { name: "Во весь экран" }));
+    expect(full).toHaveBeenCalledTimes(1);
+    await user.click(within(tile).getByRole("button", { name: "Перестать смотреть" }));
+    expect(fake.argsOf("watch").at(-1)).toEqual([masha.id, false]);
+    expect(fake.argsOf("detachScreen")).toHaveLength(1);
+  });
+
+  it("drops a stream tile when the stream ends", async () => {
+    const { user } = renderApp(`/channels/${G}/${LOUNGE}`);
+    const view = await stage();
+    await act(() => joinVoice(G, LOUNGE));
+    act(() => {
+      fake.emit("streams", [masha.id]);
+    });
+    const tile = await within(view).findByRole("article", { name: "Маша — демонстрация экрана" });
+    await user.click(within(tile).getByRole("button", { name: "Смотреть" }));
+    act(() => {
+      fake.emit("streams", []);
+    });
+    await waitFor(() => {
+      expect(within(view).queryByRole("article", { name: /демонстрация экрана/ })).toBeNull();
+    });
+    expect(getCall().watching).toEqual([]);
+    expect(fake.argsOf("detachScreen")).toHaveLength(1);
+  });
+
+  it("rings whoever speaks on their tile", async () => {
+    renderApp(`/channels/${G}/${LOUNGE}`);
+    const view = await stage();
+    await act(() => joinVoice(G, LOUNGE));
+    act(() => {
+      fake.emit("speaking", [petya.id]);
+    });
+    const tile = within(view).getByRole("listitem", { name: "Петя" });
+    expect(tile.querySelector("[data-speaking]")).not.toBeNull();
   });
 });

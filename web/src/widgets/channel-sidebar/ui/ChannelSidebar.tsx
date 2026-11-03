@@ -42,7 +42,7 @@ import {
 import { CreateChannelDialog, type NewChannelKind } from "@/features/create-channel";
 import { InviteDialog } from "@/features/create-invite";
 import { LeaveGuildDialog } from "@/features/leave-guild";
-import { joinVoice } from "@/features/voice-call";
+import { joinVoice, NO_CONNECT } from "@/features/voice-call";
 import { api, errorText, unwrap } from "@/shared/api";
 import {
   Avatar,
@@ -56,8 +56,6 @@ import {
   IconButton,
   useToast,
 } from "@/shared/ui";
-
-export const NO_CONNECT = "Нет права подключаться к этому каналу";
 
 /**
  * The channel to invite into: the open one when the user may invite there,

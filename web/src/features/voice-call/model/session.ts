@@ -6,6 +6,7 @@ export const CALL_REPLACED = "Вы подключились к голосу в �
 export const CALL_REMOVED = "Вас отключили от голосового канала";
 export const CALL_FAILED = "Не удалось подключиться к голосу";
 export const MIC_DENIED = "Нет доступа к микрофону";
+export const NO_CONNECT = "Нет права подключаться к этому каналу";
 
 type Factory = () => CallTransport | Promise<CallTransport>;
 
@@ -164,3 +165,14 @@ export const reconcileVoiceFlags = async (): Promise<void> => {
     syncing = false;
   }
 };
+
+/** Starts or stops receiving `userId`'s screen share (only watched streams cost bandwidth). */
+export const watchStream = (userId: string, on: boolean): void => {
+  const { watching } = getCall();
+  setCall({ watching: on ? [...new Set([...watching, userId])] : watching.filter((id) => id !== userId) });
+  transport?.watch(userId, on);
+};
+
+/** Shows `userId`'s screen share in `el`; the returned function lets go of it. */
+export const attachStream = (userId: string, el: HTMLVideoElement): (() => void) =>
+  transport?.attachScreen(userId, el) ?? (() => undefined);
