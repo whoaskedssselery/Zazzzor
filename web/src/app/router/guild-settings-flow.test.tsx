@@ -128,6 +128,46 @@ describe("server settings", () => {
     });
   });
 
+  it("keeps an icon picked while the previous one uploads", async () => {
+    const sizes: number[] = [];
+    let finish = () => {};
+    signedIn(DEFAULT_EVERYONE | PERM.MANAGE_GUILD);
+    server.use(
+      apiHandler("put", "/guilds/{guild_id}/icon", async ({ request }) => {
+        const file = (await request.formData()).get("file");
+        sizes.push(typeof file === "object" && file !== null ? file.size : -1);
+        // The first upload waits for the test; later ones answer at once.
+        if (sizes.length === 1) {
+          await new Promise<void>((resolve) => {
+            finish = resolve;
+          });
+        }
+        return HttpResponse.json(guild);
+      }),
+    );
+    const { user } = renderApp(`/guilds/${G}/settings/overview`);
+    await screen.findByRole("textbox", { name: "Название сервера" });
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!input) throw new Error("no file input");
+    fireEvent.change(input, { target: { files: [new File([new Uint8Array(8)], "a.png", { type: "image/png" })] } });
+    await user.click(await screen.findByRole("button", { name: "Сохранить изменения" }));
+    await waitFor(() => {
+      expect(sizes).toEqual([8]);
+    });
+    fireEvent.change(input, { target: { files: [new File([new Uint8Array(16)], "b.png", { type: "image/png" })] } });
+    finish();
+    // The first save is done, the second pick still waits for its own.
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Сохранить изменения" })).toHaveProperty("disabled", false);
+    });
+    expect(screen.getByRole("region", { name: UNSAVED })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Сохранить изменения" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("region", { name: UNSAVED })).toBeNull();
+    });
+    expect(sizes).toEqual([8, 16]);
+  });
+
   it("refuses an icon over 4 MB before uploading it", async () => {
     signedIn(DEFAULT_EVERYONE | PERM.MANAGE_GUILD);
     renderApp(`/guilds/${G}/settings/overview`);

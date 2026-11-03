@@ -43,16 +43,17 @@ export const ProfileTab = ({ user, onDirtyChange }: { user: User; onDirtyChange:
   }, [dirty, onDirtyChange]);
 
   const save = useMutation({
-    mutationFn: async () => {
+    // Takes the avatar it sends: another may be picked while this one uploads.
+    mutationFn: async (sent: AvatarChange) => {
       const value = trimContent(name);
       if (value !== user.display_name) {
         setSignedIn(queryClient, unwrap(await api.PATCH("/users/@me", { body: { display_name: value } })));
       }
-      if (avatar === "remove") setSignedIn(queryClient, unwrap(await api.DELETE("/users/@me/avatar")));
-      else if (avatar !== null) setSignedIn(queryClient, await uploadAvatar(avatar));
+      if (sent === "remove") setSignedIn(queryClient, unwrap(await api.DELETE("/users/@me/avatar")));
+      else if (sent !== null) setSignedIn(queryClient, await uploadAvatar(sent));
     },
-    onSuccess: () => {
-      setAvatar(null);
+    onSuccess: (_, sent) => {
+      setAvatar((current) => (current === sent ? null : current));
       toast.show({ text: "Изменения сохранены", tone: "success" });
     },
     onError: (e) => {
@@ -76,7 +77,7 @@ export const ProfileTab = ({ user, onDirtyChange }: { user: User; onDirtyChange:
       return;
     }
     setNameError(undefined);
-    save.mutate();
+    save.mutate(avatar);
   };
 
   const reset = () => {
