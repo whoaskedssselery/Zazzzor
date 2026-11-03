@@ -1,7 +1,7 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { HttpResponse } from "msw";
 import { renderApp, sessionHandler, testUser } from "@/app/test";
-import { readVoicePrefs } from "@/entities/call";
+import { readVoicePrefs, resetCall, setCall } from "@/entities/call";
 import { resetGuilds } from "@/entities/guild";
 import { LOGOUT_CONFIRM } from "@/features/auth";
 import { PASSWORD_CHANGED, PASSWORDS_DIFFER } from "@/features/change-password";
@@ -347,11 +347,41 @@ describe("voice and video", () => {
     expect(screen.getByText("B", { selector: "kbd" })).toBeTruthy();
   });
 
-  it("turns the browser's noise suppression off", async () => {
+  it("chooses the noise suppression, enhanced by default", async () => {
     signedIn();
     const { user } = renderApp("/settings/voice");
+    const noise = await screen.findByRole("combobox", { name: "Шумоподавление" });
+    expect(noise.textContent).toContain("Улучшенное");
+    await pick(user, "Шумоподавление", "Стандартное");
+    expect(readVoicePrefs().noise).toBe("standard");
     await pick(user, "Шумоподавление", "Выкл");
     expect(readVoicePrefs().noise).toBe("off");
+    await pick(user, "Шумоподавление", "Улучшенное");
+    expect(readVoicePrefs().noise).toBe("enhanced");
+  });
+
+  it("shows what cleans the microphone in the call, and why it fell back", async () => {
+    onTestFinished(resetCall);
+    signedIn();
+    renderApp("/settings/voice");
+    await screen.findByRole("combobox", { name: "Шумоподавление" });
+    expect(screen.queryByText(/^Сейчас:/)).toBeNull();
+    act(() => {
+      setCall({ status: "connected", guildId: "10", channelId: "102", noise: { running: "loading" } });
+    });
+    expect(screen.getByText("Сейчас: загружается улучшенное, пока без шумоподавления")).toBeTruthy();
+    act(() => {
+      setCall({ noise: { running: "enhanced" } });
+    });
+    expect(screen.getByText("Сейчас: улучшенное")).toBeTruthy();
+    act(() => {
+      setCall({ noise: { running: "rnnoise", reason: "overload" } });
+    });
+    expect(screen.getByText("Сейчас: запасное — компьютер не успевает с улучшенным")).toBeTruthy();
+    act(() => {
+      setCall({ noise: { running: "standard", reason: "failed" } });
+    });
+    expect(screen.getByText("Сейчас: стандартное — улучшенное не загрузилось")).toBeTruthy();
   });
 });
 

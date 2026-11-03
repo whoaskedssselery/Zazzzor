@@ -1,6 +1,6 @@
 import { RadioGroup } from "radix-ui";
 import { useEffect, useState } from "react";
-import { readVoicePrefs, type VoicePrefs, writeVoicePrefs } from "@/entities/call";
+import { type NoiseStatus, readVoicePrefs, useCall, type VoicePrefs, writeVoicePrefs } from "@/entities/call";
 import { Button, cn, Field, Select } from "@/shared/ui";
 import { applyVoicePrefs, switchAudioDevice } from "../model/session";
 
@@ -11,6 +11,30 @@ const MODES: { value: VoicePrefs["mode"]; label: string; hint: string }[] = [
   { value: "voice", label: "Активация по голосу", hint: "Микрофон передаёт, пока он включён." },
   { value: "ptt", label: "Push-to-talk", hint: "Микрофон передаёт, только пока зажата клавиша." },
 ];
+
+const NOISE: { value: VoicePrefs["noise"]; label: string }[] = [
+  { value: "enhanced", label: "Улучшенное" },
+  { value: "standard", label: "Стандартное" },
+  { value: "off", label: "Выкл" },
+];
+
+/** What cleans the microphone in the call now, and why it is not what was chosen. */
+const noiseNow = ({ running, reason }: NoiseStatus): string => {
+  switch (running) {
+    case "loading":
+      return "Сейчас: загружается улучшенное, пока без шумоподавления";
+    case "enhanced":
+      return "Сейчас: улучшенное";
+    case "rnnoise":
+      return reason === "overload"
+        ? "Сейчас: запасное — компьютер не успевает с улучшенным"
+        : "Сейчас: запасное — улучшенное не загрузилось";
+    case "standard":
+      return reason === "failed" ? "Сейчас: стандартное — улучшенное не загрузилось" : "Сейчас: стандартное";
+    case "off":
+      return reason === "failed" ? "Сейчас: выключено — шумоподавление не загрузилось" : "Сейчас: выключено";
+  }
+};
 
 /** «KeyV» → «V», «Digit1» → «1»; other codes as they are («Space», «ShiftLeft»). */
 const keyName = (code: string): string => code.replace(/^Key/, "").replace(/^Digit/, "");
@@ -51,13 +75,15 @@ const useDevices = () => {
 
 /**
  * «Голос и видео»: the microphone and the speakers, voice activity or
- * push-to-talk with its key, and the browser's noise suppression. Kept in
- * this browser and applied to the call at once.
+ * push-to-talk with its key, and the noise suppression with what actually
+ * runs in the call. Kept in this browser and applied to the call at once
+ * (the noise suppression from the next connection).
  */
 export const VoiceTab = () => {
   const [prefs, setPrefs] = useState(readVoicePrefs);
   const [listening, setListening] = useState(false);
   const { inputs, outputs, add } = useDevices();
+  const noise = useCall((s) => (s.status === "idle" ? null : s.noise));
 
   const chooseOutput = (deviceId: string) => {
     save({ ...readVoicePrefs(), outputId: deviceId === DEFAULT ? null : deviceId });
@@ -193,18 +219,20 @@ export const VoiceTab = () => {
       <Field
         htmlFor="voice-noise"
         label="Шумоподавление"
-        hint="Шумоподавление браузера. Новое значение — со следующего подключения к голосу."
+        hint="Улучшенное — нейросеть на вашем компьютере, первая загрузка около 23 МБ; стандартное — браузера. Новое значение — со следующего подключения к голосу."
       >
         <Select
-          options={[
-            { value: "standard", label: "Стандартное" },
-            { value: "off", label: "Выкл" },
-          ]}
+          options={NOISE}
           value={prefs.noise}
           onValueChange={(v) => {
-            save({ ...prefs, noise: v === "off" ? "off" : "standard" });
+            save({ ...prefs, noise: NOISE.find((o) => o.value === v)?.value ?? "enhanced" });
           }}
         />
+        {noise && (
+          <p role="status" className="text-sm text-fg">
+            {noiseNow(noise)}
+          </p>
+        )}
       </Field>
     </section>
   );
