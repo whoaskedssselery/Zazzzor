@@ -1,0 +1,55 @@
+# The backend of the browser tests: Postgres and the API, nothing else (no
+# Caddy, LiveKit or backups). The API answers on 127.0.0.1:18080, apart from
+# a dev server on 8080; `vite preview` on :4173 forwards /api to it.
+#
+#   docker compose -f e2e/compose.yml up -d --build --wait   (pnpm e2e:up)
+#   docker compose -f e2e/compose.yml down -v                (pnpm e2e:down)
+#
+# Test values only: the database lives in tmpfs and goes with the stack.
+name: zazzzor-e2e
+
+services:
+  postgres:
+    image: postgres:18.6-alpine
+    environment:
+      POSTGRES_USER: zazzzor
+      POSTGRES_DB: zazzzor
+      POSTGRES_PASSWORD: e2e
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "zazzzor", "-d", "zazzzor"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  api:
+    build:
+      context: ../../server
+      args:
+        VERSION: e2e
+    image: zazzzor-api:e2e
+    environment:
+      ZAZZZOR_DATABASE_URL: postgres://zazzzor:e2e@postgres:5432/zazzzor?sslmode=disable
+      ZAZZZOR_ALLOWED_ORIGINS: http://localhost:4173
+      ZAZZZOR_COOKIE_SECURE: "false"
+      # Every test user signs up and connects from its own made-up address
+      # (X-Forwarded-For, e2e/fixtures.ts), so the per-address limits on
+      # sign-up and gateway upgrades hold per user, as for real friends.
+      # Trusting every peer is only safe here, on loopback.
+      ZAZZZOR_TRUSTED_PROXIES: 0.0.0.0/0,::/0
+      ZAZZZOR_ADMIN_USERNAMES: e2e_admin
+      ZAZZZOR_DATA_DIR: /data
+    ports:
+      - "127.0.0.1:18080:8080"
+    tmpfs:
+      - /data:uid=65532,gid=65532
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/zazzzor", "healthcheck"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    stop_grace_period: 20s
