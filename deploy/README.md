@@ -980,9 +980,13 @@ Edge Caddy и DuckDNS не запускаются: TLS и порт 443 оста�
    Нужны HTTPS entrypoint `websecure` и certresolver `letsencrypt`.
    Если в вашем Traefik они называются иначе, раскомментируйте и измените
    в `deploy/.env` `TRAEFIK_NETWORK`, `TRAEFIK_ENTRYPOINT` и
-   `TRAEFIK_CERTRESOLVER`. Оба provider labels (`docker.network` и
-   `swarm.network`) указывают одну сеть, поэтому подходит и старый, и
-   современный Swarm provider.
+   `TRAEFIK_CERTRESOLVER`. Стек рассчитан на Swarm provider Traefik v3
+   (`--providers.swarm`): сеть указана label `traefik.swarm.network`.
+   Labels Docker provider (`traefik.docker.*`) рядом не ставьте: увидев оба
+   набора, Traefik v3 пропускает сервис («both Docker and Swarm labels are
+   defined»), и сайт отвечает его 404. У Traefik v2
+   (`--providers.docker.swarmMode`) этот label не читается: задайте сеть
+   его флагом `--providers.docker.network`.
 
 2. Новая установка: создайте `deploy/.env` по §5 и заполните в нём
    `ZAZZZOR_DOMAIN` (домен приложения), `LIVEKIT_API_KEY`,
