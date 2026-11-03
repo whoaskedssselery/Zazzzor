@@ -1,4 +1,5 @@
 import { screen, within } from "@testing-library/react";
+import { SPOILER_TEXT } from "@/shared/lib";
 import { makeMessage, makeUser, renderUi } from "@/shared/test";
 import { type AuthorView, DELETED_USER, MessageItem, REPLY_DELETED } from "./MessageItem";
 
@@ -55,6 +56,16 @@ describe("MessageItem", () => {
     await user.click(screen.getByRole("button", { name: "Перейти к исходному сообщению" }));
     expect(jump).toHaveBeenCalledTimes(1);
     expect(screen.getByText("вопрос")).toBeTruthy();
+  });
+
+  it("previews the answered message as one line of plain text", () => {
+    const m = makeMessage("6", "101", anna, {
+      reply_to_id: "5",
+      referenced_message: { id: "5", author: anna, content: "**важно**\n> цитата ||тайна||" },
+    });
+    renderUi(<MessageItem message={m} author={view} replyAuthor={view} grouped={false} now={now} />);
+    expect(screen.getByText(`важно цитата ${SPOILER_TEXT}`)).toBeTruthy();
+    expect(screen.queryByText(/\*\*|тайна/)).toBeNull();
   });
 
   it("says the answered message is gone when it was deleted", () => {
