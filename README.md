@@ -11,13 +11,13 @@
 |---|---|---|
 | 1.1 | Проверка связи: LiveKit, Caddy, DuckDNS, страница теста голоса и демки | готово |
 | 1.2a | Бэкенд: REST API, realtime-шлюз WebSocket, Postgres, развёртывание | готово: API и шлюз реального времени |
-| 1.2b | Веб-клиент | в работе: каркас, раздача через Caddy |
+| 1.2b | Веб-клиент | готово: вход, серверы, каналы, чат, роли и права, настройки, администрирование |
 | 1.3 | Голос и демка в приложении | впереди |
 | 1.4 | Десктоп-клиент | впереди |
 | 1.5 | Эксплуатация: бэкапы, обновления, релизы | впереди |
 
-Пока веб-клиент — заготовка без входа и чата, друзьям после установки
-доступна только страница проверки связи.
+Веб-клиент работает в актуальных Chrome, Edge и Firefox. Голоса в нём пока
+нет: он появится на этапе 1.3, а до тех пор есть страница проверки связи.
 
 ## Стек
 
@@ -102,12 +102,29 @@ API отвечает `403 origin_not_allowed`) и `ZAZZZOR_COOKIE_SECURE=false` 
 pnpm lint       # ESLint
 pnpm test       # Vitest во всех пакетах
 pnpm build      # проверка типов и сборка всех пакетов
-pnpm gen:api    # перегенерировать web/src/api/schema.gen.ts из api/openapi.yaml
+pnpm gen:api    # перегенерировать web/src/shared/api/schema.gen.ts из api/openapi.yaml
 ```
 
 После любого изменения `api/openapi.yaml` запустите `pnpm gen:api` и
-закоммитьте `web/src/api/schema.gen.ts`: CI падает, если файл расходится с
+закоммитьте `web/src/shared/api/schema.gen.ts`: CI падает, если файл расходится с
 контрактом.
+
+### Браузерные тесты
+
+Сценарии Playwright в `web/e2e/` (вход, чат двух друзей, права, переподключение)
+идут в Chromium и Firefox против собранного клиента и настоящего API. Нужен
+Docker. Из `web/`:
+
+```bash
+pnpm exec playwright install chromium firefox   # один раз
+pnpm e2e:up     # Postgres и API из web/e2e/compose.yml, API на 127.0.0.1:18080
+pnpm e2e        # сборка, vite preview на :4173 с CSP из Caddy, все сценарии
+pnpm e2e:down   # убрать стек вместе с базой
+```
+
+Если Firefox от Playwright не запускается (так бывает на некоторых сборках
+Windows), его можно запустить в Linux-образе Playwright: команда есть в
+комментарии к проекту `firefox` в `web/playwright.config.ts`.
 
 ### Страница проверки связи
 
