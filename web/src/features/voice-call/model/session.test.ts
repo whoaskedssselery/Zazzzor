@@ -387,3 +387,16 @@ describe("the final review's cases", () => {
     expect(notices).toEqual([DEVICE_FAILED]);
   });
 });
+
+describe("noise suppression in the call", () => {
+  it("keeps what cleans the microphone, and forgets it when the call ends", async () => {
+    await joinVoice(G, LOUNGE);
+    fake.emit("noise", { running: "loading" });
+    fake.emit("noise", { running: "rnnoise", reason: "overload" });
+    expect(getCall().noise).toEqual({ running: "rnnoise", reason: "overload" });
+    await leaveVoice();
+    expect(getCall().noise).toBeNull();
+    fake.emit("noise", { running: "enhanced" });
+    expect(getCall().noise).toBeNull();
+  });
+});

@@ -12,6 +12,16 @@ export type ScreenShareResult =
   | { ok: true; surface: "monitor" | "window" | "browser" | "unknown"; audio: boolean }
   | { ok: false; reason: "cancelled" | "failed" };
 
+/**
+ * What cleans the microphone now: DeepFilterNet3 ("enhanced", "loading" while
+ * its model downloads), RNNoise as the fallback, the browser's own ("standard"),
+ * or nothing. `reason` says why it is not what the user chose.
+ */
+export interface NoiseStatus {
+  running: "loading" | "enhanced" | "rnnoise" | "standard" | "off";
+  reason?: "overload" | "failed";
+}
+
 export interface CallTransportEvents {
   link: (state: CallLink, cause?: EndCause) => void;
   /** Who is speaking now, the user included. */
@@ -22,6 +32,8 @@ export interface CallTransportEvents {
   micDenied: () => void;
   /** The browser stopped the user's screen share ("Stop sharing"). */
   screenEnded: () => void;
+  /** The microphone's noise suppression, each time it changes. */
+  noise: (status: NoiseStatus) => void;
 }
 
 /**

@@ -161,6 +161,9 @@ const wire = (t: CallTransport): CallTransport => {
   t.on("screenEnded", () => {
     setCall({ sharing: false });
   });
+  t.on("noise", (noise) => {
+    if (getCall().status !== "idle") setCall({ noise });
+  });
   transport = t;
   return t;
 };
@@ -202,6 +205,7 @@ export const joinVoice = async (guildId: string, channelId: string): Promise<voi
       streams: [],
       watching: [],
       sharing: false,
+      noise: null,
     });
     try {
       await t.connect(joined.url, joined.token);

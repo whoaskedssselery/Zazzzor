@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { CallLink } from "@/shared/lib";
+import type { CallLink, NoiseStatus } from "@/shared/lib";
 
 export interface CallState {
   /** idle: in no voice channel. */
@@ -19,6 +19,8 @@ export interface CallState {
   watching: string[];
   /** The user shares their screen. */
   sharing: boolean;
+  /** What cleans the microphone in this call; null until the microphone is on. */
+  noise: NoiseStatus | null;
 }
 
 const CALL_FREE = {
@@ -30,6 +32,7 @@ const CALL_FREE = {
   streams: [],
   watching: [],
   sharing: false,
+  noise: null,
 } as const satisfies Partial<CallState>;
 
 const store = create<CallState>()(() => ({ ...CALL_FREE, selfMute: false, selfDeaf: false }));

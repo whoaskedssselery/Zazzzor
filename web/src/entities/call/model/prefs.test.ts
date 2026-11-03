@@ -6,13 +6,13 @@ afterEach(() => {
 });
 
 describe("voice prefs", () => {
-  it("default to the system devices, voice activity on V, standard noise suppression", () => {
+  it("default to the system devices, voice activity on V, enhanced noise suppression", () => {
     expect(readVoicePrefs()).toEqual({
       inputId: null,
       outputId: null,
       mode: "voice",
       pttKey: "KeyV",
-      noise: "standard",
+      noise: "enhanced",
     });
     expect(DEFAULT_VOICE_PREFS.pttKey).toBe("KeyV");
   });
@@ -21,6 +21,8 @@ describe("voice prefs", () => {
     const prefs = { inputId: "mic-2", outputId: "out-1", mode: "ptt", pttKey: "KeyB", noise: "off" } as const;
     writeVoicePrefs(prefs);
     expect(readVoicePrefs()).toEqual(prefs);
+    writeVoicePrefs({ ...prefs, noise: "standard" });
+    expect(readVoicePrefs().noise).toBe("standard");
   });
 
   it("fall back to the defaults field by field for garbage", () => {

@@ -18,10 +18,14 @@ export const roomOptions = (): Partial<RoomOptions> => ({ adaptiveStream: true, 
 /** Microphones are subscribed by hand, screen shares only when watched. */
 export const connectOptions = (): RoomConnectOptions => ({ autoSubscribe: false });
 
-/** The microphone: echo cancellation and gain control always, noise suppression by the setting. */
+/**
+ * The microphone: echo cancellation always; the browser's noise suppression
+ * and gain control in «Стандартное», gain control alone when off, neither in
+ * «Улучшенное», where DeepFilterNet3 cleans and levels the voice (lib/noise.ts).
+ */
 export const microphoneOptions = ({ inputId, noise }: Pick<VoicePrefs, "inputId" | "noise">): AudioCaptureOptions => ({
   echoCancellation: true,
-  autoGainControl: true,
+  autoGainControl: noise !== "enhanced",
   noiseSuppression: noise === "standard",
   ...(inputId === null ? {} : { deviceId: inputId }),
 });

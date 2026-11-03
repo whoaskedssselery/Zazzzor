@@ -1,5 +1,6 @@
 import {
   ConnectionState,
+  LocalAudioTrack,
   type LocalTrackPublication,
   type Participant,
   RemoteAudioTrack,
@@ -14,6 +15,8 @@ import type { CallLink, CallTransport, CallTransportEvents, ScreenShareResult } 
 import type { VoicePrefs } from "../model/prefs";
 import { canRestrictOwnAudio, currentBrowser } from "./browser";
 import { connectOptions, endCause, microphoneOptions, roomOptions, screenShareOptions } from "./media";
+import { browserNoiseSuppression, createNoiseProcessor } from "./noise";
+import { noiseEngines } from "./noise-engines";
 
 type Listeners = { [K in keyof CallTransportEvents]: Set<CallTransportEvents[K]> };
 
@@ -46,6 +49,7 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
     streams: new Set(),
     micDenied: new Set(),
     screenEnded: new Set(),
+    noise: new Set(),
   };
   const emit = <K extends keyof CallTransportEvents>(event: K, ...args: Parameters<CallTransportEvents[K]>) => {
     for (const fn of listeners[event]) (fn as (...a: Parameters<CallTransportEvents[K]>) => void)(...args);
@@ -55,6 +59,8 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
   let leaving = false;
   let listening = true;
   let screen: MediaStream | null = null;
+  /** After one overload DeepFilterNet3 is not tried again in this tab. */
+  const noiseMemory = { overloaded: false };
   const watching = new Set<string>();
   const screens = new Map<string, HTMLVideoElement>();
   const sounds = document.createElement("div");
@@ -75,6 +81,29 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
   const follow = (pub: RemoteTrackPublication, participant: RemoteParticipant) => {
     if (pub.source === Track.Source.Microphone) pub.setSubscribed(true);
     else if (SCREEN.has(pub.source)) pub.setSubscribed(watching.has(participant.identity));
+  };
+
+  /** Puts the chosen noise suppression on a new microphone track, and says what runs. */
+  const cleanMicrophone = async (track: LocalAudioTrack) => {
+    const { noise } = prefs();
+    if (noise !== "enhanced") {
+      emit("noise", { running: noise });
+      return;
+    }
+    if (track.getProcessor()) return;
+    try {
+      await track.setProcessor(
+        createNoiseProcessor({
+          engines: noiseEngines,
+          report: (status) => {
+            emit("noise", status);
+          },
+          memory: noiseMemory,
+        }),
+      );
+    } catch {
+      emit("noise", { running: await browserNoiseSuppression(track.mediaStreamTrack), reason: "failed" });
+    }
   };
 
   const showScreen = (participant: RemoteParticipant) => {
@@ -121,6 +150,11 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
           "speaking",
           speakers.map((p) => p.identity),
         );
+      })
+      .on(RoomEvent.LocalTrackPublished, (pub: LocalTrackPublication) => {
+        if (pub.source === Track.Source.Microphone && pub.track instanceof LocalAudioTrack) {
+          void cleanMicrophone(pub.track);
+        }
       })
       .on(RoomEvent.LocalTrackUnpublished, (pub: LocalTrackPublication) => {
         if (pub.source !== Track.Source.ScreenShare || screen === null) return;

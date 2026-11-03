@@ -1,4 +1,5 @@
-import { DisconnectReason, RoomEvent, Track } from "livekit-client";
+import { DisconnectReason, LocalAudioTrack, RoomEvent, Track } from "livekit-client";
+import type { Mock } from "vitest";
 import { createLiveKitTransport } from "./livekit";
 
 interface FakeRoom {
@@ -162,5 +163,53 @@ describe("LiveKit transport", () => {
     room().emit(RoomEvent.LocalTrackUnpublished, pub);
     await vi.advanceTimersByTimeAsync(2000);
     expect(ended).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("the microphone's noise suppression", () => {
+  /** A microphone track as LiveKit publishes it, its processor watched. */
+  const micTrack = () => {
+    const track = Object.create(LocalAudioTrack.prototype) as LocalAudioTrack;
+    let processor: unknown;
+    Object.assign(track, {
+      getProcessor: () => processor,
+      setProcessor: vi.fn((p: unknown) => {
+        processor = p;
+        return Promise.resolve();
+      }),
+    });
+    return track;
+  };
+
+  const setProcessorOf = (track: LocalAudioTrack) => (track as unknown as { setProcessor: Mock }).setProcessor;
+
+  const publish = (track: LocalAudioTrack) => {
+    room().emit(RoomEvent.LocalTrackPublished, { source: Track.Source.Microphone, track });
+  };
+
+  it("puts the enhanced processor on a new microphone, once", async () => {
+    const t = createLiveKitTransport(() => ({ inputId: null, noise: "enhanced" }));
+    await t.connect("ws://localhost", "token");
+    const track = micTrack();
+    publish(track);
+    await vi.waitFor(() => {
+      expect(setProcessorOf(track)).toHaveBeenCalledTimes(1);
+    });
+    publish(track);
+    await Promise.resolve();
+    expect(setProcessorOf(track)).toHaveBeenCalledTimes(1);
+  });
+
+  it("says the browser's mode runs when enhanced is not chosen", async () => {
+    const t = createLiveKitTransport(() => ({ inputId: null, noise: "standard" }));
+    const noise = vi.fn();
+    t.on("noise", noise);
+    await t.connect("ws://localhost", "token");
+    const track = micTrack();
+    publish(track);
+    await vi.waitFor(() => {
+      expect(noise).toHaveBeenCalledWith({ running: "standard" });
+    });
+    expect(setProcessorOf(track)).not.toHaveBeenCalled();
   });
 });

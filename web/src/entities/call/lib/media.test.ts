@@ -26,7 +26,7 @@ describe("screenShareOptions", () => {
 });
 
 describe("microphoneOptions", () => {
-  it("keeps echo cancellation and gain control, and noise suppression by the setting", () => {
+  it("keeps echo cancellation; the browser's noise suppression and gain control by the setting", () => {
     expect(microphoneOptions({ inputId: null, noise: "standard" })).toEqual({
       echoCancellation: true,
       autoGainControl: true,
@@ -37,6 +37,12 @@ describe("microphoneOptions", () => {
       autoGainControl: true,
       noiseSuppression: false,
       deviceId: "mic-2",
+    });
+    // DeepFilterNet3 replaces both, and levels the voice itself.
+    expect(microphoneOptions({ inputId: null, noise: "enhanced" })).toEqual({
+      echoCancellation: true,
+      autoGainControl: false,
+      noiseSuppression: false,
     });
   });
 });

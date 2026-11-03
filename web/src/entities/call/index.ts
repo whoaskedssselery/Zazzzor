@@ -1,4 +1,11 @@
-export type { CallLink, CallTransport, CallTransportEvents, EndCause, ScreenShareResult } from "@/shared/lib";
+export type {
+  CallLink,
+  CallTransport,
+  CallTransportEvents,
+  EndCause,
+  NoiseStatus,
+  ScreenShareResult,
+} from "@/shared/lib";
 export { type Browser, canRestrictOwnAudio, currentBrowser } from "./lib/browser";
 export {
   DEFAULT_VOICE_PREFS,

@@ -8,8 +8,8 @@ export interface VoicePrefs {
   mode: "voice" | "ptt";
   /** A `KeyboardEvent.code`. */
   pttKey: string;
-  /** The browser's own noise suppression ("Стандартное"), or none. */
-  noise: "off" | "standard";
+  /** DeepFilterNet3 («Улучшенное», with fallbacks), the browser's own («Стандартное»), or none. */
+  noise: "off" | "standard" | "enhanced";
 }
 
 export const VOICE_PREFS_KEY = "zazzzor.voice";
@@ -19,7 +19,7 @@ export const DEFAULT_VOICE_PREFS: VoicePrefs = {
   outputId: null,
   mode: "voice",
   pttKey: "KeyV",
-  noise: "standard",
+  noise: "enhanced",
 };
 
 const idOrNull = (v: unknown): string | null => (typeof v === "string" && v !== "" ? v : null);
@@ -39,7 +39,7 @@ export const readVoicePrefs = (): VoicePrefs => {
     outputId: idOrNull(p.outputId),
     mode: p.mode === "ptt" ? "ptt" : "voice",
     pttKey: typeof p.pttKey === "string" && p.pttKey !== "" ? p.pttKey : DEFAULT_VOICE_PREFS.pttKey,
-    noise: p.noise === "off" ? "off" : "standard",
+    noise: p.noise === "off" || p.noise === "standard" ? p.noise : "enhanced",
   };
 };
 
