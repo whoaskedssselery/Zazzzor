@@ -2,7 +2,8 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { HttpResponse } from "msw";
 import type { components } from "@/shared/api";
 import { apiHandler, makeUser, renderRouted, server } from "@/shared/test";
-import { InviteDialog } from "./InviteDialog";
+import { COPIED } from "@/shared/ui";
+import { COPY_FAILED, InviteDialog } from "./InviteDialog";
 
 type CreateInviteRequest = components["schemas"]["CreateInviteRequest"];
 
@@ -32,8 +33,8 @@ beforeEach(() => {
   );
 });
 
-const open = () =>
-  renderRouted(<InviteDialog open onOpenChange={() => {}} channelId="101" channelName="общий" />, {
+const open = (onOpenChange: (open: boolean) => void = () => {}) =>
+  renderRouted(<InviteDialog open onOpenChange={onOpenChange} channelId="101" channelName="общий" />, {
     path: "/channels/10/101",
   });
 
@@ -78,7 +79,7 @@ describe("InviteDialog", () => {
     expect(field.value).toBe(LINK);
     expect(field.readOnly).toBe(true);
     expect(created).toEqual([{ max_age_seconds: 604800, max_uses: 0 }]);
-    expect(await screen.findByText("Ссылка скопирована")).toBeTruthy();
+    expect(await screen.findByRole("button", { name: COPIED })).toBeTruthy();
     expect(await navigator.clipboard.readText()).toBe(LINK);
   });
 
@@ -111,11 +112,20 @@ describe("InviteDialog", () => {
       .mockRejectedValue(new DOMException("denied", "NotAllowedError"));
     await user.click(await screen.findByRole("button", { name: "Создать ссылку" }));
 
-    expect(await screen.findByText("Не получилось скопировать. Ссылка выделена: скопируйте её вручную.")).toBeTruthy();
+    expect(await screen.findByText(COPY_FAILED)).toBeTruthy();
     const field = screen.getByLabelText<HTMLInputElement>("Ссылка-приглашение");
     expect(document.activeElement).toBe(field);
     expect([field.selectionStart, field.selectionEnd]).toEqual([0, LINK.length]);
     expect(refuse).toHaveBeenCalledWith(LINK);
+  });
+
+  it("closes on the first Escape once the link is copied", async () => {
+    const onOpenChange = vi.fn();
+    const { user } = await open(onOpenChange);
+    await user.click(await screen.findByRole("button", { name: "Создать ссылку" }));
+    await screen.findByRole("button", { name: COPIED });
+    await user.keyboard("{Escape}");
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
   it("copies the link again on «Копировать»", async () => {
@@ -123,7 +133,7 @@ describe("InviteDialog", () => {
     await user.click(await screen.findByRole("button", { name: "Создать ссылку" }));
     await screen.findByLabelText("Ссылка-приглашение");
     await navigator.clipboard.writeText("");
-    await user.click(screen.getByRole("button", { name: "Копировать" }));
+    await user.click(screen.getByRole("button", { name: new RegExp(`Копировать|${COPIED}`) }));
     await waitFor(async () => {
       expect(await navigator.clipboard.readText()).toBe(LINK);
     });

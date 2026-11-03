@@ -25,7 +25,8 @@ test("two friends talk in real time: invite, markdown, reply, edit, delete, typi
   await anna.page.getByRole("menuitem", { name: "Пригласить людей" }).click();
   await anna.page.getByRole("button", { name: "Создать ссылку" }).click();
   const link = await anna.page.getByLabel("Ссылка-приглашение").inputValue();
-  await anna.page.getByRole("dialog").getByRole("button", { name: "Закрыть" }).click();
+  await anna.page.keyboard.press("Escape");
+  await expect(anna.page.getByRole("dialog")).toHaveCount(0);
   await petr.page.goto(new URL(link).pathname);
   await petr.page.getByRole("button", { name: "Принять приглашение" }).click();
   await expect(composer(petr.page, channelName)).toBeVisible();

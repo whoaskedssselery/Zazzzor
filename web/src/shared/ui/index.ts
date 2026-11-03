@@ -5,6 +5,7 @@ export * from "./components/Button";
 export * from "./components/Checkbox";
 export * from "./components/ConfirmDialog";
 export * from "./components/ContextMenu";
+export * from "./components/CopyButton";
 export * from "./components/Dialog";
 export * from "./components/DropdownMenu";
 export * from "./components/FormAlert";

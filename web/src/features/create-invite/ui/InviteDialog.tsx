@@ -1,8 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
-import { Copy } from "lucide-react";
 import { useRef, useState } from "react";
 import { api, errorText, unwrap } from "@/shared/api";
-import { Button, Dialog, DialogContent, Field, FormAlert, Input, Select, useToast } from "@/shared/ui";
+import { Button, CopyButton, Dialog, DialogContent, Field, FormAlert, Input, Select, useCopy } from "@/shared/ui";
 
 /** Lifetimes of an invite, in seconds (0: never expires), as Discord offers them. */
 const LIFETIMES = [
@@ -21,8 +20,7 @@ const USES = [
   ...[1, 5, 10, 25, 50, 100].map((n) => ({ value: String(n), label: String(n) })),
 ];
 
-const COPIED = "Ссылка скопирована";
-const COPY_FAILED = "Не получилось скопировать. Ссылка выделена: скопируйте её вручную.";
+export const COPY_FAILED = "Не получилось скопировать: ссылка выделена, скопируйте её вручную.";
 
 /** The link a friend opens: this site's own origin, so it works wherever Zazzzor is hosted. */
 const inviteLink = (code: string): string => `${window.location.origin}/invite/${code}`;
@@ -48,24 +46,17 @@ export const InviteDialog = ({ open, onOpenChange, channelId, channelName }: Inv
 );
 
 const InviteForm = ({ channelId, channelName }: { channelId: string; channelName: string }) => {
-  const toast = useToast();
   const [maxAge, setMaxAge] = useState("604800");
   const [maxUses, setMaxUses] = useState("0");
   const [link, setLink] = useState<string | null>(null);
   const field = useRef<HTMLInputElement>(null);
   const action = useRef<HTMLButtonElement>(null);
 
-  const copy = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast.show({ text: COPIED, tone: "success" });
-    } catch {
-      // No clipboard (HTTP) or no permission: the user copies it themselves.
-      field.current?.focus();
-      field.current?.select();
-      toast.show({ text: COPY_FAILED });
-    }
-  };
+  // No clipboard (HTTP) or no permission: the link is selected to copy by hand.
+  const { state: copied, copy } = useCopy(() => {
+    field.current?.focus();
+    field.current?.select();
+  });
 
   const create = useMutation({
     mutationFn: async () =>
@@ -105,7 +96,12 @@ const InviteForm = ({ channelId, channelName }: { channelId: string; channelName
         </Field>
       </div>
       {link !== null && (
-        <Field htmlFor="invite-link" label="Ссылка-приглашение" className="mt-5">
+        <Field
+          htmlFor="invite-link"
+          label="Ссылка-приглашение"
+          className="mt-5"
+          {...(copied === "failed" ? { hint: COPY_FAILED } : {})}
+        >
           <div className="flex gap-2">
             <Input
               ref={field}
@@ -117,15 +113,12 @@ const InviteForm = ({ channelId, channelName }: { channelId: string; channelName
                 e.currentTarget.select();
               }}
             />
-            <Button
-              variant="secondary"
+            <CopyButton
+              state={copied}
               onClick={() => {
                 void copy(link);
               }}
-            >
-              <Copy aria-hidden className="size-4" />
-              Копировать
-            </Button>
+            />
           </div>
         </Field>
       )}

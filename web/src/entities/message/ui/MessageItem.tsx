@@ -1,6 +1,6 @@
 import { CornerUpLeft } from "lucide-react";
 import type { ReactNode } from "react";
-import { formatMessageTime, Markdown } from "@/shared/lib";
+import { formatMessageTime, Markdown, markdownText } from "@/shared/lib";
 import { Avatar, cn, roleTextStyle, Tooltip } from "@/shared/ui";
 import type { Message } from "../model/cache";
 
@@ -64,7 +64,7 @@ const ReplyPreview = ({
         <bdi className="role-text shrink-0 font-semibold" style={roleTextStyle(author?.color ?? 0)}>
           @{author?.name ?? DELETED_USER}
         </bdi>
-        <span className="truncate">{original.content}</span>
+        <span className="truncate">{markdownText(original.content)}</span>
       </>
     );
   return (
