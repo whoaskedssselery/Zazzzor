@@ -156,12 +156,15 @@ for config in "$tmp/traefik" "$tmp/turn"; do
   service "$config" livekit >"$tmp/livekit"
   service "$config" web >"$tmp/web"
   expect "$tmp/api" 'ZAZZZOR_LIVEKIT_URL: http://voice-sfu:7880' 'API не подключён к приватному LiveKit'
-  expect "$tmp/api" 'ZAZZZOR_LIVEKIT_API_KEY: APItestonly' 'API не получил ключ LiveKit'
-  expect "$tmp/api" 'ZAZZZOR_LIVEKIT_API_SECRET: deadbeef' 'API не получил секрет LiveKit'
+  expect "$tmp/api" 'LIVEKIT_API_KEY: APItestonly' 'API не получил ключ LiveKit'
+  reject "$tmp/api" 'ZAZZZOR_LIVEKIT_API_' 'ключи LiveKit с префиксом ZAZZZOR_: API их не читает, голос выключен'
+  expect "$tmp/api" 'LIVEKIT_API_SECRET: deadbeef' 'API не получил секрет LiveKit'
   expect "$tmp/api" 'voice-api' 'нет приватного alias API'
   expect "$tmp/livekit" 'voice-sfu' 'нет приватного alias LiveKit'
   expect "$tmp/livekit" 'api_key: APItestonly' 'webhook подписан другим ключом'
   expect "$tmp/livekit" 'http://voice-api:8080/api/v1/livekit/webhook' 'webhook не идёт напрямую в API'
+  expect "$tmp/livekit" 'advertise_internal_ip: true' 'SFU не предлагает внутренний адрес: TURN за NAT без hairpin не дойдёт до него'
+  expect "$tmp/livekit" 'allow_restricted_peer_cidrs:' 'TURN не пускают к внутреннему адресу SFU'
   for name in api livekit; do
     service "$config" "$name" | grep -q '^      voice:' || fail "$name не в control-сети voice"
   done
