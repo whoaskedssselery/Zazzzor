@@ -175,10 +175,10 @@
   --header-height: 48px;
   --user-panel-height: 52px;
 
-  /* Layers. */
+  /* Layers. Menus and selects open from dialogs and sheets too, so they sit above them. */
   --z-sticky: 10;
-  --z-dropdown: 1000;
-  --z-dialog: 1100;
+  --z-dialog: 1000;
+  --z-dropdown: 1100;
   --z-toast: 1200;
   --z-tooltip: 1300;
 
