@@ -1,15 +1,13 @@
 import { useNavigate } from "@tanstack/react-router";
 import { HeadphoneOff, Headphones, Mic, MicOff, Settings } from "lucide-react";
 import type { CSSProperties } from "react";
-import { useCall } from "@/entities/call";
-import { myVoice, useConnectionStatus, useGuilds } from "@/entities/guild";
+import { useConnectionStatus } from "@/entities/guild";
 import { useSession } from "@/entities/session";
 import { LogoutButton } from "@/features/auth";
-import { setSelfDeaf, setSelfMute } from "@/features/voice-call";
+import { useSelfSwitches } from "@/features/voice-call";
 import { Avatar, cn, IconButton } from "@/shared/ui";
 
-export const MODERATOR_MUTED = "Модератор выключил вам микрофон";
-export const MODERATOR_DEAFENED = "Модератор выключил вам звук";
+export { MODERATOR_DEAFENED, MODERATOR_MUTED } from "@/features/voice-call";
 
 /**
  * The signed-in user at the foot of the channel list: avatar with presence,
@@ -22,14 +20,8 @@ export const UserPanel = () => {
   const { user } = useSession();
   const online = useConnectionStatus() === "ready";
   const navigate = useNavigate();
-  const selfMute = useCall((s) => s.selfMute);
-  const selfDeaf = useCall((s) => s.selfDeaf);
-  const voice = useGuilds(myVoice);
+  const { mic, sound } = useSelfSwitches();
   if (!user) return null;
-  const modMute = voice?.mute ?? false;
-  const modDeaf = voice?.deaf ?? false;
-  const micOff = selfMute || selfDeaf || modMute;
-  const soundOff = selfDeaf || modDeaf;
   return (
     <section
       aria-label="Ваш профиль"
@@ -48,28 +40,20 @@ export const UserPanel = () => {
         </span>
       </div>
       <IconButton
-        label={modMute ? MODERATOR_MUTED : micOff ? "Включить микрофон" : "Выключить микрофон"}
-        icon={micOff ? MicOff : Mic}
-        aria-pressed={micOff}
-        disabled={modMute}
-        className={cn(micOff && "text-fg-danger")}
-        onClick={() => {
-          // The microphone while deafened brings the sound back too, as in Discord.
-          if (selfDeaf) {
-            setSelfDeaf(false);
-            setSelfMute(false);
-          } else setSelfMute(!selfMute);
-        }}
+        label={mic.label}
+        icon={mic.off ? MicOff : Mic}
+        aria-pressed={mic.off}
+        disabled={mic.locked}
+        className={cn(mic.off && "text-fg-danger")}
+        onClick={mic.toggle}
       />
       <IconButton
-        label={modDeaf ? MODERATOR_DEAFENED : soundOff ? "Включить звук" : "Выключить звук"}
-        icon={soundOff ? HeadphoneOff : Headphones}
-        aria-pressed={soundOff}
-        disabled={modDeaf}
-        className={cn(soundOff && "text-fg-danger")}
-        onClick={() => {
-          setSelfDeaf(!selfDeaf);
-        }}
+        label={sound.label}
+        icon={sound.off ? HeadphoneOff : Headphones}
+        aria-pressed={sound.off}
+        disabled={sound.locked}
+        className={cn(sound.off && "text-fg-danger")}
+        onClick={sound.toggle}
       />
       <LogoutButton iconOnly />
       <IconButton

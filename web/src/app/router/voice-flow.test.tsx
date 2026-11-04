@@ -301,14 +301,44 @@ describe("the voice channel screen", () => {
     expect(fake.argsOf("watch")).toEqual([]);
     await user.click(within(tile).getByRole("button", { name: "Смотреть" }));
     expect(fake.argsOf("watch")).toEqual([[masha.id, true]]);
-    const [[who, video]] = fake.argsOf("attachScreen") as [[string, HTMLVideoElement]];
+    // Watching brings the stream to the front, the others in the strip under it.
+    expect(within(view).getByRole("button", { name: "Вернуть в сетку: Маша — демонстрация экрана" })).toBeTruthy();
+    expect(within(view).getByRole("list", { name: "Остальные в звонке" })).toBeTruthy();
+    const front = within(view).getByRole("article", { name: "Маша — демонстрация экрана" });
+    const [[who, video]] = fake.argsOf("attachScreen").slice(-1) as [[string, HTMLVideoElement]];
     expect(who).toBe(masha.id);
     expect(video.tagName).toBe("VIDEO");
-    await user.click(within(tile).getByRole("button", { name: "Во весь экран" }));
+    await user.click(within(front).getByRole("button", { name: "Во весь экран" }));
     expect(full).toHaveBeenCalledTimes(1);
-    await user.click(within(tile).getByRole("button", { name: "Перестать смотреть" }));
+    await user.click(within(front).getByRole("button", { name: "Перестать смотреть" }));
     expect(fake.argsOf("watch").at(-1)).toEqual([masha.id, false]);
     expect(fake.argsOf("detachScreen")).toHaveLength(1);
+  });
+
+  it("brings a tile to the front on a click and sends it back on another", async () => {
+    const { user } = renderApp(`/channels/${G}/${LOUNGE}`);
+    const view = await stage();
+    await act(() => joinVoice(G, LOUNGE));
+    await user.click(within(view).getByRole("button", { name: "Развернуть: Петя" }));
+    expect(within(view).getByRole("button", { name: "Вернуть в сетку: Петя" })).toHaveProperty("ariaPressed", "true");
+    expect(within(view).getByRole("list", { name: "Остальные в звонке" })).toBeTruthy();
+    await user.click(within(view).getByRole("button", { name: "Вернуть в сетку: Петя" }));
+    expect(within(view).queryByRole("list", { name: "Остальные в звонке" })).toBeNull();
+    expect(within(view).getByRole("button", { name: "Развернуть: Петя" })).toBeTruthy();
+  });
+
+  it("has the call's controls under the stage", async () => {
+    const { user } = renderApp(`/channels/${G}/${LOUNGE}`);
+    const view = await stage();
+    await act(() => joinVoice(G, LOUNGE));
+    const bar = within(view).getByRole("toolbar", { name: "Управление звонком" });
+    await user.click(within(bar).getByRole("button", { name: "Выключить микрофон" }));
+    expect(getCall().selfMute).toBe(true);
+    expect(within(bar).getByRole("button", { name: "Включить микрофон" })).toHaveProperty("ariaPressed", "true");
+    await user.click(within(bar).getByRole("button", { name: "Отключиться" }));
+    await waitFor(() => {
+      expect(getCall().status).toBe("idle");
+    });
   });
 
   it("drops a stream tile when the stream ends", async () => {

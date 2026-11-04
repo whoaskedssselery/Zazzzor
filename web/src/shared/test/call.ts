@@ -82,6 +82,13 @@ export class FakeTransport implements CallTransport {
     };
   }
 
+  attachOwnScreen(el: HTMLVideoElement): () => void {
+    this.record("attachOwnScreen", el);
+    return () => {
+      this.record("detachOwnScreen", el);
+    };
+  }
+
   useDevice(kind: "audioinput" | "audiooutput", deviceId: string): Promise<void> {
     this.record("useDevice", kind, deviceId);
     return this.deviceError ? Promise.reject(this.deviceError) : Promise.resolve();

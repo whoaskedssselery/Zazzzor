@@ -345,6 +345,10 @@ export const watchStream = (userId: string, on: boolean): void => {
 export const attachStream = (userId: string, el: HTMLVideoElement): (() => void) =>
   transport?.attachScreen(userId, el) ?? (() => undefined);
 
+/** Shows the user's own screen share in `el`; the returned function lets go of it. */
+export const attachOwnStream = (el: HTMLVideoElement): (() => void) =>
+  transport?.attachOwnScreen(el) ?? (() => undefined);
+
 /**
  * Starts sharing a screen, a window or a tab (the browser's picker) and says
  * what the viewers will hear. A closed picker changes nothing.

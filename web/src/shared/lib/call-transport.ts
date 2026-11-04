@@ -52,6 +52,8 @@ export interface CallTransport {
   watch(userId: string, on: boolean): void;
   /** Shows `userId`'s screen share in `el` until the returned function runs. */
   attachScreen(userId: string, el: HTMLVideoElement): () => void;
+  /** Shows the user's own screen share in `el` (a local preview, nothing is received) until the returned function runs. */
+  attachOwnScreen(el: HTMLVideoElement): () => void;
   useDevice(kind: "audioinput" | "audiooutput", deviceId: string): Promise<void>;
   on<K extends keyof CallTransportEvents>(event: K, fn: CallTransportEvents[K]): () => void;
 }
