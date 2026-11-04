@@ -117,6 +117,12 @@ services:
           ips:
             includes:
               - 172.16.0.0/12
+          # The node IP usually belongs to the router, not to this host, and a
+          # router seldom sends this host's packets back to it (hairpin NAT).
+          # The TURN relay below lives in this container, so the SFU also
+          # offers its docker_gwbridge address: the relay reaches it locally.
+          # Clients outside take the node IP and skip the private one.
+          advertise_internal_ip: true
         # TURN over TLS on 443 for clients whose UDP is blocked (VPNs, strict
         # networks). Traefik terminates TLS for the separate TURN domain and
         # forwards plain TCP here; LiveKit still advertises turns:<domain>:443.
@@ -125,6 +131,11 @@ services:
           domain: ${LIVEKIT_TURN_DOMAIN:-turn-disabled.invalid}
           tls_port: 443
           external_tls: true
+          # TURN refuses private peers by default; allow only docker_gwbridge,
+          # where the SFU's internal candidate is. Embedded TURN still relays
+          # to this host's own addresses on the media ports only.
+          allow_restricted_peer_cidrs:
+            - 172.16.0.0/12
         keys:
           "${LIVEKIT_API_KEY:?задайте LIVEKIT_API_KEY}": "${LIVEKIT_API_SECRET:?задайте LIVEKIT_API_SECRET}"
         webhook:

@@ -163,6 +163,8 @@ for config in "$tmp/traefik" "$tmp/turn"; do
   expect "$tmp/livekit" 'voice-sfu' 'нет приватного alias LiveKit'
   expect "$tmp/livekit" 'api_key: APItestonly' 'webhook подписан другим ключом'
   expect "$tmp/livekit" 'http://voice-api:8080/api/v1/livekit/webhook' 'webhook не идёт напрямую в API'
+  expect "$tmp/livekit" 'advertise_internal_ip: true' 'SFU не предлагает внутренний адрес: TURN за NAT без hairpin не дойдёт до него'
+  expect "$tmp/livekit" 'allow_restricted_peer_cidrs:' 'TURN не пускают к внутреннему адресу SFU'
   for name in api livekit; do
     service "$config" "$name" | grep -q '^      voice:' || fail "$name не в control-сети voice"
   done
