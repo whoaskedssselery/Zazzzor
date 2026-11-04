@@ -156,8 +156,9 @@ for config in "$tmp/traefik" "$tmp/turn"; do
   service "$config" livekit >"$tmp/livekit"
   service "$config" web >"$tmp/web"
   expect "$tmp/api" 'ZAZZZOR_LIVEKIT_URL: http://voice-sfu:7880' 'API не подключён к приватному LiveKit'
-  expect "$tmp/api" 'ZAZZZOR_LIVEKIT_API_KEY: APItestonly' 'API не получил ключ LiveKit'
-  expect "$tmp/api" 'ZAZZZOR_LIVEKIT_API_SECRET: deadbeef' 'API не получил секрет LiveKit'
+  expect "$tmp/api" 'LIVEKIT_API_KEY: APItestonly' 'API не получил ключ LiveKit'
+  reject "$tmp/api" 'ZAZZZOR_LIVEKIT_API_' 'ключи LiveKit с префиксом ZAZZZOR_: API их не читает, голос выключен'
+  expect "$tmp/api" 'LIVEKIT_API_SECRET: deadbeef' 'API не получил секрет LiveKit'
   expect "$tmp/api" 'voice-api' 'нет приватного alias API'
   expect "$tmp/livekit" 'voice-sfu' 'нет приватного alias LiveKit'
   expect "$tmp/livekit" 'api_key: APItestonly' 'webhook подписан другим ключом'

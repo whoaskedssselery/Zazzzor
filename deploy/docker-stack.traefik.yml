@@ -33,8 +33,9 @@ services:
       ZAZZZOR_FILE_RETENTION: ${ZAZZZOR_FILE_RETENTION:-}
       ZAZZZOR_DATA_DIR: /data
       ZAZZZOR_LIVEKIT_URL: http://voice-sfu:7880
-      ZAZZZOR_LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?задайте LIVEKIT_API_KEY}
-      ZAZZZOR_LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?задайте LIVEKIT_API_SECRET}
+      # The API reads these two without the ZAZZZOR_ prefix (server/internal/config).
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?задайте LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?задайте LIVEKIT_API_SECRET}
       GOMEMLIMIT: 768MiB
     volumes:
       - apidata:/data
