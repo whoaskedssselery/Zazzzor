@@ -14,7 +14,14 @@ import {
 import type { CallLink, CallTransport, CallTransportEvents, ScreenShareResult } from "@/shared/lib";
 import type { VoicePrefs } from "../model/prefs";
 import { canRestrictOwnAudio, currentBrowser } from "./browser";
-import { connectOptions, endCause, microphoneOptions, roomOptions, screenShareOptions } from "./media";
+import {
+  connectOptions,
+  endCause,
+  microphoneOptions,
+  roomOptions,
+  SCREEN_CONTENT_HINT,
+  screenShareOptions,
+} from "./media";
 import { browserNoiseSuppression, createNoiseProcessor } from "./noise";
 import { noiseEngines } from "./noise-engines";
 
@@ -269,7 +276,7 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
         for (const t of stream.getTracks()) t.stop();
         return { ok: false, reason: "failed" };
       }
-      video.contentHint = "motion";
+      video.contentHint = SCREEN_CONTENT_HINT;
       screen = stream;
       // The browser's own "Stop sharing" ends the track.
       video.addEventListener("ended", () => {

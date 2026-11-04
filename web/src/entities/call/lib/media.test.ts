@@ -1,16 +1,25 @@
 import { DisconnectReason } from "livekit-client";
-import { endCause, microphoneOptions, screenShareOptions } from "./media";
+import { endCause, microphoneOptions, roomOptions, screenShareOptions } from "./media";
 
 describe("screenShareOptions", () => {
-  it("captures 1080p at 60 fps for motion and keeps the frame rate when the link is short", () => {
+  it("sends sharp 1080p at 30 fps and keeps the frame rate when the link is short", () => {
     const { capture, publish } = screenShareOptions("chromium", true);
-    expect(capture.video).toMatchObject({ width: 1920, height: 1080, frameRate: 60 });
+    expect(capture.video).toMatchObject({ width: 1920, height: 1080, frameRate: 30 });
     expect(publish).toMatchObject({
       degradationPreference: "maintain-framerate",
       simulcast: true,
-      screenShareEncoding: { maxBitrate: 8_000_000, maxFramerate: 60 },
+      screenShareEncoding: { maxBitrate: 6_000_000, maxFramerate: 30 },
       videoCodec: "h264",
     });
+  });
+
+  it("gives slow viewers a 720p layer, still at 30 fps", () => {
+    const layers = screenShareOptions("chromium", true).publish.screenShareSimulcastLayers ?? [];
+    expect(layers.map((l) => [l.width, l.height, l.encoding.maxFramerate])).toEqual([[1280, 720, 30]]);
+  });
+
+  it("asks viewers for the best layer, not the one that fits the tile", () => {
+    expect(roomOptions()).toMatchObject({ adaptiveStream: false, dynacast: true });
   });
 
   it("asks Chromium for the system sound without its own tab, where it can", () => {
