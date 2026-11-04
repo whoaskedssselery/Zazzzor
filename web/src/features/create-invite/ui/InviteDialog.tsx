@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, errorText, unwrap } from "@/shared/api";
 import { Button, CopyButton, Dialog, DialogContent, Field, FormAlert, Input, Select, useCopy } from "@/shared/ui";
 
@@ -33,11 +33,19 @@ interface InviteDialogProps {
   channelName: string;
 }
 
+/** When the link stops working, said under it: «через 7 дней», or that it never does. */
+export const lifetimeNote = (maxAge: string, maxUses: string): string => {
+  const life = LIFETIMES.find((l) => l.value === maxAge)?.label ?? "";
+  const when = maxAge === "0" ? "Ссылка не истечёт" : `Ссылка перестанет действовать через ${life}`;
+  return maxUses === "0" ? `${when}.` : `${when} или после ${maxUses} ${maxUses === "1" ? "входа" : "входов"}.`;
+};
+
 /**
- * «Пригласить друзей»: choose how long the link lives and how many joins it
- * allows, create it, and it is copied. When the clipboard is not available
- * (plain HTTP, a denied permission) the link is selected in its read-only
- * field to copy by hand.
+ * «Пригласить друзей», as in Discord: the link is made as the dialog opens
+ * (7 days, no limit) and waits beside «Копировать»; «Изменить
+ * ссылку-приглашение» opens its lifetime and use limit and makes a new one.
+ * When the clipboard is not available (plain HTTP, a denied permission) the
+ * link is selected in its read-only field to copy by hand.
  */
 export const InviteDialog = ({ open, onOpenChange, channelId, channelName }: InviteDialogProps) => (
   <Dialog open={open} onOpenChange={onOpenChange}>
@@ -45,12 +53,18 @@ export const InviteDialog = ({ open, onOpenChange, channelId, channelName }: Inv
   </Dialog>
 );
 
+const DEFAULT_AGE = "604800";
+const DEFAULT_USES = "0";
+
 const InviteForm = ({ channelId, channelName }: { channelId: string; channelName: string }) => {
-  const [maxAge, setMaxAge] = useState("604800");
-  const [maxUses, setMaxUses] = useState("0");
+  const [maxAge, setMaxAge] = useState(DEFAULT_AGE);
+  const [maxUses, setMaxUses] = useState(DEFAULT_USES);
+  // What the shown link was made with: the note under it must not follow unsaved choices.
+  const [made, setMade] = useState({ maxAge: DEFAULT_AGE, maxUses: DEFAULT_USES });
+  const [editing, setEditing] = useState(false);
   const [link, setLink] = useState<string | null>(null);
   const field = useRef<HTMLInputElement>(null);
-  const action = useRef<HTMLButtonElement>(null);
+  const copyButton = useRef<HTMLDivElement>(null);
 
   // No clipboard (HTTP) or no permission: the link is selected to copy by hand.
   const { state: copied, copy } = useCopy(() => {
@@ -59,80 +73,126 @@ const InviteForm = ({ channelId, channelName }: { channelId: string; channelName
   });
 
   const create = useMutation({
-    mutationFn: async () =>
+    mutationFn: async (with_: { maxAge: string; maxUses: string }) =>
       unwrap(
         await api.POST("/channels/{channel_id}/invites", {
           params: { path: { channel_id: channelId } },
-          body: { max_age_seconds: Number(maxAge), max_uses: Number(maxUses) },
+          body: { max_age_seconds: Number(with_.maxAge), max_uses: Number(with_.maxUses) },
         }),
       ),
-    onSuccess: async (invite) => {
-      const url = inviteLink(invite.code);
-      setLink(url);
-      // The field must show the link before it can be selected.
+    onSuccess: async (invite, with_) => {
+      setLink(inviteLink(invite.code));
+      setMade(with_);
+      setEditing(false);
+      // «Копировать» is the point of the dialog: it takes the focus once it has a link.
       await new Promise((resolve) => requestAnimationFrame(resolve));
-      await copy(url);
+      copyButton.current?.querySelector("button")?.focus();
     },
   });
+  const { mutate } = create;
+
+  // The first link is made as the dialog opens; the ref keeps Strict Mode's second run from making another.
+  const started = useRef(false);
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    mutate({ maxAge: DEFAULT_AGE, maxUses: DEFAULT_USES });
+  }, [mutate]);
 
   return (
     <DialogContent
       title={`Пригласить друзей в #${channelName}`}
-      description="Отправьте ссылку другу: по ней он попадёт на сервер, сразу в этот канал."
+      description={`Друзья попадут на сервер, сразу в #${channelName}.`}
       size="sm"
-      // The action is the point of the dialog: it takes the first focus, not the close button.
-      onOpenAutoFocus={(e) => {
-        e.preventDefault();
-        action.current?.focus();
-      }}
     >
       {create.isError && <FormAlert>{errorText(create.error)}</FormAlert>}
-      <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
-        <Field htmlFor="invite-max-age" label="Срок действия">
-          <Select options={LIFETIMES} value={maxAge} onValueChange={setMaxAge} />
-        </Field>
-        <Field htmlFor="invite-max-uses" label="Число использований">
-          <Select options={USES} value={maxUses} onValueChange={setMaxUses} />
-        </Field>
-      </div>
-      {link !== null && (
-        <Field
-          htmlFor="invite-link"
-          label="Ссылка-приглашение"
-          className="mt-5"
-          {...(copied === "failed" ? { hint: COPY_FAILED } : {})}
-        >
-          <div className="flex gap-2">
-            <Input
-              ref={field}
-              value={link}
-              readOnly
-              spellCheck={false}
-              className="font-mono text-sm"
-              onFocus={(e) => {
-                e.currentTarget.select();
-              }}
-            />
+      <Field
+        htmlFor="invite-link"
+        label="Отправьте другу ссылку-приглашение"
+        {...(copied === "failed" ? { hint: COPY_FAILED } : {})}
+      >
+        <div className="flex gap-2 rounded-md">
+          <Input
+            ref={field}
+            value={link ?? ""}
+            placeholder={create.isPending ? "Создаём ссылку…" : ""}
+            readOnly
+            spellCheck={false}
+            className="font-mono text-sm"
+            onFocus={(e) => {
+              e.currentTarget.select();
+            }}
+          />
+          <div ref={copyButton} className="contents">
             <CopyButton
+              primary
+              disabled={link === null}
               state={copied}
               onClick={() => {
-                void copy(link);
+                if (link !== null) void copy(link);
               }}
             />
           </div>
-        </Field>
+        </div>
+      </Field>
+      {link !== null && (
+        <p className="mt-2 text-xs text-fg-faint">
+          {lifetimeNote(made.maxAge, made.maxUses)}{" "}
+          {!editing && (
+            <button
+              type="button"
+              className="cursor-pointer text-link hover:underline"
+              onClick={() => {
+                setEditing(true);
+              }}
+            >
+              Изменить ссылку-приглашение
+            </button>
+          )}
+        </p>
       )}
-      <Button
-        ref={action}
-        className="mt-5 w-full"
-        variant={link === null ? "primary" : "secondary"}
-        loading={create.isPending}
-        onClick={() => {
-          if (!create.isPending) create.mutate();
-        }}
-      >
-        {link === null ? "Создать ссылку" : "Создать новую ссылку"}
-      </Button>
+      {editing && (
+        <div className="mt-4 flex animate-rise-in flex-col gap-3 rounded-md bg-sidebar p-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
+            <Field htmlFor="invite-max-age" label="Срок действия">
+              <Select options={LIFETIMES} value={maxAge} onValueChange={setMaxAge} />
+            </Field>
+            <Field htmlFor="invite-max-uses" label="Число использований">
+              <Select options={USES} value={maxUses} onValueChange={setMaxUses} />
+            </Field>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setMaxAge(made.maxAge);
+                setMaxUses(made.maxUses);
+                setEditing(false);
+              }}
+            >
+              Отмена
+            </Button>
+            <Button
+              loading={create.isPending}
+              onClick={() => {
+                if (!create.isPending) mutate({ maxAge, maxUses });
+              }}
+            >
+              Создать новую ссылку
+            </Button>
+          </div>
+        </div>
+      )}
+      {link === null && create.isError && (
+        <Button
+          className="mt-4 w-full"
+          onClick={() => {
+            mutate({ maxAge, maxUses });
+          }}
+        >
+          Попробовать ещё раз
+        </Button>
+      )}
     </DialogContent>
   );
 };

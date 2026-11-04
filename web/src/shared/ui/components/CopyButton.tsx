@@ -49,12 +49,28 @@ export const useCopy = (onFailed?: () => void) => {
  * «Скопировано» for a moment rather than raising a toast, so a dialog it
  * sits in still closes on the first Escape. The result is announced too.
  */
-export const CopyButton = ({ state, onClick }: { state: CopyState; onClick: () => void }) => {
+export const CopyButton = ({
+  state,
+  onClick,
+  primary = false,
+  disabled = false,
+}: {
+  state: CopyState;
+  onClick: () => void;
+  /** The main action of its dialog: in the accent colour before it copies too. */
+  primary?: boolean;
+  disabled?: boolean;
+}) => {
   const copied = state === "copied";
   const Icon = copied ? Check : Copy;
   return (
     <>
-      <Button variant={copied ? "primary" : "secondary"} className="min-w-36" onClick={onClick}>
+      <Button
+        variant={copied || primary ? "primary" : "secondary"}
+        className="min-w-36"
+        disabled={disabled}
+        onClick={onClick}
+      >
         <Icon aria-hidden className="size-4" />
         {copied ? COPIED : "Копировать"}
       </Button>
