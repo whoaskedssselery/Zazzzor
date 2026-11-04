@@ -158,17 +158,119 @@
   }
 }
 
-/* Radix exposes open/closed state as data attributes; overlays fade, nothing travels far. */
+/*
+ * Radix exposes open/closed state as data attributes and keeps a closing
+ * element mounted until its animation ends, so everything that appears also
+ * leaves: in on --ease-out, out a little faster. Nothing travels far: 4–8px
+ * and a 3% scale. Only opacity and transform move, so it stays on the GPU.
+ */
 @keyframes zz-fade-in {
   from {
+    opacity: 0;
+  }
+}
+@keyframes zz-fade-out {
+  to {
     opacity: 0;
   }
 }
 @keyframes zz-pop-in {
   from {
     opacity: 0;
+    transform: scale(0.96) translateY(4px);
+  }
+}
+@keyframes zz-pop-out {
+  to {
+    opacity: 0;
     transform: scale(0.97);
   }
+}
+/* A menu or tooltip comes from its trigger: --zz-dx/--zz-dy point away from it. */
+@keyframes zz-float-in {
+  from {
+    opacity: 0;
+    transform: translate(var(--zz-dx, 0), var(--zz-dy, 0)) scale(0.97);
+  }
+}
+@keyframes zz-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes zz-slide-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+}
+@keyframes zz-slide-out-left {
+  to {
+    transform: translateX(-100%);
+  }
+}
+@keyframes zz-slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+}
+@keyframes zz-slide-out-right {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@utility animate-float {
+  transform-origin: var(
+    --radix-dropdown-menu-content-transform-origin,
+    var(
+      --radix-context-menu-content-transform-origin,
+      var(--radix-select-content-transform-origin, var(--radix-tooltip-content-transform-origin, center))
+    )
+  );
+  animation: zz-float-in var(--duration-base) var(--ease-out);
+  &[data-side="bottom"] {
+    --zz-dy: -4px;
+  }
+  &[data-side="top"] {
+    --zz-dy: 4px;
+  }
+  &[data-side="left"] {
+    --zz-dx: 4px;
+  }
+  &[data-side="right"] {
+    --zz-dx: -4px;
+  }
+  &[data-state="closed"] {
+    animation: zz-fade-out var(--duration-fast) ease-in forwards;
+  }
+}
+@utility animate-overlay {
+  animation: zz-fade-in var(--duration-base) var(--ease-out);
+  &[data-state="closed"] {
+    animation: zz-fade-out var(--duration-fast) ease-in forwards;
+  }
+}
+@utility animate-dialog {
+  animation: zz-pop-in var(--duration-slow) var(--ease-out);
+  &[data-state="closed"] {
+    animation: zz-pop-out var(--duration-fast) ease-in forwards;
+  }
+}
+@utility animate-sheet-left {
+  animation: zz-slide-in-left var(--duration-slow) var(--ease-out);
+  &[data-state="closed"] {
+    animation: zz-slide-out-left var(--duration-base) ease-in forwards;
+  }
+}
+@utility animate-sheet-right {
+  animation: zz-slide-in-right var(--duration-slow) var(--ease-out);
+  &[data-state="closed"] {
+    animation: zz-slide-out-right var(--duration-base) ease-in forwards;
+  }
+}
+@utility animate-rise-in {
+  animation: zz-rise-in var(--duration-slow) var(--ease-out);
 }
 @keyframes zz-pulse {
   50% {

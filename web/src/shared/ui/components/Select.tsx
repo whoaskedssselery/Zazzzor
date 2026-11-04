@@ -68,20 +68,26 @@ export const Select = ({
         aria-required={required || undefined}
         className={cn(
           fieldClass,
-          "inline-flex h-10 cursor-pointer items-center justify-between gap-2 text-left data-placeholder:text-fg-faint",
+          "group inline-flex h-10 min-w-0 cursor-pointer items-center justify-between gap-2 text-left data-placeholder:text-fg-faint",
           className,
         )}
       >
-        <SelectPrimitive.Value placeholder={placeholder} />
-        <SelectPrimitive.Icon>
-          <ChevronDown aria-hidden className="size-4 text-fg-muted" />
+        {/* A long device name stays on one line and ends in an ellipsis. */}
+        <span className="min-w-0 flex-1 truncate">
+          <SelectPrimitive.Value placeholder={placeholder} />
+        </span>
+        <SelectPrimitive.Icon className="shrink-0">
+          <ChevronDown
+            aria-hidden
+            className="size-4 text-fg-muted transition-transform duration-(--duration-base) ease-(--ease-out) group-data-[state=open]:rotate-180"
+          />
         </SelectPrimitive.Icon>
       </SelectPrimitive.Trigger>
       <SelectPrimitive.Portal>
         <SelectPrimitive.Content
           position="popper"
           sideOffset={4}
-          className="z-(--z-dropdown) max-h-(--radix-select-content-available-height) min-w-(--radix-select-trigger-width) animate-fade-in overflow-hidden rounded-md bg-overlay p-1.5 text-fg shadow-float ring-1 ring-border"
+          className="z-(--z-dropdown) max-h-(--radix-select-content-available-height) min-w-(--radix-select-trigger-width) animate-float overflow-hidden rounded-md bg-overlay p-1.5 text-fg shadow-float ring-1 ring-border"
         >
           <SelectPrimitive.Viewport>
             {options.map((o) => (

@@ -170,7 +170,7 @@
 :root {
   /* Layout, Discord's proportions. */
   --rail-width: 72px;
-  --sidebar-width: 240px;
+  --sidebar-width: 272px;
   --members-width: 240px;
   --header-height: 48px;
   --user-panel-height: 52px;
@@ -185,5 +185,6 @@
   /* Motion: state changes only, short. */
   --duration-fast: 120ms;
   --duration-base: 180ms;
+  --duration-slow: 260ms;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 }

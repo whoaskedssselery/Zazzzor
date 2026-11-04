@@ -7,10 +7,10 @@ export const Dialog = DialogPrimitive.Root;
 export const DialogTrigger = DialogPrimitive.Trigger;
 export const DialogClose = DialogPrimitive.Close;
 
-export const overlayClass = "fixed inset-0 z-(--z-dialog) animate-fade-in bg-scrim";
+export const overlayClass = "fixed inset-0 z-(--z-dialog) animate-overlay bg-scrim";
 export const dialogPanelClass =
   "fixed top-1/2 left-1/2 z-(--z-dialog) flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 " +
-  "animate-pop-in flex-col overflow-hidden rounded-lg bg-overlay text-fg shadow-dialog focus:outline-none";
+  "animate-dialog flex-col overflow-hidden rounded-lg bg-overlay text-fg shadow-dialog focus:outline-none";
 
 interface DialogContentProps extends Omit<ComponentProps<typeof DialogPrimitive.Content>, "title"> {
   title: ReactNode;

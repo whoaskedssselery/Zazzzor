@@ -14,9 +14,9 @@ export const SaveBar = ({
 }) => (
   <section
     aria-label={UNSAVED}
-    className="sticky bottom-4 mt-8 flex items-center gap-3 rounded-lg bg-rail px-4 py-2.5 shadow-dialog"
+    className="sticky bottom-4 mt-8 flex animate-rise-in items-center gap-3 rounded-lg bg-rail px-4 py-2.5 shadow-dialog"
   >
-    <p className="min-w-0 flex-1 text-sm font-medium">{UNSAVED}</p>
+    <p className="min-w-0 flex-1 truncate text-sm font-medium">{UNSAVED}</p>
     <Button variant="link" size="sm" onClick={onReset} disabled={pending}>
       Сбросить
     </Button>
