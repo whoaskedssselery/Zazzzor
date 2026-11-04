@@ -1,7 +1,44 @@
 import { Maximize, Monitor } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { attachOwnStream, attachStream, stopScreenShare, watchStream } from "@/features/voice-call";
 import { Badge, Button, cn } from "@/shared/ui";
+
+/**
+ * A video framed to its own shape, as large as its tile allows: the frame,
+ * the badge and the buttons stay on the picture whatever the tile's shape
+ * (a tall phone screen, a wide monitor), instead of floating in the black
+ * bars around a letterboxed video.
+ */
+const VideoFrame = ({ video, children }: { video: RefObject<HTMLVideoElement | null>; children: ReactNode }) => {
+  const [ratio, setRatio] = useState(16 / 9);
+  useEffect(() => {
+    const el = video.current;
+    if (!el) return;
+    // "resize" fires when the first frame arrives and whenever the shared window changes size.
+    const sync = () => {
+      if (el.videoWidth > 0 && el.videoHeight > 0) setRatio(el.videoWidth / el.videoHeight);
+    };
+    sync();
+    el.addEventListener("resize", sync);
+    el.addEventListener("loadedmetadata", sync);
+    return () => {
+      el.removeEventListener("resize", sync);
+      el.removeEventListener("loadedmetadata", sync);
+    };
+  }, [video]);
+  return (
+    <div className="flex size-full items-center justify-center [container-type:size]">
+      <div
+        className="relative overflow-hidden rounded-lg bg-black"
+        style={{ aspectRatio: ratio, width: `min(100cqw, calc(100cqh * ${String(ratio)}))` }}
+      >
+        {/* The sound plays with the call's, so deafening silences a stream too; the video itself is muted. */}
+        <video ref={video} autoPlay muted playsInline className="size-full object-contain" />
+        {children}
+      </div>
+    </div>
+  );
+};
 
 /** The user's own screen share as the others see it: a local preview, so it costs no bandwidth. */
 export const OwnStreamTile = ({ compact = false }: { compact?: boolean }) => {
@@ -13,41 +50,38 @@ export const OwnStreamTile = ({ compact = false }: { compact?: boolean }) => {
     return attachOwnStream(el);
   }, []);
   return (
-    <article
-      ref={tile}
-      aria-label="Ваша демонстрация экрана"
-      className="group relative flex size-full min-w-0 overflow-hidden rounded-lg bg-black"
-    >
-      <video ref={video} autoPlay muted playsInline className="size-full object-contain" />
-      <Badge variant="live" className="absolute top-2 left-2">
-        В ЭФИРЕ
-      </Badge>
-      <div
-        className={cn(
-          "absolute right-2 bottom-2 z-10 flex gap-2 opacity-0 transition-opacity duration-(--duration-base) group-focus-within:opacity-100 group-hover:opacity-100",
-          compact && "hidden",
-        )}
-      >
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => {
-            void tile.current?.requestFullscreen();
-          }}
+    <article ref={tile} aria-label="Ваша демонстрация экрана" className="group relative flex size-full min-w-0">
+      <VideoFrame video={video}>
+        <Badge variant="live" className="absolute top-2 left-2">
+          В ЭФИРЕ
+        </Badge>
+        <div
+          className={cn(
+            "absolute right-2 bottom-2 z-10 flex gap-2 opacity-0 transition-opacity duration-(--duration-base) group-focus-within:opacity-100 group-hover:opacity-100",
+            compact && "hidden",
+          )}
         >
-          <Maximize aria-hidden className="size-4" />
-          Во весь экран
-        </Button>
-        <Button
-          size="sm"
-          variant="danger"
-          onClick={() => {
-            void stopScreenShare();
-          }}
-        >
-          Остановить
-        </Button>
-      </div>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              void tile.current?.requestFullscreen();
+            }}
+          >
+            <Maximize aria-hidden className="size-4" />
+            Во весь экран
+          </Button>
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={() => {
+              void stopScreenShare();
+            }}
+          >
+            Остановить
+          </Button>
+        </div>
+      </VideoFrame>
     </article>
   );
 };
@@ -86,38 +120,41 @@ export const StreamTile = ({
     <article
       ref={tile}
       aria-label={title}
-      className="group relative flex size-full min-w-0 flex-col items-center justify-center overflow-hidden rounded-lg bg-rail"
+      className={cn(
+        "group relative flex size-full min-w-0 flex-col items-center justify-center overflow-hidden rounded-lg",
+        !watching && "bg-rail",
+      )}
     >
       {watching ? (
         <>
-          {/* The stream's sound plays with the call's, so deafening silences it too; the video itself is muted. */}
-          <video ref={video} autoPlay muted playsInline className="size-full bg-black object-contain" />
-          <div
-            className={cn(
-              "absolute right-2 bottom-2 z-10 flex gap-2 opacity-0 transition-opacity duration-(--duration-base) group-focus-within:opacity-100 group-hover:opacity-100",
-              compact && "hidden",
-            )}
-          >
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => {
-                void tile.current?.requestFullscreen();
-              }}
+          <VideoFrame video={video}>
+            <div
+              className={cn(
+                "absolute right-2 bottom-2 z-10 flex gap-2 opacity-0 transition-opacity duration-(--duration-base) group-focus-within:opacity-100 group-hover:opacity-100",
+                compact && "hidden",
+              )}
             >
-              <Maximize aria-hidden className="size-4" />
-              Во весь экран
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => {
-                watchStream(userId, false);
-              }}
-            >
-              Перестать смотреть
-            </Button>
-          </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  void tile.current?.requestFullscreen();
+                }}
+              >
+                <Maximize aria-hidden className="size-4" />
+                Во весь экран
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  watchStream(userId, false);
+                }}
+              >
+                Перестать смотреть
+              </Button>
+            </div>
+          </VideoFrame>
         </>
       ) : (
         <>

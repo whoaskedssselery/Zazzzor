@@ -3,7 +3,7 @@ import { leaveVoice, ScreenShareButton, useSelfSwitches } from "@/features/voice
 import { cn, IconButton } from "@/shared/ui";
 
 const pill =
-  "size-12 rounded-xl bg-control text-fg transition-colors duration-(--duration-fast) hover:bg-control-hover [&>svg]:size-5.5";
+  "size-12 rounded-xl bg-control text-fg transition-colors duration-(--duration-fast) hover:bg-control-hover [&>svg]:size-5.5 [@media(max-height:560px)]:size-10 [@media(max-height:560px)]:[&>svg]:size-5";
 
 /**
  * The call's own controls under the stage, as in Discord: the microphone,
@@ -16,7 +16,7 @@ export const CallControls = ({ fullscreen, onFullscreen }: { fullscreen: boolean
     <div
       role="toolbar"
       aria-label="Управление звонком"
-      className="relative flex shrink-0 items-center justify-center gap-2 px-4 pt-2 pb-4"
+      className="relative flex shrink-0 items-center justify-center gap-2 px-4 pt-2 pb-4 [@media(max-height:560px)]:pb-2"
     >
       <IconButton
         label={mic.label}
@@ -38,7 +38,10 @@ export const CallControls = ({ fullscreen, onFullscreen }: { fullscreen: boolean
       <IconButton
         label="Отключиться"
         icon={PhoneOff}
-        className={cn(pill, "w-16 bg-danger text-on-danger hover:bg-danger-hover hover:text-on-danger")}
+        className={cn(
+          pill,
+          "w-16 [@media(max-height:560px)]:w-14 bg-danger text-on-danger hover:bg-danger-hover hover:text-on-danger",
+        )}
         onClick={() => {
           void leaveVoice();
         }}

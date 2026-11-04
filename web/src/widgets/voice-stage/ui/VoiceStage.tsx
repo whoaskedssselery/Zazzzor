@@ -1,5 +1,5 @@
 import { HeadphoneOff, MicOff } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type CSSProperties, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { getCall, useCall } from "@/entities/call";
 import {
   type Channel,
@@ -37,20 +37,21 @@ const PersonTile = ({
   const { name, avatarUrl } = nameOf(entry, state.user_id);
   return (
     <div
+      // The avatar follows the tile's height (a low window, the strip), so nothing spills out of it.
       className={cn(
-        "flex size-full min-w-0 flex-col items-center justify-center rounded-lg bg-sidebar",
-        compact ? "gap-1.5 p-2" : "gap-3 p-4",
+        "flex size-full min-w-0 flex-col items-center justify-center overflow-hidden rounded-lg bg-sidebar [container-type:size]",
+        compact ? "gap-1 p-2" : "gap-[min(0.75rem,4cqh)] p-[min(1rem,5cqh)]",
       )}
     >
       <span
         data-speaking={speaking || undefined}
         className={cn(
-          "flex rounded-full ring-transparent ring-offset-sidebar transition-shadow duration-(--duration-base) ease-(--ease-out)",
-          compact ? "ring-2 ring-offset-1" : "ring-4 ring-offset-2",
+          "flex aspect-square shrink-0 rounded-full ring-transparent ring-offset-sidebar transition-shadow duration-(--duration-base) ease-(--ease-out)",
+          compact ? "h-[min(2.5rem,45cqh)] ring-2 ring-offset-1" : "h-[min(5rem,45cqh)] ring-4 ring-offset-2",
           speaking && "ring-online",
         )}
       >
-        <Avatar name={name} src={avatarUrl} size={compact ? 40 : 80} />
+        <Avatar name={name} src={avatarUrl} size={compact ? 40 : 80} className="size-full!" />
       </span>
       <span className={cn("flex max-w-full items-center gap-1.5 font-medium", compact ? "text-xs" : "text-sm")}>
         <span className="truncate">{name}</span>
@@ -86,14 +87,16 @@ const TileSlot = ({
   compact,
   onToggle,
   className,
+  style,
 }: {
   tile: Tile;
   focused: boolean;
   compact: boolean;
   onToggle: () => void;
   className: string;
+  style?: CSSProperties;
 }) => (
-  <li aria-label={tile.name} className={cn("relative min-w-0 animate-pop-in list-none", className)}>
+  <li aria-label={tile.name} className={cn("relative min-w-0 animate-pop-in list-none", className)} style={style}>
     {tile.render(compact, () => {
       if (!focused) onToggle();
     })}
@@ -109,6 +112,45 @@ const TileSlot = ({
     />
   </li>
 );
+
+const GAP = 12;
+const PAD = 16;
+/** Below this a tile is unreadable: the grid scrolls instead of shrinking further. */
+const MIN_TILE = 176;
+
+/**
+ * The width of 16:9 tiles that fit `count` of them in `width` × `height`
+ * as large as possible, as Discord lays out a call: every column count is
+ * tried and the one giving the widest tile wins.
+ */
+export const fitTileWidth = (count: number, width: number, height: number): number => {
+  if (count === 0 || width <= 0 || height <= 0) return MIN_TILE;
+  let best = 0;
+  for (let cols = 1; cols <= count; cols++) {
+    const rows = Math.ceil(count / cols);
+    const byWidth = (width - GAP * (cols - 1)) / cols;
+    const byHeight = ((height - GAP * (rows - 1)) / rows) * (16 / 9);
+    best = Math.max(best, Math.min(byWidth, byHeight));
+  }
+  return Math.max(MIN_TILE, Math.min(Math.floor(best), width));
+};
+
+/** Follows the grid area's size and gives the tile width that fits them all. */
+const useFitWidth = (area: RefObject<HTMLElement | null>, count: number, on: boolean): number | undefined => {
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  useEffect(() => {
+    const el = area.current;
+    if (!el || !on || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      setSize({ w: el.clientWidth - PAD * 2, h: el.clientHeight - PAD * 2 });
+    });
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+    };
+  }, [area, on]);
+  return size ? fitTileWidth(count, size.w, size.h) : undefined;
+};
 
 /** The stage in the call: every tile in a grid, or one in front with the others in a strip under it, as in Discord. */
 const CallStage = ({ tiles }: { tiles: Tile[] }) => {
@@ -134,11 +176,13 @@ const CallStage = ({ tiles }: { tiles: Tile[] }) => {
     }
   };
   const rest = tiles.filter((t) => t !== front);
+  const grid = useRef<HTMLDivElement>(null);
+  const tileWidth = useFitWidth(grid, tiles.length, front === undefined);
 
   return (
     <div ref={stage} className="flex min-h-0 flex-1 flex-col bg-chat">
       {front ? (
-        <div className="flex min-h-0 flex-1 flex-col gap-3 p-4 pb-2">
+        <div className="flex min-h-0 flex-1 flex-col gap-[min(0.75rem,2cqh)] p-4 pb-2 [container-type:size]">
           <ul className="flex min-h-0 flex-1">
             <TileSlot
               tile={front}
@@ -158,7 +202,7 @@ const CallStage = ({ tiles }: { tiles: Tile[] }) => {
                   tile={t}
                   focused={false}
                   compact
-                  className="aspect-video h-28 shrink-0"
+                  className="aspect-video h-[clamp(3rem,18cqh,7rem)] shrink-0"
                   onToggle={() => {
                     toggle(t);
                   }}
@@ -168,15 +212,16 @@ const CallStage = ({ tiles }: { tiles: Tile[] }) => {
           )}
         </div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          <ul className="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-3">
+        <div ref={grid} className="min-h-0 flex-1 overflow-y-auto p-4">
+          <ul className="flex min-h-full flex-wrap content-center justify-center gap-3">
             {tiles.map((t) => (
               <TileSlot
                 key={t.key}
                 tile={t}
                 focused={false}
                 compact={false}
-                className="aspect-video"
+                className="aspect-video shrink-0"
+                style={{ width: tileWidth ?? 320 }}
                 onToggle={() => {
                   toggle(t);
                 }}
