@@ -233,7 +233,15 @@ export const joinVoice = async (guildId: string, channelId: string): Promise<voi
     setCall({ status: "connected" });
     t.setListening(!getCall().selfDeaf);
     const { outputId } = readVoicePrefs();
-    if (outputId !== null) await switchAudioDevice("audiooutput", outputId);
+    if (outputId !== null) {
+      try {
+        await t.useDevice("audiooutput", outputId);
+      } catch {
+        if (!latest() || getCall().status === "idle") return;
+        // A saved device can disappear. Keep the call on the browser's default output.
+        await t.useDevice("audiooutput", "default").catch(() => {});
+      }
+    }
     if (!latest() || getCall().status === "idle") return;
     applyVoicePrefs();
   } finally {
@@ -344,6 +352,10 @@ export const watchStream = (userId: string, on: boolean): void => {
 /** Shows `userId`'s screen share in `el`; the returned function lets go of it. */
 export const attachStream = (userId: string, el: HTMLVideoElement): (() => void) =>
   transport?.attachScreen(userId, el) ?? (() => undefined);
+
+/** Shows the user's own screen share in `el`; the returned function lets go of it. */
+export const attachOwnStream = (el: HTMLVideoElement): (() => void) =>
+  transport?.attachOwnScreen(el) ?? (() => undefined);
 
 /**
  * Starts sharing a screen, a window or a tab (the browser's picker) and says

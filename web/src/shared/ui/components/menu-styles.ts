@@ -4,7 +4,7 @@
  * alone does not separate a menu from the chat behind it.
  */
 export const menuContentClass =
-  "z-(--z-dropdown) min-w-48 animate-fade-in overflow-hidden rounded-md bg-overlay p-1.5 text-fg shadow-float ring-1 ring-border";
+  "z-(--z-dropdown) min-w-48 animate-float overflow-hidden rounded-md bg-overlay p-1.5 text-fg shadow-float ring-1 ring-border";
 
 export const menuItemClass =
   "relative flex h-8 cursor-pointer items-center gap-2 rounded-sm px-2 text-sm font-medium outline-none select-none " +

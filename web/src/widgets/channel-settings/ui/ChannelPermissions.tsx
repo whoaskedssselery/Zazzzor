@@ -71,7 +71,7 @@ const TriSwitch = ({
         key={t.value}
         title={t.label}
         className={cn(
-          "flex size-8 cursor-pointer items-center justify-center text-fg-muted transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-focus",
+          "relative flex size-8 cursor-pointer items-center justify-center text-fg-muted transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-focus",
           value === t.value ? t.on : "hover:bg-hover",
           disabled && "cursor-not-allowed opacity-50",
         )}

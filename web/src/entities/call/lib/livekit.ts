@@ -316,6 +316,15 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
       };
     },
 
+    attachOwnScreen(el) {
+      // The captured stream itself, video only: the preview must not echo the shared sound.
+      const video = screen?.getVideoTracks()[0];
+      if (video) el.srcObject = new MediaStream([video]);
+      return () => {
+        el.srcObject = null;
+      };
+    },
+
     async useDevice(kind, deviceId) {
       // "default" follows the system's choice; an exact match would pin today's default device.
       const switched = await room?.switchActiveDevice(kind, deviceId, deviceId !== "default");

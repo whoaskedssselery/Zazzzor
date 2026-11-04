@@ -65,7 +65,7 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
               onOpenChange={(open) => {
                 if (!open) close(t.id);
               }}
-              className="flex w-full animate-pop-in items-center gap-3 rounded-lg bg-overlay py-2.5 pr-2 pl-3.5 text-fg shadow-float ring-1 ring-border data-[swipe=move]:translate-y-(--radix-toast-swipe-move-y) data-[state=closed]:hidden"
+              className="flex w-full animate-rise-in items-center gap-3 rounded-lg bg-overlay py-2.5 pr-2 pl-3.5 text-fg shadow-float ring-1 ring-border data-[state=closed]:animate-[zz-fade-out_var(--duration-fast)_ease-in_forwards] data-[swipe=move]:translate-y-(--radix-toast-swipe-move-y)"
             >
               <Icon aria-hidden className={cn("size-5 shrink-0", className)} strokeWidth={2} />
               <ToastPrimitive.Description data-toast-text className="min-w-0 flex-1 text-sm font-medium">

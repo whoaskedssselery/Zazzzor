@@ -40,8 +40,8 @@ export const SheetContent = ({ side, title, children, className, initialFocus }:
           target.focus();
         }}
         className={cn(
-          "fixed inset-y-0 z-(--z-dialog) flex max-w-[calc(100vw-3rem)] animate-fade-in overflow-hidden shadow-dialog focus:outline-none",
-          side === "left" ? "left-0" : "right-0",
+          "fixed inset-y-0 z-(--z-dialog) flex max-w-[calc(100vw-3rem)] overflow-hidden shadow-dialog focus:outline-none",
+          side === "left" ? "animate-sheet-left left-0" : "animate-sheet-right right-0",
           className,
         )}
       >

@@ -80,9 +80,9 @@ export const SettingsFrame = ({
     <div className="flex h-full min-h-0 bg-chat max-md:flex-col">
       <nav
         aria-label={navLabel}
-        className="flex shrink-0 justify-end bg-sidebar md:w-[max(14rem,calc((100%-46rem)/2))] max-md:overflow-x-auto"
+        className="flex shrink-0 justify-end bg-sidebar md:w-[max(14rem,calc((100%-46rem)/2))]"
       >
-        <div className="flex w-full flex-col gap-0.5 px-4 py-6 md:w-56 md:py-14 max-md:flex-row max-md:items-center">
+        <div className="flex w-full flex-col gap-0.5 px-4 py-6 md:w-56 md:py-14 max-md:flex-row max-md:flex-wrap max-md:items-center max-md:pr-14">
           {title === null ? (
             <Skeleton className="mx-2.5 mb-2 h-3 w-24 rounded-sm" />
           ) : (
@@ -93,7 +93,7 @@ export const SettingsFrame = ({
           {nav}
         </div>
       </nav>
-      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+      <main className="relative min-h-0 min-w-0 flex-1 overflow-y-auto">
         <div className="flex max-w-[46rem] gap-6 px-10 py-14 max-md:px-4 max-md:py-6">
           <div className="min-w-0 flex-1">{children}</div>
           <div className="flex shrink-0 flex-col items-center gap-1 max-md:fixed max-md:top-2 max-md:right-2">

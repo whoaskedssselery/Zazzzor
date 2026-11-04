@@ -11,7 +11,7 @@ const Row = ({ guildId, member }: { guildId: string; member: MemberRow }) => {
       <MemberMenu guildId={guildId} userId={member.userId} mode="dropdown">
         <button
           type="button"
-          className="flex h-11 w-full cursor-pointer items-center gap-3 rounded-md px-2 text-left hover:bg-hover data-[state=open]:bg-selected"
+          className="flex h-11 w-full cursor-pointer items-center gap-3 rounded-md px-2 text-left transition-colors duration-(--duration-fast) hover:bg-hover data-[state=open]:bg-selected"
         >
           <Avatar
             name={member.name}

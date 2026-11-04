@@ -23,8 +23,10 @@ test("two friends talk in real time: invite, markdown, reply, edit, delete, typi
   // …and a link for Petr, who joins through it.
   await anna.page.getByRole("button", { name: "Меню сервера Вечерний сеанс" }).click();
   await anna.page.getByRole("menuitem", { name: "Пригласить людей" }).click();
-  await anna.page.getByRole("button", { name: "Создать ссылку" }).click();
-  const link = await anna.page.getByLabel("Ссылка-приглашение").inputValue();
+  // The link is made as the dialog opens.
+  const field = anna.page.getByLabel("Отправьте другу ссылку-приглашение");
+  await expect(field).toHaveValue(/\/invite\//);
+  const link = await field.inputValue();
   await anna.page.keyboard.press("Escape");
   await expect(anna.page.getByRole("dialog")).toHaveCount(0);
   await petr.page.goto(new URL(link).pathname);

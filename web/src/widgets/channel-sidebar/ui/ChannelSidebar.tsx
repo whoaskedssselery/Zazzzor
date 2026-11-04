@@ -2,7 +2,6 @@ import { useMutation } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   ChevronDown,
-  ChevronRight,
   FolderPlus,
   Hash,
   HeadphoneOff,
@@ -110,7 +109,7 @@ const SettingsLink = ({ channel, tab, visible }: { channel: Channel; tab: string
     params={{ guildId: channel.guild_id, channelId: channel.id, tab }}
     aria-label={`Настройки ${channel.type === CHANNEL_TYPE.CATEGORY ? "категории" : "канала"} ${channel.name}`}
     className={cn(
-      "absolute top-1/2 right-3 flex size-6 -translate-y-1/2 items-center justify-center rounded-sm text-fg-muted hover:text-fg focus-visible:opacity-100 group-hover:opacity-100",
+      "absolute top-1 right-3 flex size-6 items-center justify-center rounded-sm text-fg-muted hover:text-fg focus-visible:opacity-100 group-hover:opacity-100",
       visible ? "opacity-100" : "opacity-0",
     )}
   >
@@ -236,10 +235,13 @@ const VoiceMember = ({ entry, state, speaking }: { entry: GuildEntry; state: Voi
   const view = user ? userDisplay(entry, user) : { name: "Участник", avatarUrl: null };
   return (
     <MemberMenu guildId={state.guild_id} userId={state.user_id}>
-      <li className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-sm text-fg-muted hover:bg-hover">
+      <li className="flex min-w-0 animate-fade-in items-center gap-2 rounded-md px-2 py-1 text-sm text-fg-muted transition-colors duration-(--duration-fast) hover:bg-hover">
         <span
           data-speaking={speaking || undefined}
-          className={cn("shrink-0 rounded-full ring-2 ring-transparent transition-shadow", speaking && "ring-online")}
+          className={cn(
+            "flex shrink-0 rounded-full ring-2 ring-transparent ring-offset-1 ring-offset-sidebar transition-shadow duration-(--duration-base) ease-(--ease-out)",
+            speaking && "ring-online",
+          )}
         >
           <Avatar name={view.name} src={view.avatarUrl} size={24} />
         </span>
@@ -262,7 +264,7 @@ const VoiceMembers = ({ entry, channel }: { entry: GuildEntry; channel: Channel 
   const members = voiceMembers(entry, channel.id);
   if (members.length === 0) return null;
   return (
-    <ul aria-label={`В канале ${channel.name}`} className="mb-1 ml-6 flex flex-col gap-0.5">
+    <ul aria-label={`В канале ${channel.name}`} className="mt-1 mb-1 ml-6 flex flex-col gap-0.5">
       {members.map((v) => (
         <VoiceMember key={v.user_id} entry={entry} state={v} speaking={speaking.includes(v.user_id)} />
       ))}
@@ -285,7 +287,6 @@ const Group = ({ group, openId }: { group: ChannelGroup; openId: string | null }
     </ul>
   );
   if (!category) return <div className="mt-1">{rows}</div>;
-  const Chevron = collapsed ? ChevronRight : ChevronDown;
   const tab = list.settingsTabOf(category.id);
   // A channel dropped on the heading goes to the end of the category.
   const drop = list.canArrange
@@ -312,7 +313,14 @@ const Group = ({ group, openId }: { group: ChannelGroup; openId: string | null }
           }}
           className="flex h-7 min-w-0 flex-1 cursor-pointer items-center gap-0.5 pr-2 pl-1.5 text-sm font-semibold text-fg-faint transition-colors hover:text-fg"
         >
-          <Chevron aria-hidden className="size-3.5 shrink-0" strokeWidth={2.5} />
+          <ChevronDown
+            aria-hidden
+            className={cn(
+              "size-3.5 shrink-0 transition-transform duration-(--duration-base) ease-(--ease-out)",
+              collapsed && "-rotate-90",
+            )}
+            strokeWidth={2.5}
+          />
           <span className="truncate">{category.name}</span>
         </button>
         <span className="mr-2 flex shrink-0 items-center opacity-0 group-hover:opacity-100 has-[:focus-visible]:opacity-100">
@@ -415,10 +423,13 @@ export const ChannelSidebar = ({ guildId, channelId }: { guildId: string; channe
       <DropdownMenu>
         <DropdownMenuTrigger
           aria-label={`Меню сервера ${guild.name}`}
-          className="flex h-(--header-height) shrink-0 cursor-pointer items-center justify-between gap-2 px-4 text-base font-semibold shadow-[0_1px_0_var(--border)] transition-colors hover:bg-hover data-[state=open]:bg-hover"
+          className="group flex h-(--header-height) shrink-0 cursor-pointer items-center justify-between gap-2 px-4 text-base font-semibold shadow-[0_1px_0_var(--border)] transition-colors hover:bg-hover data-[state=open]:bg-hover"
         >
           <span className="truncate">{guild.name}</span>
-          <ChevronDown aria-hidden className="size-5 shrink-0 text-fg-muted" />
+          <ChevronDown
+            aria-hidden
+            className="size-5 shrink-0 text-fg-muted transition-transform duration-(--duration-base) ease-(--ease-out) group-data-[state=open]:rotate-180"
+          />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-(--radix-dropdown-menu-trigger-width) min-w-52">
           {settingsTab &&

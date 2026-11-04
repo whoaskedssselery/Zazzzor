@@ -237,6 +237,21 @@ describe("voice settings in the call", () => {
     expect(fake.argsOf("useDevice")).toEqual([["audiooutput", "out-1"]]);
   });
 
+  it("joins with system audio when the saved output is unavailable", async () => {
+    writeVoicePrefs({ ...DEFAULT_VOICE_PREFS, outputId: "unavailable" });
+    fake.deviceError = new DOMException("no such device", "NotFoundError");
+
+    await joinVoice(G, LOUNGE);
+
+    expect(fake.argsOf("useDevice")).toEqual([
+      ["audiooutput", "unavailable"],
+      ["audiooutput", "default"],
+    ]);
+    expect(getCall().status).toBe("connected");
+    expect(fake.argsOf("setMicrophone").at(-1)).toEqual([true]);
+    expect(notices).toEqual([]);
+  });
+
   it("applies a change of mode in the call at once", async () => {
     await joinVoice(G, LOUNGE);
     expect(fake.argsOf("setMicrophone").at(-1)).toEqual([true]);

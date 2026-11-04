@@ -61,9 +61,6 @@ const VoiceChannelView = ({ guildId, channel }: { guildId: string; channel: Chan
       <NavButton />
       <Volume2 aria-hidden className="size-6 shrink-0 text-fg-faint" strokeWidth={1.75} />
       <h1 className="min-w-0 truncate text-base font-semibold">{channel.name}</h1>
-      <div className="ml-auto flex shrink-0 items-center">
-        <MembersButton />
-      </div>
     </ShellHeader>
     <VoiceStage guildId={guildId} channel={channel} />
   </>
