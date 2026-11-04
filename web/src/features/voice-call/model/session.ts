@@ -233,7 +233,15 @@ export const joinVoice = async (guildId: string, channelId: string): Promise<voi
     setCall({ status: "connected" });
     t.setListening(!getCall().selfDeaf);
     const { outputId } = readVoicePrefs();
-    if (outputId !== null) await switchAudioDevice("audiooutput", outputId);
+    if (outputId !== null) {
+      try {
+        await t.useDevice("audiooutput", outputId);
+      } catch {
+        if (!latest() || getCall().status === "idle") return;
+        // A saved device can disappear. Keep the call on the browser's default output.
+        await t.useDevice("audiooutput", "default").catch(() => {});
+      }
+    }
     if (!latest() || getCall().status === "idle") return;
     applyVoicePrefs();
   } finally {
