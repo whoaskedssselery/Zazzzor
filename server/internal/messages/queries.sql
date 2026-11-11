@@ -138,3 +138,38 @@ RETURNING *;
 -- name: ReadStatesForChannels :many
 SELECT * FROM read_states WHERE user_id = @user_id AND channel_id = ANY(@channel_ids::bigint[])
 ORDER BY channel_id;
+
+-- name: ReactionGroupsForWrite :many
+WITH locked AS (
+    SELECT emoji, first_added_at FROM message_reactions
+    WHERE message_id = $1
+    FOR UPDATE
+)
+SELECT emoji, min(first_added_at)::timestamptz AS first_added_at
+FROM locked
+GROUP BY emoji
+ORDER BY first_added_at;
+
+-- name: AddMessageReaction :execrows
+INSERT INTO message_reactions (message_id, emoji, user_id, first_added_at)
+VALUES ($1, $2, $3, COALESCE(sqlc.narg(first_added_at)::timestamptz, (
+    SELECT GREATEST(clock_timestamp(), max(mr.first_added_at) + interval '1 microsecond')
+    FROM message_reactions AS mr WHERE mr.message_id = $1
+)))
+ON CONFLICT (message_id, emoji, user_id) DO NOTHING;
+
+-- name: RemoveMessageReaction :execrows
+DELETE FROM message_reactions WHERE message_id = $1 AND emoji = $2 AND user_id = $3;
+
+-- name: ReactionSummaries :many
+SELECT message_id, emoji, count(*) AS count, bool_or(user_id = sqlc.arg(caller_id)::bigint)::bool AS me
+FROM message_reactions
+WHERE message_id = ANY(sqlc.arg(message_ids)::bigint[])
+GROUP BY message_id, emoji
+ORDER BY message_id, min(first_added_at), emoji;
+
+-- name: ReactionUserIDs :many
+SELECT user_id FROM message_reactions
+WHERE message_id = $1 AND emoji = $2 AND user_id > sqlc.arg(after_id)::bigint
+ORDER BY user_id
+LIMIT sqlc.arg(page_limit)::int;

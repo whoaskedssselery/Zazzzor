@@ -12,6 +12,7 @@ export * from "./components/FormAlert";
 export * from "./components/GuildIcon";
 export * from "./components/IconButton";
 export * from "./components/Input";
+export * from "./components/Popover";
 export * from "./components/RoleColorDot";
 export * from "./components/SaveBar";
 export * from "./components/Select";

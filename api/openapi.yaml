@@ -1987,6 +1987,32 @@ paths:
         "500":
           $ref: "#/components/responses/Problem"
   /channels/{channel_id}/messages/{message_id}:
+    get:
+      tags: [messages]
+      operationId: getMessage
+      summary: Get a message
+      description: Needs `VIEW_CHANNEL` and `READ_MESSAGE_HISTORY`.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+        - $ref: "#/components/parameters/MessageID"
+      responses:
+        "200":
+          description: The message.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: message or channel is unavailable."
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
     patch:
       tags: [messages]
       operationId: updateMessage
@@ -2058,6 +2084,146 @@ paths:
           $ref: "#/components/responses/Problem"
         "404":
           description: "`not_found`: no such channel (or the caller may not view it), or no such message in it."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /channels/{channel_id}/messages/{message_id}/reactions/{emoji}:
+    parameters:
+      - $ref: "#/components/parameters/ChannelID"
+      - $ref: "#/components/parameters/MessageID"
+      - $ref: "#/components/parameters/ReactionEmoji"
+    get:
+      tags: [messages]
+      operationId: listReactionUsers
+      summary: List the users who reacted with an emoji
+      description: |
+        Needs `VIEW_CHANNEL` and `READ_MESSAGE_HISTORY`. Results are ordered by
+        user ID ascending. An emoji without reactions returns an empty array.
+      parameters:
+        - name: after
+          in: query
+          description: Return only users with a greater ID.
+          schema:
+            $ref: "#/components/schemas/Snowflake"
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+      responses:
+        "200":
+          description: The page of users.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+        "400":
+          description: "`validation_failed` for an invalid emoji or query."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: message or channel is unavailable."
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /channels/{channel_id}/messages/{message_id}/reactions/{emoji}/@me:
+    parameters:
+      - $ref: "#/components/parameters/ChannelID"
+      - $ref: "#/components/parameters/MessageID"
+      - $ref: "#/components/parameters/ReactionEmoji"
+    put:
+      tags: [messages]
+      operationId: addOwnReaction
+      summary: Add the caller's reaction
+      description: |
+        Needs `VIEW_CHANNEL` and `READ_MESSAGE_HISTORY` in the channel.
+        Starting a new emoji needs `ADD_REACTIONS`. Joining an existing emoji
+        needs no additional permission. A message can have at most 20 distinct emoji.
+        Idempotent. Reaction writes share a per-user limit of 4 per second with a burst of 8.
+      responses:
+        "204":
+          description: The requested reaction state is in effect.
+        "400":
+          description: "`validation_failed` for an invalid emoji, or `too_many_reactions` for a 21st distinct emoji."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed`, `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: message or channel is unavailable."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [messages]
+      operationId: deleteOwnReaction
+      summary: Remove the caller's reaction
+      description: |
+        Needs `VIEW_CHANNEL` and `READ_MESSAGE_HISTORY` in the channel.
+        Idempotent. Reaction writes share a per-user limit of 4 per second with a burst of 8.
+      responses:
+        "204":
+          description: The requested reaction state is in effect.
+        "400":
+          description: "`validation_failed` for an invalid emoji."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed`, `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: message or channel is unavailable."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /channels/{channel_id}/messages/{message_id}/reactions/{emoji}/{user_id}:
+    parameters:
+      - $ref: "#/components/parameters/ChannelID"
+      - $ref: "#/components/parameters/MessageID"
+      - $ref: "#/components/parameters/ReactionEmoji"
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/Snowflake"
+    delete:
+      tags: [messages]
+      operationId: deleteUserReaction
+      summary: Remove a user's reaction
+      description: |
+        Needs `VIEW_CHANNEL` and `READ_MESSAGE_HISTORY` in the channel.
+        Needs `MANAGE_MESSAGES`. The role hierarchy applies to other current members.
+        Idempotent. Reaction writes share a per-user limit of 4 per second with a burst of 8.
+      responses:
+        "204":
+          description: The requested reaction state is in effect.
+        "400":
+          description: "`validation_failed` for an invalid emoji."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed`, `missing_permission`, or `role_hierarchy`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: message or channel is unavailable."
           $ref: "#/components/responses/Problem"
         "429":
           $ref: "#/components/responses/RateLimited"
@@ -2701,6 +2867,17 @@ components:
       required: true
       schema:
         $ref: "#/components/schemas/Snowflake"
+    ReactionEmoji:
+      name: emoji
+      in: path
+      required: true
+      description: |
+        URL-encoded Unicode emoji. Send its exact UTF-8 bytes, with no normalization.
+        A single grapheme of up to 32 bytes containing an Extended_Pictographic
+        code point or a regional indicator pair, without whitespace or controls.
+      schema:
+        type: string
+      example: "%F0%9F%91%8D"
     InviteCode:
       name: code
       in: path
@@ -2956,6 +3133,7 @@ components:
       description: |
         Permission bit mask as a decimal string; the bits are numbered as in
         Discord (e.g. `ADMINISTRATOR` = 8, `MANAGE_ROLES` = 268435456).
+        `ADD_REACTIONS` is bit 6 (64) and is granted to `@everyone` by default.
         Bits the server does not define are refused when set.
       examples: ["268435456"]
     Guild:
@@ -3329,6 +3507,47 @@ components:
         pending:
           type: boolean
           description: True until the upload is bound to a message.
+    Emoji:
+      type: object
+      additionalProperties: false
+      required: [id, name]
+      properties:
+        id:
+          description: Always null for Unicode emoji.
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
+        name:
+          type: string
+          description: The Unicode emoji.
+    Reaction:
+      type: object
+      additionalProperties: false
+      required: [emoji, count, me]
+      properties:
+        emoji:
+          $ref: "#/components/schemas/Emoji"
+        count:
+          type: integer
+          minimum: 1
+        me:
+          type: boolean
+          description: Whether the caller reacted with this emoji.
+    MessageReactionEvent:
+      type: object
+      additionalProperties: false
+      required: [channel_id, guild_id, message_id, user_id, emoji]
+      properties:
+        channel_id:
+          $ref: "#/components/schemas/Snowflake"
+        guild_id:
+          $ref: "#/components/schemas/Snowflake"
+        message_id:
+          $ref: "#/components/schemas/Snowflake"
+        user_id:
+          $ref: "#/components/schemas/Snowflake"
+        emoji:
+          $ref: "#/components/schemas/Emoji"
     Message:
       type: object
       additionalProperties: false
@@ -3394,6 +3613,15 @@ components:
         mention_here:
           type: boolean
           description: The broadcast was @here, limited to online members. @everyone takes precedence when both occur.
+        reactions:
+          type: array
+          maxItems: 20
+          description: |
+            Ordered by first addition, with `me` computed for the caller.
+            Always present in REST message responses and empty in `MESSAGE_CREATE`.
+            Omitted in `MESSAGE_UPDATE`; clients keep their reaction state.
+          items:
+            $ref: "#/components/schemas/Reaction"
     CreateMessageRequest:
       type: object
       additionalProperties: false
@@ -3458,6 +3686,7 @@ components:
             - $ref: "#/components/schemas/Channel"
             - $ref: "#/components/schemas/Message"
             - $ref: "#/components/schemas/MessageDeleteEvent"
+            - $ref: "#/components/schemas/MessageReactionEvent"
             - $ref: "#/components/schemas/ReadState"
             - $ref: "#/components/schemas/TypingStartEvent"
             - $ref: "#/components/schemas/Presence"
@@ -3885,6 +4114,14 @@ x-gateway:
       $ref: "#/components/schemas/Message"
     MESSAGE_UPDATE:
       $ref: "#/components/schemas/Message"
+    MESSAGE_REACTION_ADD:
+      description: Sent to viewers of the channel when a reaction is added.
+      $ref: "#/components/schemas/MessageReactionEvent"
+    MESSAGE_REACTION_REMOVE:
+      description: |
+        Sent to viewers of the channel when a reaction is removed. The user ID
+        identifies the user whose reaction was removed.
+      $ref: "#/components/schemas/MessageReactionEvent"
     MESSAGE_ACK:
       $ref: "#/components/schemas/ReadState"
     MESSAGE_DELETE:

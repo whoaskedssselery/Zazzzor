@@ -103,6 +103,31 @@ describe("applyMessageDispatch", () => {
     expect(inOrder(d)[0]?.content).toBe("правка");
   });
 
+  it("applies reactions, the user's own once, and keeps them through an edit", () => {
+    const qc = client(pages([1, 2]));
+    const event = (userId: string) => ({
+      channel_id: C,
+      guild_id: "10",
+      message_id: "2",
+      user_id: userId,
+      emoji: { id: null, name: "🔥" },
+    });
+    applyMessageDispatch(qc, "MESSAGE_REACTION_ADD", event("7"), "9");
+    applyMessageDispatch(qc, "MESSAGE_REACTION_ADD", event("9"), "9");
+    applyMessageDispatch(qc, "MESSAGE_REACTION_ADD", event("9"), "9");
+    const { reactions: _none, ...edit } = msg(2, { content: "правка" });
+    applyMessageDispatch(qc, "MESSAGE_UPDATE", edit, "9");
+    const d = history(qc);
+    if (!d) throw new Error("history expected");
+    const m = inOrder(d)[1];
+    expect(m?.content).toBe("правка");
+    expect(m?.reactions).toEqual([{ emoji: { id: null, name: "🔥" }, count: 2, me: true }]);
+    applyMessageDispatch(qc, "MESSAGE_REACTION_REMOVE", event("7"), "9");
+    expect(inOrder(history(qc) ?? { pages: [] })[1]?.reactions).toEqual([
+      { emoji: { id: null, name: "🔥" }, count: 1, me: true },
+    ]);
+  });
+
   it("leaves a channel that was never loaded alone", () => {
     const qc = client();
     applyMessageDispatch(qc, "MESSAGE_CREATE", msg(3));

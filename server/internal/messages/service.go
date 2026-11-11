@@ -84,12 +84,12 @@ func (s *Service) List(ctx context.Context, channelID, userID snowflake.ID, pg P
 	if err != nil {
 		return nil, fmt.Errorf("messages: list messages: %w", err)
 	}
-	return s.complete(ctx, guildID, channelID, rows)
+	return s.complete(ctx, guildID, channelID, rows, userID)
 }
 
 // complete adds the authors and the replied-to messages to rows of one
-// channel, and loads the page's attachments in one query.
-func (s *Service) complete(ctx context.Context, guildID, channelID snowflake.ID, rows []store.Message) ([]Message, error) {
+// channel, and batches loading the page's attachments and reaction summaries.
+func (s *Service) complete(ctx context.Context, guildID, channelID snowflake.ID, rows []store.Message, caller snowflake.ID) ([]Message, error) {
 	var replyIDs []int64
 	seen := map[snowflake.ID]bool{}
 	for _, r := range rows {
@@ -145,10 +145,15 @@ func (s *Service) complete(ctx context.Context, guildID, channelID snowflake.ID,
 		}
 	}
 	byMessage := make(map[snowflake.ID][]Attachment)
+	var reactions map[snowflake.ID][]Reaction
 	if len(ids) > 0 {
 		attachments, err := s.q.AttachmentsByMessages(ctx, s.pool, ids)
 		if err != nil {
 			return nil, fmt.Errorf("messages: load attachments: %w", err)
+		}
+		reactions, err = s.reactionSummaries(ctx, ids, caller)
+		if err != nil {
+			return nil, fmt.Errorf("messages: complete message page: %w", err)
 		}
 		for _, file := range attachments {
 			id := snowflake.ID(file.MessageID.Int64)
@@ -159,7 +164,7 @@ func (s *Service) complete(ctx context.Context, guildID, channelID snowflake.ID,
 	out := make([]Message, len(rows))
 	for i, r := range rows {
 		m := Message{ID: r.ID, ChannelID: r.ChannelID, GuildID: guildID, Author: author(r.AuthorID),
-			Content: r.Content, CreatedAt: r.CreatedAt, EditedAt: r.EditedAt, ReplyToID: r.ReplyToID, Attachments: byMessage[r.ID], mentions: storedMentions(r)}
+			Content: r.Content, CreatedAt: r.CreatedAt, EditedAt: r.EditedAt, ReplyToID: r.ReplyToID, Attachments: byMessage[r.ID], Reactions: reactions[r.ID], mentions: storedMentions(r)}
 		if r.ReplyToID != nil {
 			if o, ok := originals[*r.ReplyToID]; ok {
 				m.Referenced = &Stub{ID: o.ID, Author: author(o.AuthorID), Content: o.Content}
@@ -170,8 +175,8 @@ func (s *Service) complete(ctx context.Context, guildID, channelID snowflake.ID,
 	return out, nil
 }
 
-func (s *Service) completeOne(ctx context.Context, guildID snowflake.ID, row store.Message) (Message, error) {
-	ms, err := s.complete(ctx, guildID, row.ChannelID, []store.Message{row})
+func (s *Service) completeOne(ctx context.Context, guildID snowflake.ID, row store.Message, caller snowflake.ID) (Message, error) {
+	ms, err := s.complete(ctx, guildID, row.ChannelID, []store.Message{row}, caller)
 	if err != nil {
 		return Message{}, err
 	}
@@ -234,7 +239,7 @@ func (s *Service) Create(ctx context.Context, channelID, userID snowflake.ID, f 
 	// Everything the event shows but created_at is read before the write,
 	// so nothing can fail between the write and the event.
 	m, err := s.completeOne(ctx, guildID, store.Message{ID: params.ID, ChannelID: channelID, AuthorID: &userID,
-		Content: content, ReplyToID: f.ReplyToID})
+		Content: content, ReplyToID: f.ReplyToID}, userID)
 	if err != nil {
 		return Message{}, err
 	}
@@ -388,7 +393,7 @@ func (s *Service) sentWith(ctx context.Context, guildID, channelID, userID snowf
 	if err != nil {
 		return Message{}, false, fmt.Errorf("messages: load message by nonce: %w", err)
 	}
-	m, err := s.completeOne(ctx, guildID, row)
+	m, err := s.completeOne(ctx, guildID, row, userID)
 	if err != nil {
 		return Message{}, false, err
 	}
@@ -446,7 +451,7 @@ func (s *Service) Edit(ctx context.Context, channelID, messageID, userID snowfla
 	}
 	// Everything the event shows but the edit is read before the write, so
 	// nothing can fail between the write and the event.
-	m, err := s.completeOne(ctx, guildID, row)
+	m, err := s.completeOne(ctx, guildID, row, userID)
 	if err != nil || content == row.Content {
 		return m, err
 	}
@@ -457,14 +462,15 @@ func (s *Service) Edit(ctx context.Context, channelID, messageID, userID snowfla
 		if row, err = s.load(ctx, channelID, messageID); err != nil {
 			return Message{}, err
 		}
-		return s.completeOne(ctx, guildID, row)
+		return s.completeOne(ctx, guildID, row, userID)
 	}
 	if err != nil {
 		return Message{}, fmt.Errorf("messages: edit message: %w", err)
 	}
 	m.Content, m.EditedAt, m.mentions = edited.Content, edited.EditedAt, storedMentions(edited)
-	s.publish(ctx, events.Event{Type: events.MessageUpdate, Audience: channelAudience(guildID, channelID),
-		Payload: m.Public()})
+	update := m.Public()
+	update.Reactions = nil // A shared event has no caller-specific state.
+	s.publish(ctx, events.Event{Type: events.MessageUpdate, Audience: channelAudience(guildID, channelID), Payload: update})
 	return m, nil
 }
 

@@ -457,6 +457,7 @@ describe("permission bits (TestPermissionBits)", () => {
     ADMINISTRATOR: 1n << 3n,
     MANAGE_CHANNELS: 1n << 4n,
     MANAGE_GUILD: 1n << 5n,
+    ADD_REACTIONS: 1n << 6n,
     STREAM: 1n << 9n,
     VIEW_CHANNEL: 1n << 10n,
     SEND_MESSAGES: 1n << 11n,
@@ -493,6 +494,7 @@ describe("permission bits (TestPermissionBits)", () => {
         PERM.SEND_MESSAGES |
         PERM.READ_MESSAGE_HISTORY |
         PERM.ATTACH_FILES |
+        PERM.ADD_REACTIONS |
         PERM.MENTION_EVERYONE |
         PERM.CREATE_INVITE |
         PERM.CHANGE_NICKNAME |

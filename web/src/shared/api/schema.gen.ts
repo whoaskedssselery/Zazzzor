@@ -998,7 +998,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Get a message
+         * @description Needs `VIEW_CHANNEL` and `READ_MESSAGE_HISTORY`.
+         */
+        get: operations["getMessage"];
         put?: never;
         post?: never;
         /**
@@ -1023,6 +1027,108 @@ export interface paths {
          *     a limit of 10 per second (bursts of 20) per user.
          */
         patch: operations["updateMessage"];
+        trace?: never;
+    };
+    "/channels/{channel_id}/messages/{message_id}/reactions/{emoji}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+                message_id: components["parameters"]["MessageID"];
+                /**
+                 * @description URL-encoded Unicode emoji. Send its exact UTF-8 bytes, with no normalization.
+                 *     A single grapheme of up to 32 bytes containing an Extended_Pictographic
+                 *     code point or a regional indicator pair, without whitespace or controls.
+                 * @example %F0%9F%91%8D
+                 */
+                emoji: components["parameters"]["ReactionEmoji"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List the users who reacted with an emoji
+         * @description Needs `VIEW_CHANNEL` and `READ_MESSAGE_HISTORY`. Results are ordered by
+         *     user ID ascending. An emoji without reactions returns an empty array.
+         */
+        get: operations["listReactionUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/channels/{channel_id}/messages/{message_id}/reactions/{emoji}/@me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+                message_id: components["parameters"]["MessageID"];
+                /**
+                 * @description URL-encoded Unicode emoji. Send its exact UTF-8 bytes, with no normalization.
+                 *     A single grapheme of up to 32 bytes containing an Extended_Pictographic
+                 *     code point or a regional indicator pair, without whitespace or controls.
+                 * @example %F0%9F%91%8D
+                 */
+                emoji: components["parameters"]["ReactionEmoji"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Add the caller's reaction
+         * @description Needs `VIEW_CHANNEL` and `READ_MESSAGE_HISTORY` in the channel.
+         *     Starting a new emoji needs `ADD_REACTIONS`. Joining an existing emoji
+         *     needs no additional permission. A message can have at most 20 distinct emoji.
+         *     Idempotent. Reaction writes share a per-user limit of 4 per second with a burst of 8.
+         */
+        put: operations["addOwnReaction"];
+        post?: never;
+        /**
+         * Remove the caller's reaction
+         * @description Needs `VIEW_CHANNEL` and `READ_MESSAGE_HISTORY` in the channel.
+         *     Idempotent. Reaction writes share a per-user limit of 4 per second with a burst of 8.
+         */
+        delete: operations["deleteOwnReaction"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/channels/{channel_id}/messages/{message_id}/reactions/{emoji}/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+                message_id: components["parameters"]["MessageID"];
+                /**
+                 * @description URL-encoded Unicode emoji. Send its exact UTF-8 bytes, with no normalization.
+                 *     A single grapheme of up to 32 bytes containing an Extended_Pictographic
+                 *     code point or a regional indicator pair, without whitespace or controls.
+                 * @example %F0%9F%91%8D
+                 */
+                emoji: components["parameters"]["ReactionEmoji"];
+                user_id: components["schemas"]["Snowflake"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a user's reaction
+         * @description Needs `VIEW_CHANNEL` and `READ_MESSAGE_HISTORY` in the channel.
+         *     Needs `MANAGE_MESSAGES`. The role hierarchy applies to other current members.
+         *     Idempotent. Reaction writes share a per-user limit of 4 per second with a burst of 8.
+         */
+        delete: operations["deleteUserReaction"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/channels/{channel_id}/typing": {
@@ -1481,6 +1587,7 @@ export interface components {
         /**
          * @description Permission bit mask as a decimal string; the bits are numbered as in
          *     Discord (e.g. `ADMINISTRATOR` = 8, `MANAGE_ROLES` = 268435456).
+         *     `ADD_REACTIONS` is bit 6 (64) and is granted to `@everyone` by default.
          *     Bits the server does not define are refused when set.
          * @example 268435456
          */
@@ -1658,6 +1765,25 @@ export interface components {
             /** @description True until the upload is bound to a message. */
             pending: boolean;
         };
+        Emoji: {
+            /** @description Always null for Unicode emoji. */
+            id: components["schemas"]["Snowflake"] | null;
+            /** @description The Unicode emoji. */
+            name: string;
+        };
+        Reaction: {
+            emoji: components["schemas"]["Emoji"];
+            count: number;
+            /** @description Whether the caller reacted with this emoji. */
+            me: boolean;
+        };
+        MessageReactionEvent: {
+            channel_id: components["schemas"]["Snowflake"];
+            guild_id: components["schemas"]["Snowflake"];
+            message_id: components["schemas"]["Snowflake"];
+            user_id: components["schemas"]["Snowflake"];
+            emoji: components["schemas"]["Emoji"];
+        };
         Message: {
             id: components["schemas"]["Snowflake"];
             channel_id: components["schemas"]["Snowflake"];
@@ -1688,6 +1814,12 @@ export interface components {
             mention_everyone: boolean;
             /** @description The broadcast was @here, limited to online members. @everyone takes precedence when both occur. */
             mention_here: boolean;
+            /**
+             * @description Ordered by first addition, with `me` computed for the caller.
+             *     Always present in REST message responses and empty in `MESSAGE_CREATE`.
+             *     Omitted in `MESSAGE_UPDATE`; clients keep their reaction state.
+             */
+            reactions?: components["schemas"]["Reaction"][];
         };
         CreateMessageRequest: {
             /** @description Up to 4000 characters after trimming. Required unless attachment_ids is non-empty. */
@@ -1715,7 +1847,7 @@ export interface components {
             t?: string;
             s?: number;
             /** @description The payload; null for HEARTBEAT_ACK. */
-            d: null | components["schemas"]["GatewayHello"] | components["schemas"]["GatewayReady"] | components["schemas"]["GuildState"] | components["schemas"]["Guild"] | components["schemas"]["GuildDeleteEvent"] | components["schemas"]["MemberEvent"] | components["schemas"]["MemberRemoveEvent"] | components["schemas"]["RoleEvent"] | components["schemas"]["RoleDeleteEvent"] | components["schemas"]["Channel"] | components["schemas"]["Message"] | components["schemas"]["MessageDeleteEvent"] | components["schemas"]["ReadState"] | components["schemas"]["TypingStartEvent"] | components["schemas"]["Presence"] | components["schemas"]["User"] | components["schemas"]["VoiceState"] | components["schemas"]["VoiceMove"];
+            d: null | components["schemas"]["GatewayHello"] | components["schemas"]["GatewayReady"] | components["schemas"]["GuildState"] | components["schemas"]["Guild"] | components["schemas"]["GuildDeleteEvent"] | components["schemas"]["MemberEvent"] | components["schemas"]["MemberRemoveEvent"] | components["schemas"]["RoleEvent"] | components["schemas"]["RoleDeleteEvent"] | components["schemas"]["Channel"] | components["schemas"]["Message"] | components["schemas"]["MessageDeleteEvent"] | components["schemas"]["MessageReactionEvent"] | components["schemas"]["ReadState"] | components["schemas"]["TypingStartEvent"] | components["schemas"]["Presence"] | components["schemas"]["User"] | components["schemas"]["VoiceState"] | components["schemas"]["VoiceMove"];
         };
         GatewayHello: {
             /** @description Send HEARTBEAT this often (30000); 150 s without one closes the connection with 4009, allowing for throttled timers in hidden browser tabs. */
@@ -1936,6 +2068,13 @@ export interface components {
         /** @description The role or member the overwrite is for. */
         TargetID: components["schemas"]["Snowflake"];
         MessageID: components["schemas"]["Snowflake"];
+        /**
+         * @description URL-encoded Unicode emoji. Send its exact UTF-8 bytes, with no normalization.
+         *     A single grapheme of up to 32 bytes containing an Extended_Pictographic
+         *     code point or a regional indicator pair, without whitespace or controls.
+         * @example %F0%9F%91%8D
+         */
+        ReactionEmoji: string;
         /** @description 8 base62 characters; anything else is `404 not_found`. */
         InviteCode: string;
     };
@@ -3644,6 +3783,36 @@ export interface operations {
             500: components["responses"]["Problem"];
         };
     };
+    getMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+                message_id: components["parameters"]["MessageID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The message. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Message"];
+                };
+            };
+            /** @description `unauthenticated`. */
+            401: components["responses"]["Problem"];
+            /** @description `missing_permission`. */
+            403: components["responses"]["Problem"];
+            /** @description `not_found`: message or channel is unavailable. */
+            404: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
     deleteMessage: {
         parameters: {
             query?: never;
@@ -3708,6 +3877,164 @@ export interface operations {
             404: components["responses"]["Problem"];
             /** @description `unsupported_media_type`. */
             415: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    listReactionUsers: {
+        parameters: {
+            query?: {
+                /** @description Return only users with a greater ID. */
+                after?: components["schemas"]["Snowflake"];
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+                message_id: components["parameters"]["MessageID"];
+                /**
+                 * @description URL-encoded Unicode emoji. Send its exact UTF-8 bytes, with no normalization.
+                 *     A single grapheme of up to 32 bytes containing an Extended_Pictographic
+                 *     code point or a regional indicator pair, without whitespace or controls.
+                 * @example %F0%9F%91%8D
+                 */
+                emoji: components["parameters"]["ReactionEmoji"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page of users. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"][];
+                };
+            };
+            /** @description `validation_failed` for an invalid emoji or query. */
+            400: components["responses"]["Problem"];
+            /** @description `unauthenticated`. */
+            401: components["responses"]["Problem"];
+            /** @description `missing_permission`. */
+            403: components["responses"]["Problem"];
+            /** @description `not_found`: message or channel is unavailable. */
+            404: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    addOwnReaction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+                message_id: components["parameters"]["MessageID"];
+                /**
+                 * @description URL-encoded Unicode emoji. Send its exact UTF-8 bytes, with no normalization.
+                 *     A single grapheme of up to 32 bytes containing an Extended_Pictographic
+                 *     code point or a regional indicator pair, without whitespace or controls.
+                 * @example %F0%9F%91%8D
+                 */
+                emoji: components["parameters"]["ReactionEmoji"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The requested reaction state is in effect. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `validation_failed` for an invalid emoji, or `too_many_reactions` for a 21st distinct emoji. */
+            400: components["responses"]["Problem"];
+            /** @description `unauthenticated`. */
+            401: components["responses"]["Problem"];
+            /** @description `origin_not_allowed`, `missing_permission`. */
+            403: components["responses"]["Problem"];
+            /** @description `not_found`: message or channel is unavailable. */
+            404: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    deleteOwnReaction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+                message_id: components["parameters"]["MessageID"];
+                /**
+                 * @description URL-encoded Unicode emoji. Send its exact UTF-8 bytes, with no normalization.
+                 *     A single grapheme of up to 32 bytes containing an Extended_Pictographic
+                 *     code point or a regional indicator pair, without whitespace or controls.
+                 * @example %F0%9F%91%8D
+                 */
+                emoji: components["parameters"]["ReactionEmoji"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The requested reaction state is in effect. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `validation_failed` for an invalid emoji. */
+            400: components["responses"]["Problem"];
+            /** @description `unauthenticated`. */
+            401: components["responses"]["Problem"];
+            /** @description `origin_not_allowed`, `missing_permission`. */
+            403: components["responses"]["Problem"];
+            /** @description `not_found`: message or channel is unavailable. */
+            404: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    deleteUserReaction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+                message_id: components["parameters"]["MessageID"];
+                /**
+                 * @description URL-encoded Unicode emoji. Send its exact UTF-8 bytes, with no normalization.
+                 *     A single grapheme of up to 32 bytes containing an Extended_Pictographic
+                 *     code point or a regional indicator pair, without whitespace or controls.
+                 * @example %F0%9F%91%8D
+                 */
+                emoji: components["parameters"]["ReactionEmoji"];
+                user_id: components["schemas"]["Snowflake"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The requested reaction state is in effect. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `validation_failed` for an invalid emoji. */
+            400: components["responses"]["Problem"];
+            /** @description `unauthenticated`. */
+            401: components["responses"]["Problem"];
+            /** @description `origin_not_allowed`, `missing_permission`, or `role_hierarchy`. */
+            403: components["responses"]["Problem"];
+            /** @description `not_found`: message or channel is unavailable. */
+            404: components["responses"]["Problem"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["Problem"];
         };

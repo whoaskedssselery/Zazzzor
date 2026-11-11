@@ -55,6 +55,11 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     items: [
       item(PERM.SEND_MESSAGES, "Отправлять сообщения", "Писать в текстовых каналах."),
       item(PERM.ATTACH_FILES, "Прикреплять файлы", "Отправлять картинки и файлы."),
+      item(
+        PERM.ADD_REACTIONS,
+        "Добавлять реакции",
+        "Ставить новые реакции. Присоединиться к уже поставленной можно и без этого права.",
+      ),
       item(PERM.MENTION_EVERYONE, "Упоминать @everyone", "Упоминать всех участников сразу."),
       item(PERM.MANAGE_MESSAGES, "Управлять сообщениями", "Удалять сообщения других участников."),
       item(PERM.READ_MESSAGE_HISTORY, "Читать историю", "Видеть сообщения, отправленные до входа в канал."),

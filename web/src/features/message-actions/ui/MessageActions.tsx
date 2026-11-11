@@ -1,4 +1,4 @@
-import { Copy, Ellipsis, Hash, Pencil, Reply, Trash2 } from "lucide-react";
+import { Copy, Ellipsis, Hash, Pencil, Reply, SmilePlus, Trash2 } from "lucide-react";
 import type { MouseEvent, ReactNode } from "react";
 import type { Message } from "@/entities/message";
 import {
@@ -15,6 +15,7 @@ import {
   IconButton,
   useToast,
 } from "@/shared/ui";
+import { EmojiPicker } from "./EmojiPicker";
 
 /** What the user may do with one message, and what the chat does when they do. */
 export interface MessageActionHandlers {
@@ -29,6 +30,8 @@ export interface MessageActionHandlers {
   onEdit: () => void;
   /** `skipConfirm` when Shift was held, as Discord does. */
   onDelete: (skipConfirm: boolean) => void;
+  /** Puts the user's reaction; absent without ADD_REACTIONS. */
+  onReact?: ((emoji: string) => void) | undefined;
 }
 
 /** Copies text and says so; a browser that refuses says that instead. */
@@ -109,6 +112,11 @@ export const MessageToolbar = (props: MessageActionHandlers) => {
   const quick = items.filter((i) => i.key === "reply" || i.key === "edit" || i.key === "delete");
   return (
     <div className="absolute -top-4 right-4 z-10 hidden items-center rounded-md bg-overlay p-0.5 shadow-float group-focus-within:flex group-hover:flex has-[[data-state=open]]:flex">
+      {props.onReact && (
+        <EmojiPicker onPick={props.onReact}>
+          <IconButton size="sm" label="Добавить реакцию" icon={SmilePlus} />
+        </EmojiPicker>
+      )}
       {quick.map((i) => (
         <IconButton
           key={i.key}

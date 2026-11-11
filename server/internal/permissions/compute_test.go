@@ -365,7 +365,8 @@ func TestPermissionBits(t *testing.T) {
 		"CREATE_INVITE": {permissions.CreateInvite, 1 << 0}, "KICK_MEMBERS": {permissions.KickMembers, 1 << 1},
 		"BAN_MEMBERS": {permissions.BanMembers, 1 << 2}, "ADMINISTRATOR": {permissions.Administrator, 1 << 3},
 		"MANAGE_CHANNELS": {permissions.ManageChannels, 1 << 4}, "MANAGE_GUILD": {permissions.ManageGuild, 1 << 5},
-		"STREAM": {permissions.Stream, 1 << 9}, "VIEW_CHANNEL": {permissions.ViewChannel, 1 << 10},
+		"ADD_REACTIONS": {permissions.AddReactions, 1 << 6},
+		"STREAM":        {permissions.Stream, 1 << 9}, "VIEW_CHANNEL": {permissions.ViewChannel, 1 << 10},
 		"SEND_MESSAGES": {permissions.SendMessages, 1 << 11}, "MANAGE_MESSAGES": {permissions.ManageMessages, 1 << 13},
 		"ATTACH_FILES": {permissions.AttachFiles, 1 << 15}, "READ_MESSAGE_HISTORY": {permissions.ReadMessageHistory, 1 << 16},
 		"MENTION_EVERYONE": {permissions.MentionEveryone, 1 << 17}, "CONNECT": {permissions.Connect, 1 << 20},
@@ -385,7 +386,7 @@ func TestPermissionBits(t *testing.T) {
 		t.Errorf("All = %#x, want OR of constants %#x", uint64(permissions.All), or)
 	}
 	wantEveryone := permissions.ViewChannel | permissions.SendMessages | permissions.ReadMessageHistory |
-		permissions.AttachFiles | permissions.MentionEveryone | permissions.CreateInvite |
+		permissions.AddReactions | permissions.AttachFiles | permissions.MentionEveryone | permissions.CreateInvite |
 		permissions.ChangeNickname | permissions.Connect | permissions.Speak | permissions.Stream |
 		permissions.UseVoiceActivity
 	if permissions.DefaultEveryone != wantEveryone {

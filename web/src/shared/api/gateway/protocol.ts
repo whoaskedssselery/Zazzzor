@@ -267,6 +267,14 @@ const attachmentSchema: z.ZodMiniType<S["Attachment"]> = z.object({
   pending: z.boolean(),
 });
 
+const emojiSchema: z.ZodMiniType<S["Emoji"]> = z.object({ id: z.nullable(snowflake), name: z.string() });
+
+const reactionSchema: z.ZodMiniType<S["Reaction"]> = z.object({
+  emoji: emojiSchema,
+  count: z.int().check(z.positive()),
+  me: z.boolean(),
+});
+
 const messageSchema: z.ZodMiniType<S["Message"]> = z.object({
   id: snowflake,
   channel_id: snowflake,
@@ -282,6 +290,7 @@ const messageSchema: z.ZodMiniType<S["Message"]> = z.object({
   mention_role_ids: z.array(snowflake),
   mention_everyone: z.boolean(),
   mention_here: z.boolean(),
+  reactions: z.optional(z.array(reactionSchema)),
   nonce: z.optional(z.string()),
 });
 
@@ -291,7 +300,17 @@ export interface ChatEvents {
   MESSAGE_UPDATE: S["Message"];
   MESSAGE_DELETE: S["MessageDeleteEvent"];
   TYPING_START: S["TypingStartEvent"];
+  MESSAGE_REACTION_ADD: S["MessageReactionEvent"];
+  MESSAGE_REACTION_REMOVE: S["MessageReactionEvent"];
 }
+
+const reactionEventSchema: z.ZodMiniType<S["MessageReactionEvent"]> = z.object({
+  channel_id: snowflake,
+  guild_id: snowflake,
+  message_id: snowflake,
+  user_id: snowflake,
+  emoji: emojiSchema,
+});
 
 const chatSchemas: { [K in keyof ChatEvents]: z.ZodMiniType<ChatEvents[K]> } = {
   MESSAGE_CREATE: messageSchema,
@@ -303,6 +322,8 @@ const chatSchemas: { [K in keyof ChatEvents]: z.ZodMiniType<ChatEvents[K]> } = {
     last_message_id: z.nullable(snowflake),
   }),
   TYPING_START: z.object({ channel_id: snowflake, guild_id: snowflake, user_id: snowflake, timestamp: z.string() }),
+  MESSAGE_REACTION_ADD: reactionEventSchema,
+  MESSAGE_REACTION_REMOVE: reactionEventSchema,
 };
 
 /** Whether `t` is a chat event. */
