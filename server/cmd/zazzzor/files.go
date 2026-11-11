@@ -12,6 +12,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/config"
 	"github.com/whoaskedssselery/zazzzor/server/internal/files"
 	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
+	"github.com/whoaskedssselery/zazzzor/server/internal/messages"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
 
@@ -25,13 +26,20 @@ const (
 // files.PurgeInterval, logging every problem. The returned function stops
 // the job and waits for it; serve calls it on shutdown.
 func startFilePurge(ctx context.Context, disk *files.Disk, logger *slog.Logger) (stop func()) {
+	return startBackground(ctx, func(ctx context.Context) {
+		disk.RunPurge(ctx, files.PurgeInterval, func(err error) {
+			logger.Warn("purge trash", "err", err.Error())
+		})
+	})
+}
+
+// startBackground runs a worker and returns a function that stops and joins it.
+func startBackground(ctx context.Context, run func(context.Context)) func() {
 	ctx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		disk.RunPurge(ctx, files.PurgeInterval, func(err error) {
-			logger.Warn("purge trash", "err", err.Error())
-		})
+		run(ctx)
 	}()
 	return func() {
 		cancel()
@@ -68,7 +76,7 @@ func filesCommand(args []string, env func(string) string, stdout, stderr io.Writ
 		_, _ = fmt.Fprintf(stderr, "files reconcile: %v\n", err)
 		return 1
 	}
-	rep, err := m.Files.Reconcile(ctx, fileReferences{auth: m.Auth, guilds: m.Guilds})
+	rep, err := m.Files.Reconcile(ctx, fileReferences{auth: m.Auth, guilds: m.Guilds, messages: m.Messages})
 	for _, w := range rep.Warnings {
 		_, _ = fmt.Fprintf(stderr, "files reconcile: warning: %v\n", w)
 	}
@@ -88,10 +96,11 @@ func filesCommand(args []string, env func(string) string, stdout, stderr io.Writ
 }
 
 // fileReferences answers files.Reconcile from the modules that own the
-// image columns: auth (avatars) and guilds (icons).
+// avatar, icon and attachment records.
 type fileReferences struct {
-	auth   *auth.Service
-	guilds *guilds.Service
+	auth     *auth.Service
+	guilds   *guilds.Service
+	messages *messages.Service
 }
 
 var _ files.References = fileReferences{}
@@ -106,7 +115,11 @@ func (r fileReferences) ImageReferences(ctx context.Context) ([]files.Reference,
 	if err != nil {
 		return nil, fmt.Errorf("icons: %w", err)
 	}
-	return append(avatars, icons...), nil
+	attachments, err := r.messages.AttachmentReferences(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("attachments: %w", err)
+	}
+	return append(append(avatars, icons...), attachments...), nil
 }
 
 // ImageReferenced implements files.References.
@@ -118,8 +131,14 @@ func (r fileReferences) ImageReferenced(ctx context.Context, ref files.Reference
 		ok, err = r.auth.AvatarReferenced(ctx, ref.OwnerID, ref.Hash)
 	case files.KindIcon:
 		ok, err = r.guilds.IconReferenced(ctx, ref.OwnerID, ref.Hash)
+	case files.KindAttachment:
+		id, parseErr := snowflake.Parse(ref.Hash)
+		if parseErr != nil {
+			return false, fmt.Errorf("attachment reference: %w", parseErr)
+		}
+		ok, err = r.messages.AttachmentReferenced(ctx, ref.OwnerID, id)
 	default:
-		return false, fmt.Errorf("unknown image kind %q", ref.Kind)
+		return false, fmt.Errorf("unknown file kind %q", ref.Kind)
 	}
 	if err != nil {
 		return false, fmt.Errorf("%s: %w", ref.Kind, err)
