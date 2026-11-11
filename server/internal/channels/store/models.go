@@ -27,6 +27,7 @@ type Channel struct {
 	Position         int32
 	PermissionSynced bool
 	CreatedAt        time.Time
+	LastMessageID    *snowflake.ID
 }
 
 type Guild struct {
@@ -75,13 +76,17 @@ type MemberRole struct {
 }
 
 type Message struct {
-	ID        int64
-	ChannelID int64
-	AuthorID  pgtype.Int8
-	Content   string
-	ReplyToID pgtype.Int8
-	EditedAt  *time.Time
-	CreatedAt time.Time
+	ID              int64
+	ChannelID       int64
+	AuthorID        pgtype.Int8
+	Content         string
+	ReplyToID       pgtype.Int8
+	EditedAt        *time.Time
+	CreatedAt       time.Time
+	MentionUserIds  []int64
+	MentionRoleIds  []int64
+	MentionEveryone bool
+	MentionHere     bool
 }
 
 type MessageAttachment struct {
@@ -99,6 +104,11 @@ type MessageAttachment struct {
 	CreatedAt   time.Time
 }
 
+type MessageMentionRecipient struct {
+	MessageID int64
+	UserID    int64
+}
+
 type MessageNonce struct {
 	AuthorID  int64
 	ChannelID int64
@@ -113,6 +123,14 @@ type Overwrite struct {
 	TargetType int16
 	Allow      int64
 	Deny       int64
+}
+
+type ReadState struct {
+	UserID       int64
+	ChannelID    int64
+	GuildID      int64
+	LastReadID   int64
+	MentionCount int32
 }
 
 type Role struct {

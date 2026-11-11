@@ -1,7 +1,9 @@
 -- name: CreateMessage :one
 -- created_at comes from the database clock, like edited_at.
-INSERT INTO messages (id, channel_id, author_id, content, reply_to_id, created_at)
-VALUES (@id, @channel_id, @author_id, @content, @reply_to_id, now())
+INSERT INTO messages (id, channel_id, author_id, content, reply_to_id, created_at,
+    mention_user_ids, mention_role_ids, mention_everyone, mention_here)
+VALUES (@id, @channel_id, @author_id, @content, @reply_to_id, now(),
+    @mention_user_ids, @mention_role_ids, @mention_everyone, @mention_here)
 RETURNING *;
 
 -- name: MessageInChannel :one
@@ -28,7 +30,8 @@ SELECT * FROM messages WHERE channel_id = @channel_id AND id = ANY(@ids::bigint[
 -- name: EditMessage :one
 -- Changes the content of the author's message if it differs; no row when
 -- the message is gone, not the author's or already says that.
-UPDATE messages SET content = @content, edited_at = now()
+UPDATE messages SET content = @content, edited_at = now(), mention_user_ids = @mention_user_ids,
+    mention_role_ids = @mention_role_ids, mention_everyone = @mention_everyone, mention_here = @mention_here
 WHERE id = @id AND channel_id = @channel_id AND author_id = @author_id AND content <> @content
 RETURNING *;
 
@@ -92,3 +95,46 @@ SELECT * FROM attachment_trash ORDER BY id;
 
 -- name: ForgetAttachmentTrash :exec
 DELETE FROM attachment_trash WHERE id = $1;
+
+
+-- name: SetLastMessage :exec
+UPDATE channels SET last_message_id = GREATEST(last_message_id, @message_id::bigint) WHERE id = @channel_id;
+
+-- name: RecomputeLastMessage :one
+UPDATE channels
+SET last_message_id = (
+    SELECT id FROM messages WHERE channel_id = @channel_id ORDER BY id DESC LIMIT 1
+)
+WHERE id = @channel_id
+RETURNING last_message_id;
+
+-- name: PutMentionRecipients :exec
+INSERT INTO message_mention_recipients (message_id, user_id)
+SELECT @message_id::bigint, user_id FROM unnest(@user_ids::bigint[]) AS target(user_id);
+
+-- name: ClearMentionRecipients :exec
+DELETE FROM message_mention_recipients WHERE message_id = @message_id;
+
+-- name: IncrementMentions :exec
+INSERT INTO read_states (user_id, channel_id, guild_id, last_read_id, mention_count)
+SELECT user_id, @channel_id, @guild_id, 0, 1
+FROM unnest(@user_ids::bigint[]) AS target(user_id)
+ON CONFLICT (user_id, channel_id) DO UPDATE SET mention_count = read_states.mention_count + 1
+WHERE read_states.last_read_id < @message_id::bigint;
+
+-- name: AdvanceReadStates :many
+INSERT INTO read_states (user_id, guild_id, channel_id, last_read_id, mention_count)
+SELECT @user_id, @guild_id, target.channel_id, target.message_id,
+    (SELECT count(*) FROM messages AS m
+        JOIN message_mention_recipients AS r ON r.message_id = m.id
+        WHERE m.channel_id = target.channel_id AND m.id > target.message_id AND r.user_id = @user_id)
+FROM (SELECT unnest(@channel_ids::bigint[]) AS channel_id, unnest(@message_ids::bigint[]) AS message_id) AS target
+ON CONFLICT (user_id, channel_id) DO UPDATE
+SET last_read_id = EXCLUDED.last_read_id, mention_count = EXCLUDED.mention_count
+WHERE read_states.last_read_id < EXCLUDED.last_read_id
+   OR (read_states.last_read_id = EXCLUDED.last_read_id AND read_states.mention_count <> EXCLUDED.mention_count)
+RETURNING *;
+
+-- name: ReadStatesForChannels :many
+SELECT * FROM read_states WHERE user_id = @user_id AND channel_id = ANY(@channel_ids::bigint[])
+ORDER BY channel_id;

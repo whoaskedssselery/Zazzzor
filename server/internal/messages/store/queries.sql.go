@@ -13,6 +13,58 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
 
+const advanceReadStates = `-- name: AdvanceReadStates :many
+INSERT INTO read_states (user_id, guild_id, channel_id, last_read_id, mention_count)
+SELECT $1, $2, target.channel_id, target.message_id,
+    (SELECT count(*) FROM messages AS m
+        JOIN message_mention_recipients AS r ON r.message_id = m.id
+        WHERE m.channel_id = target.channel_id AND m.id > target.message_id AND r.user_id = $1)
+FROM (SELECT unnest($3::bigint[]) AS channel_id, unnest($4::bigint[]) AS message_id) AS target
+ON CONFLICT (user_id, channel_id) DO UPDATE
+SET last_read_id = EXCLUDED.last_read_id, mention_count = EXCLUDED.mention_count
+WHERE read_states.last_read_id < EXCLUDED.last_read_id
+   OR (read_states.last_read_id = EXCLUDED.last_read_id AND read_states.mention_count <> EXCLUDED.mention_count)
+RETURNING user_id, channel_id, guild_id, last_read_id, mention_count
+`
+
+type AdvanceReadStatesParams struct {
+	UserID     int64
+	GuildID    int64
+	ChannelIds []int64
+	MessageIds []int64
+}
+
+func (q *Queries) AdvanceReadStates(ctx context.Context, db DBTX, arg AdvanceReadStatesParams) ([]ReadState, error) {
+	rows, err := db.Query(ctx, advanceReadStates,
+		arg.UserID,
+		arg.GuildID,
+		arg.ChannelIds,
+		arg.MessageIds,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReadState
+	for rows.Next() {
+		var i ReadState
+		if err := rows.Scan(
+			&i.UserID,
+			&i.ChannelID,
+			&i.GuildID,
+			&i.LastReadID,
+			&i.MentionCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const attachmentForReader = `-- name: AttachmentForReader :one
 SELECT id, channel_id, uploader_id, message_id, filename, content_type, size, width, height, digest, position, created_at FROM message_attachments
 WHERE id = $1 AND channel_id = $2
@@ -221,6 +273,15 @@ func (q *Queries) ClaimNonce(ctx context.Context, db DBTX, arg ClaimNonceParams)
 	return result.RowsAffected(), nil
 }
 
+const clearMentionRecipients = `-- name: ClearMentionRecipients :exec
+DELETE FROM message_mention_recipients WHERE message_id = $1
+`
+
+func (q *Queries) ClearMentionRecipients(ctx context.Context, db DBTX, messageID int64) error {
+	_, err := db.Exec(ctx, clearMentionRecipients, messageID)
+	return err
+}
+
 const createAttachment = `-- name: CreateAttachment :one
 INSERT INTO message_attachments (id, channel_id, uploader_id, filename, content_type, size, width, height, digest, created_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -272,17 +333,23 @@ func (q *Queries) CreateAttachment(ctx context.Context, db DBTX, arg CreateAttac
 }
 
 const createMessage = `-- name: CreateMessage :one
-INSERT INTO messages (id, channel_id, author_id, content, reply_to_id, created_at)
-VALUES ($1, $2, $3, $4, $5, now())
-RETURNING id, channel_id, author_id, content, reply_to_id, edited_at, created_at
+INSERT INTO messages (id, channel_id, author_id, content, reply_to_id, created_at,
+    mention_user_ids, mention_role_ids, mention_everyone, mention_here)
+VALUES ($1, $2, $3, $4, $5, now(),
+    $6, $7, $8, $9)
+RETURNING id, channel_id, author_id, content, reply_to_id, edited_at, created_at, mention_user_ids, mention_role_ids, mention_everyone, mention_here
 `
 
 type CreateMessageParams struct {
-	ID        snowflake.ID
-	ChannelID snowflake.ID
-	AuthorID  *snowflake.ID
-	Content   string
-	ReplyToID *snowflake.ID
+	ID              snowflake.ID
+	ChannelID       snowflake.ID
+	AuthorID        *snowflake.ID
+	Content         string
+	ReplyToID       *snowflake.ID
+	MentionUserIds  []int64
+	MentionRoleIds  []int64
+	MentionEveryone bool
+	MentionHere     bool
 }
 
 // created_at comes from the database clock, like edited_at.
@@ -293,6 +360,10 @@ func (q *Queries) CreateMessage(ctx context.Context, db DBTX, arg CreateMessageP
 		arg.AuthorID,
 		arg.Content,
 		arg.ReplyToID,
+		arg.MentionUserIds,
+		arg.MentionRoleIds,
+		arg.MentionEveryone,
+		arg.MentionHere,
 	)
 	var i Message
 	err := row.Scan(
@@ -303,6 +374,10 @@ func (q *Queries) CreateMessage(ctx context.Context, db DBTX, arg CreateMessageP
 		&i.ReplyToID,
 		&i.EditedAt,
 		&i.CreatedAt,
+		&i.MentionUserIds,
+		&i.MentionRoleIds,
+		&i.MentionEveryone,
+		&i.MentionHere,
 	)
 	return i, err
 }
@@ -359,16 +434,21 @@ func (q *Queries) DropExpiredNonces(ctx context.Context, db DBTX, authorID snowf
 }
 
 const editMessage = `-- name: EditMessage :one
-UPDATE messages SET content = $1, edited_at = now()
-WHERE id = $2 AND channel_id = $3 AND author_id = $4 AND content <> $1
-RETURNING id, channel_id, author_id, content, reply_to_id, edited_at, created_at
+UPDATE messages SET content = $1, edited_at = now(), mention_user_ids = $2,
+    mention_role_ids = $3, mention_everyone = $4, mention_here = $5
+WHERE id = $6 AND channel_id = $7 AND author_id = $8 AND content <> $1
+RETURNING id, channel_id, author_id, content, reply_to_id, edited_at, created_at, mention_user_ids, mention_role_ids, mention_everyone, mention_here
 `
 
 type EditMessageParams struct {
-	Content   string
-	ID        snowflake.ID
-	ChannelID snowflake.ID
-	AuthorID  *snowflake.ID
+	Content         string
+	MentionUserIds  []int64
+	MentionRoleIds  []int64
+	MentionEveryone bool
+	MentionHere     bool
+	ID              snowflake.ID
+	ChannelID       snowflake.ID
+	AuthorID        *snowflake.ID
 }
 
 // Changes the content of the author's message if it differs; no row when
@@ -376,6 +456,10 @@ type EditMessageParams struct {
 func (q *Queries) EditMessage(ctx context.Context, db DBTX, arg EditMessageParams) (Message, error) {
 	row := db.QueryRow(ctx, editMessage,
 		arg.Content,
+		arg.MentionUserIds,
+		arg.MentionRoleIds,
+		arg.MentionEveryone,
+		arg.MentionHere,
 		arg.ID,
 		arg.ChannelID,
 		arg.AuthorID,
@@ -389,6 +473,10 @@ func (q *Queries) EditMessage(ctx context.Context, db DBTX, arg EditMessageParam
 		&i.ReplyToID,
 		&i.EditedAt,
 		&i.CreatedAt,
+		&i.MentionUserIds,
+		&i.MentionRoleIds,
+		&i.MentionEveryone,
+		&i.MentionHere,
 	)
 	return i, err
 }
@@ -411,8 +499,33 @@ func (q *Queries) ForgetAttachmentTrash(ctx context.Context, db DBTX, id int64) 
 	return err
 }
 
+const incrementMentions = `-- name: IncrementMentions :exec
+INSERT INTO read_states (user_id, channel_id, guild_id, last_read_id, mention_count)
+SELECT user_id, $1, $2, 0, 1
+FROM unnest($3::bigint[]) AS target(user_id)
+ON CONFLICT (user_id, channel_id) DO UPDATE SET mention_count = read_states.mention_count + 1
+WHERE read_states.last_read_id < $4::bigint
+`
+
+type IncrementMentionsParams struct {
+	ChannelID int64
+	GuildID   int64
+	UserIds   []int64
+	MessageID int64
+}
+
+func (q *Queries) IncrementMentions(ctx context.Context, db DBTX, arg IncrementMentionsParams) error {
+	_, err := db.Exec(ctx, incrementMentions,
+		arg.ChannelID,
+		arg.GuildID,
+		arg.UserIds,
+		arg.MessageID,
+	)
+	return err
+}
+
 const messageByNonce = `-- name: MessageByNonce :one
-SELECT id, channel_id, author_id, content, reply_to_id, edited_at, created_at FROM messages
+SELECT id, channel_id, author_id, content, reply_to_id, edited_at, created_at, mention_user_ids, mention_role_ids, mention_everyone, mention_here FROM messages
 WHERE id = (SELECT n.message_id FROM message_nonces n
             WHERE n.author_id = $1 AND n.channel_id = $2 AND n.nonce = $3 AND n.expires_at > now())
 `
@@ -435,12 +548,16 @@ func (q *Queries) MessageByNonce(ctx context.Context, db DBTX, arg MessageByNonc
 		&i.ReplyToID,
 		&i.EditedAt,
 		&i.CreatedAt,
+		&i.MentionUserIds,
+		&i.MentionRoleIds,
+		&i.MentionEveryone,
+		&i.MentionHere,
 	)
 	return i, err
 }
 
 const messageInChannel = `-- name: MessageInChannel :one
-SELECT id, channel_id, author_id, content, reply_to_id, edited_at, created_at FROM messages WHERE id = $1 AND channel_id = $2
+SELECT id, channel_id, author_id, content, reply_to_id, edited_at, created_at, mention_user_ids, mention_role_ids, mention_everyone, mention_here FROM messages WHERE id = $1 AND channel_id = $2
 `
 
 type MessageInChannelParams struct {
@@ -459,12 +576,16 @@ func (q *Queries) MessageInChannel(ctx context.Context, db DBTX, arg MessageInCh
 		&i.ReplyToID,
 		&i.EditedAt,
 		&i.CreatedAt,
+		&i.MentionUserIds,
+		&i.MentionRoleIds,
+		&i.MentionEveryone,
+		&i.MentionHere,
 	)
 	return i, err
 }
 
 const messagesAfter = `-- name: MessagesAfter :many
-SELECT id, channel_id, author_id, content, reply_to_id, edited_at, created_at FROM messages
+SELECT id, channel_id, author_id, content, reply_to_id, edited_at, created_at, mention_user_ids, mention_role_ids, mention_everyone, mention_here FROM messages
 WHERE channel_id = $1 AND id > $2::bigint
 ORDER BY id
 LIMIT $3
@@ -494,6 +615,10 @@ func (q *Queries) MessagesAfter(ctx context.Context, db DBTX, arg MessagesAfterP
 			&i.ReplyToID,
 			&i.EditedAt,
 			&i.CreatedAt,
+			&i.MentionUserIds,
+			&i.MentionRoleIds,
+			&i.MentionEveryone,
+			&i.MentionHere,
 		); err != nil {
 			return nil, err
 		}
@@ -506,7 +631,7 @@ func (q *Queries) MessagesAfter(ctx context.Context, db DBTX, arg MessagesAfterP
 }
 
 const messagesBefore = `-- name: MessagesBefore :many
-SELECT id, channel_id, author_id, content, reply_to_id, edited_at, created_at FROM messages
+SELECT id, channel_id, author_id, content, reply_to_id, edited_at, created_at, mention_user_ids, mention_role_ids, mention_everyone, mention_here FROM messages
 WHERE channel_id = $1 AND ($2::bigint = 0 OR id < $2::bigint)
 ORDER BY id DESC
 LIMIT $3
@@ -536,6 +661,10 @@ func (q *Queries) MessagesBefore(ctx context.Context, db DBTX, arg MessagesBefor
 			&i.ReplyToID,
 			&i.EditedAt,
 			&i.CreatedAt,
+			&i.MentionUserIds,
+			&i.MentionRoleIds,
+			&i.MentionEveryone,
+			&i.MentionHere,
 		); err != nil {
 			return nil, err
 		}
@@ -548,7 +677,7 @@ func (q *Queries) MessagesBefore(ctx context.Context, db DBTX, arg MessagesBefor
 }
 
 const messagesByIDs = `-- name: MessagesByIDs :many
-SELECT id, channel_id, author_id, content, reply_to_id, edited_at, created_at FROM messages WHERE channel_id = $1 AND id = ANY($2::bigint[])
+SELECT id, channel_id, author_id, content, reply_to_id, edited_at, created_at, mention_user_ids, mention_role_ids, mention_everyone, mention_here FROM messages WHERE channel_id = $1 AND id = ANY($2::bigint[])
 `
 
 type MessagesByIDsParams struct {
@@ -574,6 +703,10 @@ func (q *Queries) MessagesByIDs(ctx context.Context, db DBTX, arg MessagesByIDsP
 			&i.ReplyToID,
 			&i.EditedAt,
 			&i.CreatedAt,
+			&i.MentionUserIds,
+			&i.MentionRoleIds,
+			&i.MentionEveryone,
+			&i.MentionHere,
 		); err != nil {
 			return nil, err
 		}
@@ -583,6 +716,21 @@ func (q *Queries) MessagesByIDs(ctx context.Context, db DBTX, arg MessagesByIDsP
 		return nil, err
 	}
 	return items, nil
+}
+
+const putMentionRecipients = `-- name: PutMentionRecipients :exec
+INSERT INTO message_mention_recipients (message_id, user_id)
+SELECT $1::bigint, user_id FROM unnest($2::bigint[]) AS target(user_id)
+`
+
+type PutMentionRecipientsParams struct {
+	MessageID int64
+	UserIds   []int64
+}
+
+func (q *Queries) PutMentionRecipients(ctx context.Context, db DBTX, arg PutMentionRecipientsParams) error {
+	_, err := db.Exec(ctx, putMentionRecipients, arg.MessageID, arg.UserIds)
+	return err
 }
 
 const queuedAttachmentTrash = `-- name: QueuedAttachmentTrash :many
@@ -607,4 +755,70 @@ func (q *Queries) QueuedAttachmentTrash(ctx context.Context, db DBTX) ([]Attachm
 		return nil, err
 	}
 	return items, nil
+}
+
+const readStatesForChannels = `-- name: ReadStatesForChannels :many
+SELECT user_id, channel_id, guild_id, last_read_id, mention_count FROM read_states WHERE user_id = $1 AND channel_id = ANY($2::bigint[])
+ORDER BY channel_id
+`
+
+type ReadStatesForChannelsParams struct {
+	UserID     int64
+	ChannelIds []int64
+}
+
+func (q *Queries) ReadStatesForChannels(ctx context.Context, db DBTX, arg ReadStatesForChannelsParams) ([]ReadState, error) {
+	rows, err := db.Query(ctx, readStatesForChannels, arg.UserID, arg.ChannelIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReadState
+	for rows.Next() {
+		var i ReadState
+		if err := rows.Scan(
+			&i.UserID,
+			&i.ChannelID,
+			&i.GuildID,
+			&i.LastReadID,
+			&i.MentionCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const recomputeLastMessage = `-- name: RecomputeLastMessage :one
+UPDATE channels
+SET last_message_id = (
+    SELECT id FROM messages WHERE channel_id = $1 ORDER BY id DESC LIMIT 1
+)
+WHERE id = $1
+RETURNING last_message_id
+`
+
+func (q *Queries) RecomputeLastMessage(ctx context.Context, db DBTX, channelID snowflake.ID) (pgtype.Int8, error) {
+	row := db.QueryRow(ctx, recomputeLastMessage, channelID)
+	var last_message_id pgtype.Int8
+	err := row.Scan(&last_message_id)
+	return last_message_id, err
+}
+
+const setLastMessage = `-- name: SetLastMessage :exec
+UPDATE channels SET last_message_id = GREATEST(last_message_id, $1::bigint) WHERE id = $2
+`
+
+type SetLastMessageParams struct {
+	MessageID int64
+	ChannelID int64
+}
+
+func (q *Queries) SetLastMessage(ctx context.Context, db DBTX, arg SetLastMessageParams) error {
+	_, err := db.Exec(ctx, setLastMessage, arg.MessageID, arg.ChannelID)
+	return err
 }
