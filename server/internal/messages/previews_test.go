@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/png"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -17,8 +18,18 @@ import (
 
 type previewFetchFunc func(context.Context, string, linkpreview.SaveImage) *linkpreview.Embed
 
-func (f previewFetchFunc) Fetch(ctx context.Context, url string, save linkpreview.SaveImage) *linkpreview.Embed {
-	return f(ctx, url, save)
+func (f previewFetchFunc) Fetch(ctx context.Context, url string, save linkpreview.SaveImage) (*linkpreview.Embed, linkpreview.Outcome) {
+	return f(ctx, url, save), linkpreview.Outcome{}
+}
+
+// partialFetch makes cards that lost their picture, counting the fetches.
+type partialFetch struct{ calls *atomic.Int32 }
+
+func (f partialFetch) Fetch(_ context.Context, url string, _ linkpreview.SaveImage) (*linkpreview.Embed, linkpreview.Outcome) {
+	f.calls.Add(1)
+	title := "Page"
+	return &linkpreview.Embed{URL: url, Type: "link", Title: &title},
+		linkpreview.Outcome{Partial: true, Stage: "image", Reason: "timeout"}
 }
 
 func startPreviews(t *testing.T, e *env) {
@@ -167,5 +178,39 @@ func waitPreviewAfter(t *testing.T, e *env, after int) messages.PublicMessage {
 			t.Fatal("preview update did not arrive")
 		case <-tick.C:
 		}
+	}
+}
+
+func TestPartialPreviewIsRetriedAfterAnHour(t *testing.T) {
+	var calls atomic.Int32
+	var mu sync.Mutex
+	now := time.Now()
+	clock := func() time.Time {
+		mu.Lock()
+		defer mu.Unlock()
+		return now
+	}
+	e := newEnv(t, func(o *messages.Options) {
+		o.PreviewFetcher = partialFetch{&calls}
+		o.Now = clock
+	})
+	startPreviews(t, e)
+	alice, _ := e.user("alice")
+	_, general, _ := newGuild(t, alice, "home")
+	const target = "https://slow-picture.test/page"
+	post(t, alice, general.ID, target)
+	waitPreview(t, e)
+	// Within the hour the card without its picture is served from the cache.
+	post(t, alice, general.ID, target)
+	if calls.Load() != 1 {
+		t.Fatalf("fetches within the hour = %d, want 1", calls.Load())
+	}
+	mu.Lock()
+	now = now.Add(61 * time.Minute)
+	mu.Unlock()
+	post(t, alice, general.ID, target)
+	waitPreviewAfter(t, e, 1)
+	if calls.Load() != 2 {
+		t.Fatalf("fetches after the hour = %d, want 2", calls.Load())
 	}
 }

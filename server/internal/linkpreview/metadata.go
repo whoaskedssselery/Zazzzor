@@ -16,6 +16,12 @@ type metadata struct {
 	title, description, siteName, image, canonicalURL string
 }
 
+// The longest title and description a card keeps, in runes.
+const (
+	maxTitle       = 256
+	maxDescription = 350
+)
+
 // parseMetadata reads the head with per-field OpenGraph, Twitter and HTML fallbacks.
 func parseMetadata(raw []byte, contentType string) metadata {
 	var reader io.Reader = bytes.NewReader(raw)
@@ -67,8 +73,8 @@ scan:
 	}
 	return metadata{
 		canonicalURL: tags["og:url"],
-		title:        truncate(first(tags["og:title"], tags["twitter:title"], title), 256),
-		description:  truncate(first(tags["og:description"], tags["twitter:description"], tags["description"]), 350),
+		title:        truncate(first(tags["og:title"], tags["twitter:title"], title), maxTitle),
+		description:  truncate(first(tags["og:description"], tags["twitter:description"], tags["description"]), maxDescription),
 		siteName:     truncate(first(tags["og:site_name"], tags["twitter:site"]), 256),
 		image:        first(tags["og:image"], tags["twitter:image"], tags["twitter:image:src"]),
 	}
