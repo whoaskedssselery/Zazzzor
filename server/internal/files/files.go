@@ -1,17 +1,16 @@
-// Package files keeps the images users upload (avatars, server icons) on
-// disk. Every image is decoded, checked and re-encoded as a 256×256 PNG
-// before it is stored, so what is served is always a clean PNG of known
-// size, whatever was uploaded.
+// Package files keeps avatars, server icons and message attachments on disk.
+// Avatars and icons are normalized to 256×256 PNGs. Attachments keep their
+// original bytes under <root>/attachments/<channel_id>/<attachment_id>.
 //
 // Layout: <root>/<kind>/<owner_id>/<hash>.png, where hash is the first 16
 // hex digits of the SHA-256 of the stored PNG. Paths are only ever built
 // from a Kind constant, a snowflake ID and a validated hash.
 //
-// Delete does not remove an image: it moves it to
+// Deleting an image moves it to
 // <root>/trash/<kind>/<owner_id>/<hash>/<unix_nano>.png, named after the
 // time of deletion, so a database restored from a backup taken before the
-// delete still finds its images (see retention.go). Serving never reads
-// trash.
+// delete still finds its images. Attachments follow the same layout in
+// trash with numeric IDs and without an extension. Serving never reads trash.
 package files
 
 import (
@@ -38,7 +37,17 @@ type Kind string
 const (
 	KindAvatar Kind = "avatars"
 	KindIcon   Kind = "icons"
+	// KindAttachment stores original message files by channel and attachment ID.
+	KindAttachment Kind = "attachments"
 )
+
+// suffix is the extension for a live file and for its trash copies.
+func (k Kind) suffix() string {
+	if k == KindAttachment {
+		return ""
+	}
+	return ".png"
+}
 
 func (k Kind) valid() bool { return k == KindAvatar || k == KindIcon }
 
@@ -121,7 +130,7 @@ func NewDisk(root string, o Options) (*Disk, error) {
 		o.MaxDecodes = max(runtime.GOMAXPROCS(0), 1)
 	}
 	for _, dir := range []string{root, filepath.Join(root, string(KindAvatar)),
-		filepath.Join(root, string(KindIcon)), filepath.Join(root, trashDir)} {
+		filepath.Join(root, string(KindIcon)), filepath.Join(root, string(KindAttachment)), filepath.Join(root, trashDir)} {
 		if err := os.MkdirAll(dir, dirPerm); err != nil {
 			return nil, fmt.Errorf("files: create %s: %w", dir, err)
 		}
@@ -140,7 +149,7 @@ func NewDisk(root string, o Options) (*Disk, error) {
 // path builds the location of an image. Callers have validated kind and
 // hash; ownerID is a number, so no component can hold a separator or "..".
 func (d *Disk) path(kind Kind, ownerID snowflake.ID, hash string) string {
-	return filepath.Join(d.dir(kind, ownerID), hash+".png")
+	return filepath.Join(d.dir(kind, ownerID), hash+kind.suffix())
 }
 
 func (d *Disk) dir(kind Kind, ownerID snowflake.ID) string {
@@ -148,7 +157,7 @@ func (d *Disk) dir(kind Kind, ownerID snowflake.ID) string {
 }
 
 // SaveImage implements Store. The file is written to a temporary file in
-// the target directory, synced and renamed into place, so readers never see
+// the data directory, synced and renamed into place, so readers never see
 // a partial image.
 func (d *Disk) SaveImage(ctx context.Context, kind Kind, ownerID snowflake.ID, r io.Reader) (string, error) {
 	if !kind.valid() || ownerID <= 0 {
@@ -187,40 +196,13 @@ func (d *Disk) SaveImage(ctx context.Context, kind Kind, ownerID snowflake.ID, r
 	return hash, nil
 }
 
-func (d *Disk) write(kind Kind, ownerID snowflake.ID, hash string, data []byte) (err error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	dir := d.dir(kind, ownerID)
-	if err = os.MkdirAll(dir, dirPerm); err != nil {
-		return fmt.Errorf("files: create directory: %w", err)
-	}
-	tmp, err := os.CreateTemp(dir, ".upload-*.tmp")
-	if err != nil {
-		return fmt.Errorf("files: create temp file: %w", err)
-	}
-	defer func() {
-		if err != nil {
-			_ = tmp.Close()
-			_ = os.Remove(tmp.Name())
+func (d *Disk) write(kind Kind, ownerID snowflake.ID, hash string, data []byte) error {
+	return d.writeFile(d.path(kind, ownerID, hash), d.root, func(tmp *os.File) error {
+		if _, err := tmp.Write(data); err != nil {
+			return fmt.Errorf("files: write image: %w", err)
 		}
-	}()
-	if err = tmp.Chmod(filePerm); err != nil {
-		return fmt.Errorf("files: chmod: %w", err)
-	}
-	if _, err = tmp.Write(data); err != nil {
-		return fmt.Errorf("files: write: %w", err)
-	}
-	if err = tmp.Sync(); err != nil {
-		return fmt.Errorf("files: sync: %w", err)
-	}
-	if err = tmp.Close(); err != nil {
-		return fmt.Errorf("files: close: %w", err)
-	}
-	if err = os.Rename(tmp.Name(), d.path(kind, ownerID, hash)); err != nil {
-		return fmt.Errorf("files: rename: %w", err)
-	}
-	syncDir(dir)
-	return nil
+		return nil
+	})
 }
 
 // syncDir makes the rename durable where the platform allows it (Unix);
