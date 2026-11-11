@@ -1355,6 +1355,32 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
+  /guilds/{guild_id}/ack:
+    post:
+      tags: [messages]
+      operationId: acknowledgeGuild
+      summary: Mark visible channels of a guild read
+      description: |
+        Advances to the latest existing message of each channel the caller
+        may view. Sends one MESSAGE_ACK per changed channel to the caller's
+        sessions only. Shares the acknowledgment rate limit.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+      responses:
+        "204":
+          description: Read state advanced or already at least as far.
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: Origin not allowed.
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: The target does not exist or is not visible to the caller.
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
   /guilds/{guild_id}/channels:
     get:
       tags: [channels]
@@ -1925,6 +1951,34 @@ paths:
           $ref: "#/components/responses/Problem"
         "415":
           description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /channels/{channel_id}/messages/{message_id}/ack:
+    post:
+      tags: [messages]
+      operationId: acknowledgeMessage
+      summary: Mark a channel read through a message
+      description: |
+        Needs VIEW_CHANNEL and READ_MESSAGE_HISTORY in the channel. Advances
+        last_read_id only, then counts mentions after the acknowledged message.
+        Each changed marker is sent as MESSAGE_ACK to this user's sessions only.
+        Acknowledgments share a limit of 10 per second per user, burst 20.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+        - $ref: "#/components/parameters/MessageID"
+      responses:
+        "204":
+          description: Read state advanced or already at least as far.
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: Origin not allowed, or missing READ_MESSAGE_HISTORY for a message acknowledgment.
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: The target does not exist or is not visible to the caller.
           $ref: "#/components/responses/Problem"
         "429":
           $ref: "#/components/responses/RateLimited"
@@ -3066,7 +3120,7 @@ components:
     Channel:
       type: object
       additionalProperties: false
-      required: [id, guild_id, type, name, topic, parent_id, position, permission_synced, permission_overwrites]
+      required: [id, guild_id, type, name, topic, parent_id, position, permission_synced, permission_overwrites, last_message_id]
       properties:
         id:
           $ref: "#/components/schemas/Snowflake"
@@ -3098,6 +3152,11 @@ components:
           description: The overwrites in effect (the category's when synced), by target ID.
           items:
             $ref: "#/components/schemas/Overwrite"
+        last_message_id:
+          description: The newest existing message of the channel, or null if empty.
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
     CreateChannelRequest:
       type: object
       additionalProperties: false
@@ -3271,7 +3330,7 @@ components:
     Message:
       type: object
       additionalProperties: false
-      required: [id, channel_id, guild_id, author, content, created_at, edited_at, reply_to_id, referenced_message, attachments]
+      required: [id, channel_id, guild_id, author, content, created_at, edited_at, reply_to_id, referenced_message, attachments, mention_user_ids, mention_role_ids, mention_everyone, mention_here]
       properties:
         id:
           $ref: "#/components/schemas/Snowflake"
@@ -3314,6 +3373,25 @@ components:
           type: string
           maxLength: 64
           description: Only in the response to sending and in `MESSAGE_CREATE`, when the client sent one.
+        mention_user_ids:
+          type: array
+          maxItems: 50
+          uniqueItems: true
+          description: Mentioned guild members, in order of first appearance.
+          items:
+            $ref: "#/components/schemas/Snowflake"
+        mention_role_ids:
+          type: array
+          uniqueItems: true
+          description: Mentioned guild roles the author was allowed to mention.
+          items:
+            $ref: "#/components/schemas/Snowflake"
+        mention_everyone:
+          type: boolean
+          description: An authorized @everyone or @here was present outside code.
+        mention_here:
+          type: boolean
+          description: The broadcast was @here, limited to online members. @everyone takes precedence when both occur.
     CreateMessageRequest:
       type: object
       additionalProperties: false
@@ -3378,6 +3456,7 @@ components:
             - $ref: "#/components/schemas/Channel"
             - $ref: "#/components/schemas/Message"
             - $ref: "#/components/schemas/MessageDeleteEvent"
+            - $ref: "#/components/schemas/ReadState"
             - $ref: "#/components/schemas/TypingStartEvent"
             - $ref: "#/components/schemas/Presence"
             - $ref: "#/components/schemas/User"
@@ -3395,7 +3474,7 @@ components:
     GatewayReady:
       type: object
       additionalProperties: false
-      required: [user, guilds, presences]
+      required: [user, guilds, presences, read_states]
       properties:
         user:
           $ref: "#/components/schemas/User"
@@ -3408,10 +3487,15 @@ components:
           description: Everyone online who shares a server with the user, the user included.
           items:
             $ref: "#/components/schemas/Presence"
+        read_states:
+          type: array
+          description: Stored read markers only for channels the receiving user can view.
+          items:
+            $ref: "#/components/schemas/ReadState"
     GuildState:
       type: object
       additionalProperties: false
-      required: [guild, roles, channels, members, my_member, presences, voice_states]
+      required: [guild, roles, channels, members, my_member, presences, voice_states, read_states]
       description: A server as the receiving member sees it.
       properties:
         guild:
@@ -3446,6 +3530,11 @@ components:
           description: Who is in the voice channels the member may view, by user ID.
           items:
             $ref: "#/components/schemas/VoiceState"
+        read_states:
+          type: array
+          description: Stored read markers only for channels the receiving user can view.
+          items:
+            $ref: "#/components/schemas/ReadState"
     VoiceState:
       type: object
       additionalProperties: false
@@ -3605,7 +3694,7 @@ components:
     MessageDeleteEvent:
       type: object
       additionalProperties: false
-      required: [id, channel_id, guild_id]
+      required: [id, channel_id, guild_id, last_message_id]
       properties:
         id:
           $ref: "#/components/schemas/Snowflake"
@@ -3613,6 +3702,25 @@ components:
           $ref: "#/components/schemas/Snowflake"
         guild_id:
           $ref: "#/components/schemas/Snowflake"
+        last_message_id:
+          description: The newest existing message of the channel, or null if empty.
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
+    ReadState:
+      type: object
+      additionalProperties: false
+      required: [channel_id, last_read_id, mention_count]
+      properties:
+        channel_id:
+          $ref: "#/components/schemas/Snowflake"
+        last_read_id:
+          description: Greatest acknowledged message ID, or "0" before the first message.
+          $ref: "#/components/schemas/Snowflake"
+        mention_count:
+          type: integer
+          minimum: 0
+          description: Number of unread messages that mentioned this user at the last update.
     TypingStartEvent:
       type: object
       additionalProperties: false
@@ -3775,6 +3883,8 @@ x-gateway:
       $ref: "#/components/schemas/Message"
     MESSAGE_UPDATE:
       $ref: "#/components/schemas/Message"
+    MESSAGE_ACK:
+      $ref: "#/components/schemas/ReadState"
     MESSAGE_DELETE:
       $ref: "#/components/schemas/MessageDeleteEvent"
     TYPING_START:
