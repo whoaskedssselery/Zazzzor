@@ -4,22 +4,20 @@ import {
   type RoomConnectOptions,
   type RoomOptions,
   type TrackPublishOptions,
-  VideoPreset,
 } from "livekit-client";
 import type { EndCause } from "@/shared/lib";
 import type { VoicePrefs } from "../model/prefs";
 import type { Browser } from "./browser";
 
 /**
- * The room: layers nobody watches are not sent (dynacast). Viewers ask for
- * the best layer, not the one that fits the tile: the only video here is a
- * screen share, watched on demand, and a small tile on a low layer was blurry.
- * The server still moves a viewer to a lower layer when their link is short.
+ * The room: a stream nobody watches is paused (dynacast), and viewers get the
+ * stream as it is sent rather than one sized to their tile. The only video
+ * here is a screen share, watched on demand, sent as a single 1080p layer.
  */
 export const roomOptions = (): Partial<RoomOptions> => ({ adaptiveStream: false, dynacast: true });
 
-/** How the encoder treats a screen: sharpness first (text, details); the frame rate is held by screenShareOptions. */
-export const SCREEN_CONTENT_HINT = "detail";
+/** How the encoder treats a screen: as motion (games, video, scrolling); "detail" dropped a moving screen to a few fps. */
+export const SCREEN_CONTENT_HINT = "motion";
 
 /** Microphones are subscribed by hand, screen shares only when watched. */
 export const connectOptions = (): RoomConnectOptions => ({ autoSubscribe: false });
@@ -37,20 +35,26 @@ export const microphoneOptions = ({ inputId, noise }: Pick<VoicePrefs, "inputId"
 });
 
 /**
- * A screen share: sharp 1080p at 30 fps rather than a blurry 60. When the
- * link is short the resolution drops, never the frame rate, and viewers with
- * a slow link get the 720p30 layer: no layer goes under 30 fps. H.264 in
- * Chromium; VP8 in Firefox,
- * which may lack H.264 and gets no simulcast for screens from livekit-client.
- * Firefox captures no sound; Chromium leaves this tab's sound (the voice chat)
- * out of the system sound where it can.
+ * A screen share: one VP8 stream at 1080p, up to 60 fps and 10 Mbit/s, and
+ * the resolution never drops: when the sender's CPU or link is short, frames
+ * go, not sharpness.
+ *
+ * Measured in Chrome with a 1080p page flipping twice a second (a tab
+ * switch) and a viewer: H.264 with simulcast fell to 480p (the encoder's
+ * quality scaler) or, with the resolution held, to 10 fps; any simulcast
+ * cost the top layer its frames (two encodes); VP9 and AV1 gave 3–7 fps.
+ * VP8 alone held 1080p at ~30 fps with the viewer on the same machine.
+ * The cost: no lower layer for a viewer on a slow link.
+ *
+ * Firefox captures no sound; Chromium leaves this tab's sound (the voice
+ * chat) out of the system sound where it can.
  */
 export const screenShareOptions = (
   browser: Browser,
   restrictOwnAudio: boolean,
 ): { capture: DisplayMediaStreamOptions; publish: TrackPublishOptions } => ({
   capture: {
-    video: { width: 1920, height: 1080, frameRate: 30 },
+    video: { width: 1920, height: 1080, frameRate: 60 },
     audio:
       browser === "firefox"
         ? false
@@ -64,12 +68,10 @@ export const screenShareOptions = (
     ...({ systemAudio: "include", selfBrowserSurface: "exclude", surfaceSwitching: "include" } as object),
   },
   publish: {
-    videoCodec: browser === "firefox" ? "vp8" : "h264",
-    degradationPreference: "maintain-framerate",
-    simulcast: true,
-    // Almost twice the bits per frame of the old 8 Mbit/s at 60 fps.
-    screenShareEncoding: { maxBitrate: 6_000_000, maxFramerate: 30 },
-    screenShareSimulcastLayers: [new VideoPreset(1280, 720, 2_000_000, 30)],
+    videoCodec: "vp8",
+    degradationPreference: "maintain-resolution",
+    simulcast: false,
+    screenShareEncoding: { maxBitrate: 10_000_000, maxFramerate: 60 },
   },
 });
 
