@@ -34,6 +34,4 @@ const text = (nodes: MdNode[], names: MentionNames): string =>
  * breaks and runs of spaces as one space.
  */
 export const markdownText = (src: string, names: MentionNames = NO_NAMES): string =>
-  text(parseMarkdown(src), names)
-    .replace(/\s+/g, " ")
-    .trim();
+  text(parseMarkdown(src), names).replace(/\s+/g, " ").trim();

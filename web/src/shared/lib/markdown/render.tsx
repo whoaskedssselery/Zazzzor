@@ -41,7 +41,10 @@ const Mention = ({ kind, id }: { kind: MentionKind; id: string | null }) => {
   const color = kind === "role" && id !== null ? (names.role(id)?.color ?? 0) : 0;
   const style: CSSProperties | undefined =
     color > 0
-      ? ({ "--role": hex(color), backgroundColor: `color-mix(in srgb, ${hex(color)} 18%, transparent)` } as CSSProperties)
+      ? ({
+          "--role": hex(color),
+          backgroundColor: `color-mix(in srgb, ${hex(color)} 18%, transparent)`,
+        } as CSSProperties)
       : undefined;
   return (
     <span
