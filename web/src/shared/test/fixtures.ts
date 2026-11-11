@@ -29,7 +29,7 @@ export function makeRole(id: string, over: Partial<Role> = {}): Role {
 }
 
 /** The @everyone role of a server: its ID is the server's, position 0, the permissions of a new server (DEFAULT_EVERYONE). */
-export function makeEveryone(guildId: string, permissions = "104041985"): Role {
+export function makeEveryone(guildId: string, permissions = "104042049"): Role {
   return makeRole(guildId, { name: "@everyone", position: 0, permissions });
 }
 

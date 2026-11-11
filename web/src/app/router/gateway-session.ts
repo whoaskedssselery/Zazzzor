@@ -28,7 +28,7 @@ export const useGatewaySession = (active: boolean): void => {
       onDispatch: (t, d) => {
         const before = getGuildsState();
         applyGatewayDispatch(t, d);
-        applyMessageDispatch(queryClient, t, d);
+        applyMessageDispatch(queryClient, t, d, getGuildsState().me?.id ?? null);
         const after = getGuildsState();
         if (after.me && after.me !== before.me) setSignedIn(queryClient, after.me);
         // Voice: follow a moderator's move; keep the server's view of the switches in step.

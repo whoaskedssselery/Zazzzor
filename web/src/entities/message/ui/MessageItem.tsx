@@ -40,6 +40,8 @@ export interface MessageItemProps {
   attachments?: Attachment[];
   /** Under the text (the actions of a failed message). */
   footer?: ReactNode;
+  /** The reactions under the message. */
+  reactions?: ReactNode;
   /** The bar of actions shown on hover or focus. */
   toolbar?: ReactNode;
   /** Scrolls to the answered message; absent when it is not loaded. */
@@ -119,6 +121,7 @@ export const MessageItem = ({
   mentions,
   attachments = [],
   footer,
+  reactions,
   toolbar,
   onJumpToReply,
   highlighted = false,
@@ -186,6 +189,7 @@ export const MessageItem = ({
       )}
       {body}
       <Attachments attachments={attachments} />
+      {reactions}
       {footer}
       {toolbar}
     </div>

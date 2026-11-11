@@ -2,6 +2,7 @@ import type { InfiniteData, QueryClient } from "@tanstack/react-query";
 import { api, type components, isChatEvent, parseChatEvent, unwrap } from "@/shared/api";
 import { compareIds } from "@/shared/lib";
 import { confirmPending } from "./pending";
+import { withReaction } from "./reactions";
 
 export type Message = components["schemas"]["Message"];
 export type MessageStub = components["schemas"]["MessageStub"];
@@ -90,11 +91,23 @@ const withReplies = (data: MessagePages, m: Message): MessagePages =>
     x.reply_to_id === m.id && x.referenced_message !== null ? { ...x, referenced_message: stubOf(m) } : x,
   );
 
-/** An edit of a loaded message; an edit of one not loaded changes nothing. */
+/**
+ * An edit of a loaded message; an edit of one not loaded changes nothing.
+ * MESSAGE_UPDATE carries no reactions (one payload for everyone cannot say
+ * whose they are), so the loaded ones stay.
+ */
 export function replaceMessage(data: MessagePages, m: Message): MessagePages {
-  const loaded = data.pages.some((page) => page.some((x) => x.id === m.id));
-  return loaded ? upsertMessage(data, m) : data;
+  const held = data.pages.flat().find((x) => x.id === m.id);
+  if (held === undefined) return data;
+  return upsertMessage(
+    data,
+    m.reactions === undefined && held.reactions !== undefined ? { ...m, reactions: held.reactions } : m,
+  );
 }
+
+/** Message `id` through `fn`, if it is loaded. */
+export const updateMessage = (data: MessagePages, id: string, fn: (m: Message) => Message): MessagePages =>
+  mapMessages(data, (x) => (x.id === id ? fn(x) : x));
 
 /** The history without message `id`; replies to it keep `reply_to_id` and lose the preview, as the server says. */
 export function removeMessage(data: MessagePages, id: string): MessagePages {
@@ -110,12 +123,13 @@ export const updateHistory = (qc: QueryClient, channelId: string, fn: (d: Messag
 };
 
 /**
- * Applies a chat DISPATCH to the message caches: MESSAGE_CREATE, _UPDATE
- * and _DELETE change the history of their channel when it is loaded (a
- * channel never opened is left to load fresh). An own MESSAGE_CREATE with
- * the nonce of a pending send confirms it. Anything else is ignored.
+ * Applies a chat DISPATCH to the message caches: MESSAGE_CREATE, _UPDATE,
+ * _DELETE and the reactions change the history of their channel when it is
+ * loaded (a channel never opened is left to load fresh). An own
+ * MESSAGE_CREATE with the nonce of a pending send confirms it. `meId` tells
+ * the user's own reactions. Anything else is ignored.
  */
-export function applyMessageDispatch(qc: QueryClient, t: string, d: unknown): void {
+export function applyMessageDispatch(qc: QueryClient, t: string, d: unknown, meId: string | null = null): void {
   if (!isChatEvent(t)) return;
   switch (t) {
     case "MESSAGE_CREATE": {
@@ -133,6 +147,16 @@ export function applyMessageDispatch(qc: QueryClient, t: string, d: unknown): vo
     case "MESSAGE_DELETE": {
       const e = parseChatEvent(t, d);
       if (e !== null) updateHistory(qc, e.channel_id, (h) => removeMessage(h, e.id));
+      return;
+    }
+    case "MESSAGE_REACTION_ADD":
+    case "MESSAGE_REACTION_REMOVE": {
+      const e = parseChatEvent(t, d);
+      if (e === null) return;
+      const add = t === "MESSAGE_REACTION_ADD";
+      updateHistory(qc, e.channel_id, (h) =>
+        updateMessage(h, e.message_id, (m) => withReaction(m, e.emoji.name, e.user_id === meId, add)),
+      );
       return;
     }
     case "TYPING_START":
