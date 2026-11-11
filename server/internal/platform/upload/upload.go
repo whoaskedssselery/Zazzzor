@@ -18,8 +18,8 @@ import (
 
 const (
 	// ReadTimeout replaces the global 15 s body deadline on upload routes:
-	// 4 MiB over a 1 Mbit/s uplink takes about 32 s.
-	ReadTimeout = 120 * time.Second
+	// 25 MiB over a 1 Mbit/s uplink takes about 210 s.
+	ReadTimeout = 5 * time.Minute
 	// WriteTimeout leaves time to answer after a slow upload.
 	WriteTimeout = ReadTimeout + 30*time.Second
 	// multipartOverhead is what the form around the file may add.
@@ -105,6 +105,8 @@ func readError(err error, maxBytes int) error {
 // An upload slot covers the body (at most 4 MiB, plus what io.ReadAll's
 // growth and the copy SaveImage reads may add) for as long as the request
 // runs, decode included; its decode memory is reserved separately.
+// An attachment uses a copy buffer and small headers within the same slot;
+// its body goes straight to disk.
 const (
 	// MaxInFlight is how many upload requests may run at once.
 	MaxInFlight = 8

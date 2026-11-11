@@ -51,3 +51,44 @@ ON CONFLICT DO NOTHING;
 SELECT * FROM messages
 WHERE id = (SELECT n.message_id FROM message_nonces n
             WHERE n.author_id = @author_id AND n.channel_id = @channel_id AND n.nonce = @nonce AND n.expires_at > now());
+
+-- name: CreateAttachment :one
+INSERT INTO message_attachments (id, channel_id, uploader_id, filename, content_type, size, width, height, digest, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING *;
+
+-- name: AttachmentForReader :one
+SELECT * FROM message_attachments
+WHERE id = $1 AND channel_id = $2
+  AND (message_id IS NOT NULL OR (uploader_id = sqlc.arg(reader_id) AND created_at > sqlc.arg(cutoff)));
+
+-- name: DiscardPendingAttachment :execrows
+DELETE FROM message_attachments
+WHERE id = $1 AND channel_id = $2 AND uploader_id = $3 AND message_id IS NULL AND created_at > sqlc.arg(cutoff);
+
+-- name: BindAttachments :many
+UPDATE message_attachments AS a
+SET message_id = sqlc.arg(message_id), position = picked.position::integer
+FROM unnest(sqlc.arg(ids)::bigint[]) WITH ORDINALITY AS picked(id, position)
+WHERE a.id = picked.id AND a.channel_id = sqlc.arg(channel_id) AND a.uploader_id = sqlc.arg(uploader_id)
+  AND a.message_id IS NULL AND a.created_at > sqlc.arg(cutoff)
+RETURNING a.*;
+
+-- name: AttachmentsByMessages :many
+SELECT * FROM message_attachments WHERE message_id = ANY(sqlc.arg(ids)::bigint[])
+ORDER BY message_id, position;
+
+-- name: ExpirePendingAttachments :exec
+DELETE FROM message_attachments WHERE message_id IS NULL AND created_at <= sqlc.arg(cutoff);
+
+-- name: AttachmentReferences :many
+SELECT id, channel_id FROM message_attachments;
+
+-- name: AttachmentReferenced :one
+SELECT EXISTS (SELECT 1 FROM message_attachments WHERE id = $1 AND channel_id = $2);
+
+-- name: QueuedAttachmentTrash :many
+SELECT * FROM attachment_trash ORDER BY id;
+
+-- name: ForgetAttachmentTrash :exec
+DELETE FROM attachment_trash WHERE id = $1;

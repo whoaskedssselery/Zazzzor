@@ -2,6 +2,7 @@ import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { getConnectionStatus, subscribeConnectionStatus } from "@/entities/guild";
 import {
+  type Attachment,
   addPending,
   confirmPending,
   getPending,
@@ -64,7 +65,12 @@ const deliver = async (qc: QueryClient, channelId: string, nonce: string): Promi
     const message = unwrap(
       await api.POST("/channels/{channel_id}/messages", {
         params: { path: { channel_id: channelId } },
-        body: { content: p.content, reply_to_id: p.replyTo?.id ?? null, nonce },
+        body: {
+          content: p.content,
+          reply_to_id: p.replyTo?.id ?? null,
+          nonce,
+          attachment_ids: p.attachments.map((a) => a.id),
+        },
       }),
     );
     updateHistory(qc, channelId, (h) => upsertMessage(h, message));
@@ -75,8 +81,8 @@ const deliver = async (qc: QueryClient, channelId: string, nonce: string): Promi
 };
 
 export interface SendMessage {
-  /** Sends `content` (already trimmed and checked), answering `replyTo` if set. */
-  send: (content: string, replyTo: MessageStub | null) => void;
+  /** Sends `content` (already trimmed and checked) with uploaded `attachments`, answering `replyTo` if set. */
+  send: (content: string, replyTo: MessageStub | null, attachments?: Attachment[]) => void;
   /** Sends a failed message again with its nonce, so a send that did arrive is not sent twice. */
   retry: (nonce: string) => void;
   /** Gives up on a failed message. */
@@ -92,9 +98,9 @@ export interface SendMessage {
 export const useSendMessage = (channelId: string): SendMessage => {
   const qc = useQueryClient();
   const send = useCallback(
-    (content: string, replyTo: MessageStub | null) => {
+    (content: string, replyTo: MessageStub | null, attachments: Attachment[] = []) => {
       const nonce = newNonce();
-      addPending({ nonce, channelId, content, replyTo, status: "sending", error: null });
+      addPending({ nonce, channelId, content, replyTo, attachments, status: "sending", error: null });
       void deliver(qc, channelId, nonce);
     },
     [qc, channelId],

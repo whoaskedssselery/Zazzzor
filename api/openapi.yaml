@@ -1694,6 +1694,128 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
+  /channels/{channel_id}/attachments:
+    post:
+      tags: [messages]
+      operationId: uploadAttachment
+      summary: Upload a pending message attachment
+      description: |
+        Needs `VIEW_CHANNEL`, `SEND_MESSAGES` and `ATTACH_FILES` in a text
+        channel. Upload one file up to 25 MiB per request. Pending uploads
+        expire after one hour. Limited to 30 per minute per user, with a burst
+        of 10 and at most two concurrent uploads per user.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: The pending attachment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Attachment"
+        "400":
+          description: "`invalid_body`, `validation_failed` or `not_a_text_channel`."
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "413":
+          description: "`file_too_large`: the file exceeds the upload limit."
+          $ref: "#/components/responses/Problem"
+        "415":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          description: "`server_busy`: the shared upload gate is full."
+          $ref: "#/components/responses/Problem"
+  /channels/{channel_id}/attachments/{attachment_id}:
+    delete:
+      tags: [messages]
+      operationId: discardAttachment
+      summary: Discard a pending attachment
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+        - $ref: "#/components/parameters/AttachmentID"
+      responses:
+        "204":
+          description: The caller's pending attachment was discarded.
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`attachment_not_found`: missing, expired, bound, or owned by someone else."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /attachments/{channel_id}/{attachment_id}/{filename}:
+    get:
+      tags: [messages]
+      operationId: downloadAttachment
+      summary: Read the original bytes of a message attachment
+      description: |
+        Needs a session, `VIEW_CHANNEL` and `READ_MESSAGE_HISTORY`. Only
+        the uploader can read a pending attachment. Denied or missing files
+        return 404. Supports byte ranges and conditional requests. PNG, JPEG,
+        WebP, GIF, MP4, WebM, MP3, OGG and WAV are served inline when identified
+        by their bytes. All other files download as application/octet-stream.
+        Successful responses use private immutable caching, an ETag,
+        nosniff, and a sandboxed Content Security Policy.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+        - $ref: "#/components/parameters/AttachmentID"
+        - name: filename
+          in: path
+          required: true
+          description: Cosmetic filename. The channel and attachment IDs select the file.
+          schema:
+            type: string
+        - name: Range
+          in: header
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The original bytes with their sniffed content type.
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "206":
+          description: The requested byte range or ranges.
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "304":
+          description: The client's cached copy is current.
+        "404":
+          description: "`attachment_not_found`: missing or inaccessible."
+          $ref: "#/components/responses/Problem"
+        "416":
+          description: The requested range is unsatisfiable.
+        "429":
+          $ref: "#/components/responses/RateLimited"
   /channels/{channel_id}/messages:
     get:
       tags: [messages]
@@ -1756,10 +1878,13 @@ paths:
       summary: Send a message
       description: |
         Needs `SEND_MESSAGES` in a text channel. `content` is trimmed of
-        white space at both ends and must then be 1 to 4000 characters
+        white space at both ends and may be omitted or empty with an
+        attachment. Non-empty content must be 1 to 4000 characters
         (Unicode code points) with at least one visible character (not only
         spaces, zero-width or other format characters, separators or
-        combining marks). A reply also needs `READ_MESSAGE_HISTORY`;
+        combining marks). Attachment IDs must be distinct pending uploads of
+        this author in this channel, and need `ATTACH_FILES`. They are bound
+        to the new message in the same transaction. A reply also needs `READ_MESSAGE_HISTORY`;
         `reply_to_id` must be a message of the same channel. `nonce` (at
         most 64 characters) is echoed in the response and in
         `MESSAGE_CREATE`, never in the history. For 10 minutes it stands
@@ -1786,7 +1911,8 @@ paths:
         "400":
           description: |
             `invalid_body`, `body_too_large`, `validation_failed` (with
-            `errors`) or `not_a_text_channel`.
+            `errors`), `not_a_text_channel`, `attachment_not_found` or
+            `too_many_attachments` (field `attachment_ids`).
           $ref: "#/components/responses/Problem"
         "401":
           description: "`unauthenticated`."
@@ -1810,6 +1936,7 @@ paths:
       operationId: updateMessage
       summary: Edit a message
       description: |
+        Only content can be edited. Existing attachments stay on the message.
         Only the author may, while they can view the channel. Without
         `READ_MESSAGE_HISTORY`, messages of others are `404 not_found`.
         `content` follows the rules of sending; `edited_at` is set to the server's
@@ -2493,6 +2620,12 @@ components:
       schema:
         type: string
         pattern: "^[0-9a-f]{16}$"
+    AttachmentID:
+      name: attachment_id
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Snowflake"
     ChannelID:
       name: channel_id
       in: path
@@ -3101,12 +3234,44 @@ components:
             - type: "null"
         content:
           type: string
-          minLength: 1
           maxLength: 4000
+    Attachment:
+      type: object
+      additionalProperties: false
+      required: [id, filename, content_type, size, width, height, url, pending]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        filename:
+          type: string
+          description: Sanitized original base name for display and download.
+        content_type:
+          type: string
+          description: Sniffed media type or application/octet-stream.
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 26214400
+        width:
+          type: [integer, "null"]
+          minimum: 1
+          description: Image width in pixels, null for other files.
+        height:
+          type: [integer, "null"]
+          minimum: 1
+          description: Image height in pixels, null for other files.
+        url:
+          type: string
+          format: uri-reference
+          description: Relative API path for authenticated preview or download.
+        pending:
+          type: boolean
+          description: True until the upload is bound to a message.
     Message:
       type: object
       additionalProperties: false
-      required: [id, channel_id, guild_id, author, content, created_at, edited_at, reply_to_id, referenced_message]
+      required: [id, channel_id, guild_id, author, content, created_at, edited_at, reply_to_id, referenced_message, attachments]
       properties:
         id:
           $ref: "#/components/schemas/Snowflake"
@@ -3121,9 +3286,8 @@ components:
             - type: "null"
         content:
           type: string
-          minLength: 1
           maxLength: 4000
-          description: 1 to 4000 characters (Unicode code points), trimmed.
+          description: Up to 4000 characters (Unicode code points), trimmed.
         created_at:
           type: string
           format: date-time
@@ -3141,6 +3305,11 @@ components:
           oneOf:
             - $ref: "#/components/schemas/MessageStub"
             - type: "null"
+        attachments:
+          type: array
+          maxItems: 10
+          items:
+            $ref: "#/components/schemas/Attachment"
         nonce:
           type: string
           maxLength: 64
@@ -3148,12 +3317,16 @@ components:
     CreateMessageRequest:
       type: object
       additionalProperties: false
-      required: [content]
       properties:
         content:
           type: string
-          minLength: 1
-          description: 1 to 4000 characters (Unicode code points) after trimming white space.
+          description: Up to 4000 characters after trimming. Required unless attachment_ids is non-empty.
+        attachment_ids:
+          type: array
+          maxItems: 10
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/Snowflake"
         reply_to_id:
           oneOf:
             - $ref: "#/components/schemas/Snowflake"

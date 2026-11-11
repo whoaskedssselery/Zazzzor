@@ -1,5 +1,14 @@
 export { useMessages } from "./api/useMessages";
 export {
+  type Attachment,
+  type AttachmentKind,
+  attachmentKind,
+  attachmentsOf,
+  formatSize,
+  MAX_ATTACHMENT_BYTES,
+  MAX_ATTACHMENTS,
+} from "./model/attachment";
+export {
   applyMessageDispatch,
   catchUpMessages,
   fetchMessages,
@@ -25,4 +34,5 @@ export {
   updatePending,
   usePendingMessages,
 } from "./model/pending";
+export { Attachments } from "./ui/Attachments";
 export { type AuthorView, DELETED_USER, MessageItem, type MessageItemProps, REPLY_DELETED } from "./ui/MessageItem";

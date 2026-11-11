@@ -152,8 +152,13 @@ schema_version() {
 # очистка корзины в API); тогда архив снимается заново, до трёх раз.
 archive_files() {
   local out="$1" attempt
+  local -a live=(avatars icons)
+  # При обновлении на месте старый API ещё может работать без attachments/.
+  if [[ -d "$data/attachments" ]]; then
+    live+=(attachments)
+  fi
   for attempt in 1 2 3; do
-    if tar -czf "$out" -C "$data" avatars icons trash; then
+    if tar -czf "$out" -C "$data" "${live[@]}" trash; then
       return 0
     fi
     log "архив изображений не удался (попытка $attempt из 3)"
@@ -259,14 +264,14 @@ prune() {
 }
 
 # Распаковка идёт в том API, поэтому в архиве допустимы только avatars/,
-# icons/ и trash/, без «..» и без ссылок. Busybox tar показывает жёсткую
+# icons/, attachments/ и trash/, без «..» и без ссылок. Busybox tar показывает жёсткую
 # ссылку как «-… имя -> цель», GNU tar как «h… link to цель».
 archive_safe() {
   local archive="$1" entries listing entry
   entries="$(tar -tzf "$archive")" || return 1
   while IFS= read -r entry; do
     case "$entry" in
-      avatars/* | icons/* | trash/*) ;;
+      avatars/* | icons/* | attachments/* | trash/*) ;;
       *) return 1 ;;
     esac
     case "/$entry/" in
@@ -302,7 +307,7 @@ verify() {
     actual="${actual%% *}"
     [[ "$expected" == "$actual" ]] || die "копия $name испорчена: не совпадает сумма $file. Возьмите другую копию"
   done
-  archive_safe "$folder/apidata.tar.gz" || die "архив изображений копии $name содержит пути вне avatars/, icons/, trash/ или ссылки; восстанавливать его нельзя"
+  archive_safe "$folder/apidata.tar.gz" || die "архив изображений копии $name содержит пути вне avatars/, icons/, attachments/, trash/ или ссылки; восстанавливать его нельзя"
   log "копия $name цела"
 }
 
@@ -347,7 +352,7 @@ restore_database() {
 # проверку, блокировка занята (идёт плановая копия), архив не распаковался,
 # база не восстановилась (транзакция откатана). Картинки распаковываются
 # рядом и подменяются переименованием уже после базы. Трогаются только
-# avatars, icons и trash: другое в томе (например, lost+found) остаётся.
+# avatars, icons, attachments и trash: другое в томе (например, lost+found) остаётся.
 restore() {
   local name="$1" fresh old kind
   (check "$name") || exit 3
@@ -373,7 +378,7 @@ restore() {
   fi
   log 'подменяю изображения'
   old="$(mktemp -d "$data/.restore-old-XXXXXXXX")"
-  for kind in avatars icons trash; do
+  for kind in avatars icons attachments trash; do
     if [[ -e "$data/$kind" ]]; then
       mv -- "$data/$kind" "$old/"
     fi

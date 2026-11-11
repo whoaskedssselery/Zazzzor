@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
@@ -87,7 +89,7 @@ func (s *Service) List(ctx context.Context, channelID, userID snowflake.ID, pg P
 }
 
 // complete adds the authors and the replied-to messages to rows of one
-// channel: one query for the originals, one for every author.
+// channel, and loads the page's attachments in one query.
 func (s *Service) complete(ctx context.Context, guildID, channelID snowflake.ID, rows []store.Message) ([]Message, error) {
 	var replyIDs []int64
 	seen := map[snowflake.ID]bool{}
@@ -137,10 +139,28 @@ func (s *Service) complete(ctx context.Context, guildID, channelID snowflake.ID,
 		return byID[*id]
 	}
 
+	ids := make([]int64, 0, len(rows))
+	for _, row := range rows {
+		if !row.CreatedAt.IsZero() {
+			ids = append(ids, int64(row.ID))
+		}
+	}
+	byMessage := make(map[snowflake.ID][]Attachment)
+	if len(ids) > 0 {
+		attachments, err := s.q.AttachmentsByMessages(ctx, s.pool, ids)
+		if err != nil {
+			return nil, fmt.Errorf("messages: load attachments: %w", err)
+		}
+		for _, file := range attachments {
+			id := snowflake.ID(file.MessageID.Int64)
+			byMessage[id] = append(byMessage[id], attachment(file))
+		}
+	}
+
 	out := make([]Message, len(rows))
 	for i, r := range rows {
 		m := Message{ID: r.ID, ChannelID: r.ChannelID, GuildID: guildID, Author: author(r.AuthorID),
-			Content: r.Content, CreatedAt: r.CreatedAt, EditedAt: r.EditedAt, ReplyToID: r.ReplyToID}
+			Content: r.Content, CreatedAt: r.CreatedAt, EditedAt: r.EditedAt, ReplyToID: r.ReplyToID, Attachments: byMessage[r.ID]}
 		if r.ReplyToID != nil {
 			if o, ok := originals[*r.ReplyToID]; ok {
 				m.Referenced = &Stub{ID: o.ID, Author: author(o.AuthorID), Content: o.Content}
@@ -161,9 +181,10 @@ func (s *Service) completeOne(ctx context.Context, guildID snowflake.ID, row sto
 
 // CreateFields is a new message.
 type CreateFields struct {
-	Content   string
-	ReplyToID *snowflake.ID
-	Nonce     *string
+	Content       string
+	ReplyToID     *snowflake.ID
+	Nonce         *string
+	AttachmentIDs []snowflake.ID
 }
 
 // Create sends a message to a text channel; userID needs SEND_MESSAGES
@@ -185,9 +206,17 @@ func (s *Service) Create(ctx context.Context, channelID, userID snowflake.ID, f 
 	if err = s.requireText(ctx, channelID); err != nil {
 		return Message{}, err
 	}
-	content, err := NormalizeContent(f.Content)
-	if err != nil {
-		return Message{}, err
+	if len(f.AttachmentIDs) > MaxAttachments {
+		return Message{}, attachmentFieldProblem("too_many_attachments", fmt.Sprintf("must contain at most %d IDs", MaxAttachments))
+	}
+	if len(f.AttachmentIDs) > 0 && !p.Has(permissions.AttachFiles) {
+		return Message{}, ErrMissingPerm
+	}
+	content := ""
+	if len(f.AttachmentIDs) == 0 || strings.TrimSpace(f.Content) != "" {
+		if content, err = NormalizeContent(f.Content); err != nil {
+			return Message{}, err
+		}
 	}
 	if f.Nonce != nil && utf8.RuneCountInString(*f.Nonce) > MaxNonce {
 		return Message{}, invalid("nonce", fmt.Sprintf("must be at most %d characters", MaxNonce))
@@ -211,13 +240,13 @@ func (s *Service) Create(ctx context.Context, channelID, userID snowflake.ID, f 
 		return Message{}, err
 	}
 	var row store.Message
-	if f.Nonce == nil {
+	if f.Nonce == nil && len(f.AttachmentIDs) == 0 {
 		row, err = s.q.CreateMessage(ctx, s.pool, params)
 	} else {
 		// A claim gone before it is read (its message deleted, or it just
 		// expired) frees the nonce: one more try then.
 		for range 2 {
-			if row, err = s.createOnce(ctx, params, *f.Nonce); !errors.Is(err, errNonceTaken) {
+			if row, err = s.createOnce(ctx, params, f, &m); !errors.Is(err, errNonceTaken) {
 				break
 			}
 			if sent, ok, sentErr := s.sentWith(ctx, guildID, channelID, userID, *f.Nonce); ok || sentErr != nil {
@@ -241,30 +270,70 @@ func (s *Service) Create(ctx context.Context, channelID, userID snowflake.ID, f 
 // errNonceTaken: a live claim holds the nonce, so its message was sent.
 var errNonceTaken = errors.New("messages: nonce taken")
 
-// createOnce stores the message and claims the nonce for it in one
-// transaction; errNonceTaken (and nothing stored) when a live claim holds
-// the nonce.
-func (s *Service) createOnce(ctx context.Context, params store.CreateMessageParams, nonce string) (store.Message, error) {
+// createOnce stores the message, claims its optional nonce and binds files
+// in the same transaction. A taken nonce wins before any file is bound.
+func (s *Service) createOnce(ctx context.Context, params store.CreateMessageParams, f CreateFields, m *Message) (store.Message, error) {
 	var row store.Message
 	err := db.InTx(ctx, s.pool, func(tx pgx.Tx) error {
 		var err error
 		if row, err = s.q.CreateMessage(ctx, tx, params); err != nil {
 			return err
 		}
-		if err = s.q.DropExpiredNonces(ctx, tx, *params.AuthorID); err != nil {
-			return fmt.Errorf("drop expired nonces: %w", err)
+		if f.Nonce != nil {
+			if err = s.claimNonce(ctx, tx, params, *f.Nonce); err != nil {
+				return err
+			}
 		}
-		n, err := s.q.ClaimNonce(ctx, tx, store.ClaimNonceParams{AuthorID: *params.AuthorID,
-			ChannelID: params.ChannelID, Nonce: nonce, MessageID: params.ID, TtlSeconds: NonceTTL.Seconds()})
-		if err != nil {
-			return fmt.Errorf("claim nonce: %w", err)
+		if len(f.AttachmentIDs) > 0 {
+			m.Attachments, err = s.bindAttachments(ctx, tx, params, f.AttachmentIDs)
 		}
-		if n == 0 {
-			return errNonceTaken
-		}
-		return nil
+		return err
 	})
 	return row, err
+}
+
+// claimNonce records a send's retry key inside its write transaction.
+func (s *Service) claimNonce(ctx context.Context, tx pgx.Tx, params store.CreateMessageParams, nonce string) error {
+	if err := s.q.DropExpiredNonces(ctx, tx, *params.AuthorID); err != nil {
+		return fmt.Errorf("messages: drop expired nonces: %w", err)
+	}
+	n, err := s.q.ClaimNonce(ctx, tx, store.ClaimNonceParams{AuthorID: *params.AuthorID,
+		ChannelID: params.ChannelID, Nonce: nonce, MessageID: params.ID, TtlSeconds: NonceTTL.Seconds()})
+	if err != nil {
+		return fmt.Errorf("messages: claim nonce: %w", err)
+	}
+	if n == 0 {
+		return errNonceTaken
+	}
+	return nil
+}
+
+// attachmentFieldProblem reports an invalid selection without identifying its owner.
+func attachmentFieldProblem(code, detail string) error {
+	return httpx.BadRequest(code, "some fields are invalid", httpx.FieldError{Field: "attachment_ids", Message: detail})
+}
+
+// bindAttachments updates only eligible rows, and rolls back the send if
+// any requested ID could not be bound (including duplicate IDs).
+func (s *Service) bindAttachments(ctx context.Context, tx pgx.Tx, params store.CreateMessageParams, ids []snowflake.ID) ([]Attachment, error) {
+	keys := make([]int64, len(ids))
+	for i, id := range ids {
+		keys[i] = int64(id)
+	}
+	rows, err := s.q.BindAttachments(ctx, tx, store.BindAttachmentsParams{MessageID: dbID(params.ID),
+		ChannelID: int64(params.ChannelID), UploaderID: dbID(*params.AuthorID), Cutoff: s.now().Add(-PendingTTL), Ids: keys})
+	if err != nil {
+		return nil, fmt.Errorf("messages: bind attachments: %w", err)
+	}
+	if len(rows) != len(keys) {
+		return nil, attachmentFieldProblem("attachment_not_found", "must contain distinct pending attachment IDs from this channel")
+	}
+	slices.SortFunc(rows, func(a, b store.MessageAttachment) int { return int(a.Position - b.Position) })
+	out := make([]Attachment, len(rows))
+	for i, row := range rows {
+		out[i] = attachment(row)
+	}
+	return out, nil
 }
 
 // sentWith returns the message userID sent to the channel with the nonce,
@@ -382,6 +451,7 @@ func (s *Service) Delete(ctx context.Context, channelID, messageID, userID snowf
 	if n == 0 {
 		return ErrNotFound // deleted meanwhile
 	}
+	s.tryAttachmentTrash(ctx)
 	s.publish(ctx, events.Event{Type: events.MessageDelete, Audience: channelAudience(guildID, channelID),
 		Payload: DeletePayload{ID: messageID, ChannelID: channelID, GuildID: guildID}})
 	return nil

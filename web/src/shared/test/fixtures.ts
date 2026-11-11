@@ -88,6 +88,7 @@ export function makeMessage(id: string, channelId: string, author: User | null, 
     reply_to_id: null,
     referenced_message: null,
     ...over,
+    attachments: over.attachments ?? [],
   };
 }
 

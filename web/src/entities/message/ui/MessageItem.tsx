@@ -2,7 +2,9 @@ import { CornerUpLeft } from "lucide-react";
 import type { ReactNode } from "react";
 import { formatMessageTime, Markdown, markdownText } from "@/shared/lib";
 import { Avatar, cn, roleTextStyle, Tooltip } from "@/shared/ui";
+import type { Attachment } from "../model/attachment";
 import type { Message } from "../model/cache";
+import { Attachments } from "./Attachments";
 
 /** How a user shows in this server: their nickname (or display name), role colour and avatar. */
 export interface AuthorView {
@@ -32,6 +34,8 @@ export interface MessageItemProps {
   state?: "sending" | "failed";
   /** Shown instead of the text while the message is edited. */
   editor?: ReactNode;
+  /** The files of the message, under its text. */
+  attachments?: Attachment[];
   /** Under the text (the actions of a failed message). */
   footer?: ReactNode;
   /** The bar of actions shown on hover or focus. */
@@ -106,6 +110,7 @@ export const MessageItem = ({
   now,
   state,
   editor,
+  attachments = [],
   footer,
   toolbar,
   onJumpToReply,
@@ -170,6 +175,7 @@ export const MessageItem = ({
         </>
       )}
       {body}
+      <Attachments attachments={attachments} />
       {footer}
       {toolbar}
     </div>

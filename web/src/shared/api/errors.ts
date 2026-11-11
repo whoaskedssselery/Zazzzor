@@ -37,6 +37,8 @@ export const ERROR_TEXTS: Readonly<Record<string, string>> = {
   too_many_channels: "Достигнут предел числа каналов на сервере.",
   too_many_roles: "Достигнут предел числа ролей на сервере.",
   file_too_large: "Файл больше 4 МБ.",
+  attachment_not_found: "Файл больше недоступен. Прикрепите его заново.",
+  too_many_attachments: "Не больше 10 файлов в одном сообщении.",
   unsupported_image: "Нужна картинка PNG, JPEG, GIF или WebP.",
   body_too_large: "Слишком большой запрос.",
   invalid_body: "Сервер не понял запрос. Обновите страницу и попробуйте снова.",

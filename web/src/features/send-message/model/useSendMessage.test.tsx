@@ -53,7 +53,7 @@ describe("useSendMessage", () => {
         await new Promise<void>((r) => {
           release = r;
         });
-        return HttpResponse.json(echo("2", body.content, body.nonce), { status: 201 });
+        return HttpResponse.json(echo("2", body.content ?? "", body.nonce), { status: 201 });
       }),
     );
     const { hook, history } = setup();
@@ -83,7 +83,7 @@ describe("useSendMessage", () => {
         await new Promise<void>((r) => {
           respond = r;
         });
-        return HttpResponse.json(echo("2", body.content, body.nonce), { status: 201 });
+        return HttpResponse.json(echo("2", body.content ?? "", body.nonce), { status: 201 });
       }),
     );
     const { qc, hook, history } = setup();
@@ -115,7 +115,7 @@ describe("useSendMessage", () => {
         const body = await request.json();
         nonces.push(body.nonce ?? "");
         if (limited) return problem(429, "rate_limited", undefined, { "Retry-After": "1" });
-        return HttpResponse.json(echo("2", body.content, body.nonce), { status: 201 });
+        return HttpResponse.json(echo("2", body.content ?? "", body.nonce), { status: 201 });
       }),
     );
     const { hook, history } = setup();
@@ -144,7 +144,7 @@ describe("useSendMessage", () => {
       apiHandler("post", "/channels/{channel_id}/messages", async ({ request }) => {
         posts += 1;
         const body = await request.json();
-        return HttpResponse.json(echo("2", body.content, body.nonce), { status: 201 });
+        return HttpResponse.json(echo("2", body.content ?? "", body.nonce), { status: 201 });
       }),
     );
     setConnectionStatus("reconnecting");

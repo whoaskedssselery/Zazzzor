@@ -60,6 +60,7 @@ type env struct {
 	msgs   *messages.Service
 	pub    *recorder
 	h      http.Handler
+	disk   *files.Disk
 }
 
 func unlimited() *ratelimit.Limiter { return ratelimit.New(rate.Inf, 1, time.Minute) }
@@ -77,13 +78,14 @@ func newEnv(t *testing.T, opts ...func(*messages.Options)) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
+	e.disk = disk
 	e.guilds = guilds.NewService(guilds.Options{Pool: e.pool, IDs: ids, Users: authSvc, Files: disk, Publisher: e.pub,
 		Hooks:         guilds.Hooks{Channels: channels.NewBootstrapper(ids, nil), Overwrites: channels.NewCleaner()},
 		CreateLimiter: unlimited(), WriteLimiter: unlimited()})
 	chanSvc := channels.NewService(channels.Options{Pool: e.pool, IDs: ids, Guilds: e.guilds, Publisher: e.pub,
 		WriteLimiter: unlimited()})
 	o := messages.Options{Pool: e.pool, IDs: ids, Channels: chanSvc, Users: authSvc, Publisher: e.pub,
-		SendLimiter: unlimited(), WriteLimiter: unlimited()}
+		Files: disk, SendLimiter: unlimited(), WriteLimiter: unlimited()}
 	for _, opt := range opts {
 		opt(&o)
 	}

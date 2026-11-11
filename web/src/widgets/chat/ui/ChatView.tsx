@@ -1,8 +1,9 @@
-import { Hash } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { Hash, Upload } from "lucide-react";
+import { type DragEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type Channel, computeChannel, type GuildEntry, has, PERM, useGuilds, userDisplay } from "@/entities/guild";
 import {
   type AuthorView,
+  attachmentsOf,
   inOrder,
   type Message,
   MessageItem,
@@ -18,7 +19,7 @@ import {
   MessageToolbar,
   useDeleteMessage,
 } from "@/features/message-actions";
-import { Composer, type ReplyTarget, useSendMessage } from "@/features/send-message";
+import { Composer, type ReplyTarget, useAddFiles, useSendMessage } from "@/features/send-message";
 import { errorText } from "@/shared/api";
 import { Button, Skeleton } from "@/shared/ui";
 import { buildRows, type ChatRow } from "../model/rows";
@@ -99,6 +100,59 @@ const FailedFooter = ({
   </p>
 );
 
+/** Whether a drag carries files (not text or a link). */
+const carriesFiles = (e: DragEvent) => e.dataTransfer.types.includes("Files");
+
+/**
+ * Files dragged over the chat attach to the message being written: the whole
+ * chat is the drop target, with a hint over it while files hover.
+ */
+const useFileDrop = (onFiles: (files: File[]) => void) => {
+  const [over, setOver] = useState(false);
+  // dragenter and dragleave fire for every child crossed; a count tells the
+  // real leaving from moving between children.
+  const depth = useRef(0);
+  return {
+    over,
+    handlers: {
+      onDragEnter: (e: DragEvent) => {
+        if (!carriesFiles(e)) return;
+        e.preventDefault();
+        depth.current += 1;
+        setOver(true);
+      },
+      onDragOver: (e: DragEvent) => {
+        if (!carriesFiles(e)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+      },
+      onDragLeave: (e: DragEvent) => {
+        if (!carriesFiles(e)) return;
+        depth.current = Math.max(0, depth.current - 1);
+        if (depth.current === 0) setOver(false);
+      },
+      onDrop: (e: DragEvent) => {
+        if (!carriesFiles(e)) return;
+        e.preventDefault();
+        depth.current = 0;
+        setOver(false);
+        onFiles([...e.dataTransfer.files]);
+      },
+    },
+  };
+};
+
+const DropHint = ({ channelName }: { channelName: string }) => (
+  <div
+    aria-hidden
+    className="pointer-events-none absolute inset-2 z-(--z-sticky) flex animate-fade-in flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-accent bg-[color-mix(in_srgb,var(--bg-chat)_88%,transparent)] text-center"
+  >
+    <Upload className="size-10 text-accent" strokeWidth={1.5} />
+    <p className="text-lg font-semibold">Отпустите, чтобы прикрепить</p>
+    <p className="text-sm text-fg-muted">{`Файлы уйдут в #${channelName}`}</p>
+  </div>
+);
+
 /** How a message author shows here; null for a deleted account. */
 const authorOf = (entry: GuildEntry, user: Message["author"]): AuthorView | null =>
   user === null ? null : userDisplay(entry, user);
@@ -118,12 +172,15 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
   const canRead = has(perms, PERM.READ_MESSAGE_HISTORY);
   const canSend = has(perms, PERM.SEND_MESSAGES);
   const canManage = has(perms, PERM.MANAGE_MESSAGES);
+  const canAttach = canSend && has(perms, PERM.ATTACH_FILES);
 
   const history = useMessages(channel.id, canRead);
   const pending = usePendingMessages(channel.id);
   const sender = useSendMessage(channel.id);
   const remove = useDeleteMessage();
   const now = useMinute();
+  const addFiles = useAddFiles(channel.id, canAttach);
+  const drop = useFileDrop(addFiles);
 
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -188,6 +245,7 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
         <div>
           <MessageItem
             message={m}
+            attachments={attachmentsOf(m)}
             author={authorOf(entry, m.author)}
             replyAuthor={original ? authorOf(entry, original.author) : null}
             grouped={grouped && editing !== m.id}
@@ -255,6 +313,7 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
               reply_to_id: p.replyTo?.id ?? null,
               referenced_message: p.replyTo,
             }}
+            attachments={p.attachments}
             author={me ? userDisplay(entry, me) : null}
             replyAuthor={p.replyTo ? authorOf(entry, p.replyTo.author) : null}
             grouped={row.grouped}
@@ -322,12 +381,13 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
   }
 
   return (
-    <>
+    <div className="relative flex min-h-0 flex-1 flex-col" {...(canSend ? drop.handlers : {})}>
       {body}
       <Composer
         channelId={channel.id}
         channelName={channel.name}
         canSend={canSend}
+        canAttach={canAttach}
         replyTo={replyTo}
         onCancelReply={() => {
           setReplyTo(null);
@@ -351,6 +411,7 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
           remove.mutate(m);
         }}
       />
-    </>
+      {drop.over && <DropHint channelName={channel.name} />}
+    </div>
   );
 };

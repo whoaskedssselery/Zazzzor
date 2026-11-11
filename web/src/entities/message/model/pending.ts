@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { components } from "@/shared/api";
+import type { Attachment } from "./attachment";
 
 type MessageStub = components["schemas"]["MessageStub"];
 
@@ -14,6 +15,8 @@ export interface PendingMessage {
   content: string;
   /** The message it answers, as the reply preview shows it. */
   replyTo: MessageStub | null;
+  /** The files it carries, uploaded already (pending on the server until it is sent). */
+  attachments: Attachment[];
   status: "sending" | "failed";
   /** Why it failed, in the user's words. */
   error: string | null;

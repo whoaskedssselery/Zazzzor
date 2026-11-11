@@ -19,6 +19,7 @@ import (
 //	PATCH, DELETE /channels/{channel_id}/messages/{message_id}
 //	POST /channels/{channel_id}/typing
 func Mount(r chi.Router, s *Service) {
+	s.mountAttachments(r)
 	r.Group(func(r chi.Router) {
 		r.Use(auth.Require, httpx.NoStore)
 		sends := r.With(auth.LimitPerUser(s.sendLimiter))
@@ -98,9 +99,10 @@ func (s *Service) handleList(w http.ResponseWriter, r *http.Request) error {
 }
 
 type createRequest struct {
-	Content   *string       `json:"content"`
-	ReplyToID *snowflake.ID `json:"reply_to_id"`
-	Nonce     *string       `json:"nonce"`
+	Content       *string        `json:"content"`
+	ReplyToID     *snowflake.ID  `json:"reply_to_id"`
+	Nonce         *string        `json:"nonce"`
+	AttachmentIDs []snowflake.ID `json:"attachment_ids"`
 }
 
 func deref(p *string) string {
@@ -120,7 +122,7 @@ func (s *Service) handleCreate(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	m, err := s.Create(r.Context(), id, auth.CurrentUser(r).ID,
-		CreateFields{Content: deref(req.Content), ReplyToID: req.ReplyToID, Nonce: req.Nonce})
+		CreateFields{Content: deref(req.Content), ReplyToID: req.ReplyToID, Nonce: req.Nonce, AttachmentIDs: req.AttachmentIDs})
 	if err != nil {
 		return fail(err)
 	}

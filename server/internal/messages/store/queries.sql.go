@@ -7,9 +7,188 @@ package store
 
 import (
 	"context"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
+
+const attachmentForReader = `-- name: AttachmentForReader :one
+SELECT id, channel_id, uploader_id, message_id, filename, content_type, size, width, height, digest, position, created_at FROM message_attachments
+WHERE id = $1 AND channel_id = $2
+  AND (message_id IS NOT NULL OR (uploader_id = $3 AND created_at > $4))
+`
+
+type AttachmentForReaderParams struct {
+	ID        int64
+	ChannelID int64
+	ReaderID  pgtype.Int8
+	Cutoff    time.Time
+}
+
+func (q *Queries) AttachmentForReader(ctx context.Context, db DBTX, arg AttachmentForReaderParams) (MessageAttachment, error) {
+	row := db.QueryRow(ctx, attachmentForReader,
+		arg.ID,
+		arg.ChannelID,
+		arg.ReaderID,
+		arg.Cutoff,
+	)
+	var i MessageAttachment
+	err := row.Scan(
+		&i.ID,
+		&i.ChannelID,
+		&i.UploaderID,
+		&i.MessageID,
+		&i.Filename,
+		&i.ContentType,
+		&i.Size,
+		&i.Width,
+		&i.Height,
+		&i.Digest,
+		&i.Position,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const attachmentReferenced = `-- name: AttachmentReferenced :one
+SELECT EXISTS (SELECT 1 FROM message_attachments WHERE id = $1 AND channel_id = $2)
+`
+
+type AttachmentReferencedParams struct {
+	ID        int64
+	ChannelID int64
+}
+
+func (q *Queries) AttachmentReferenced(ctx context.Context, db DBTX, arg AttachmentReferencedParams) (bool, error) {
+	row := db.QueryRow(ctx, attachmentReferenced, arg.ID, arg.ChannelID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const attachmentReferences = `-- name: AttachmentReferences :many
+SELECT id, channel_id FROM message_attachments
+`
+
+type AttachmentReferencesRow struct {
+	ID        int64
+	ChannelID int64
+}
+
+func (q *Queries) AttachmentReferences(ctx context.Context, db DBTX) ([]AttachmentReferencesRow, error) {
+	rows, err := db.Query(ctx, attachmentReferences)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AttachmentReferencesRow
+	for rows.Next() {
+		var i AttachmentReferencesRow
+		if err := rows.Scan(&i.ID, &i.ChannelID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const attachmentsByMessages = `-- name: AttachmentsByMessages :many
+SELECT id, channel_id, uploader_id, message_id, filename, content_type, size, width, height, digest, position, created_at FROM message_attachments WHERE message_id = ANY($1::bigint[])
+ORDER BY message_id, position
+`
+
+func (q *Queries) AttachmentsByMessages(ctx context.Context, db DBTX, ids []int64) ([]MessageAttachment, error) {
+	rows, err := db.Query(ctx, attachmentsByMessages, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MessageAttachment
+	for rows.Next() {
+		var i MessageAttachment
+		if err := rows.Scan(
+			&i.ID,
+			&i.ChannelID,
+			&i.UploaderID,
+			&i.MessageID,
+			&i.Filename,
+			&i.ContentType,
+			&i.Size,
+			&i.Width,
+			&i.Height,
+			&i.Digest,
+			&i.Position,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const bindAttachments = `-- name: BindAttachments :many
+UPDATE message_attachments AS a
+SET message_id = $1, position = picked.position::integer
+FROM unnest($5::bigint[]) WITH ORDINALITY AS picked(id, position)
+WHERE a.id = picked.id AND a.channel_id = $2 AND a.uploader_id = $3
+  AND a.message_id IS NULL AND a.created_at > $4
+RETURNING a.id, a.channel_id, a.uploader_id, a.message_id, a.filename, a.content_type, a.size, a.width, a.height, a.digest, a.position, a.created_at
+`
+
+type BindAttachmentsParams struct {
+	MessageID  pgtype.Int8
+	ChannelID  int64
+	UploaderID pgtype.Int8
+	Cutoff     time.Time
+	Ids        []int64
+}
+
+func (q *Queries) BindAttachments(ctx context.Context, db DBTX, arg BindAttachmentsParams) ([]MessageAttachment, error) {
+	rows, err := db.Query(ctx, bindAttachments,
+		arg.MessageID,
+		arg.ChannelID,
+		arg.UploaderID,
+		arg.Cutoff,
+		arg.Ids,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MessageAttachment
+	for rows.Next() {
+		var i MessageAttachment
+		if err := rows.Scan(
+			&i.ID,
+			&i.ChannelID,
+			&i.UploaderID,
+			&i.MessageID,
+			&i.Filename,
+			&i.ContentType,
+			&i.Size,
+			&i.Width,
+			&i.Height,
+			&i.Digest,
+			&i.Position,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
 
 const claimNonce = `-- name: ClaimNonce :execrows
 INSERT INTO message_nonces (author_id, channel_id, nonce, message_id, expires_at)
@@ -40,6 +219,56 @@ func (q *Queries) ClaimNonce(ctx context.Context, db DBTX, arg ClaimNonceParams)
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const createAttachment = `-- name: CreateAttachment :one
+INSERT INTO message_attachments (id, channel_id, uploader_id, filename, content_type, size, width, height, digest, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING id, channel_id, uploader_id, message_id, filename, content_type, size, width, height, digest, position, created_at
+`
+
+type CreateAttachmentParams struct {
+	ID          int64
+	ChannelID   int64
+	UploaderID  pgtype.Int8
+	Filename    string
+	ContentType string
+	Size        int64
+	Width       pgtype.Int4
+	Height      pgtype.Int4
+	Digest      string
+	CreatedAt   time.Time
+}
+
+func (q *Queries) CreateAttachment(ctx context.Context, db DBTX, arg CreateAttachmentParams) (MessageAttachment, error) {
+	row := db.QueryRow(ctx, createAttachment,
+		arg.ID,
+		arg.ChannelID,
+		arg.UploaderID,
+		arg.Filename,
+		arg.ContentType,
+		arg.Size,
+		arg.Width,
+		arg.Height,
+		arg.Digest,
+		arg.CreatedAt,
+	)
+	var i MessageAttachment
+	err := row.Scan(
+		&i.ID,
+		&i.ChannelID,
+		&i.UploaderID,
+		&i.MessageID,
+		&i.Filename,
+		&i.ContentType,
+		&i.Size,
+		&i.Width,
+		&i.Height,
+		&i.Digest,
+		&i.Position,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const createMessage = `-- name: CreateMessage :one
@@ -95,6 +324,31 @@ func (q *Queries) DeleteMessage(ctx context.Context, db DBTX, arg DeleteMessageP
 	return result.RowsAffected(), nil
 }
 
+const discardPendingAttachment = `-- name: DiscardPendingAttachment :execrows
+DELETE FROM message_attachments
+WHERE id = $1 AND channel_id = $2 AND uploader_id = $3 AND message_id IS NULL AND created_at > $4
+`
+
+type DiscardPendingAttachmentParams struct {
+	ID         int64
+	ChannelID  int64
+	UploaderID pgtype.Int8
+	Cutoff     time.Time
+}
+
+func (q *Queries) DiscardPendingAttachment(ctx context.Context, db DBTX, arg DiscardPendingAttachmentParams) (int64, error) {
+	result, err := db.Exec(ctx, discardPendingAttachment,
+		arg.ID,
+		arg.ChannelID,
+		arg.UploaderID,
+		arg.Cutoff,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const dropExpiredNonces = `-- name: DropExpiredNonces :exec
 DELETE FROM message_nonces WHERE author_id = $1 AND expires_at <= now()
 `
@@ -137,6 +391,24 @@ func (q *Queries) EditMessage(ctx context.Context, db DBTX, arg EditMessageParam
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const expirePendingAttachments = `-- name: ExpirePendingAttachments :exec
+DELETE FROM message_attachments WHERE message_id IS NULL AND created_at <= $1
+`
+
+func (q *Queries) ExpirePendingAttachments(ctx context.Context, db DBTX, cutoff time.Time) error {
+	_, err := db.Exec(ctx, expirePendingAttachments, cutoff)
+	return err
+}
+
+const forgetAttachmentTrash = `-- name: ForgetAttachmentTrash :exec
+DELETE FROM attachment_trash WHERE id = $1
+`
+
+func (q *Queries) ForgetAttachmentTrash(ctx context.Context, db DBTX, id int64) error {
+	_, err := db.Exec(ctx, forgetAttachmentTrash, id)
+	return err
 }
 
 const messageByNonce = `-- name: MessageByNonce :one
@@ -303,6 +575,30 @@ func (q *Queries) MessagesByIDs(ctx context.Context, db DBTX, arg MessagesByIDsP
 			&i.EditedAt,
 			&i.CreatedAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const queuedAttachmentTrash = `-- name: QueuedAttachmentTrash :many
+SELECT id, channel_id FROM attachment_trash ORDER BY id
+`
+
+func (q *Queries) QueuedAttachmentTrash(ctx context.Context, db DBTX) ([]AttachmentTrash, error) {
+	rows, err := db.Query(ctx, queuedAttachmentTrash)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AttachmentTrash
+	for rows.Next() {
+		var i AttachmentTrash
+		if err := rows.Scan(&i.ID, &i.ChannelID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

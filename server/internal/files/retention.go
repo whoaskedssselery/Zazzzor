@@ -52,14 +52,20 @@ type ItemError struct {
 func (e *ItemError) Error() string { return e.Path + ": " + e.Err.Error() }
 func (e *ItemError) Unwrap() error { return e.Err }
 
-// Reference identifies an image that the database refers to.
+// Reference identifies a stored file that the database refers to.
 type Reference struct {
 	Kind    Kind
 	OwnerID snowflake.ID
-	Hash    string
+	Hash    string // image hash or canonical decimal attachment ID
 }
 
-func (r Reference) valid() bool { return r.Kind.valid() && r.OwnerID > 0 && ValidHash(r.Hash) }
+func (r Reference) valid() bool {
+	if r.Kind == KindAttachment {
+		id, err := snowflake.Parse(r.Hash)
+		return err == nil && r.OwnerID > 0 && id > 0 && id.String() == r.Hash
+	}
+	return r.Kind.valid() && r.OwnerID > 0 && ValidHash(r.Hash)
+}
 
 // References tells Reconcile which images the database refers to. The
 // composition root implements it over the modules that own those tables.
@@ -123,7 +129,7 @@ func (d *Disk) trash(r Reference) error {
 	if err := os.MkdirAll(dir, dirPerm); err != nil {
 		return fmt.Errorf("files: create trash directory: %w", err)
 	}
-	to := filepath.Join(dir, strconv.FormatInt(d.now().UnixNano(), 10)+".png")
+	to := filepath.Join(dir, strconv.FormatInt(d.now().UnixNano(), 10)+r.Kind.suffix())
 	if err := os.Rename(from, to); err != nil {
 		return fmt.Errorf("files: move image to trash: %w", err)
 	}
@@ -182,7 +188,7 @@ func (d *Disk) walk(ctx context.Context, dir string, depth int, rep *Report, vis
 func parseReference(kind, owner, hash string) (Reference, bool) {
 	id, err := snowflake.Parse(owner)
 	r := Reference{Kind: Kind(kind), OwnerID: id, Hash: hash}
-	return r, err == nil && r.valid()
+	return r, err == nil && id.String() == owner && r.valid()
 }
 
 // trashEntries lists trash. Entries of any other shape than
@@ -190,12 +196,12 @@ func parseReference(kind, owner, hash string) (Reference, bool) {
 func (d *Disk) trashEntries(ctx context.Context, rep *Report) ([]trashEntry, error) {
 	var entries []trashEntry
 	err := d.walk(ctx, trashDir, 3, rep, func(path string, parts []string, _ fs.DirEntry) {
-		if len(parts) != 4 || filepath.Ext(parts[3]) != ".png" {
+		if len(parts) != 4 || filepath.Ext(parts[3]) != Kind(parts[0]).suffix() {
 			rep.warn(d.rel(path), ErrUnexpectedEntry)
 			return
 		}
 		r, ok := parseReference(parts[0], parts[1], parts[2])
-		n, err := strconv.ParseInt(strings.TrimSuffix(parts[3], ".png"), 10, 64)
+		n, err := strconv.ParseInt(strings.TrimSuffix(parts[3], r.Kind.suffix()), 10, 64)
 		if !ok || err != nil || n <= 0 {
 			rep.warn(d.rel(path), ErrUnexpectedEntry)
 			return
@@ -243,14 +249,14 @@ func (d *Disk) Reconcile(ctx context.Context, refs References) (Report, error) {
 		d.restore(r, newest, &rep)
 	}
 	cutoff := start.Add(-ReconcileGrace)
-	for _, kind := range []Kind{KindAvatar, KindIcon} {
+	for _, kind := range []Kind{KindAvatar, KindIcon, KindAttachment} {
 		err = d.walk(ctx, string(kind), 1, &rep, func(path string, parts []string, entry fs.DirEntry) {
 			if len(parts) == 2 && strings.HasPrefix(parts[1], ".upload-") {
 				return // an upload in progress, or one a crash left behind
 			}
 			r, ok := Reference{}, false
-			if len(parts) == 2 && filepath.Ext(parts[1]) == ".png" {
-				r, ok = parseReference(string(kind), parts[0], strings.TrimSuffix(parts[1], ".png"))
+			if len(parts) == 2 && filepath.Ext(parts[1]) == kind.suffix() {
+				r, ok = parseReference(string(kind), parts[0], strings.TrimSuffix(parts[1], kind.suffix()))
 			}
 			if !ok {
 				rep.warn(d.rel(path), ErrUnexpectedEntry)

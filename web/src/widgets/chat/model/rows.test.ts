@@ -68,6 +68,7 @@ describe("buildRows", () => {
       channelId: C,
       content,
       replyTo: null,
+      attachments: [],
       status: "sending",
       error: null,
     });
