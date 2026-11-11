@@ -38,6 +38,7 @@ var (
 type statusError int
 
 func (e statusError) Error() string { return fmt.Sprintf("linkpreview: HTTP status %d", int(e)) }
+
 var globalIPv6 = netip.MustParsePrefix("2000::/3")
 var specialNetworks = []netip.Prefix{
 	netip.MustParsePrefix("0.0.0.0/8"),
