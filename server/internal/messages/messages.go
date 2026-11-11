@@ -6,7 +6,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -17,6 +19,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
 	"github.com/whoaskedssselery/zazzzor/server/internal/channels"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
+	"github.com/whoaskedssselery/zazzzor/server/internal/files"
 	"github.com/whoaskedssselery/zazzzor/server/internal/messages/store"
 	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
@@ -45,9 +48,12 @@ const (
 // Rate limits per user.
 var (
 	// Sending: 5 per second, bursts of 10.
-	sendRate  = rate.Limit(5)
-	sendBurst = 10
-	sendTTL   = time.Minute
+	uploadRate  = rate.Every(2 * time.Second)
+	uploadBurst = 10
+	uploadTTL   = time.Minute
+	sendRate    = rate.Limit(5)
+	sendBurst   = 10
+	sendTTL     = time.Minute
 	// Edits and deletions, shared: 10 per second, bursts of 20.
 	writeRate  = rate.Limit(10)
 	writeBurst = 20
@@ -133,7 +139,8 @@ type Message struct {
 	EditedAt  *time.Time
 	ReplyToID *snowflake.ID
 	// Referenced is nil when there is no reply or the original is gone.
-	Referenced *Stub
+	Referenced  *Stub
+	Attachments []Attachment
 	// Nonce is the client's tag of a message just sent; history never
 	// shows it.
 	Nonce *string
@@ -165,6 +172,7 @@ type PublicMessage struct {
 	ReplyToID         *snowflake.ID    `json:"reply_to_id"`
 	ReferencedMessage *PublicStub      `json:"referenced_message"`
 	Nonce             *string          `json:"nonce,omitempty"`
+	Attachments       []Attachment     `json:"attachments"`
 }
 
 func publicUser(u *auth.User) *auth.PublicUser {
@@ -179,6 +187,10 @@ func publicUser(u *auth.User) *auth.PublicUser {
 func (m Message) Public() PublicMessage {
 	p := PublicMessage{ID: m.ID, ChannelID: m.ChannelID, GuildID: m.GuildID, Author: publicUser(m.Author),
 		Content: m.Content, CreatedAt: httpx.FormatTime(m.CreatedAt), ReplyToID: m.ReplyToID, Nonce: m.Nonce}
+	p.Attachments = m.Attachments
+	if p.Attachments == nil {
+		p.Attachments = []Attachment{}
+	}
 	if m.EditedAt != nil {
 		t := httpx.FormatTime(*m.EditedAt)
 		p.EditedAt = &t
@@ -226,6 +238,8 @@ type Options struct {
 	Channels  Channels
 	Users     Users
 	Publisher events.Publisher // nil: events are dropped
+	Files     *files.Disk      // nil disables attachment routes
+	Logger    *slog.Logger     // nil uses the default logger
 	// Now is the clock of typing notices; nil means time.Now.
 	Now func() time.Time
 	// SendLimiter limits sending per user; nil takes the default (5 per
@@ -250,6 +264,10 @@ type Service struct {
 	channels      Channels
 	users         Users
 	pub           events.Publisher
+	files         *files.Disk
+	logger        *slog.Logger
+	trashMu       sync.Mutex
+	uploadLimiter *ratelimit.Limiter
 	now           func() time.Time
 	sendLimiter   *ratelimit.Limiter
 	writeLimiter  *ratelimit.Limiter
@@ -260,8 +278,12 @@ type Service struct {
 // NewService builds a Service from o.
 func NewService(o Options) *Service {
 	s := &Service{pool: o.Pool, q: store.New(), ids: o.IDs, channels: o.Channels, users: o.Users,
-		pub: o.Publisher, now: o.Now, sendLimiter: o.SendLimiter, writeLimiter: o.WriteLimiter,
+		pub: o.Publisher, files: o.Files, logger: o.Logger, now: o.Now,
+		uploadLimiter: ratelimit.New(uploadRate, uploadBurst, uploadTTL), sendLimiter: o.SendLimiter, writeLimiter: o.WriteLimiter,
 		typingLimiter: o.TypingLimiter, typingCalls: o.TypingCallLimiter}
+	if s.logger == nil {
+		s.logger = slog.Default()
+	}
 	if s.now == nil {
 		s.now = time.Now
 	}
