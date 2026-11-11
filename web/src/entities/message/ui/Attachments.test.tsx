@@ -46,6 +46,14 @@ describe("attachments", () => {
     expect(box.style.aspectRatio).toBe("2080 / 700");
   });
 
+  it("lays several images out as a grid of even tiles", () => {
+    show([1, 2, 3, 4].map((n) => file(String(n), `${String(n)}.png`, "image/png", { width: 1600, height: 900 })));
+    const tile = screen.getByRole("button", { name: "Открыть 1.png" });
+    expect(tile.className).toContain("aspect-[4/3]");
+    expect(tile.style.width).toBe("");
+    expect(tile.parentElement?.className).toContain("grid-cols-2");
+  });
+
   it("opens images over the window and moves between them", async () => {
     const user = userEvent.setup();
     show([

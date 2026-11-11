@@ -163,14 +163,24 @@ export const Attachments = ({ attachments }: { attachments: Attachment[] }) => {
   return (
     <div className="mt-1 flex flex-col items-start gap-1">
       {images.length > 0 && (
-        <div className="flex flex-wrap gap-1">
+        // One image keeps its own shape; several share a grid of even tiles,
+        // two a row (three from five on), cropped to fill.
+        <div
+          className={cn(
+            images.length > 1 && "grid w-full max-w-[520px] gap-1",
+            images.length > 1 && (images.length > 4 ? "grid-cols-3" : "grid-cols-2"),
+          )}
+        >
           {images.map((a, i) => (
             <button
               key={a.id}
               type="button"
               aria-label={`Открыть ${a.filename}`}
-              className="block max-w-full cursor-zoom-in overflow-hidden rounded-lg bg-skeleton"
-              style={imageBox(a)}
+              className={cn(
+                "block max-w-full cursor-zoom-in overflow-hidden rounded-lg bg-skeleton",
+                images.length > 1 && "aspect-[4/3] w-full",
+              )}
+              style={images.length === 1 ? imageBox(a) : undefined}
               onClick={() => {
                 setOpen(i);
               }}
