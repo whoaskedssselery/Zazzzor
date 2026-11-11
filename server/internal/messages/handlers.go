@@ -21,6 +21,9 @@ import (
 //	POST /channels/{channel_id}/typing
 func Mount(r chi.Router, s *Service) {
 	s.mountAttachments(r)
+	if s.files != nil {
+		r.Get("/embeds/{embed_image_id}", httpx.Wrap(s.handleEmbedImage))
+	}
 	r.Group(func(r chi.Router) {
 		r.Use(auth.Require, httpx.NoStore)
 		sends := r.With(auth.LimitPerUser(s.sendLimiter))

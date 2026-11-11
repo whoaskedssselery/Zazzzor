@@ -22,6 +22,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/gateway"
 	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
 	"github.com/whoaskedssselery/zazzzor/server/internal/invites"
+	"github.com/whoaskedssselery/zazzzor/server/internal/linkpreview"
 	"github.com/whoaskedssselery/zazzzor/server/internal/messages"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/ratelimit"
@@ -87,7 +88,7 @@ func NewModules(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator,
 	channelSvc := channels.NewService(channels.Options{Pool: pool, IDs: ids, Guilds: guildSvc, Publisher: cleanup})
 	presence := new(atomic.Pointer[gateway.Gateway])
 	messageSvc := messages.NewService(messages.Options{Pool: pool, IDs: ids, Channels: channelSvc, Users: authSvc,
-		Publisher: pub, Files: disk, OnlineAmong: func(ids []snowflake.ID) []snowflake.ID {
+		Publisher: pub, Files: disk, PreviewFetcher: linkpreview.New(), OnlineAmong: func(ids []snowflake.ID) []snowflake.ID {
 			if gw := presence.Load(); gw != nil {
 				return gw.OnlineAmong(ids)
 			}

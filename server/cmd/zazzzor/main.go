@@ -167,6 +167,8 @@ func serve(ctx context.Context, logger *slog.Logger, cfg config.Config, pool *pg
 	}
 	// Trash is purged while the API serves; shutdown waits for the job.
 	if deps.Modules != nil {
+		stopPreviews := startBackground(ctx, deps.Modules.Messages.RunPreviews)
+		defer stopPreviews()
 		stopAttachments := startBackground(ctx, deps.Modules.Messages.RunAttachmentSweep)
 		defer stopAttachments()
 		stopPurge := startFilePurge(ctx, deps.Modules.Files, logger)
