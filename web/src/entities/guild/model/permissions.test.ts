@@ -123,6 +123,7 @@ function entryOf(subjects: Subject[], overwrites: Overwrite[] = []): GuildEntry 
         topic: null,
         parent_id: null,
         position: 0,
+        last_message_id: null,
         permission_synced: false,
         permission_overwrites: overwrites,
       },
@@ -130,6 +131,7 @@ function entryOf(subjects: Subject[], overwrites: Overwrite[] = []): GuildEntry 
     members,
     myMember,
     voice: {},
+    reads: {},
   };
 }
 

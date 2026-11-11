@@ -52,6 +52,7 @@ const readyFrame = (s = 1) => ({
     },
     guilds: [],
     presences: [],
+    read_states: [],
   },
 });
 

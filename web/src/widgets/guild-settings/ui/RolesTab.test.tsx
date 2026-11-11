@@ -38,7 +38,7 @@ const entry = () => {
     members: [mine, makeMember(owner)],
     my_member: mine,
   });
-  const e = applyReady({ user: me, guilds: [state], presences: [] }).guilds[G];
+  const e = applyReady({ user: me, guilds: [state], presences: [], read_states: [] }).guilds[G];
   if (!e) throw new Error("no entry");
   return e;
 };

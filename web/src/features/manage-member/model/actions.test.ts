@@ -29,7 +29,7 @@ const entry = (perms: bigint) => {
     members: [mine, makeMember(owner), makeMember(peer, { roles: [mid.id] }), makeMember(junior, { roles: [low.id] })],
     my_member: mine,
   });
-  const e = applyReady({ user: me, guilds: [state], presences: [] }).guilds[G];
+  const e = applyReady({ user: me, guilds: [state], presences: [], read_states: [] }).guilds[G];
   if (!e) throw new Error("no entry");
   return e;
 };
@@ -107,7 +107,7 @@ describe("voiceActions", () => {
       my_member: mine,
       voice_states: [makeVoiceState(G, LOUNGE, junior.id, { mute: true }), makeVoiceState(G, LOUNGE, peer.id)],
     });
-    const e = applyReady({ user: me, guilds: [state], presences: [] }).guilds[G];
+    const e = applyReady({ user: me, guilds: [state], presences: [], read_states: [] }).guilds[G];
     if (!e) throw new Error("no entry");
     return e;
   };

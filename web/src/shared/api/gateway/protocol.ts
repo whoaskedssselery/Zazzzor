@@ -88,7 +88,8 @@ export function decodeFrame(data: unknown): ServerFrame | null {
 }
 
 // Event payloads (`x-gateway.events`) the guild store applies. Messages and
-// typing have their own map below (ChatEvents).
+// typing have their own map below (ChatEvents); the guild store also reads
+// MESSAGE_CREATE and MESSAGE_DELETE from it, for unread channels.
 
 /** A snowflake: a decimal string, kept a string. */
 const snowflake = z.string().check(z.regex(/^\d{1,20}$/));
@@ -139,6 +140,7 @@ const channelSchema: z.ZodMiniType<S["Channel"]> = z.object({
   position: z.int(),
   permission_synced: z.boolean(),
   permission_overwrites: z.array(overwriteSchema),
+  last_message_id: z.nullable(snowflake),
 });
 
 const memberSchema: z.ZodMiniType<S["Member"]> = z.object({
@@ -166,6 +168,12 @@ const voiceStateSchema: z.ZodMiniType<S["VoiceState"]> = z.object({
   left: z.optional(z.boolean()),
 });
 
+const readStateSchema: z.ZodMiniType<S["ReadState"]> = z.object({
+  channel_id: snowflake,
+  last_read_id: snowflake,
+  mention_count: z.int().check(z.nonnegative()),
+});
+
 const guildStateSchema: z.ZodMiniType<S["GuildState"]> = z.object({
   guild: guildSchema,
   roles: z.array(roleSchema),
@@ -174,6 +182,7 @@ const guildStateSchema: z.ZodMiniType<S["GuildState"]> = z.object({
   my_member: memberSchema,
   presences: z.array(presenceSchema),
   voice_states: z.array(voiceStateSchema),
+  read_states: z.array(readStateSchema),
 });
 
 /** The payload type of each event the guild store applies (`x-gateway.events`). */
@@ -195,13 +204,19 @@ export interface GatewayEvents {
   PRESENCE_UPDATE: S["Presence"];
   USER_UPDATE: S["User"];
   VOICE_STATE_UPDATE: S["VoiceState"];
+  MESSAGE_ACK: S["ReadState"];
 }
 
 const memberEventSchema: z.ZodMiniType<S["MemberEvent"]> = z.object({ guild_id: snowflake, member: memberSchema });
 const roleEventSchema: z.ZodMiniType<S["RoleEvent"]> = z.object({ guild_id: snowflake, role: roleSchema });
 
 const eventSchemas: { [K in keyof GatewayEvents]: z.ZodMiniType<GatewayEvents[K]> } = {
-  READY: z.object({ user: userSchema, guilds: z.array(guildStateSchema), presences: z.array(presenceSchema) }),
+  READY: z.object({
+    user: userSchema,
+    guilds: z.array(guildStateSchema),
+    presences: z.array(presenceSchema),
+    read_states: z.array(readStateSchema),
+  }),
   GUILD_CREATE: guildStateSchema,
   GUILD_SYNC: guildStateSchema,
   GUILD_UPDATE: guildSchema,
@@ -218,6 +233,7 @@ const eventSchemas: { [K in keyof GatewayEvents]: z.ZodMiniType<GatewayEvents[K]
   PRESENCE_UPDATE: presenceSchema,
   USER_UPDATE: userSchema,
   VOICE_STATE_UPDATE: voiceStateSchema,
+  MESSAGE_ACK: readStateSchema,
 };
 
 /**
@@ -262,6 +278,10 @@ const messageSchema: z.ZodMiniType<S["Message"]> = z.object({
   reply_to_id: z.nullable(snowflake),
   referenced_message: z.nullable(messageStubSchema),
   attachments: z.array(attachmentSchema),
+  mention_user_ids: z.array(snowflake),
+  mention_role_ids: z.array(snowflake),
+  mention_everyone: z.boolean(),
+  mention_here: z.boolean(),
   nonce: z.optional(z.string()),
 });
 
@@ -276,7 +296,12 @@ export interface ChatEvents {
 const chatSchemas: { [K in keyof ChatEvents]: z.ZodMiniType<ChatEvents[K]> } = {
   MESSAGE_CREATE: messageSchema,
   MESSAGE_UPDATE: messageSchema,
-  MESSAGE_DELETE: z.object({ id: snowflake, channel_id: snowflake, guild_id: snowflake }),
+  MESSAGE_DELETE: z.object({
+    id: snowflake,
+    channel_id: snowflake,
+    guild_id: snowflake,
+    last_message_id: z.nullable(snowflake),
+  }),
   TYPING_START: z.object({ channel_id: snowflake, guild_id: snowflake, user_id: snowflake, timestamp: z.string() }),
 };
 

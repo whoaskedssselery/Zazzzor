@@ -1,4 +1,4 @@
-import { type components, type GatewayEvents, parseEvent } from "@/shared/api";
+import { type ChatEvents, type components, type GatewayEvents, parseChatEvent, parseEvent } from "@/shared/api";
 
 type S = components["schemas"];
 export type User = S["User"];
@@ -12,6 +12,16 @@ export type PresenceStatus = S["Presence"]["status"];
 /** Someone in a voice channel; `left` exists only on the event. */
 export type VoiceState = Omit<S["VoiceState"], "left">;
 
+/** How far the user has read a channel, and how many unread messages there mention them. */
+export interface ReadMark {
+  /** The newest message read; "0" before the first. */
+  lastReadId: string;
+  mentions: number;
+}
+
+/** Whether snowflake `a` is newer than `b` (decimal strings, compared as numbers). */
+export const newer = (a: string, b: string): boolean => BigInt(a) > BigInt(b);
+
 /** One server as the signed-in user sees it, keyed by ID for upserts. */
 export interface GuildEntry {
   guild: Guild;
@@ -22,6 +32,11 @@ export interface GuildEntry {
   myMember: Member;
   /** Who is in which voice channel of the server, by user ID (a user is in one at most). */
   voice: Record<string, VoiceState>;
+  /**
+   * Read marks by channel ID. A channel without one was never read (it was
+   * created, or became visible, after the user joined).
+   */
+  reads: Record<string, ReadMark>;
 }
 
 /** Everything the gateway tells about the user's servers. */
@@ -43,7 +58,18 @@ function entryOf(g: GuildState): GuildEntry {
   const members: Record<string, Member> = Object.fromEntries(g.members.map((m) => [m.user.id, m]));
   members[g.my_member.user.id] = g.my_member;
   const voice = Object.fromEntries(g.voice_states.map(({ left: _left, ...v }) => [v.user_id, v]));
-  return { guild: g.guild, roles: byId(g.roles), channels: byId(g.channels), members, myMember: g.my_member, voice };
+  const reads = Object.fromEntries(
+    g.read_states.map((r) => [r.channel_id, { lastReadId: r.last_read_id, mentions: r.mention_count }]),
+  );
+  return {
+    guild: g.guild,
+    roles: byId(g.roles),
+    channels: byId(g.channels),
+    members,
+    myMember: g.my_member,
+    voice,
+    reads,
+  };
 }
 
 /**
@@ -93,7 +119,8 @@ function removeGuild(s: GuildsState, id: string): GuildsState {
 function updateGuild(s: GuildsState, id: string, fn: (e: GuildEntry) => GuildEntry): GuildsState {
   const entry = s.guilds[id];
   if (!entry) return s;
-  return { ...s, guilds: { ...s.guilds, [id]: fn(entry) } };
+  const next = fn(entry);
+  return next === entry ? s : { ...s, guilds: { ...s.guilds, [id]: next } };
 }
 
 function without<T>(record: Record<string, T>, id: string): Record<string, T> {
@@ -119,6 +146,68 @@ function renameUser(e: GuildEntry, user: User): GuildEntry {
     members: member ? { ...e.members, [user.id]: { ...member, user } } : e.members,
     myMember: mine ? { ...e.myMember, user } : e.myMember,
   };
+}
+
+/** The server that holds channel `channelId`, if any. */
+const guildOfChannel = (s: GuildsState, channelId: string): string | undefined =>
+  s.order.find((id) => s.guilds[id]?.channels[channelId] !== undefined);
+
+/**
+ * Moves the read mark of `channelId` to `mark`, never back: an older mark
+ * (an ack that crossed a newer one) changes nothing.
+ */
+export function advanceRead(s: GuildsState, channelId: string, mark: ReadMark): GuildsState {
+  const guildId = guildOfChannel(s, channelId);
+  if (guildId === undefined) return s;
+  return updateGuild(s, guildId, (e) => {
+    const held = e.reads[channelId];
+    if (held && newer(held.lastReadId, mark.lastReadId)) return e;
+    if (held?.lastReadId === mark.lastReadId && held.mentions === mark.mentions) return e;
+    return { ...e, reads: { ...e.reads, [channelId]: mark } };
+  });
+}
+
+type NewMessage = ChatEvents["MESSAGE_CREATE"];
+
+/** Whether `m` mentions the user of `e`: by ID, by one of their roles, or everyone. */
+export const mentionsMe = (
+  e: GuildEntry,
+  m: Pick<NewMessage, "mention_everyone" | "mention_user_ids" | "mention_role_ids">,
+): boolean =>
+  m.mention_everyone ||
+  m.mention_user_ids.includes(e.myMember.user.id) ||
+  m.mention_role_ids.some((r) => e.myMember.roles.includes(r));
+
+/**
+ * A new message becomes its channel's newest. The user's own message is
+ * read (the server marks it so); one that mentions them adds to the
+ * channel's mentions. A message not newer than the channel's newest was
+ * already counted, so a repeated event changes nothing.
+ */
+function messageCreated(s: GuildsState, m: NewMessage): GuildsState {
+  const e = s.guilds[m.guild_id];
+  const channel = e?.channels[m.channel_id];
+  if (!e || !channel) return s;
+  if (channel.last_message_id !== null && !newer(m.id, channel.last_message_id)) return s;
+  const channels = { ...e.channels, [channel.id]: { ...channel, last_message_id: m.id } };
+  let reads = e.reads;
+  if (m.author?.id === e.myMember.user.id) {
+    reads = { ...reads, [channel.id]: { lastReadId: m.id, mentions: 0 } };
+  } else if (mentionsMe(e, m)) {
+    const held = reads[channel.id];
+    reads = { ...reads, [channel.id]: { lastReadId: held?.lastReadId ?? "0", mentions: (held?.mentions ?? 0) + 1 } };
+  }
+  return { ...s, guilds: { ...s.guilds, [e.guild.id]: { ...e, channels, reads } } };
+}
+
+/** A deleted message may have been the channel's newest: the event says which one is now. */
+function messageDeleted(s: GuildsState, d: ChatEvents["MESSAGE_DELETE"]): GuildsState {
+  const channel = s.guilds[d.guild_id]?.channels[d.channel_id];
+  if (!channel || channel.last_message_id === d.last_message_id) return s;
+  return updateGuild(s, d.guild_id, (e) => ({
+    ...e,
+    channels: { ...e.channels, [channel.id]: { ...channel, last_message_id: d.last_message_id } },
+  }));
 }
 
 /** The events the store applies, with their payloads already checked. */
@@ -159,8 +248,10 @@ const handlers: Handlers = {
     updateGuild(s, c.guild_id, (e) => ({
       ...e,
       channels: without(e.channels, c.id),
+      reads: without(e.reads, c.id),
       voice: Object.fromEntries(Object.entries(e.voice).filter(([, v]) => v.channel_id !== c.id)),
     })),
+  MESSAGE_ACK: (s, r) => advanceRead(s, r.channel_id, { lastReadId: r.last_read_id, mentions: r.mention_count }),
   PRESENCE_UPDATE: (s, p) => ({ ...s, presences: { ...s.presences, [p.user_id]: p.status } }),
   USER_UPDATE: (s, user) => ({
     ...s,
@@ -180,11 +271,20 @@ const isHandled = (t: string): t is keyof Handlers => Object.hasOwn(handlers, t)
 /**
  * The store after DISPATCH `t` with payload `d`. Pure; idempotent (upserts
  * and deletes by ID), so an event already reflected in READY changes
- * nothing. An event the store does not hold (messages, typing, bans,
+ * nothing. Of messages it keeps only what unread needs: each channel's
+ * newest message and the user's read marks. An event the store does not hold (typing, bans,
  * anything unknown) leaves the state as it was, and so does a payload that
  * does not match the contract (logged).
  */
 export function applyEvent(s: GuildsState, t: string, d: unknown): GuildsState {
+  if (t === "MESSAGE_CREATE") {
+    const m = parseChatEvent(t, d);
+    return m ? messageCreated(s, m) : s;
+  }
+  if (t === "MESSAGE_DELETE") {
+    const m = parseChatEvent(t, d);
+    return m ? messageDeleted(s, m) : s;
+  }
   if (!isHandled(t)) return s;
   const payload = parseEvent(t, d);
   if (payload === null) return s;

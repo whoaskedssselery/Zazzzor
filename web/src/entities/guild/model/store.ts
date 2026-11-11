@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { type ConnectionStatus, parseEvent } from "@/shared/api";
-import { applyEvent, applyReady, EMPTY_GUILDS, type GuildsState } from "./reducer";
+import { advanceRead, applyEvent, applyReady, EMPTY_GUILDS, type GuildsState } from "./reducer";
 
 interface GuildStore {
   guilds: GuildsState;
@@ -30,7 +30,7 @@ export const setConnectionStatus = (status: ConnectionStatus): void => {
 
 /**
  * Applies one DISPATCH of the gateway: READY replaces the store wholesale,
- * other events change it (see applyEvent). Messages and typing do not touch it.
+ * other events change it (see applyEvent). Of messages it keeps only unread.
  */
 export const applyGatewayDispatch = (t: string, d: unknown): void => {
   const before = store.getState().guilds;
@@ -57,3 +57,13 @@ export const subscribeConnectionStatus = (fn: (status: ConnectionStatus) => void
   store.subscribe((st, prev) => {
     if (st.status !== prev.status) fn(st.status);
   });
+
+/**
+ * Marks `channelId` read through `messageId` at once, before the server
+ * confirms (its MESSAGE_ACK then changes nothing). Never moves a mark back.
+ */
+export const markRead = (channelId: string, messageId: string): void => {
+  const before = store.getState().guilds;
+  const after = advanceRead(before, channelId, { lastReadId: messageId, mentions: 0 });
+  if (after !== before) store.setState({ guilds: after });
+};
