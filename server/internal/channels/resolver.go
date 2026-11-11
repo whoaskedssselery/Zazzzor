@@ -69,18 +69,29 @@ func (s *Service) viewable(ctx context.Context, db store.DBTX, userID, channelID
 // Permissions implements Resolver.
 func (s *Service) Permissions(ctx context.Context, userID, channelID snowflake.ID) (permissions.Permission, snowflake.ID, error) {
 	var (
-		c Channel
-		p permissions.Permission
+		p       permissions.Permission
+		guildID snowflake.ID
 	)
 	err := s.read(ctx, func(tx pgx.Tx) error {
 		var err error
-		c, p, err = s.viewable(ctx, tx, userID, channelID)
+		p, guildID, err = s.PermissionsIn(ctx, tx, userID, channelID)
 		return err
 	})
 	if err != nil {
 		return 0, 0, err
 	}
-	return p, c.GuildID, nil
+	return p, guildID, nil
+}
+
+// PermissionsIn resolves channel permissions through the caller's transaction.
+func (s *Service) PermissionsIn(ctx context.Context, tx pgx.Tx, userID, channelID snowflake.ID) (permissions.Permission, snowflake.ID, error) {
+	c, p, err := s.viewable(ctx, tx, userID, channelID)
+	return p, c.GuildID, err
+}
+
+// LockGuild serializes a transaction with membership and permission changes in guildID.
+func (s *Service) LockGuild(ctx context.Context, tx pgx.Tx, guildID snowflake.ID) error {
+	return s.guilds.LockGuild(ctx, tx, guildID)
 }
 
 // Channel returns a channel userID may view, else ErrNotFound.
@@ -101,21 +112,27 @@ func (s *Service) Channel(ctx context.Context, userID, channelID snowflake.ID) (
 func (s *Service) VisibleChannels(ctx context.Context, userID, guildID snowflake.ID) ([]Channel, error) {
 	var out []Channel
 	err := s.read(ctx, func(tx pgx.Tx) error {
-		sub, err := s.guilds.SubjectIn(ctx, tx, guildID, userID)
-		if err != nil {
-			return err
-		}
-		l, err := s.loadLayout(ctx, tx, guildID)
-		if err != nil {
-			return err
-		}
-		out = l.visibleTo(sub)
-		return nil
+		var err error
+		out, err = s.VisibleChannelsIn(ctx, tx, userID, guildID)
+		return err
 	})
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
+}
+
+// VisibleChannelsIn lists viewable channels through the caller's transaction.
+func (s *Service) VisibleChannelsIn(ctx context.Context, tx pgx.Tx, userID, guildID snowflake.ID) ([]Channel, error) {
+	sub, err := s.guilds.SubjectIn(ctx, tx, guildID, userID)
+	if err != nil {
+		return nil, err
+	}
+	l, err := loadLayout(ctx, s.q, tx, guildID)
+	if err != nil {
+		return nil, err
+	}
+	return l.visibleTo(sub), nil
 }
 
 // visibleTo returns the channels sub may view, in display order.
@@ -134,24 +151,34 @@ func (l *layout) visibleTo(sub permissions.Subject) []Channel {
 func (s *Service) Viewers(ctx context.Context, channelID snowflake.ID) ([]snowflake.ID, error) {
 	var out []snowflake.ID
 	err := s.read(ctx, func(tx pgx.Tx) error {
-		c, err := s.channelIn(ctx, tx, channelID)
+		a, overwrites, err := s.MentionAccessIn(ctx, tx, channelID)
 		if err != nil {
 			return err
 		}
-		a, err := s.guilds.AccessIn(ctx, tx, c.GuildID)
-		if errors.Is(err, guilds.ErrNotFound) {
-			return ErrNotFound
-		}
-		if err != nil {
-			return err
-		}
-		out = viewers(a, c.Overwrites)
+		out = viewers(a, overwrites)
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
+}
+
+// MentionAccessIn loads guild roles and member assignments with the channel's
+// effective overwrites through the caller's transaction.
+func (s *Service) MentionAccessIn(ctx context.Context, tx pgx.Tx, channelID snowflake.ID) (guilds.Access, []permissions.Overwrite, error) {
+	c, err := s.channelIn(ctx, tx, channelID)
+	if err != nil {
+		return guilds.Access{}, nil, err
+	}
+	a, err := s.guilds.AccessIn(ctx, tx, c.GuildID)
+	if errors.Is(err, guilds.ErrNotFound) {
+		return guilds.Access{}, nil, ErrNotFound
+	}
+	if err != nil {
+		return guilds.Access{}, nil, err
+	}
+	return a, c.Overwrites, nil
 }
 
 // viewers returns the members of a who may view a channel with the given

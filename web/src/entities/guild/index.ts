@@ -29,7 +29,10 @@ export {
   type GuildEntry,
   type GuildsState,
   type Member,
+  mentionsMe,
+  newer,
   type PresenceStatus,
+  type ReadMark,
   type Role,
   type VoiceState,
 } from "./model/reducer";
@@ -48,10 +51,12 @@ export {
   applyGatewayDispatch,
   getConnectionStatus,
   getGuildsState,
+  markRead,
   resetGuilds,
   setConnectionStatus,
   subscribeConnectionStatus,
   useConnectionStatus,
   useGuilds,
 } from "./model/store";
+export { guildMentionCount, isGuildUnread, isUnread, mentionCount } from "./model/unread";
 export { myVoice, voiceMembers } from "./model/voice";

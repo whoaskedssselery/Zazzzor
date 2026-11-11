@@ -1,6 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
+  CheckCheck,
   ChevronDown,
   FolderPlus,
   Hash,
@@ -32,6 +33,9 @@ import {
   type GuildEntry,
   guildSettingsTabs,
   has,
+  isGuildUnread,
+  isUnread,
+  mentionCount,
   PERM,
   useGuilds,
   userDisplay,
@@ -42,6 +46,7 @@ import { CreateChannelDialog, type NewChannelKind } from "@/features/create-chan
 import { InviteDialog } from "@/features/create-invite";
 import { LeaveGuildDialog } from "@/features/leave-guild";
 import { MemberMenu } from "@/features/manage-member";
+import { readGuild } from "@/features/read-channel";
 import { joinVoice, NO_CONNECT } from "@/features/voice-call";
 import { api, errorText, unwrap } from "@/shared/api";
 import {
@@ -53,6 +58,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  formatCount,
   IconButton,
   useToast,
 } from "@/shared/ui";
@@ -160,20 +166,38 @@ const ChannelRow = ({ channel, siblings, selected }: { channel: Channel; sibling
   const { row, control } = useArrange(channel, siblings);
   const tab = list.settingsTabOf(channel.id);
   const voice = channel.type === CHANNEL_TYPE.VOICE;
+  const unread = isUnread(list.entry, channel.id);
+  const mentions = mentionCount(list.entry, channel.id);
   const Icon = voice ? Volume2 : Hash;
   const look = cn(
     rowClass,
     tab && "pr-9",
-    selected ? "bg-selected text-fg" : "text-fg-faint hover:bg-hover hover:text-fg-muted",
+    selected
+      ? "bg-selected text-fg"
+      : cn("hover:bg-hover", unread || mentions > 0 ? "text-fg" : "text-fg-faint hover:text-fg-muted"),
   );
+  // What the pill and the badge show, said in the name.
+  let name = channel.name;
+  if (mentions > 0) name += `, упоминаний: ${String(mentions)}`;
+  else if (unread) name += ", есть непрочитанные";
   const label = (
     <>
       <Icon aria-hidden className="size-5 shrink-0 text-fg-faint" strokeWidth={1.75} />
-      <span className="truncate text-base font-medium">{channel.name}</span>
+      <span className={cn("truncate text-base", unread || mentions > 0 ? "font-semibold" : "font-medium")}>
+        {channel.name}
+      </span>
+      {mentions > 0 && (
+        <Badge variant="count" aria-hidden className={cn("ml-auto", tab && "group-hover:invisible")}>
+          {formatCount(mentions)}
+        </Badge>
+      )}
     </>
   );
   return (
     <li className={cn("group relative px-2", list.dragging?.id === channel.id && "opacity-50")} {...row}>
+      {unread && !selected && (
+        <span aria-hidden className="absolute top-1/2 left-0 h-2 w-1 -translate-y-1/2 rounded-r-full bg-fg" />
+      )}
       {voice ? (
         <button
           type="button"
@@ -200,6 +224,7 @@ const ChannelRow = ({ channel, siblings, selected }: { channel: Channel; sibling
           to="/channels/$guildId/$channelId"
           params={{ guildId: channel.guild_id, channelId: channel.id }}
           aria-current={selected ? "page" : undefined}
+          aria-label={name === channel.name ? undefined : name}
           className={look}
           {...control}
         >
@@ -432,6 +457,12 @@ export const ChannelSidebar = ({ guildId, channelId }: { guildId: string; channe
           />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-(--radix-dropdown-menu-trigger-width) min-w-52">
+          {isGuildUnread(entry) &&
+            menuItem("Отметить как прочитанное", <CheckCheck aria-hidden />, () => {
+              void readGuild(guildId).catch((e: unknown) => {
+                toast.show({ text: errorText(e), tone: "error" });
+              });
+            })}
           {settingsTab &&
             menuItem("Настройки сервера", <Settings aria-hidden />, () => {
               void navigate({ to: "/guilds/$guildId/settings/$tab", params: { guildId, tab: settingsTab } });

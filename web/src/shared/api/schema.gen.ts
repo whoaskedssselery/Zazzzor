@@ -693,6 +693,29 @@ export interface paths {
         patch: operations["updateGuildRole"];
         trace?: never;
     };
+    "/guilds/{guild_id}/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark visible channels of a guild read
+         * @description Advances to the latest existing message of each channel the caller
+         *     may view. Preserves a marker past a deleted head and refreshes its count.
+         *     Sends one MESSAGE_ACK per changed channel to the caller's
+         *     sessions only. Shares the acknowledgment rate limit.
+         */
+        post: operations["acknowledgeGuild"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/guilds/{guild_id}/channels": {
         parameters: {
             query?: never;
@@ -938,6 +961,30 @@ export interface paths {
          *     channel. Limited to 5 per second (bursts of 10) per user.
          */
         post: operations["createMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/channels/{channel_id}/messages/{message_id}/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark a channel read through a message
+         * @description Needs VIEW_CHANNEL and READ_MESSAGE_HISTORY in the channel. Advances
+         *     last_read_id monotonically. Acknowledging the current marker refreshes
+         *     its count, and acknowledging an older message has no effect.
+         *     Each changed marker is sent as MESSAGE_ACK to this user's sessions only.
+         *     Acknowledgments share a limit of 10 per second per user, burst 20.
+         */
+        post: operations["acknowledgeMessage"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1524,6 +1571,8 @@ export interface components {
             permission_synced: boolean;
             /** @description The overwrites in effect (the category's when synced), by target ID. */
             permission_overwrites: components["schemas"]["Overwrite"][];
+            /** @description The newest existing message of the channel, or null if empty. */
+            last_message_id: components["schemas"]["Snowflake"] | null;
         };
         CreateChannelRequest: {
             name: string;
@@ -1631,6 +1680,14 @@ export interface components {
             attachments: components["schemas"]["Attachment"][];
             /** @description Only in the response to sending and in `MESSAGE_CREATE`, when the client sent one. */
             nonce?: string;
+            /** @description Mentioned guild members, in order of first appearance. */
+            mention_user_ids: components["schemas"]["Snowflake"][];
+            /** @description Mentioned guild roles the author was allowed to mention. */
+            mention_role_ids: components["schemas"]["Snowflake"][];
+            /** @description An authorized @everyone or @here was present outside code. */
+            mention_everyone: boolean;
+            /** @description The broadcast was @here, limited to online members. @everyone takes precedence when both occur. */
+            mention_here: boolean;
         };
         CreateMessageRequest: {
             /** @description Up to 4000 characters after trimming. Required unless attachment_ids is non-empty. */
@@ -1658,7 +1715,7 @@ export interface components {
             t?: string;
             s?: number;
             /** @description The payload; null for HEARTBEAT_ACK. */
-            d: null | components["schemas"]["GatewayHello"] | components["schemas"]["GatewayReady"] | components["schemas"]["GuildState"] | components["schemas"]["Guild"] | components["schemas"]["GuildDeleteEvent"] | components["schemas"]["MemberEvent"] | components["schemas"]["MemberRemoveEvent"] | components["schemas"]["RoleEvent"] | components["schemas"]["RoleDeleteEvent"] | components["schemas"]["Channel"] | components["schemas"]["Message"] | components["schemas"]["MessageDeleteEvent"] | components["schemas"]["TypingStartEvent"] | components["schemas"]["Presence"] | components["schemas"]["User"] | components["schemas"]["VoiceState"] | components["schemas"]["VoiceMove"];
+            d: null | components["schemas"]["GatewayHello"] | components["schemas"]["GatewayReady"] | components["schemas"]["GuildState"] | components["schemas"]["Guild"] | components["schemas"]["GuildDeleteEvent"] | components["schemas"]["MemberEvent"] | components["schemas"]["MemberRemoveEvent"] | components["schemas"]["RoleEvent"] | components["schemas"]["RoleDeleteEvent"] | components["schemas"]["Channel"] | components["schemas"]["Message"] | components["schemas"]["MessageDeleteEvent"] | components["schemas"]["ReadState"] | components["schemas"]["TypingStartEvent"] | components["schemas"]["Presence"] | components["schemas"]["User"] | components["schemas"]["VoiceState"] | components["schemas"]["VoiceMove"];
         };
         GatewayHello: {
             /** @description Send HEARTBEAT this often (30000); 150 s without one closes the connection with 4009, allowing for throttled timers in hidden browser tabs. */
@@ -1669,6 +1726,8 @@ export interface components {
             guilds: components["schemas"]["GuildState"][];
             /** @description Everyone online who shares a server with the user, the user included. */
             presences: components["schemas"]["Presence"][];
+            /** @description Stored read markers only for channels the receiving user can view. */
+            read_states: components["schemas"]["ReadState"][];
         };
         /** @description A server as the receiving member sees it. */
         GuildState: {
@@ -1687,6 +1746,8 @@ export interface components {
             presences: components["schemas"]["Presence"][];
             /** @description Who is in the voice channels the member may view, by user ID. */
             voice_states: components["schemas"]["VoiceState"][];
+            /** @description Stored read markers only for channels the receiving user can view. */
+            read_states: components["schemas"]["ReadState"][];
         };
         /**
          * @description A user in a voice channel; a user is in at most one. It is also the
@@ -1776,6 +1837,15 @@ export interface components {
             id: components["schemas"]["Snowflake"];
             channel_id: components["schemas"]["Snowflake"];
             guild_id: components["schemas"]["Snowflake"];
+            /** @description The newest existing message of the channel, or null if empty. */
+            last_message_id: components["schemas"]["Snowflake"] | null;
+        };
+        ReadState: {
+            channel_id: components["schemas"]["Snowflake"];
+            /** @description Greatest acknowledged message ID, or "0" before the first message. */
+            last_read_id: components["schemas"]["Snowflake"];
+            /** @description Number of unread messages that mentioned this user at the last update. */
+            mention_count: number;
         };
         TypingStartEvent: {
             channel_id: components["schemas"]["Snowflake"];
@@ -3042,6 +3112,33 @@ export interface operations {
             500: components["responses"]["Problem"];
         };
     };
+    acknowledgeGuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                guild_id: components["parameters"]["GuildID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Read state advanced or already at least as far. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Problem"];
+            /** @description Origin not allowed. */
+            403: components["responses"]["Problem"];
+            /** @description The target does not exist or is not visible to the caller. */
+            404: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Problem"];
+        };
+    };
     listGuildChannels: {
         parameters: {
             query?: never;
@@ -3515,6 +3612,34 @@ export interface operations {
             404: components["responses"]["Problem"];
             /** @description `unsupported_media_type`. */
             415: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    acknowledgeMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+                message_id: components["parameters"]["MessageID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Read state advanced or already at least as far. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Problem"];
+            /** @description Origin not allowed, or missing READ_MESSAGE_HISTORY for a message acknowledgment. */
+            403: components["responses"]["Problem"];
+            /** @description The target does not exist or is not visible to the caller. */
+            404: components["responses"]["Problem"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["Problem"];
         };

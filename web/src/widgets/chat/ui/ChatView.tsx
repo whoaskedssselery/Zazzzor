@@ -1,6 +1,17 @@
 import { Hash, Upload } from "lucide-react";
 import { type DragEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { type Channel, computeChannel, type GuildEntry, has, PERM, useGuilds, userDisplay } from "@/entities/guild";
+import {
+  type Channel,
+  computeChannel,
+  type GuildEntry,
+  getGuildsState,
+  has,
+  isUnread,
+  mentionsMe,
+  PERM,
+  useGuilds,
+  userDisplay,
+} from "@/entities/guild";
 import {
   type AuthorView,
   attachmentsOf,
@@ -19,8 +30,16 @@ import {
   MessageToolbar,
   useDeleteMessage,
 } from "@/features/message-actions";
-import { Composer, type ReplyTarget, useAddFiles, useSendMessage } from "@/features/send-message";
+import { useReadChannel } from "@/features/read-channel";
+import {
+  Composer,
+  type MentionSuggestion,
+  type ReplyTarget,
+  useAddFiles,
+  useSendMessage,
+} from "@/features/send-message";
 import { errorText } from "@/shared/api";
+import type { MentionNames } from "@/shared/lib";
 import { Button, Skeleton } from "@/shared/ui";
 import { buildRows, type ChatRow } from "../model/rows";
 import { MessageList } from "./MessageList";
@@ -69,6 +88,27 @@ const Loading = ({ label }: { label: string }) => (
     ))}
   </div>
 );
+
+/** Where the unread messages start, as Discord marks it: a red line with «Новые» at its end. */
+const NewDivider = () => (
+  <div className="mx-4 mt-6 mb-1 flex items-center">
+    <span className="sr-only">Новые сообщения</span>
+    <span aria-hidden className="h-px flex-1 bg-danger" />
+    <span
+      aria-hidden
+      className="rounded-sm bg-danger px-1 text-[10px] leading-4 font-bold tracking-wide text-on-danger uppercase"
+    >
+      Новые
+    </span>
+  </div>
+);
+
+/** The user's read mark in `channelId` as they open it, if the channel has unread messages then. */
+const unreadFrom = (guildId: string, channelId: string): string | null => {
+  const e = getGuildsState().guilds[guildId];
+  if (!e || !isUnread(e, channelId)) return null;
+  return e.reads[channelId]?.lastReadId ?? "0";
+};
 
 const DaySeparator = ({ label }: { label: string }) => (
   <div className="mx-4 mt-6 mb-1 flex items-center gap-2 text-xs font-semibold text-fg-faint">
@@ -153,6 +193,48 @@ const DropHint = ({ channelName }: { channelName: string }) => (
   </div>
 );
 
+/** Names for mentions as this server shows them: members by their name here, roles with their colour. */
+const mentionNames = (entry: GuildEntry): MentionNames => ({
+  user: (id) => {
+    const member = entry.members[id];
+    return member ? { name: userDisplay(entry, member.user).name } : null;
+  },
+  role: (id) => {
+    const role = entry.roles[id];
+    return role ? { name: role.name, color: role.color } : null;
+  },
+});
+
+/**
+ * Who `@` can reach in `channelId`: the members who can see it, by the name
+ * they go by here; the roles that may be mentioned (all of them with
+ * MENTION_EVERYONE, which also brings @everyone and @here).
+ */
+const mentionSuggestions = (
+  entry: GuildEntry,
+  channelId: string,
+  meId: string | null,
+  everyone: boolean,
+): MentionSuggestion[] => {
+  const users = Object.values(entry.members)
+    .filter((m) => m.user.id !== meId && has(computeChannel(entry, channelId, m.user.id), PERM.VIEW_CHANNEL))
+    .map((m): MentionSuggestion => {
+      const view = userDisplay(entry, m.user);
+      return { kind: "user", id: m.user.id, name: view.name, detail: m.user.username, avatarUrl: view.avatarUrl };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, "ru"));
+  const roles = Object.values(entry.roles)
+    .filter((r) => r.id !== entry.guild.id && (r.mentionable || everyone))
+    .map((r): MentionSuggestion => ({ kind: "role", id: r.id, name: r.name, color: r.color }));
+  const groups: MentionSuggestion[] = everyone
+    ? [
+        { kind: "everyone", id: null, name: "everyone", detail: "Все, кто видит канал" },
+        { kind: "here", id: null, name: "here", detail: "Все, кто сейчас в сети" },
+      ]
+    : [];
+  return [...users, ...roles, ...groups];
+};
+
 /** How a message author shows here; null for a deleted account. */
 const authorOf = (entry: GuildEntry, user: Message["author"]): AuthorView | null =>
   user === null ? null : userDisplay(entry, user);
@@ -173,6 +255,7 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
   const canSend = has(perms, PERM.SEND_MESSAGES);
   const canManage = has(perms, PERM.MANAGE_MESSAGES);
   const canAttach = canSend && has(perms, PERM.ATTACH_FILES);
+  const canMentionEveryone = has(perms, PERM.MENTION_EVERYONE);
 
   const history = useMessages(channel.id, canRead);
   const pending = usePendingMessages(channel.id);
@@ -187,6 +270,9 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
   const [deleting, setDeleting] = useState<Message | null>(null);
   const [scrollTo, setScrollTo] = useState<{ id: string } | null>(null);
   const [highlighted, setHighlighted] = useState<string | null>(null);
+  const [atBottom, setAtBottom] = useState(true);
+  // Fixed while the channel stays open, so the line does not move as the user reads.
+  const [readFrom] = useState(() => unreadFrom(guildId, channel.id));
 
   useEffect(() => {
     if (highlighted === null) return;
@@ -198,12 +284,15 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
     };
   }, [highlighted]);
 
+  // Read only once the history shows: until then there is nothing to have read.
+  useReadChannel(guildId, channel.id, history.isSuccess && atBottom);
+
   const messages = useMemo(() => (history.data ? inOrder(history.data) : []), [history.data]);
   const loaded = useMemo(() => new Set(messages.map((m) => m.id)), [messages]);
   const hasOlder = history.hasNextPage;
   const rows = useMemo(
-    () => buildRows(messages, pending, { hasOlder, meId, now }),
-    [messages, pending, hasOlder, meId, now],
+    () => buildRows(messages, pending, { hasOlder, meId, now, readFrom }),
+    [messages, pending, hasOlder, meId, now, readFrom],
   );
 
   const { fetchNextPage, isFetchingNextPage } = history;
@@ -212,6 +301,7 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
   }, [fetchNextPage]);
 
   if (!entry) return null;
+  const mentions = mentionNames(entry);
   const name = (u: Message["author"]) => authorOf(entry, u)?.name ?? "Удалённый пользователь";
 
   const onEditLast = (): boolean => {
@@ -245,12 +335,14 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
         <div>
           <MessageItem
             message={m}
+            mentions={mentions}
             attachments={attachmentsOf(m)}
             author={authorOf(entry, m.author)}
             replyAuthor={original ? authorOf(entry, original.author) : null}
             grouped={grouped && editing !== m.id}
             now={now}
             highlighted={highlighted === m.id}
+            mentioned={!own && mentionsMe(entry, m)}
             renderName={(nameNode) => {
               const authorId = m.author?.id;
               // A member's name opens their card; a former member's is only a name.
@@ -298,6 +390,8 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
         return <Loading label="Загружаем более ранние сообщения…" />;
       case "day":
         return <DaySeparator label={row.label} />;
+      case "new":
+        return <NewDivider />;
       case "message":
         return renderMessage(row.message, row.grouped);
       case "pending": {
@@ -314,6 +408,7 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
               referenced_message: p.replyTo,
             }}
             attachments={p.attachments}
+            mentions={mentions}
             author={me ? userDisplay(entry, me) : null}
             replyAuthor={p.replyTo ? authorOf(entry, p.replyTo.author) : null}
             grouped={row.grouped}
@@ -376,6 +471,7 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
         loadingOlder={isFetchingNextPage}
         loadOlder={loadOlder}
         scrollTo={scrollTo}
+        onAtBottom={setAtBottom}
       />
     );
   }
@@ -393,6 +489,7 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
           setReplyTo(null);
         }}
         onEditLast={onEditLast}
+        mentionables={() => mentionSuggestions(entry, channel.id, meId, canMentionEveryone)}
       />
       <TypingIndicator
         channelId={channel.id}

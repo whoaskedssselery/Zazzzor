@@ -44,6 +44,7 @@ export function makeChannel(id: string, guildId: string, over: Partial<Channel> 
     position: 0,
     permission_synced: false,
     permission_overwrites: [],
+    last_message_id: null,
     ...over,
   };
 }
@@ -63,12 +64,18 @@ export function makeGuildState(guildId: string, me: User, over: Partial<GuildSta
     my_member: myMember,
     presences: [{ user_id: me.id, status: "online" }],
     voice_states: [],
+    read_states: [],
     ...over,
   };
 }
 
 export function makeReady(me: User, guilds: GuildState[] = []): GatewayReady {
-  return { user: me, guilds, presences: [{ user_id: me.id, status: "online" }] };
+  return {
+    user: me,
+    guilds,
+    presences: [{ user_id: me.id, status: "online" }],
+    read_states: guilds.flatMap((g) => g.read_states),
+  };
 }
 
 /** When message `id` was sent: one second per ID unit after 23.10.2026 18:00 UTC, so IDs in order are seconds apart. */
@@ -87,6 +94,10 @@ export function makeMessage(id: string, channelId: string, author: User | null, 
     edited_at: null,
     reply_to_id: null,
     referenced_message: null,
+    mention_user_ids: [],
+    mention_role_ids: [],
+    mention_everyone: false,
+    mention_here: false,
     ...over,
     attachments: over.attachments ?? [],
   };

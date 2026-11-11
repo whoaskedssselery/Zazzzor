@@ -56,3 +56,21 @@ USING channels
 WHERE channels.id = overwrites.channel_id
   AND channels.guild_id = @guild_id
   AND overwrites.target_id = @target_id;
+
+-- name: SeedReadStates :exec
+INSERT INTO read_states (user_id, channel_id, guild_id, last_read_id, mention_count)
+SELECT @user_id::bigint, c.id, c.guild_id, COALESCE(c.last_message_id, 0), 0
+FROM channels AS c
+WHERE c.id = ANY(@channel_ids::bigint[])
+ON CONFLICT (user_id, channel_id) DO NOTHING;
+
+-- name: GuildReadStateKeys :many
+SELECT user_id, channel_id FROM read_states WHERE guild_id = @guild_id::bigint;
+
+-- name: DropReadStates :exec
+DELETE FROM read_states AS r
+USING (
+    SELECT unnest(@user_ids::bigint[]) AS user_id, unnest(@channel_ids::bigint[]) AS channel_id
+) AS hidden
+WHERE r.guild_id = @guild_id::bigint
+    AND r.user_id = hidden.user_id AND r.channel_id = hidden.channel_id;

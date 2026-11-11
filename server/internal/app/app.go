@@ -5,6 +5,7 @@ package app
 
 import (
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -38,6 +39,7 @@ var (
 
 // Modules are the domain modules served by the API.
 type Modules struct {
+	presence *atomic.Pointer[gateway.Gateway]
 	Auth     *auth.Service
 	Users    *users.Service
 	Guilds   *guilds.Service
@@ -83,8 +85,14 @@ func NewModules(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator,
 	guildSvc := guilds.NewService(guilds.Options{Pool: pool, IDs: ids, Users: authSvc, Files: disk, Publisher: cleanup,
 		Hooks: guilds.Hooks{Channels: channels.NewBootstrapper(ids, nil), Overwrites: channels.NewCleaner()}})
 	channelSvc := channels.NewService(channels.Options{Pool: pool, IDs: ids, Guilds: guildSvc, Publisher: cleanup})
+	presence := new(atomic.Pointer[gateway.Gateway])
 	messageSvc := messages.NewService(messages.Options{Pool: pool, IDs: ids, Channels: channelSvc, Users: authSvc,
-		Publisher: pub, Files: disk})
+		Publisher: pub, Files: disk, OnlineAmong: func(ids []snowflake.ID) []snowflake.ID {
+			if gw := presence.Load(); gw != nil {
+				return gw.OnlineAmong(ids)
+			}
+			return nil
+		}})
 	vo := voice.Options{Channels: channelSvc, Members: guildSvc, Publisher: pub, Logger: slog.Default()}
 	if cfg.VoiceEnabled() {
 		vo.Rooms = voice.NewLiveKit(cfg.LiveKitURL, cfg.LiveKitAPIKey, cfg.LiveKitAPISecret)
@@ -92,6 +100,7 @@ func NewModules(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator,
 	}
 	cleanup.voice = voice.NewService(vo)
 	return &Modules{
+		presence:    presence,
 		Auth:        authSvc,
 		Users:       users.NewService(users.Options{Accounts: authSvc, Files: disk, Publisher: pub}),
 		Guilds:      guildSvc,
@@ -124,7 +133,12 @@ func (m *Modules) NewGateway(bus *events.Bus, cfg config.Config, logger *slog.Lo
 	opts.TrustedProxies = cfg.TrustedProxies
 	opts.Logger = logger
 	opts.Registerer = reg
-	return gateway.New(opts)
+	opts.ReadStates = m.Messages
+	gw := gateway.New(opts)
+	if m.presence != nil {
+		m.presence.Store(gw)
+	}
+	return gw
 }
 
 // Routes mounts the domain routes, and the gateway at /gateway unless gw is

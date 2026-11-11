@@ -16,7 +16,6 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/messages/store"
 	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
-	"github.com/whoaskedssselery/zazzzor/server/internal/platform/db"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
@@ -160,7 +159,7 @@ func (s *Service) complete(ctx context.Context, guildID, channelID snowflake.ID,
 	out := make([]Message, len(rows))
 	for i, r := range rows {
 		m := Message{ID: r.ID, ChannelID: r.ChannelID, GuildID: guildID, Author: author(r.AuthorID),
-			Content: r.Content, CreatedAt: r.CreatedAt, EditedAt: r.EditedAt, ReplyToID: r.ReplyToID, Attachments: byMessage[r.ID]}
+			Content: r.Content, CreatedAt: r.CreatedAt, EditedAt: r.EditedAt, ReplyToID: r.ReplyToID, Attachments: byMessage[r.ID], mentions: storedMentions(r)}
 		if r.ReplyToID != nil {
 			if o, ok := originals[*r.ReplyToID]; ok {
 				m.Referenced = &Stub{ID: o.ID, Author: author(o.AuthorID), Content: o.Content}
@@ -230,7 +229,7 @@ func (s *Service) Create(ctx context.Context, channelID, userID snowflake.ID, f 
 			return Message{}, fmt.Errorf("messages: load replied message: %w", err)
 		}
 	}
-	params := store.CreateMessageParams{ID: s.ids.Next(), ChannelID: channelID, AuthorID: &userID,
+	params := store.CreateMessageParams{ChannelID: channelID, AuthorID: &userID,
 		Content: content, ReplyToID: f.ReplyToID}
 	// Everything the event shows but created_at is read before the write,
 	// so nothing can fail between the write and the event.
@@ -240,18 +239,13 @@ func (s *Service) Create(ctx context.Context, channelID, userID snowflake.ID, f 
 		return Message{}, err
 	}
 	var row store.Message
-	if f.Nonce == nil && len(f.AttachmentIDs) == 0 {
-		row, err = s.q.CreateMessage(ctx, s.pool, params)
-	} else {
-		// A claim gone before it is read (its message deleted, or it just
-		// expired) frees the nonce: one more try then.
-		for range 2 {
-			if row, err = s.createOnce(ctx, params, f, &m); !errors.Is(err, errNonceTaken) {
-				break
-			}
-			if sent, ok, sentErr := s.sentWith(ctx, guildID, channelID, userID, *f.Nonce); ok || sentErr != nil {
-				return sent, sentErr
-			}
+	// A claim that disappears before it is read frees the nonce for one retry.
+	for range 2 {
+		if row, err = s.createOnce(ctx, guildID, params, f, &m); !errors.Is(err, errNonceTaken) {
+			break
+		}
+		if sent, ok, sentErr := s.sentWith(ctx, guildID, channelID, userID, *f.Nonce); ok || sentErr != nil {
+			return sent, sentErr
 		}
 	}
 	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23503" {
@@ -260,7 +254,7 @@ func (s *Service) Create(ctx context.Context, channelID, userID snowflake.ID, f 
 	if err != nil {
 		return Message{}, fmt.Errorf("messages: create message: %w", err)
 	}
-	m.CreatedAt = row.CreatedAt
+	m.ID, m.CreatedAt, m.mentions = row.ID, row.CreatedAt, storedMentions(row)
 	m.Nonce = f.Nonce
 	s.publish(ctx, events.Event{Type: events.MessageCreate, Audience: channelAudience(guildID, channelID),
 		Payload: m.Public()})
@@ -270,14 +264,35 @@ func (s *Service) Create(ctx context.Context, channelID, userID snowflake.ID, f 
 // errNonceTaken: a live claim holds the nonce, so its message was sent.
 var errNonceTaken = errors.New("messages: nonce taken")
 
-// createOnce stores the message, claims its optional nonce and binds files
-// in the same transaction. A taken nonce wins before any file is bound.
-func (s *Service) createOnce(ctx context.Context, params store.CreateMessageParams, f CreateFields, m *Message) (store.Message, error) {
+// createOnce stores the message, nonce, files and unread state in one transaction.
+func (s *Service) createOnce(ctx context.Context, guildID snowflake.ID, params store.CreateMessageParams, f CreateFields, m *Message) (store.Message, error) {
 	var row store.Message
-	err := db.InTx(ctx, s.pool, func(tx pgx.Tx) error {
-		var err error
-		if row, err = s.q.CreateMessage(ctx, tx, params); err != nil {
+	err := s.withGuildWrite(ctx, guildID, func(tx pgx.Tx) error {
+		p, _, err := s.channels.PermissionsIn(ctx, tx, *params.AuthorID, params.ChannelID)
+		if err != nil {
+			return fmt.Errorf("messages: recheck send access: %w", err)
+		}
+		need := permissions.SendMessages
+		if f.ReplyToID != nil {
+			need |= permissions.ReadMessageHistory
+		}
+		if len(f.AttachmentIDs) > 0 {
+			need |= permissions.AttachFiles
+		}
+		if !p.Has(need) {
+			return ErrMissingPerm
+		}
+		resolved, err := s.resolveMentions(ctx, tx, params.ChannelID, *params.AuthorID, p, params.Content)
+		if err != nil {
 			return err
+		}
+		// IDs are assigned inside the write lock so read positions and send
+		// order agree even when two requests reach the database together.
+		params.ID = s.ids.Next()
+		params.MentionUserIds, params.MentionRoleIds = resolved.userIDs, resolved.roleIDs
+		params.MentionEveryone, params.MentionHere = resolved.everyone, resolved.here
+		if row, err = s.q.CreateMessage(ctx, tx, params); err != nil {
+			return fmt.Errorf("messages: insert message: %w", err)
 		}
 		if f.Nonce != nil {
 			if err = s.claimNonce(ctx, tx, params, *f.Nonce); err != nil {
@@ -286,10 +301,35 @@ func (s *Service) createOnce(ctx context.Context, params store.CreateMessagePara
 		}
 		if len(f.AttachmentIDs) > 0 {
 			m.Attachments, err = s.bindAttachments(ctx, tx, params, f.AttachmentIDs)
+			if err != nil {
+				return err
+			}
 		}
-		return err
+		return s.recordUnread(ctx, tx, guildID, params, resolved)
 	})
 	return row, err
+}
+
+// recordUnread updates the channel marker, sender marker and recipients after a new send.
+func (s *Service) recordUnread(ctx context.Context, tx pgx.Tx, guildID snowflake.ID, msg store.CreateMessageParams, m mentions) error {
+	channelID, messageID := int64(msg.ChannelID), int64(msg.ID)
+	if err := s.q.SetLastMessage(ctx, tx, store.SetLastMessageParams{ChannelID: channelID, MessageID: messageID}); err != nil {
+		return fmt.Errorf("messages: set newest message: %w", err)
+	}
+	if _, err := s.advanceRead(ctx, tx, guildID, *msg.AuthorID, []int64{channelID}, []int64{messageID}); err != nil {
+		return err
+	}
+	if len(m.recipients) == 0 {
+		return nil
+	}
+	if err := s.saveMentionRecipients(ctx, tx, msg.ID, m); err != nil {
+		return err
+	}
+	if err := s.q.IncrementMentions(ctx, tx, store.IncrementMentionsParams{GuildID: int64(guildID), ChannelID: channelID,
+		MessageID: messageID, UserIds: m.recipients}); err != nil {
+		return fmt.Errorf("messages: increment mention counters: %w", err)
+	}
+	return nil
 }
 
 // claimNonce records a send's retry key inside its write transaction.
@@ -410,8 +450,7 @@ func (s *Service) Edit(ctx context.Context, channelID, messageID, userID snowfla
 	if err != nil || content == row.Content {
 		return m, err
 	}
-	edited, err := s.q.EditMessage(ctx, s.pool, store.EditMessageParams{Content: content, ID: messageID,
-		ChannelID: channelID, AuthorID: &userID})
+	edited, err := s.editOnce(ctx, guildID, channelID, messageID, userID, content)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Deleted, or a concurrent edit set this very content: report what
 		// is there now without announcing anything.
@@ -423,10 +462,36 @@ func (s *Service) Edit(ctx context.Context, channelID, messageID, userID snowfla
 	if err != nil {
 		return Message{}, fmt.Errorf("messages: edit message: %w", err)
 	}
-	m.Content, m.EditedAt = edited.Content, edited.EditedAt
+	m.Content, m.EditedAt, m.mentions = edited.Content, edited.EditedAt, storedMentions(edited)
 	s.publish(ctx, events.Event{Type: events.MessageUpdate, Audience: channelAudience(guildID, channelID),
 		Payload: m.Public()})
 	return m, nil
+}
+
+// editOnce updates syntax and the recipients used on the next acknowledgment.
+func (s *Service) editOnce(ctx context.Context, guildID, channelID, messageID, userID snowflake.ID, content string) (store.Message, error) {
+	var edited store.Message
+	err := s.withGuildWrite(ctx, guildID, func(tx pgx.Tx) error {
+		p, _, err := s.channels.PermissionsIn(ctx, tx, userID, channelID)
+		if err != nil {
+			return fmt.Errorf("messages: recheck edit access: %w", err)
+		}
+		m, err := s.resolveMentions(ctx, tx, channelID, userID, p, content)
+		if err != nil {
+			return err
+		}
+		edited, err = s.q.EditMessage(ctx, tx, store.EditMessageParams{Content: content, ID: messageID,
+			ChannelID: channelID, AuthorID: &userID, MentionUserIds: m.userIDs, MentionRoleIds: m.roleIDs,
+			MentionEveryone: m.everyone, MentionHere: m.here})
+		if err != nil {
+			return fmt.Errorf("messages: update content: %w", err)
+		}
+		if err = s.q.ClearMentionRecipients(ctx, tx, int64(messageID)); err != nil {
+			return fmt.Errorf("messages: clear old mention recipients: %w", err)
+		}
+		return s.saveMentionRecipients(ctx, tx, messageID, m)
+	})
+	return edited, err
 }
 
 // Delete deletes a message; its author or a member with MANAGE_MESSAGES in
@@ -444,16 +509,43 @@ func (s *Service) Delete(ctx context.Context, channelID, messageID, userID snowf
 	if !authoredBy(row, userID) && !p.Has(permissions.ManageMessages) {
 		return ErrMissingPerm
 	}
-	n, err := s.q.DeleteMessage(ctx, s.pool, store.DeleteMessageParams{ID: messageID, ChannelID: channelID})
+	var last *snowflake.ID
+	err = s.withGuildWrite(ctx, guildID, func(tx pgx.Tx) error {
+		current, _, accessErr := s.channels.PermissionsIn(ctx, tx, userID, channelID)
+		if accessErr != nil {
+			return fmt.Errorf("messages: recheck delete access: %w", accessErr)
+		}
+		if !authoredBy(row, userID) {
+			if !current.Has(permissions.ReadMessageHistory) {
+				return ErrNotFound
+			}
+			if !current.Has(permissions.ManageMessages) {
+				return ErrMissingPerm
+			}
+		}
+		n, deleteErr := s.q.DeleteMessage(ctx, tx, store.DeleteMessageParams{ID: messageID, ChannelID: channelID})
+		if deleteErr != nil {
+			return fmt.Errorf("messages: delete message: %w", deleteErr)
+		}
+		if n == 0 {
+			return ErrNotFound
+		}
+		marker, recomputeErr := s.q.RecomputeLastMessage(ctx, tx, channelID)
+		if recomputeErr != nil {
+			return fmt.Errorf("messages: recompute newest message: %w", recomputeErr)
+		}
+		if marker.Valid {
+			id := snowflake.ID(marker.Int64)
+			last = &id
+		}
+		return nil
+	})
 	if err != nil {
-		return fmt.Errorf("messages: delete message: %w", err)
-	}
-	if n == 0 {
-		return ErrNotFound // deleted meanwhile
+		return fmt.Errorf("messages: delete transaction: %w", err)
 	}
 	s.tryAttachmentTrash(ctx)
 	s.publish(ctx, events.Event{Type: events.MessageDelete, Audience: channelAudience(guildID, channelID),
-		Payload: DeletePayload{ID: messageID, ChannelID: channelID, GuildID: guildID}})
+		Payload: DeletePayload{ID: messageID, ChannelID: channelID, GuildID: guildID, LastMessageID: last}})
 	return nil
 }
 

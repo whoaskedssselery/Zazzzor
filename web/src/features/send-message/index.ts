@@ -1,4 +1,5 @@
 export { getDraft, resetDrafts, setDraft, useDraft } from "./model/drafts";
+export { type MentionSuggestion, resetMentions } from "./model/mentions";
 export {
   addFiles,
   EMPTY_FILE,

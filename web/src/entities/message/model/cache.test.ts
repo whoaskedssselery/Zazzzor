@@ -96,7 +96,7 @@ describe("applyMessageDispatch", () => {
     applyMessageDispatch(qc, "MESSAGE_CREATE", msg(3));
     applyMessageDispatch(qc, "MESSAGE_CREATE", msg(3));
     applyMessageDispatch(qc, "MESSAGE_UPDATE", msg(2, { content: "правка", edited_at: "2026-10-23T18:10:00Z" }));
-    applyMessageDispatch(qc, "MESSAGE_DELETE", { id: "1", channel_id: C, guild_id: "10" });
+    applyMessageDispatch(qc, "MESSAGE_DELETE", { id: "1", channel_id: C, guild_id: "10", last_message_id: null });
     const d = history(qc);
     if (!d) throw new Error("history expected");
     expect(order(d)).toEqual([2, 3]);

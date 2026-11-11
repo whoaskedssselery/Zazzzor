@@ -24,6 +24,9 @@ func Mount(r chi.Router, s *Service) {
 		r.Use(auth.Require, httpx.NoStore)
 		sends := r.With(auth.LimitPerUser(s.sendLimiter))
 		writes := r.With(auth.LimitPerUser(s.writeLimiter))
+		acks := r.With(auth.LimitPerUser(s.ackLimiter))
+		acks.Post("/channels/{channel_id}/messages/{message_id}/ack", httpx.Wrap(s.handleAck))
+		acks.Post("/guilds/{guild_id}/ack", httpx.Wrap(s.handleAckGuild))
 		typing := r.With(auth.LimitPerUser(s.typingCalls))
 
 		r.Get("/channels/{channel_id}/messages", httpx.Wrap(s.handleList))
@@ -177,6 +180,36 @@ func (s *Service) handleTyping(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	if err = s.Typing(r.Context(), id, auth.CurrentUser(r).ID); err != nil {
+		return fail(err)
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+// handleAck advances the caller's marker through the path message.
+func (s *Service) handleAck(w http.ResponseWriter, r *http.Request) error {
+	channelID, err := httpx.PathID(r, "channel_id")
+	if err != nil {
+		return err
+	}
+	messageID, err := httpx.PathID(r, "message_id")
+	if err != nil {
+		return err
+	}
+	if err = s.Ack(r.Context(), channelID, messageID, auth.CurrentUser(r).ID); err != nil {
+		return fail(err)
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+// handleAckGuild advances the caller's markers in visible guild channels.
+func (s *Service) handleAckGuild(w http.ResponseWriter, r *http.Request) error {
+	guildID, err := httpx.PathID(r, "guild_id")
+	if err != nil {
+		return err
+	}
+	if err = s.AckGuild(r.Context(), guildID, auth.CurrentUser(r).ID); err != nil {
 		return fail(err)
 	}
 	w.WriteHeader(http.StatusNoContent)

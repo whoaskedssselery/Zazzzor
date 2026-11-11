@@ -90,7 +90,7 @@ func (s *Service) changeOverwrite(ctx context.Context, channelID, targetID, acto
 		if !ok {
 			return ErrNotFound
 		}
-		l, err := s.loadLayout(ctx, tx, guildID)
+		l, err := loadLayout(ctx, s.q, tx, guildID)
 		if err != nil {
 			return err
 		}
@@ -134,6 +134,9 @@ func (s *Service) changeOverwrite(ctx context.Context, channelID, targetID, acto
 		}
 		n.ch.Overwrites, n.ch.PermissionSynced, n.owDirty = set, false, true
 		if _, err = s.save(ctx, tx, l); err != nil {
+			return err
+		}
+		if err := l.pruneReadStates(ctx, s.q, tx, a); err != nil {
 			return err
 		}
 		result, changed = l.view(n), true

@@ -309,6 +309,12 @@ type OverwriteCleaner interface {
 	MemberRemoved(ctx context.Context, tx pgx.Tx, guildID, userID snowflake.ID) error
 }
 
+// readStateLifecycle runs alongside membership and channel visibility changes.
+type readStateLifecycle interface {
+	SeedReadStates(ctx context.Context, tx pgx.Tx, sub permissions.Subject) error
+	PruneReadStates(ctx context.Context, tx pgx.Tx, a Access) error
+}
+
 type noCleaner struct{}
 
 func (noCleaner) RoleDeleted(context.Context, pgx.Tx, snowflake.ID, snowflake.ID) error   { return nil }
@@ -318,7 +324,8 @@ func (noCleaner) MemberRemoved(context.Context, pgx.Tx, snowflake.ID, snowflake.
 type Hooks struct {
 	// Channels runs on guild creation; nil does nothing.
 	Channels ChannelsBootstrapper
-	// Overwrites runs on role deletion and member removal; nil does nothing.
+	// Overwrites runs on role deletion and member removal. It also maintains
+	// read states when the cleaner supports the read-state lifecycle.
 	Overwrites OverwriteCleaner
 }
 

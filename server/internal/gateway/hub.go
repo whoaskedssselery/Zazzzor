@@ -168,7 +168,7 @@ func (g *Gateway) joinPresence(e events.Event, members []snowflake.ID, conns map
 		return
 	}
 	joiner := p.Member.User.ID
-	if len(g.onlineAmong([]snowflake.ID{joiner})) == 0 {
+	if len(g.OnlineAmong([]snowflake.ID{joiner})) == 0 {
 		return
 	}
 	g.sendPresence(Presence{UserID: joiner, Status: StatusOnline}, members, joiner, conns)
@@ -185,7 +185,7 @@ func (g *Gateway) leavePresence(ctx context.Context, e events.Event, members []s
 		return
 	}
 	gone := p.User.ID
-	removedOnline := len(g.onlineAmong([]snowflake.ID{gone})) == 1
+	removedOnline := len(g.OnlineAmong([]snowflake.ID{gone})) == 1
 	if !removedOnline && len(conns[gone]) == 0 {
 		return // nothing to say to anyone
 	}
@@ -205,7 +205,7 @@ func (g *Gateway) leavePresence(ctx context.Context, e events.Event, members []s
 	if removedOnline {
 		g.sendPresence(Presence{UserID: gone, Status: StatusOffline}, parted, gone, conns)
 	}
-	for _, id := range g.onlineAmong(parted) {
+	for _, id := range g.OnlineAmong(parted) {
 		g.sendPresence(Presence{UserID: id, Status: StatusOffline}, []snowflake.ID{gone}, id, conns)
 	}
 }
@@ -220,7 +220,7 @@ func (g *Gateway) deletePresence(ctx context.Context, e events.Event, formers []
 	if len(formers) < 2 {
 		return
 	}
-	online := g.onlineAmong(formers)
+	online := g.OnlineAmong(formers)
 	var listening []snowflake.ID
 	for _, id := range formers {
 		if len(conns[id]) > 0 {

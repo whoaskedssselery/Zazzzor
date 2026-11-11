@@ -13,7 +13,11 @@ export type MdNode =
   | { type: "code"; value: string }
   | { type: "codeBlock"; lang: string | null; value: string }
   | { type: "quote"; children: MdNode[] }
-  | { type: "link"; href: string; children: MdNode[] };
+  | { type: "link"; href: string; children: MdNode[] }
+  | { type: "mention"; kind: MentionKind; id: string | null };
+
+/** What a mention points at: `<@id>` a user, `<@&id>` a role, `@everyone`, `@here`. */
+export type MentionKind = "user" | "role" | "everyone" | "here";
 
 /** Styles nest at most this deep; anything deeper stays text. */
 export const MAX_DEPTH = 8;
@@ -73,6 +77,31 @@ const inlineCode = (s: string, i: number): Match | null => {
   const close = s.indexOf(fence, i + fence.length);
   if (close <= i + fence.length) return null;
   return { node: { type: "code", value: s.slice(i + fence.length, close) }, end: close + fence.length };
+};
+
+const DIGIT = /[0-9]/;
+/** Snowflake IDs: 1 to 20 digits. */
+const MAX_ID = 20;
+
+/** A user or role mention `<@123>` / `<@&123>` at `i`, as the server parses it (C8). */
+const idMention = (s: string, i: number): Match | null => {
+  if (!s.startsWith("<@", i)) return null;
+  const role = s[i + 2] === "&";
+  const from = i + (role ? 3 : 2);
+  let k = from;
+  while (k < s.length && k - from < MAX_ID && DIGIT.test(s.charAt(k))) k++;
+  if (k === from || s[k] !== ">") return null;
+  return { node: { type: "mention", kind: role ? "role" : "user", id: s.slice(from, k) }, end: k + 1 };
+};
+
+/** `@everyone` or `@here` at `i`, as whole words. */
+const groupMention = (s: string, i: number): Match | null => {
+  if (isWord(s[i - 1])) return null;
+  for (const kind of ["everyone", "here"] as const) {
+    const end = i + 1 + kind.length;
+    if (s.startsWith(kind, i + 1) && !isWord(s[end])) return { node: { type: "mention", kind, id: null }, end };
+  }
+  return null;
 };
 
 /** The end of a parenthesised link target starting at `from`, balancing nested parentheses. */
@@ -164,6 +193,8 @@ function parseInline(s: string, depth: number, links: boolean): MdNode[] {
     }
     let match: Match | null = null;
     if (c === "`") match = inlineCode(s, i);
+    else if (c === "<") match = idMention(s, i);
+    else if (c === "@") match = groupMention(s, i);
     else if (c === "[" && links) match = maskedLink(s, i, depth);
     else if ((c === "h" || c === "H") && links) match = autolink(s, i);
     else if (c === "*" || c === "_" || c === "~" || c === "|") match = styled(s, i, depth, links);
@@ -236,6 +267,7 @@ const codeBlock = (body: string): MdNode | null => {
  * - `` `code` `` and fenced blocks with an optional language (no highlighting);
  * - `> quote` lines and `>>> ` quoting the rest;
  * - bare http(s) addresses and masked links `[text](https://…)`;
+ * - mentions: `<@user_id>`, `<@&role_id>`, `@everyone`, `@here` (never in code);
  * - backslash escapes. Line breaks stay in the text.
  * Anything else, HTML included, is text.
  */

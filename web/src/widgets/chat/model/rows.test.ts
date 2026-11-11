@@ -86,4 +86,16 @@ describe("buildRows", () => {
     });
     expect(summary(someoneElse).slice(2)).toEqual(["1", "p:а"]);
   });
+
+  it("draws the «Новые» line above the first message after the mark by someone else", () => {
+    const messages = ["1", "2", "3", "4"].map((id) => makeMessage(id, C, id === "3" ? anna : petr));
+    const line = (readFrom: string | null, hasOlder = false) =>
+      summary(buildRows(messages, [], { hasOlder, meId: anna.id, now, readFrom })).filter((r) => r === "new");
+    const rows = buildRows(messages, [], { hasOlder: false, meId: anna.id, now, readFrom: "2" });
+    expect(summary(rows).slice(2)).toEqual(["1", "2+", "3", "new", "4"]);
+    expect(line(null)).toEqual([]);
+    // The mark is in history not loaded yet: where the line goes is not known.
+    expect(line("0", true)).toEqual([]);
+    expect(line("1", true)).toEqual(["new"]);
+  });
 });

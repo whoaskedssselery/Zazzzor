@@ -13,6 +13,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/time/rate"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/channels"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/files"
+	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
 	"github.com/whoaskedssselery/zazzzor/server/internal/messages/store"
 	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
@@ -55,6 +57,9 @@ var (
 	sendBurst   = 10
 	sendTTL     = time.Minute
 	// Edits and deletions, shared: 10 per second, bursts of 20.
+	ackRate    = rate.Limit(10)
+	ackBurst   = 20
+	ackTTL     = time.Minute
 	writeRate  = rate.Limit(10)
 	writeBurst = 20
 	writeTTL   = time.Minute
@@ -141,6 +146,7 @@ type Message struct {
 	// Referenced is nil when there is no reply or the original is gone.
 	Referenced  *Stub
 	Attachments []Attachment
+	mentions    mentions
 	// Nonce is the client's tag of a message just sent; history never
 	// shows it.
 	Nonce *string
@@ -171,6 +177,10 @@ type PublicMessage struct {
 	EditedAt          *string          `json:"edited_at"`
 	ReplyToID         *snowflake.ID    `json:"reply_to_id"`
 	ReferencedMessage *PublicStub      `json:"referenced_message"`
+	MentionUserIDs    []snowflake.ID   `json:"mention_user_ids"`
+	MentionRoleIDs    []snowflake.ID   `json:"mention_role_ids"`
+	MentionEveryone   bool             `json:"mention_everyone"`
+	MentionHere       bool             `json:"mention_here"`
 	Nonce             *string          `json:"nonce,omitempty"`
 	Attachments       []Attachment     `json:"attachments"`
 }
@@ -187,6 +197,8 @@ func publicUser(u *auth.User) *auth.PublicUser {
 func (m Message) Public() PublicMessage {
 	p := PublicMessage{ID: m.ID, ChannelID: m.ChannelID, GuildID: m.GuildID, Author: publicUser(m.Author),
 		Content: m.Content, CreatedAt: httpx.FormatTime(m.CreatedAt), ReplyToID: m.ReplyToID, Nonce: m.Nonce}
+	p.MentionUserIDs, p.MentionRoleIDs = mentionIDs(m.mentions.userIDs), mentionIDs(m.mentions.roleIDs)
+	p.MentionEveryone, p.MentionHere = m.mentions.everyone, m.mentions.here
 	p.Attachments = m.Attachments
 	if p.Attachments == nil {
 		p.Attachments = []Attachment{}
@@ -203,9 +215,10 @@ func (m Message) Public() PublicMessage {
 
 // DeletePayload is the payload of MESSAGE_DELETE.
 type DeletePayload struct {
-	ID        snowflake.ID `json:"id"`
-	ChannelID snowflake.ID `json:"channel_id"`
-	GuildID   snowflake.ID `json:"guild_id"`
+	LastMessageID *snowflake.ID `json:"last_message_id"`
+	ID            snowflake.ID  `json:"id"`
+	ChannelID     snowflake.ID  `json:"channel_id"`
+	GuildID       snowflake.ID  `json:"guild_id"`
 }
 
 // TypingPayload is the payload of TYPING_START.
@@ -218,6 +231,10 @@ type TypingPayload struct {
 
 // Channels is what messages needs from the channels module.
 type Channels interface {
+	LockGuild(ctx context.Context, tx pgx.Tx, guildID snowflake.ID) error
+	PermissionsIn(ctx context.Context, tx pgx.Tx, userID, channelID snowflake.ID) (permissions.Permission, snowflake.ID, error)
+	VisibleChannelsIn(ctx context.Context, tx pgx.Tx, userID, guildID snowflake.ID) ([]channels.Channel, error)
+	MentionAccessIn(ctx context.Context, tx pgx.Tx, channelID snowflake.ID) (guilds.Access, []permissions.Overwrite, error)
 	Permissions(ctx context.Context, userID, channelID snowflake.ID) (permissions.Permission, snowflake.ID, error)
 	Lookup(ctx context.Context, channelID snowflake.ID) (channels.Channel, error)
 }
@@ -233,13 +250,15 @@ var _ Users = (auth.Accounts)(nil)
 
 // Options configures a Service. Pool, IDs, Channels and Users are required.
 type Options struct {
-	Pool      *pgxpool.Pool
-	IDs       *snowflake.Generator
-	Channels  Channels
-	Users     Users
-	Publisher events.Publisher // nil: events are dropped
-	Files     *files.Disk      // nil disables attachment routes
-	Logger    *slog.Logger     // nil uses the default logger
+	// OnlineAmong snapshots which of the given guild members are online.
+	OnlineAmong func([]snowflake.ID) []snowflake.ID
+	Pool        *pgxpool.Pool
+	IDs         *snowflake.Generator
+	Channels    Channels
+	Users       Users
+	Publisher   events.Publisher // nil: events are dropped
+	Files       *files.Disk      // nil disables attachment routes
+	Logger      *slog.Logger     // nil uses the default logger
 	// Now is the clock of typing notices; nil means time.Now.
 	Now func() time.Time
 	// SendLimiter limits sending per user; nil takes the default (5 per
@@ -258,6 +277,8 @@ type Options struct {
 
 // Service implements messages.
 type Service struct {
+	onlineAmong   func([]snowflake.ID) []snowflake.ID
+	ackLimiter    *ratelimit.Limiter
 	pool          *pgxpool.Pool
 	q             *store.Queries
 	ids           *snowflake.Generator
@@ -277,7 +298,7 @@ type Service struct {
 
 // NewService builds a Service from o.
 func NewService(o Options) *Service {
-	s := &Service{pool: o.Pool, q: store.New(), ids: o.IDs, channels: o.Channels, users: o.Users,
+	s := &Service{onlineAmong: o.OnlineAmong, ackLimiter: ratelimit.New(ackRate, ackBurst, ackTTL), pool: o.Pool, q: store.New(), ids: o.IDs, channels: o.Channels, users: o.Users,
 		pub: o.Publisher, files: o.Files, logger: o.Logger, now: o.Now,
 		uploadLimiter: ratelimit.New(uploadRate, uploadBurst, uploadTTL), sendLimiter: o.SendLimiter, writeLimiter: o.WriteLimiter,
 		typingLimiter: o.TypingLimiter, typingCalls: o.TypingCallLimiter}

@@ -1,5 +1,65 @@
-import { type ReactNode, useState } from "react";
-import { type MdNode, parseMarkdown } from "./parse";
+import { type CSSProperties, createContext, type ReactNode, use, useState } from "react";
+import { type MdNode, type MentionKind, parseMarkdown } from "./parse";
+
+/** Who or what a mention names, as this server shows them. */
+export interface MentionTarget {
+  name: string;
+  /** A role's colour (0 or absent for none). */
+  color?: number;
+}
+
+/** Looks up the names of mentions; null for one that is not here (a former member, a deleted role). */
+export interface MentionNames {
+  user: (id: string) => MentionTarget | null;
+  role: (id: string) => MentionTarget | null;
+}
+
+const NO_NAMES: MentionNames = { user: () => null, role: () => null };
+const MentionContext = createContext<MentionNames>(NO_NAMES);
+
+export const UNKNOWN_USER = "неизвестный";
+export const DELETED_ROLE = "удалённая роль";
+
+/** The text of a mention: `@name`, `@everyone`, `@here`. */
+export const mentionText = (names: MentionNames, kind: MentionKind, id: string | null): string => {
+  switch (kind) {
+    case "everyone":
+    case "here":
+      return `@${kind}`;
+    case "user":
+      return `@${(id !== null && names.user(id)?.name) || UNKNOWN_USER}`;
+    case "role":
+      return `@${(id !== null && names.role(id)?.name) || DELETED_ROLE}`;
+  }
+};
+
+const hex = (color: number) => `#${color.toString(16).padStart(6, "0")}`;
+
+/** A mention as a tinted chip; a role takes its own colour, as in Discord. */
+const Mention = ({ kind, id }: { kind: MentionKind; id: string | null }) => {
+  const names = use(MentionContext);
+  const color = kind === "role" && id !== null ? (names.role(id)?.color ?? 0) : 0;
+  const style: CSSProperties | undefined =
+    color > 0
+      ? ({
+          "--role": hex(color),
+          backgroundColor: `color-mix(in srgb, ${hex(color)} 18%, transparent)`,
+        } as CSSProperties)
+      : undefined;
+  return (
+    <span
+      data-mention={kind}
+      className={
+        color > 0
+          ? "role-text rounded-xs px-0.5 font-medium"
+          : "rounded-xs bg-mention-chip px-0.5 font-medium text-fg-mention"
+      }
+      style={style}
+    >
+      {mentionText(names, kind, id)}
+    </span>
+  );
+};
 
 /** A hidden part of a message until it is clicked (or Enter/Space). Revealed, it is plain text again. */
 const Spoiler = ({ children }: { children: ReactNode }) => {
@@ -56,6 +116,8 @@ const renderNode = (node: MdNode, key: number): ReactNode => {
           {renderNodes(node.children)}
         </blockquote>
       );
+    case "mention":
+      return <Mention key={key} kind={node.kind} id={node.id} />;
     case "link":
       return (
         <a
@@ -76,13 +138,22 @@ const renderNode = (node: MdNode, key: number): ReactNode => {
 export const renderMarkdown = (nodes: MdNode[]): ReactNode => renderNodes(nodes);
 
 /**
- * A message's text with its markdown. Line breaks are kept and any string
+ * A message's text with its markdown; mentions show by `mentions`. Line breaks are kept and any string
  * wraps, however long, so nothing widens the chat. `after` follows the
  * last line inline (the «(изменено)» mark).
  */
-export const Markdown = ({ source, after }: { source: string; after?: ReactNode }) => (
+export const Markdown = ({
+  source,
+  after,
+  mentions = NO_NAMES,
+}: {
+  source: string;
+  after?: ReactNode;
+  /** Names for the mentions in the text. */
+  mentions?: MentionNames;
+}) => (
   <div className="break-words whitespace-pre-wrap [overflow-wrap:anywhere]">
-    {renderMarkdown(parseMarkdown(source))}
+    <MentionContext value={mentions}>{renderMarkdown(parseMarkdown(source))}</MentionContext>
     {after}
   </div>
 );

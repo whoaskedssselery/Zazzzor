@@ -19,6 +19,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/channels"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
+	"github.com/whoaskedssselery/zazzzor/server/internal/messages"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/ratelimit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
@@ -46,6 +47,11 @@ type VoiceStates interface {
 
 var _ VoiceStates = (*voice.Service)(nil)
 
+// ReadStates reads a user's stored read states in the requested channels.
+type ReadStates interface {
+	ReadStates(ctx context.Context, userID snowflake.ID, channelIDs []snowflake.ID) ([]messages.ReadState, error)
+}
+
 // Options configures a Gateway. Auth, Guilds, Channels and Bus are
 // required; zero tuning fields take the defaults.
 type Options struct {
@@ -56,6 +62,8 @@ type Options struct {
 	// Voice fills the voice_states of every GuildState; nil leaves them
 	// empty.
 	Voice VoiceStates
+	// ReadStates fills snapshot read_states; nil leaves them empty.
+	ReadStates ReadStates
 	// AllowedOrigins are the only Origin values accepted for the upgrade.
 	AllowedOrigins []string
 	// Logger is for failures; nil discards.

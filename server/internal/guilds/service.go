@@ -153,7 +153,19 @@ func (s *Service) AddMember(ctx context.Context, tx pgx.Tx, guildID, userID snow
 	if err != nil {
 		return false, fmt.Errorf("guilds: add member: %w", err)
 	}
-	return n == 1, nil
+	if n != 1 {
+		return false, nil
+	}
+	if states, ok := s.overwrites.(readStateLifecycle); ok {
+		sub, err := s.subject(ctx, tx, guildID, userID)
+		if err != nil {
+			return false, fmt.Errorf("guilds: load new member permissions: %w", err)
+		}
+		if err := states.SeedReadStates(ctx, tx, sub); err != nil {
+			return false, fmt.Errorf("guilds: initialize member read states: %w", err)
+		}
+	}
+	return true, nil
 }
 
 // AnnounceJoin publishes GUILD_MEMBER_ADD to the guild and GUILD_CREATE

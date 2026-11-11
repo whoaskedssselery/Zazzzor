@@ -13,7 +13,7 @@ import (
 )
 
 const channelByID = `-- name: ChannelByID :one
-SELECT id, guild_id, type, name, topic, parent_id, position, permission_synced, created_at FROM channels WHERE id = $1
+SELECT id, guild_id, type, name, topic, parent_id, position, permission_synced, created_at, last_message_id FROM channels WHERE id = $1
 `
 
 func (q *Queries) ChannelByID(ctx context.Context, db DBTX, id snowflake.ID) (Channel, error) {
@@ -29,6 +29,7 @@ func (q *Queries) ChannelByID(ctx context.Context, db DBTX, id snowflake.ID) (Ch
 		&i.Position,
 		&i.PermissionSynced,
 		&i.CreatedAt,
+		&i.LastMessageID,
 	)
 	return i, err
 }
@@ -56,7 +57,7 @@ func (q *Queries) CountChannels(ctx context.Context, db DBTX, guildID snowflake.
 const createChannel = `-- name: CreateChannel :one
 INSERT INTO channels (id, guild_id, type, name, topic, parent_id, position, permission_synced, created_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, guild_id, type, name, topic, parent_id, position, permission_synced, created_at
+RETURNING id, guild_id, type, name, topic, parent_id, position, permission_synced, created_at, last_message_id
 `
 
 type CreateChannelParams struct {
@@ -94,6 +95,7 @@ func (q *Queries) CreateChannel(ctx context.Context, db DBTX, arg CreateChannelP
 		&i.Position,
 		&i.PermissionSynced,
 		&i.CreatedAt,
+		&i.LastMessageID,
 	)
 	return i, err
 }
@@ -126,8 +128,28 @@ func (q *Queries) DeleteTargetOverwrites(ctx context.Context, db DBTX, arg Delet
 	return err
 }
 
+const dropReadStates = `-- name: DropReadStates :exec
+DELETE FROM read_states AS r
+USING (
+    SELECT unnest($1::bigint[]) AS user_id, unnest($2::bigint[]) AS channel_id
+) AS hidden
+WHERE r.guild_id = $3::bigint
+    AND r.user_id = hidden.user_id AND r.channel_id = hidden.channel_id
+`
+
+type DropReadStatesParams struct {
+	UserIds    []int64
+	ChannelIds []int64
+	GuildID    int64
+}
+
+func (q *Queries) DropReadStates(ctx context.Context, db DBTX, arg DropReadStatesParams) error {
+	_, err := db.Exec(ctx, dropReadStates, arg.UserIds, arg.ChannelIds, arg.GuildID)
+	return err
+}
+
 const guildChannels = `-- name: GuildChannels :many
-SELECT id, guild_id, type, name, topic, parent_id, position, permission_synced, created_at FROM channels WHERE guild_id = $1 ORDER BY position, id
+SELECT id, guild_id, type, name, topic, parent_id, position, permission_synced, created_at, last_message_id FROM channels WHERE guild_id = $1 ORDER BY position, id
 `
 
 func (q *Queries) GuildChannels(ctx context.Context, db DBTX, guildID snowflake.ID) ([]Channel, error) {
@@ -149,6 +171,7 @@ func (q *Queries) GuildChannels(ctx context.Context, db DBTX, guildID snowflake.
 			&i.Position,
 			&i.PermissionSynced,
 			&i.CreatedAt,
+			&i.LastMessageID,
 		); err != nil {
 			return nil, err
 		}
@@ -183,6 +206,35 @@ func (q *Queries) GuildOverwrites(ctx context.Context, db DBTX, guildID snowflak
 			&i.Allow,
 			&i.Deny,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const guildReadStateKeys = `-- name: GuildReadStateKeys :many
+SELECT user_id, channel_id FROM read_states WHERE guild_id = $1::bigint
+`
+
+type GuildReadStateKeysRow struct {
+	UserID    int64
+	ChannelID int64
+}
+
+func (q *Queries) GuildReadStateKeys(ctx context.Context, db DBTX, guildID int64) ([]GuildReadStateKeysRow, error) {
+	rows, err := db.Query(ctx, guildReadStateKeys, guildID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GuildReadStateKeysRow
+	for rows.Next() {
+		var i GuildReadStateKeysRow
+		if err := rows.Scan(&i.UserID, &i.ChannelID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -249,6 +301,24 @@ func (q *Queries) OverwritesOf(ctx context.Context, db DBTX, channelIds []int64)
 		return nil, err
 	}
 	return items, nil
+}
+
+const seedReadStates = `-- name: SeedReadStates :exec
+INSERT INTO read_states (user_id, channel_id, guild_id, last_read_id, mention_count)
+SELECT $1::bigint, c.id, c.guild_id, COALESCE(c.last_message_id, 0), 0
+FROM channels AS c
+WHERE c.id = ANY($2::bigint[])
+ON CONFLICT (user_id, channel_id) DO NOTHING
+`
+
+type SeedReadStatesParams struct {
+	UserID     int64
+	ChannelIds []int64
+}
+
+func (q *Queries) SeedReadStates(ctx context.Context, db DBTX, arg SeedReadStatesParams) error {
+	_, err := db.Exec(ctx, seedReadStates, arg.UserID, arg.ChannelIds)
+	return err
 }
 
 const setChannelInfo = `-- name: SetChannelInfo :exec

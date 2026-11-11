@@ -3,11 +3,13 @@ package gateway
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
 	"github.com/whoaskedssselery/zazzzor/server/internal/channels"
 	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
+	"github.com/whoaskedssselery/zazzzor/server/internal/messages"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 	"github.com/whoaskedssselery/zazzzor/server/internal/voice"
 )
@@ -45,11 +47,25 @@ func (g *Gateway) guildState(ctx context.Context, userID, guildID snowflake.ID) 
 	for j, c := range visible {
 		st.Channels[j] = c.Public()
 	}
+	st.ReadStates = []messages.ReadState{}
+	if g.opts.ReadStates != nil && len(visible) > 0 {
+		channelIDs := make([]snowflake.ID, len(visible))
+		for j, c := range visible {
+			channelIDs[j] = c.ID
+		}
+		states, err := g.opts.ReadStates.ReadStates(ctx, userID, channelIDs)
+		if err != nil {
+			return GuildState{}, fmt.Errorf("gateway: read states: %w", err)
+		}
+		if states != nil {
+			st.ReadStates = states
+		}
+	}
 	memberIDs := make([]snowflake.ID, len(snap.Members))
 	for j, m := range snap.Members {
 		memberIDs[j] = m.User.ID
 	}
-	online := g.onlineAmong(memberIDs)
+	online := g.OnlineAmong(memberIDs)
 	st.Presences = make([]Presence, len(online))
 	for j, id := range online {
 		st.Presences[j] = Presence{UserID: id, Status: StatusOnline}
@@ -81,7 +97,8 @@ func (g *Gateway) ready(ctx context.Context, user auth.User) (Ready, error) {
 	if err != nil {
 		return Ready{}, err
 	}
-	r := Ready{User: user.Public(), Guilds: make([]GuildState, 0, len(ids)), Presences: []Presence{}}
+	r := Ready{User: user.Public(), Guilds: make([]GuildState, 0, len(ids)), Presences: []Presence{},
+		ReadStates: []messages.ReadState{}}
 	for _, id := range ids {
 		st, stErr := g.guildState(ctx, user.ID, id)
 		if errors.Is(stErr, errNotInGuild) {
@@ -91,6 +108,7 @@ func (g *Gateway) ready(ctx context.Context, user auth.User) (Ready, error) {
 			return Ready{}, stErr
 		}
 		r.Guilds = append(r.Guilds, st)
+		r.ReadStates = append(r.ReadStates, st.ReadStates...)
 	}
 	peers, err := g.opts.Guilds.PeerIDs(ctx, user.ID)
 	if err != nil {
@@ -100,7 +118,7 @@ func (g *Gateway) ready(ctx context.Context, user auth.User) (Ready, error) {
 		peers = append(peers, user.ID)
 		slices.Sort(peers)
 	}
-	for _, id := range g.onlineAmong(peers) {
+	for _, id := range g.OnlineAmong(peers) {
 		r.Presences = append(r.Presences, Presence{UserID: id, Status: StatusOnline})
 	}
 	return r, nil
