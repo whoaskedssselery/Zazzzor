@@ -1,5 +1,5 @@
 // Package messages owns the messages of the text channels: history, sending,
-// replies, edits, deletions and typing notices.
+// replies, edits, deletions, reactions and typing notices.
 package messages
 
 import (
@@ -146,6 +146,7 @@ type Message struct {
 	// Referenced is nil when there is no reply or the original is gone.
 	Referenced  *Stub
 	Attachments []Attachment
+	Reactions   []Reaction
 	mentions    mentions
 	// Nonce is the client's tag of a message just sent; history never
 	// shows it.
@@ -183,6 +184,7 @@ type PublicMessage struct {
 	MentionHere       bool             `json:"mention_here"`
 	Nonce             *string          `json:"nonce,omitempty"`
 	Attachments       []Attachment     `json:"attachments"`
+	Reactions         *[]Reaction      `json:"reactions,omitempty"`
 }
 
 func publicUser(u *auth.User) *auth.PublicUser {
@@ -199,6 +201,11 @@ func (m Message) Public() PublicMessage {
 		Content: m.Content, CreatedAt: httpx.FormatTime(m.CreatedAt), ReplyToID: m.ReplyToID, Nonce: m.Nonce}
 	p.MentionUserIDs, p.MentionRoleIDs = mentionIDs(m.mentions.userIDs), mentionIDs(m.mentions.roleIDs)
 	p.MentionEveryone, p.MentionHere = m.mentions.everyone, m.mentions.here
+	reactions := m.Reactions
+	if reactions == nil {
+		reactions = []Reaction{}
+	}
+	p.Reactions = &reactions
 	p.Attachments = m.Attachments
 	if p.Attachments == nil {
 		p.Attachments = []Attachment{}
@@ -277,28 +284,30 @@ type Options struct {
 
 // Service implements messages.
 type Service struct {
-	onlineAmong   func([]snowflake.ID) []snowflake.ID
-	ackLimiter    *ratelimit.Limiter
-	pool          *pgxpool.Pool
-	q             *store.Queries
-	ids           *snowflake.Generator
-	channels      Channels
-	users         Users
-	pub           events.Publisher
-	files         *files.Disk
-	logger        *slog.Logger
-	trashMu       sync.Mutex
-	uploadLimiter *ratelimit.Limiter
-	now           func() time.Time
-	sendLimiter   *ratelimit.Limiter
-	writeLimiter  *ratelimit.Limiter
-	typingLimiter *ratelimit.Limiter
-	typingCalls   *ratelimit.Limiter
+	onlineAmong     func([]snowflake.ID) []snowflake.ID
+	ackLimiter      *ratelimit.Limiter
+	reactionLimiter *ratelimit.Limiter
+	reactionLocks   [reactionLockStripes]sync.Mutex
+	pool            *pgxpool.Pool
+	q               *store.Queries
+	ids             *snowflake.Generator
+	channels        Channels
+	users           Users
+	pub             events.Publisher
+	files           *files.Disk
+	logger          *slog.Logger
+	trashMu         sync.Mutex
+	uploadLimiter   *ratelimit.Limiter
+	now             func() time.Time
+	sendLimiter     *ratelimit.Limiter
+	writeLimiter    *ratelimit.Limiter
+	typingLimiter   *ratelimit.Limiter
+	typingCalls     *ratelimit.Limiter
 }
 
 // NewService builds a Service from o.
 func NewService(o Options) *Service {
-	s := &Service{onlineAmong: o.OnlineAmong, ackLimiter: ratelimit.New(ackRate, ackBurst, ackTTL), pool: o.Pool, q: store.New(), ids: o.IDs, channels: o.Channels, users: o.Users,
+	s := &Service{reactionLimiter: ratelimit.New(reactionRate, reactionBurst, reactionTTL), onlineAmong: o.OnlineAmong, ackLimiter: ratelimit.New(ackRate, ackBurst, ackTTL), pool: o.Pool, q: store.New(), ids: o.IDs, channels: o.Channels, users: o.Users,
 		pub: o.Publisher, files: o.Files, logger: o.Logger, now: o.Now,
 		uploadLimiter: ratelimit.New(uploadRate, uploadBurst, uploadTTL), sendLimiter: o.SendLimiter, writeLimiter: o.WriteLimiter,
 		typingLimiter: o.TypingLimiter, typingCalls: o.TypingCallLimiter}

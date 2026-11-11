@@ -16,7 +16,8 @@ import (
 // auth.Middleware:
 //
 //	GET, POST /channels/{channel_id}/messages
-//	PATCH, DELETE /channels/{channel_id}/messages/{message_id}
+//	GET, PATCH, DELETE /channels/{channel_id}/messages/{message_id}
+//	GET, PUT, DELETE /channels/{channel_id}/messages/{message_id}/reactions/...
 //	POST /channels/{channel_id}/typing
 func Mount(r chi.Router, s *Service) {
 	s.mountAttachments(r)
@@ -29,6 +30,7 @@ func Mount(r chi.Router, s *Service) {
 		acks.Post("/guilds/{guild_id}/ack", httpx.Wrap(s.handleAckGuild))
 		typing := r.With(auth.LimitPerUser(s.typingCalls))
 
+		s.mountReactions(r)
 		r.Get("/channels/{channel_id}/messages", httpx.Wrap(s.handleList))
 		sends.Post("/channels/{channel_id}/messages", httpx.Wrap(s.handleCreate))
 		writes.Patch("/channels/{channel_id}/messages/{message_id}", httpx.Wrap(s.handleEdit))
@@ -57,7 +59,7 @@ func queryID(r *http.Request, name string) (snowflake.ID, error) {
 	raw := q.Get(name)
 	id, err := snowflake.Parse(raw)
 	if err != nil || id <= 0 || id.String() != raw {
-		return 0, invalid(name, "must be a message ID")
+		return 0, invalid(name, "must be a positive snowflake ID")
 	}
 	return id, nil
 }
@@ -73,15 +75,22 @@ func parsePage(r *http.Request) (Page, error) {
 	if pg.After, err = queryID(r, "after"); err != nil {
 		return Page{}, err
 	}
-	if q := r.URL.Query(); q.Has("limit") {
-		raw := q.Get("limit")
-		pg.Limit, err = strconv.Atoi(raw)
-		// Only the canonical form: no sign, no leading zeros.
-		if err != nil || strconv.Itoa(pg.Limit) != raw || pg.Limit < 1 || pg.Limit > MaxLimit {
-			return Page{}, invalid("limit", fmt.Sprintf("must be from 1 to %d", MaxLimit))
-		}
+	pg.Limit, err = queryLimit(r)
+	return pg, err
+}
+
+// queryLimit parses a canonical page size, with zero meaning absent.
+func queryLimit(r *http.Request) (int, error) {
+	q := r.URL.Query()
+	if !q.Has("limit") {
+		return 0, nil
 	}
-	return pg, nil
+	raw := q.Get("limit")
+	limit, err := strconv.Atoi(raw)
+	if err != nil || strconv.Itoa(limit) != raw || limit < 1 || limit > MaxLimit {
+		return 0, invalid("limit", fmt.Sprintf("must be from 1 to %d", MaxLimit))
+	}
+	return limit, nil
 }
 
 func (s *Service) handleList(w http.ResponseWriter, r *http.Request) error {
