@@ -1793,6 +1793,29 @@ paths:
           $ref: "#/components/responses/Problem"
         "429":
           $ref: "#/components/responses/RateLimited"
+  /embeds/{embed_image_id}:
+    get:
+      tags: [messages]
+      operationId: downloadEmbedImage
+      summary: Read a proxied link preview image
+      security: []
+      parameters:
+        - name: embed_image_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: PNG, JPEG, GIF or WebP with public immutable caching for 24 hours and nosniff.
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: The image is unknown or no longer available.
+
   /attachments/{channel_id}/{attachment_id}/{filename}:
     get:
       tags: [messages]
@@ -3548,10 +3571,53 @@ components:
           $ref: "#/components/schemas/Snowflake"
         emoji:
           $ref: "#/components/schemas/Emoji"
+    EmbedMedia:
+      type: object
+      additionalProperties: false
+      required: [url, width, height]
+      properties:
+        url:
+          type: string
+        width:
+          type: integer
+          minimum: 1
+        height:
+          type: integer
+          minimum: 1
+    Embed:
+      type: object
+      additionalProperties: false
+      required: [url, type, site_name, title, description, image, video]
+      properties:
+        url:
+          type: string
+          description: The original URL in the message.
+        type:
+          type: string
+          enum: [link, image, video]
+        site_name:
+          type: [string, "null"]
+        title:
+          type: [string, "null"]
+          maxLength: 256
+        description:
+          type: [string, "null"]
+          maxLength: 350
+        image:
+          description: Proxied image served from /api/v1/embeds/{embed_image_id}.
+          oneOf:
+            - $ref: "#/components/schemas/EmbedMedia"
+            - type: "null"
+        video:
+          description: YouTube player URL on www.youtube-nocookie.com.
+          oneOf:
+            - $ref: "#/components/schemas/EmbedMedia"
+            - type: "null"
+
     Message:
       type: object
       additionalProperties: false
-      required: [id, channel_id, guild_id, author, content, created_at, edited_at, reply_to_id, referenced_message, attachments, mention_user_ids, mention_role_ids, mention_everyone, mention_here]
+      required: [id, channel_id, guild_id, author, content, created_at, edited_at, reply_to_id, referenced_message, attachments, embeds, mention_user_ids, mention_role_ids, mention_everyone, mention_here]
       properties:
         id:
           $ref: "#/components/schemas/Snowflake"
@@ -3590,6 +3656,15 @@ components:
           maxItems: 10
           items:
             $ref: "#/components/schemas/Attachment"
+        embeds:
+          type: array
+          maxItems: 5
+          description: |
+            Link previews in message order. A create or edit includes cached
+            previews immediately. Newly fetched previews arrive through
+            `MESSAGE_UPDATE` without changing `edited_at`.
+          items:
+            $ref: "#/components/schemas/Embed"
         nonce:
           type: string
           maxLength: 64
@@ -4113,6 +4188,7 @@ x-gateway:
     MESSAGE_CREATE:
       $ref: "#/components/schemas/Message"
     MESSAGE_UPDATE:
+      description: A message edit or an asynchronous refresh of its embeds.
       $ref: "#/components/schemas/Message"
     MESSAGE_REACTION_ADD:
       description: Sent to viewers of the channel when a reaction is added.
