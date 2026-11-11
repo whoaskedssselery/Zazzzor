@@ -1,5 +1,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { type Message, removeMessage, replaceMessage, updateHistory } from "@/entities/message";
+import {
+  type Message,
+  removeMessage,
+  replaceMessage,
+  updateHistory,
+  updateMessage,
+  withReaction,
+} from "@/entities/message";
 import { api, errorText, unwrap } from "@/shared/api";
 import { useToast } from "@/shared/ui";
 
@@ -47,6 +54,36 @@ export const useDeleteMessage = () => {
       updateHistory(qc, message.channel_id, (h) => removeMessage(h, message.id));
     },
     onError: (e) => {
+      toast.show({ text: errorText(e), tone: "error" });
+    },
+  });
+};
+
+/**
+ * Adds or takes back the user's reaction `emoji` on a message. The chat
+ * shows it at once; the server's event of it then changes nothing. A
+ * refusal puts it back as it was and says why.
+ */
+export const useToggleReaction = () => {
+  const qc = useQueryClient();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: async ({ message, emoji, add }: { message: Message; emoji: string; add: boolean }) => {
+      const path = { channel_id: message.channel_id, message_id: message.id, emoji };
+      const r = add
+        ? await api.PUT("/channels/{channel_id}/messages/{message_id}/reactions/{emoji}/@me", { params: { path } })
+        : await api.DELETE("/channels/{channel_id}/messages/{message_id}/reactions/{emoji}/@me", { params: { path } });
+      unwrap(r);
+    },
+    onMutate: ({ message, emoji, add }) => {
+      updateHistory(qc, message.channel_id, (h) =>
+        updateMessage(h, message.id, (m) => withReaction(m, emoji, true, add)),
+      );
+    },
+    onError: (e, { message, emoji, add }) => {
+      updateHistory(qc, message.channel_id, (h) =>
+        updateMessage(h, message.id, (m) => withReaction(m, emoji, true, !add)),
+      );
       toast.show({ text: errorText(e), tone: "error" });
     },
   });

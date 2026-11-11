@@ -19,6 +19,7 @@ import {
   type Message,
   MessageItem,
   type PendingMessage,
+  reactionsOf,
   useMessages,
   usePendingMessages,
 } from "@/entities/message";
@@ -28,7 +29,9 @@ import {
   MessageContextMenu,
   MessageEditor,
   MessageToolbar,
+  ReactionBar,
   useDeleteMessage,
+  useToggleReaction,
 } from "@/features/message-actions";
 import { useReadChannel } from "@/features/read-channel";
 import {
@@ -256,11 +259,13 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
   const canManage = has(perms, PERM.MANAGE_MESSAGES);
   const canAttach = canSend && has(perms, PERM.ATTACH_FILES);
   const canMentionEveryone = has(perms, PERM.MENTION_EVERYONE);
+  const canAddReactions = canRead && has(perms, PERM.ADD_REACTIONS);
 
   const history = useMessages(channel.id, canRead);
   const pending = usePendingMessages(channel.id);
   const sender = useSendMessage(channel.id);
   const remove = useDeleteMessage();
+  const react = useToggleReaction();
   const now = useMinute();
   const addFiles = useAddFiles(channel.id, canAttach);
   const drop = useFileDrop(addFiles);
@@ -328,6 +333,13 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
         if (skipConfirm) remove.mutate(m);
         else setDeleting(m);
       },
+      onReact: canAddReactions
+        ? (emoji: string) => {
+            // Picking one already the user's leaves it, as in Discord.
+            if (!reactionsOf(m).some((r) => r.emoji.name === emoji && r.me))
+              react.mutate({ message: m, emoji, add: true });
+          }
+        : undefined,
     };
     const original = m.referenced_message;
     return (
@@ -337,6 +349,16 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
             message={m}
             mentions={mentions}
             attachments={attachmentsOf(m)}
+            reactions={
+              <ReactionBar
+                message={m}
+                canAdd={canAddReactions}
+                onToggle={(emoji, add) => {
+                  react.mutate({ message: m, emoji, add });
+                }}
+                nameOf={(u) => userDisplay(entry, u).name}
+              />
+            }
             author={authorOf(entry, m.author)}
             replyAuthor={original ? authorOf(entry, original.author) : null}
             grouped={grouped && editing !== m.id}
