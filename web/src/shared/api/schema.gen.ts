@@ -899,6 +899,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/embeds/{embed_image_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read a proxied link preview image */
+        get: operations["downloadEmbedImage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/attachments/{channel_id}/{attachment_id}/{filename}": {
         parameters: {
             query?: never;
@@ -1784,6 +1801,24 @@ export interface components {
             user_id: components["schemas"]["Snowflake"];
             emoji: components["schemas"]["Emoji"];
         };
+        EmbedMedia: {
+            url: string;
+            width: number;
+            height: number;
+        };
+        Embed: {
+            /** @description The original URL in the message. */
+            url: string;
+            /** @enum {string} */
+            type: "link" | "image" | "video";
+            site_name: string | null;
+            title: string | null;
+            description: string | null;
+            /** @description Proxied image served from /api/v1/embeds/{embed_image_id}. */
+            image: components["schemas"]["EmbedMedia"] | null;
+            /** @description YouTube player URL on www.youtube-nocookie.com. */
+            video: components["schemas"]["EmbedMedia"] | null;
+        };
         Message: {
             id: components["schemas"]["Snowflake"];
             channel_id: components["schemas"]["Snowflake"];
@@ -1804,6 +1839,12 @@ export interface components {
             /** @description The message this one answers; null when not a reply or the original is deleted. */
             referenced_message: components["schemas"]["MessageStub"] | null;
             attachments: components["schemas"]["Attachment"][];
+            /**
+             * @description Link previews in message order. A create or edit includes cached
+             *     previews immediately. Newly fetched previews arrive through
+             *     `MESSAGE_UPDATE` without changing `edited_at`.
+             */
+            embeds: components["schemas"]["Embed"][];
             /** @description Only in the response to sending and in `MESSAGE_CREATE`, when the client sent one. */
             nonce?: string;
             /** @description Mentioned guild members, in order of first appearance. */
@@ -3619,6 +3660,35 @@ export interface operations {
             /** @description `attachment_not_found`: missing, expired, bound, or owned by someone else. */
             404: components["responses"]["Problem"];
             429: components["responses"]["RateLimited"];
+        };
+    };
+    downloadEmbedImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                embed_image_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description PNG, JPEG, GIF or WebP with public immutable caching for 24 hours and nosniff. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": string;
+                };
+            };
+            /** @description The image is unknown or no longer available. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     downloadAttachment: {

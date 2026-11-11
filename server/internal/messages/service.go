@@ -163,8 +163,12 @@ func (s *Service) complete(ctx context.Context, guildID, channelID snowflake.ID,
 
 	out := make([]Message, len(rows))
 	for i, r := range rows {
+		embeds, err := decodeEmbeds(r.Embeds)
+		if err != nil {
+			return nil, err
+		}
 		m := Message{ID: r.ID, ChannelID: r.ChannelID, GuildID: guildID, Author: author(r.AuthorID),
-			Content: r.Content, CreatedAt: r.CreatedAt, EditedAt: r.EditedAt, ReplyToID: r.ReplyToID, Attachments: byMessage[r.ID], Reactions: reactions[r.ID], mentions: storedMentions(r)}
+			Content: r.Content, CreatedAt: r.CreatedAt, EditedAt: r.EditedAt, ReplyToID: r.ReplyToID, Attachments: byMessage[r.ID], Embeds: embeds, Reactions: reactions[r.ID], mentions: storedMentions(r)}
 		if r.ReplyToID != nil {
 			if o, ok := originals[*r.ReplyToID]; ok {
 				m.Referenced = &Stub{ID: o.ID, Author: author(o.AuthorID), Content: o.Content}
@@ -244,9 +248,10 @@ func (s *Service) Create(ctx context.Context, channelID, userID snowflake.ID, f 
 		return Message{}, err
 	}
 	var row store.Message
+	var picked previewSelection
 	// A claim that disappears before it is read frees the nonce for one retry.
 	for range 2 {
-		if row, err = s.createOnce(ctx, guildID, params, f, &m); !errors.Is(err, errNonceTaken) {
+		if row, err = s.createOnce(ctx, guildID, params, f, &m, &picked); !errors.Is(err, errNonceTaken) {
 			break
 		}
 		if sent, ok, sentErr := s.sentWith(ctx, guildID, channelID, userID, *f.Nonce); ok || sentErr != nil {
@@ -261,8 +266,10 @@ func (s *Service) Create(ctx context.Context, channelID, userID snowflake.ID, f 
 	}
 	m.ID, m.CreatedAt, m.mentions = row.ID, row.CreatedAt, storedMentions(row)
 	m.Nonce = f.Nonce
+	m.Embeds = picked.embeds
 	s.publish(ctx, events.Event{Type: events.MessageCreate, Audience: channelAudience(guildID, channelID),
 		Payload: m.Public()})
+	s.enqueuePreviews(m, picked.pending)
 	return m, nil
 }
 
@@ -270,7 +277,7 @@ func (s *Service) Create(ctx context.Context, channelID, userID snowflake.ID, f 
 var errNonceTaken = errors.New("messages: nonce taken")
 
 // createOnce stores the message, nonce, files and unread state in one transaction.
-func (s *Service) createOnce(ctx context.Context, guildID snowflake.ID, params store.CreateMessageParams, f CreateFields, m *Message) (store.Message, error) {
+func (s *Service) createOnce(ctx context.Context, guildID snowflake.ID, params store.CreateMessageParams, f CreateFields, m *Message, picked *previewSelection) (store.Message, error) {
 	var row store.Message
 	err := s.withGuildWrite(ctx, guildID, func(tx pgx.Tx) error {
 		p, _, err := s.channels.PermissionsIn(ctx, tx, *params.AuthorID, params.ChannelID)
@@ -296,6 +303,14 @@ func (s *Service) createOnce(ctx context.Context, guildID snowflake.ID, params s
 		params.ID = s.ids.Next()
 		params.MentionUserIds, params.MentionRoleIds = resolved.userIDs, resolved.roleIDs
 		params.MentionEveryone, params.MentionHere = resolved.everyone, resolved.here
+		*picked, err = s.selectPreviews(ctx, tx, params.Content, nil)
+		if err != nil {
+			return err
+		}
+		params.Embeds, err = encodeEmbeds(picked.embeds)
+		if err != nil {
+			return err
+		}
 		if row, err = s.q.CreateMessage(ctx, tx, params); err != nil {
 			return fmt.Errorf("messages: insert message: %w", err)
 		}
@@ -439,6 +454,7 @@ func (s *Service) Edit(ctx context.Context, channelID, messageID, userID snowfla
 	if err != nil {
 		return Message{}, err
 	}
+	defer s.lockPreviewUpdate(messageID)()
 	row, err := s.loadFor(ctx, p, channelID, messageID, userID)
 	if err != nil {
 		return Message{}, err
@@ -455,7 +471,8 @@ func (s *Service) Edit(ctx context.Context, channelID, messageID, userID snowfla
 	if err != nil || content == row.Content {
 		return m, err
 	}
-	edited, err := s.editOnce(ctx, guildID, channelID, messageID, userID, content)
+	var picked previewSelection
+	edited, err := s.editOnce(ctx, guildID, channelID, messageID, userID, content, &picked)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Deleted, or a concurrent edit set this very content: report what
 		// is there now without announcing anything.
@@ -468,14 +485,21 @@ func (s *Service) Edit(ctx context.Context, channelID, messageID, userID snowfla
 		return Message{}, fmt.Errorf("messages: edit message: %w", err)
 	}
 	m.Content, m.EditedAt, m.mentions = edited.Content, edited.EditedAt, storedMentions(edited)
-	update := m.Public()
-	update.Reactions = nil // A shared event has no caller-specific state.
-	s.publish(ctx, events.Event{Type: events.MessageUpdate, Audience: channelAudience(guildID, channelID), Payload: update})
+	m.Embeds = picked.embeds
+	s.publishMessageUpdate(ctx, m)
+	s.enqueuePreviews(m, picked.pending)
 	return m, nil
 }
 
+// publishMessageUpdate emits a shared payload without caller-specific reactions.
+func (s *Service) publishMessageUpdate(ctx context.Context, m Message) {
+	update := m.Public()
+	update.Reactions = nil
+	s.publish(ctx, events.Event{Type: events.MessageUpdate, Audience: channelAudience(m.GuildID, m.ChannelID), Payload: update})
+}
+
 // editOnce updates syntax and the recipients used on the next acknowledgment.
-func (s *Service) editOnce(ctx context.Context, guildID, channelID, messageID, userID snowflake.ID, content string) (store.Message, error) {
+func (s *Service) editOnce(ctx context.Context, guildID, channelID, messageID, userID snowflake.ID, content string, picked *previewSelection) (store.Message, error) {
 	var edited store.Message
 	err := s.withGuildWrite(ctx, guildID, func(tx pgx.Tx) error {
 		p, _, err := s.channels.PermissionsIn(ctx, tx, userID, channelID)
@@ -486,7 +510,19 @@ func (s *Service) editOnce(ctx context.Context, guildID, channelID, messageID, u
 		if err != nil {
 			return err
 		}
-		edited, err = s.q.EditMessage(ctx, tx, store.EditMessageParams{Content: content, ID: messageID,
+		current, err := s.q.MessageInChannel(ctx, tx, store.MessageInChannelParams{ID: messageID, ChannelID: channelID})
+		if err != nil {
+			return fmt.Errorf("messages: read current embeds: %w", err)
+		}
+		*picked, err = s.selectPreviews(ctx, tx, content, current.Embeds)
+		if err != nil {
+			return err
+		}
+		data, err := encodeEmbeds(picked.embeds)
+		if err != nil {
+			return err
+		}
+		edited, err = s.q.EditMessage(ctx, tx, store.EditMessageParams{Content: content, ID: messageID, Embeds: data,
 			ChannelID: channelID, AuthorID: &userID, MentionUserIds: m.userIDs, MentionRoleIds: m.roleIDs,
 			MentionEveryone: m.everyone, MentionHere: m.here})
 		if err != nil {
@@ -508,6 +544,7 @@ func (s *Service) Delete(ctx context.Context, channelID, messageID, userID snowf
 	if err != nil {
 		return err
 	}
+	defer s.lockPreviewUpdate(messageID)()
 	row, err := s.loadFor(ctx, p, channelID, messageID, userID)
 	if err != nil {
 		return err

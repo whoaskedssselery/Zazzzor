@@ -1,9 +1,9 @@
 -- name: CreateMessage :one
 -- created_at comes from the database clock, like edited_at.
 INSERT INTO messages (id, channel_id, author_id, content, reply_to_id, created_at,
-    mention_user_ids, mention_role_ids, mention_everyone, mention_here)
+    mention_user_ids, mention_role_ids, mention_everyone, mention_here, embeds)
 VALUES (@id, @channel_id, @author_id, @content, @reply_to_id, now(),
-    @mention_user_ids, @mention_role_ids, @mention_everyone, @mention_here)
+    @mention_user_ids, @mention_role_ids, @mention_everyone, @mention_here, @embeds)
 RETURNING *;
 
 -- name: MessageInChannel :one
@@ -31,7 +31,7 @@ SELECT * FROM messages WHERE channel_id = @channel_id AND id = ANY(@ids::bigint[
 -- Changes the content of the author's message if it differs; no row when
 -- the message is gone, not the author's or already says that.
 UPDATE messages SET content = @content, edited_at = now(), mention_user_ids = @mention_user_ids,
-    mention_role_ids = @mention_role_ids, mention_everyone = @mention_everyone, mention_here = @mention_here
+    mention_role_ids = @mention_role_ids, mention_everyone = @mention_everyone, mention_here = @mention_here, embeds = @embeds
 WHERE id = @id AND channel_id = @channel_id AND author_id = @author_id AND content <> @content
 RETURNING *;
 
@@ -85,10 +85,14 @@ ORDER BY message_id, position;
 DELETE FROM message_attachments WHERE message_id IS NULL AND created_at <= sqlc.arg(cutoff);
 
 -- name: AttachmentReferences :many
-SELECT id, channel_id FROM message_attachments;
+SELECT id, channel_id FROM message_attachments
+UNION ALL SELECT id, 1::bigint AS channel_id FROM embed_images;
 
 -- name: AttachmentReferenced :one
-SELECT EXISTS (SELECT 1 FROM message_attachments WHERE id = $1 AND channel_id = $2);
+SELECT EXISTS (
+    SELECT 1 FROM message_attachments AS a WHERE a.id = @id AND a.channel_id = @channel_id
+    UNION ALL SELECT 1 FROM embed_images AS i WHERE i.id = @id AND @channel_id = 1
+);
 
 -- name: QueuedAttachmentTrash :many
 SELECT * FROM attachment_trash ORDER BY id;
@@ -173,3 +177,55 @@ SELECT user_id FROM message_reactions
 WHERE message_id = $1 AND emoji = $2 AND user_id > sqlc.arg(after_id)::bigint
 ORDER BY user_id
 LIMIT sqlc.arg(page_limit)::int;
+
+-- name: LockPreviewReferences :exec
+-- The cleanup writer excludes new references until its orphan scan commits.
+SELECT pg_advisory_xact_lock_shared(91403221130845);
+
+-- name: LockPreviewCleanup :exec
+SELECT pg_advisory_xact_lock(91403221130845);
+
+-- name: CachedPreviews :many
+SELECT url, status, embed FROM link_previews
+WHERE url = ANY(@urls::text[])
+  AND fetched_at > CASE WHEN status THEN @success_cutoff::timestamptz ELSE @failure_cutoff::timestamptz END;
+
+-- name: SavePreview :exec
+INSERT INTO link_previews (url, fetched_at, status, embed)
+VALUES (@url, @fetched_at, @status, sqlc.narg(embed))
+ON CONFLICT (url) DO UPDATE
+SET fetched_at = EXCLUDED.fetched_at, status = EXCLUDED.status, embed = EXCLUDED.embed;
+
+-- name: SetMessageEmbeds :execrows
+UPDATE messages SET embeds = @embeds
+WHERE id = @id AND channel_id = @channel_id AND content = @content
+  AND edited_at IS NOT DISTINCT FROM sqlc.narg(edited_at)
+  AND embeds <> @embeds;
+
+-- name: AddEmbedImage :exec
+INSERT INTO embed_images (id, token, content_type, created_at) VALUES ($1, $2, $3, $4);
+
+-- name: EmbedImageByToken :one
+SELECT id, content_type FROM embed_images WHERE token = $1;
+
+-- name: ExpirePreviews :exec
+DELETE FROM link_previews
+WHERE fetched_at <= CASE WHEN status THEN @success_cutoff::timestamptz ELSE @failure_cutoff::timestamptz END;
+
+-- name: UnusedEmbedImages :many
+SELECT i.id FROM embed_images AS i
+WHERE i.created_at < @cutoff
+  AND NOT EXISTS (
+      SELECT 1 FROM messages AS m
+      WHERE m.embeds <> '[]'::jsonb AND m.embeds @> jsonb_build_array(
+          jsonb_build_object('image', jsonb_build_object('url', '/api/v1/embeds/' || i.token))))
+  AND NOT EXISTS (
+      SELECT 1 FROM link_previews AS p WHERE p.embed -> 'image' ->> 'url' = '/api/v1/embeds/' || i.token)
+ORDER BY i.created_at
+LIMIT 100;
+
+-- name: ForgetEmbedImage :exec
+WITH removed AS (
+    DELETE FROM embed_images AS i WHERE i.id = @id::bigint RETURNING i.id
+)
+INSERT INTO attachment_trash (id, channel_id) SELECT id, 1 FROM removed;

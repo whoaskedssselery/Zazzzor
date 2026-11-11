@@ -22,6 +22,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/files"
 	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
+	"github.com/whoaskedssselery/zazzzor/server/internal/linkpreview"
 	"github.com/whoaskedssselery/zazzzor/server/internal/messages/store"
 	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
@@ -146,6 +147,7 @@ type Message struct {
 	// Referenced is nil when there is no reply or the original is gone.
 	Referenced  *Stub
 	Attachments []Attachment
+	Embeds      []linkpreview.Embed
 	Reactions   []Reaction
 	mentions    mentions
 	// Nonce is the client's tag of a message just sent; history never
@@ -169,22 +171,23 @@ type PublicStub struct {
 
 // PublicMessage is the JSON form of a Message (schema Message).
 type PublicMessage struct {
-	ID                snowflake.ID     `json:"id"`
-	ChannelID         snowflake.ID     `json:"channel_id"`
-	GuildID           snowflake.ID     `json:"guild_id"`
-	Author            *auth.PublicUser `json:"author"`
-	Content           string           `json:"content"`
-	CreatedAt         string           `json:"created_at"`
-	EditedAt          *string          `json:"edited_at"`
-	ReplyToID         *snowflake.ID    `json:"reply_to_id"`
-	ReferencedMessage *PublicStub      `json:"referenced_message"`
-	MentionUserIDs    []snowflake.ID   `json:"mention_user_ids"`
-	MentionRoleIDs    []snowflake.ID   `json:"mention_role_ids"`
-	MentionEveryone   bool             `json:"mention_everyone"`
-	MentionHere       bool             `json:"mention_here"`
-	Nonce             *string          `json:"nonce,omitempty"`
-	Attachments       []Attachment     `json:"attachments"`
-	Reactions         *[]Reaction      `json:"reactions,omitempty"`
+	ID                snowflake.ID        `json:"id"`
+	ChannelID         snowflake.ID        `json:"channel_id"`
+	GuildID           snowflake.ID        `json:"guild_id"`
+	Author            *auth.PublicUser    `json:"author"`
+	Content           string              `json:"content"`
+	CreatedAt         string              `json:"created_at"`
+	EditedAt          *string             `json:"edited_at"`
+	ReplyToID         *snowflake.ID       `json:"reply_to_id"`
+	ReferencedMessage *PublicStub         `json:"referenced_message"`
+	MentionUserIDs    []snowflake.ID      `json:"mention_user_ids"`
+	MentionRoleIDs    []snowflake.ID      `json:"mention_role_ids"`
+	MentionEveryone   bool                `json:"mention_everyone"`
+	MentionHere       bool                `json:"mention_here"`
+	Nonce             *string             `json:"nonce,omitempty"`
+	Attachments       []Attachment        `json:"attachments"`
+	Embeds            []linkpreview.Embed `json:"embeds"`
+	Reactions         *[]Reaction         `json:"reactions,omitempty"`
 }
 
 func publicUser(u *auth.User) *auth.PublicUser {
@@ -206,6 +209,10 @@ func (m Message) Public() PublicMessage {
 		reactions = []Reaction{}
 	}
 	p.Reactions = &reactions
+	p.Embeds = m.Embeds
+	if p.Embeds == nil {
+		p.Embeds = []linkpreview.Embed{}
+	}
 	p.Attachments = m.Attachments
 	if p.Attachments == nil {
 		p.Attachments = []Attachment{}
@@ -258,14 +265,15 @@ var _ Users = (auth.Accounts)(nil)
 // Options configures a Service. Pool, IDs, Channels and Users are required.
 type Options struct {
 	// OnlineAmong snapshots which of the given guild members are online.
-	OnlineAmong func([]snowflake.ID) []snowflake.ID
-	Pool        *pgxpool.Pool
-	IDs         *snowflake.Generator
-	Channels    Channels
-	Users       Users
-	Publisher   events.Publisher // nil: events are dropped
-	Files       *files.Disk      // nil disables attachment routes
-	Logger      *slog.Logger     // nil uses the default logger
+	OnlineAmong    func([]snowflake.ID) []snowflake.ID
+	Pool           *pgxpool.Pool
+	IDs            *snowflake.Generator
+	Channels       Channels
+	Users          Users
+	Publisher      events.Publisher // nil: events are dropped
+	PreviewFetcher PreviewFetcher   // nil disables outbound preview fetching.
+	Files          *files.Disk      // nil disables attachment routes
+	Logger         *slog.Logger     // nil uses the default logger
 	// Now is the clock of typing notices; nil means time.Now.
 	Now func() time.Time
 	// SendLimiter limits sending per user; nil takes the default (5 per
@@ -288,6 +296,7 @@ type Service struct {
 	ackLimiter      *ratelimit.Limiter
 	reactionLimiter *ratelimit.Limiter
 	reactionLocks   [reactionLockStripes]sync.Mutex
+	previews        *previews
 	pool            *pgxpool.Pool
 	q               *store.Queries
 	ids             *snowflake.Generator
@@ -311,6 +320,9 @@ func NewService(o Options) *Service {
 		pub: o.Publisher, files: o.Files, logger: o.Logger, now: o.Now,
 		uploadLimiter: ratelimit.New(uploadRate, uploadBurst, uploadTTL), sendLimiter: o.SendLimiter, writeLimiter: o.WriteLimiter,
 		typingLimiter: o.TypingLimiter, typingCalls: o.TypingCallLimiter}
+	if o.PreviewFetcher != nil && o.Files != nil {
+		s.previews = &previews{fetcher: o.PreviewFetcher, jobs: make(chan previewJob, previewQueueSize)}
+	}
 	if s.logger == nil {
 		s.logger = slog.Default()
 	}
