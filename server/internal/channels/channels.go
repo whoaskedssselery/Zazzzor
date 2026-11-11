@@ -105,6 +105,7 @@ type Channel struct {
 	Type             Type
 	Name             string
 	Topic            *string
+	LastMessageID    *snowflake.ID
 	ParentID         *snowflake.ID
 	Position         int
 	PermissionSynced bool
@@ -126,6 +127,7 @@ type PublicChannel struct {
 	Type                 int               `json:"type"`
 	Name                 string            `json:"name"`
 	Topic                *string           `json:"topic"`
+	LastMessageID        *snowflake.ID     `json:"last_message_id"`
 	ParentID             *snowflake.ID     `json:"parent_id"`
 	Position             int               `json:"position"`
 	PermissionSynced     bool              `json:"permission_synced"`
@@ -139,7 +141,7 @@ func (c Channel) Public() PublicChannel {
 		ows[i] = PublicOverwrite{ID: o.ID, Type: int(o.Type), Allow: o.Allow, Deny: o.Deny}
 	}
 	return PublicChannel{ID: c.ID, GuildID: c.GuildID, Type: int(c.Type), Name: c.Name, Topic: c.Topic,
-		ParentID: c.ParentID, Position: c.Position, PermissionSynced: c.PermissionSynced,
+		LastMessageID: c.LastMessageID, ParentID: c.ParentID, Position: c.Position, PermissionSynced: c.PermissionSynced,
 		PermissionOverwrites: ows}
 }
 
@@ -288,7 +290,7 @@ func (s *Service) read(ctx context.Context, fn func(pgx.Tx) error) error {
 
 func toChannel(c store.Channel) Channel {
 	return Channel{ID: c.ID, GuildID: c.GuildID, Type: Type(c.Type), Name: c.Name, Topic: c.Topic,
-		ParentID: c.ParentID, Position: int(c.Position), PermissionSynced: c.PermissionSynced}
+		LastMessageID: c.LastMessageID, ParentID: c.ParentID, Position: int(c.Position), PermissionSynced: c.PermissionSynced}
 }
 
 func toOverwrite(o store.Overwrite) permissions.Overwrite {
@@ -380,12 +382,12 @@ type layout struct {
 }
 
 // loadLayout reads the channels and overwrites of guildID in two queries.
-func (s *Service) loadLayout(ctx context.Context, db store.DBTX, guildID snowflake.ID) (*layout, error) {
-	rows, err := s.q.GuildChannels(ctx, db, guildID)
+func loadLayout(ctx context.Context, q *store.Queries, db store.DBTX, guildID snowflake.ID) (*layout, error) {
+	rows, err := q.GuildChannels(ctx, db, guildID)
 	if err != nil {
 		return nil, fmt.Errorf("channels: list channels: %w", err)
 	}
-	ows, err := s.q.GuildOverwrites(ctx, db, guildID)
+	ows, err := q.GuildOverwrites(ctx, db, guildID)
 	if err != nil {
 		return nil, fmt.Errorf("channels: list overwrites: %w", err)
 	}

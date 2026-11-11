@@ -223,6 +223,9 @@ func (s *Service) UpdateRole(ctx context.Context, guildID, roleID, actorID snowf
 			return fmt.Errorf("guilds: update role: %w", err)
 		}
 		updated, changed = toRole(row), true
+		if next.Permissions != old.Permissions {
+			return s.pruneReadStates(ctx, tx, guildID)
+		}
 		return nil
 	})
 	if err != nil {
@@ -378,7 +381,7 @@ func (s *Service) DeleteRole(ctx context.Context, guildID, roleID, actorID snowf
 		if err = s.q.CloseRoleGap(ctx, tx, store.CloseRoleGapParams{GuildID: guildID, Position: int32(r.Position)}); err != nil { //nolint:gosec // G115: positions are small
 			return fmt.Errorf("guilds: close role gap: %w", err)
 		}
-		return nil
+		return s.pruneReadStates(ctx, tx, guildID)
 	})
 	if err != nil {
 		return err

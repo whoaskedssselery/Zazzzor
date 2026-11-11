@@ -92,6 +92,11 @@ func (s *Service) UpdateMember(ctx context.Context, guildID, targetID, actorID s
 				return err
 			}
 		}
+		if rolesChanged {
+			if err = s.pruneReadStates(ctx, tx, guildID); err != nil {
+				return err
+			}
+		}
 		updated, err = s.member(ctx, tx, guildID, targetID)
 		return err
 	})

@@ -47,7 +47,7 @@ func (s *Service) Lookup(ctx context.Context, guildID snowflake.ID) (Guild, erro
 type Access struct {
 	GuildID, OwnerID snowflake.ID
 	Everyone         permissions.Role
-	roles            map[snowflake.ID]permissions.Role // without @everyone
+	roles            map[snowflake.ID]Role // without @everyone
 	members          map[snowflake.ID][]snowflake.ID
 	memberIDs        []snowflake.ID // ascending
 }
@@ -71,14 +71,14 @@ func (s *Service) AccessIn(ctx context.Context, db DB, guildID snowflake.ID) (Ac
 		return Access{}, fmt.Errorf("guilds: list member roles: %w", err)
 	}
 	a := Access{GuildID: guildID, OwnerID: g.OwnerID,
-		roles:     make(map[snowflake.ID]permissions.Role, len(roles)),
+		roles:     make(map[snowflake.ID]Role, len(roles)),
 		members:   make(map[snowflake.ID][]snowflake.ID, len(rows)),
 		memberIDs: make([]snowflake.ID, len(rows))}
 	for _, r := range roles {
 		if r.ID == guildID {
 			a.Everyone = r.perm()
 		} else {
-			a.roles[r.ID] = r.perm()
+			a.roles[r.ID] = r
 		}
 	}
 	for i, m := range rows {
@@ -90,6 +90,22 @@ func (s *Service) AccessIn(ctx context.Context, db DB, guildID snowflake.ID) (Ac
 		a.memberIDs[i] = m.UserID
 	}
 	return a, nil
+}
+
+// pruneReadStates refreshes read states after a change to member visibility.
+func (s *Service) pruneReadStates(ctx context.Context, tx pgx.Tx, guildID snowflake.ID) error {
+	states, ok := s.overwrites.(readStateLifecycle)
+	if !ok {
+		return nil
+	}
+	a, err := s.AccessIn(ctx, tx, guildID)
+	if err != nil {
+		return fmt.Errorf("guilds: load permissions for read-state cleanup: %w", err)
+	}
+	if err := states.PruneReadStates(ctx, tx, a); err != nil {
+		return fmt.Errorf("guilds: prune read states: %w", err)
+	}
+	return nil
 }
 
 // MemberIDs returns the members, ascending.
@@ -109,7 +125,12 @@ func (a Access) Role(id snowflake.ID) (permissions.Role, bool) {
 		return a.Everyone, true
 	}
 	r, ok := a.roles[id]
-	return r, ok
+	return r.perm(), ok
+}
+
+// RoleMentionable reports whether the guild role may be mentioned by anyone.
+func (a Access) RoleMentionable(id snowflake.ID) bool {
+	return a.roles[id].Mentionable
 }
 
 // Subject returns userID as a permission subject; false for a non-member.
@@ -122,7 +143,7 @@ func (a Access) Subject(userID snowflake.ID) (permissions.Subject, bool) {
 		Everyone: a.Everyone, Roles: make([]permissions.Role, 0, len(ids))}
 	for _, id := range ids {
 		if r, found := a.roles[id]; found {
-			sub.Roles = append(sub.Roles, r)
+			sub.Roles = append(sub.Roles, r.perm())
 		}
 	}
 	return sub, true

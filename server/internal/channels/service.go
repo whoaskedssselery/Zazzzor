@@ -59,7 +59,7 @@ func (s *Service) locked(ctx context.Context, guildID, actorID snowflake.ID,
 		if err != nil {
 			return err
 		}
-		l, err := s.loadLayout(ctx, tx, guildID)
+		l, err := loadLayout(ctx, s.q, tx, guildID)
 		if err != nil {
 			return err
 		}
@@ -240,8 +240,13 @@ func (s *Service) UpdateChannel(ctx context.Context, channelID, actorID snowflak
 				if err = authorizeOverwrites(a, actor, perm, l.effective(n), parent.ch.Overwrites); err != nil {
 					return err
 				}
-			}
-			if err := l.setSync(n, *f.SyncPermissions); err != nil {
+				if err := l.setSync(n, true); err != nil {
+					return err
+				}
+				if err := l.pruneReadStates(ctx, s.q, tx, a); err != nil {
+					return err
+				}
+			} else if err := l.setSync(n, *f.SyncPermissions); err != nil {
 				return err
 			}
 		}

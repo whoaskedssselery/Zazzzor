@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/time/rate"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
@@ -59,6 +60,7 @@ func (p *recorder) reset() {
 }
 
 type env struct {
+	pool   *pgxpool.Pool
 	t      *testing.T
 	auth   *auth.Service
 	guilds *guilds.Service
@@ -72,7 +74,7 @@ func unlimited() *ratelimit.Limiter { return ratelimit.New(rate.Inf, 1, time.Min
 func newEnv(t *testing.T) *env {
 	t.Helper()
 	pool := testkit.Postgres(t)
-	e := &env{t: t, pub: &recorder{}}
+	e := &env{t: t, pool: pool, pub: &recorder{}}
 	ids := snowflake.NewGenerator(0, time.Now)
 	e.auth = auth.NewService(auth.Options{Pool: pool, IDs: ids, CookieSecure: true,
 		RegisterLimiter: unlimited(), LoginLimiter: unlimited()})
