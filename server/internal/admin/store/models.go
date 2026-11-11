@@ -11,6 +11,11 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AttachmentTrash struct {
+	ID        int64
+	ChannelID int64
+}
+
 type Channel struct {
 	ID               int64
 	GuildID          int64
@@ -76,6 +81,21 @@ type Message struct {
 	ReplyToID pgtype.Int8
 	EditedAt  *time.Time
 	CreatedAt time.Time
+}
+
+type MessageAttachment struct {
+	ID          int64
+	ChannelID   int64
+	UploaderID  pgtype.Int8
+	MessageID   pgtype.Int8
+	Filename    string
+	ContentType string
+	Size        int64
+	Width       pgtype.Int4
+	Height      pgtype.Int4
+	Digest      string
+	Position    int32
+	CreatedAt   time.Time
 }
 
 type MessageNonce struct {
