@@ -240,6 +240,17 @@ const messageStubSchema: z.ZodMiniType<S["MessageStub"]> = z.object({
   content: z.string(),
 });
 
+const attachmentSchema: z.ZodMiniType<S["Attachment"]> = z.object({
+  id: snowflake,
+  filename: z.string(),
+  content_type: z.string(),
+  size: z.number(),
+  width: z.nullable(z.number()),
+  height: z.nullable(z.number()),
+  url: z.string(),
+  pending: z.boolean(),
+});
+
 const messageSchema: z.ZodMiniType<S["Message"]> = z.object({
   id: snowflake,
   channel_id: snowflake,
@@ -250,6 +261,7 @@ const messageSchema: z.ZodMiniType<S["Message"]> = z.object({
   edited_at: nullableString,
   reply_to_id: z.nullable(snowflake),
   referenced_message: z.nullable(messageStubSchema),
+  attachments: z.array(attachmentSchema),
   nonce: z.optional(z.string()),
 });
 

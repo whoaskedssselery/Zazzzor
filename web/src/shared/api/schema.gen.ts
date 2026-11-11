@@ -836,6 +836,72 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/channels/{channel_id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload a pending message attachment
+         * @description Needs `VIEW_CHANNEL`, `SEND_MESSAGES` and `ATTACH_FILES` in a text
+         *     channel. Upload one file up to 25 MiB per request. Pending uploads
+         *     expire after one hour. Limited to 30 per minute per user, with a burst
+         *     of 10 and at most two concurrent uploads per user.
+         */
+        post: operations["uploadAttachment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/channels/{channel_id}/attachments/{attachment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Discard a pending attachment */
+        delete: operations["discardAttachment"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/attachments/{channel_id}/{attachment_id}/{filename}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the original bytes of a message attachment
+         * @description Needs a session, `VIEW_CHANNEL` and `READ_MESSAGE_HISTORY`. Only
+         *     the uploader can read a pending attachment. Denied or missing files
+         *     return 404. Supports byte ranges and conditional requests. PNG, JPEG,
+         *     WebP, GIF, MP4, WebM, MP3, OGG and WAV are served inline when identified
+         *     by their bytes. All other files download as application/octet-stream.
+         *     Successful responses use private immutable caching, an ETag,
+         *     nosniff, and a sandboxed Content Security Policy.
+         */
+        get: operations["downloadAttachment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/channels/{channel_id}/messages": {
         parameters: {
             query?: never;
@@ -855,10 +921,13 @@ export interface paths {
         /**
          * Send a message
          * @description Needs `SEND_MESSAGES` in a text channel. `content` is trimmed of
-         *     white space at both ends and must then be 1 to 4000 characters
+         *     white space at both ends and may be omitted or empty with an
+         *     attachment. Non-empty content must be 1 to 4000 characters
          *     (Unicode code points) with at least one visible character (not only
          *     spaces, zero-width or other format characters, separators or
-         *     combining marks). A reply also needs `READ_MESSAGE_HISTORY`;
+         *     combining marks). Attachment IDs must be distinct pending uploads of
+         *     this author in this channel, and need `ATTACH_FILES`. They are bound
+         *     to the new message in the same transaction. A reply also needs `READ_MESSAGE_HISTORY`;
          *     `reply_to_id` must be a message of the same channel. `nonce` (at
          *     most 64 characters) is echoed in the response and in
          *     `MESSAGE_CREATE`, never in the history. For 10 minutes it stands
@@ -898,7 +967,8 @@ export interface paths {
         head?: never;
         /**
          * Edit a message
-         * @description Only the author may, while they can view the channel. Without
+         * @description Only content can be edited. Existing attachments stay on the message.
+         *     Only the author may, while they can view the channel. Without
          *     `READ_MESSAGE_HISTORY`, messages of others are `404 not_found`.
          *     `content` follows the rules of sending; `edited_at` is set to the server's
          *     time. The same content again changes nothing and announces nothing;
@@ -1519,13 +1589,33 @@ export interface components {
             author: components["schemas"]["User"] | null;
             content: string;
         };
+        Attachment: {
+            id: components["schemas"]["Snowflake"];
+            /** @description Sanitized original base name for display and download. */
+            filename: string;
+            /** @description Sniffed media type or application/octet-stream. */
+            content_type: string;
+            /** Format: int64 */
+            size: number;
+            /** @description Image width in pixels, null for other files. */
+            width: number | null;
+            /** @description Image height in pixels, null for other files. */
+            height: number | null;
+            /**
+             * Format: uri-reference
+             * @description Relative API path for authenticated preview or download.
+             */
+            url: string;
+            /** @description True until the upload is bound to a message. */
+            pending: boolean;
+        };
         Message: {
             id: components["schemas"]["Snowflake"];
             channel_id: components["schemas"]["Snowflake"];
             guild_id: components["schemas"]["Snowflake"];
             /** @description Null when the account of the author no longer exists. */
             author: components["schemas"]["User"] | null;
-            /** @description 1 to 4000 characters (Unicode code points), trimmed. */
+            /** @description Up to 4000 characters (Unicode code points), trimmed. */
             content: string;
             /** Format: date-time */
             created_at: string;
@@ -1538,12 +1628,14 @@ export interface components {
             reply_to_id: components["schemas"]["Snowflake"] | null;
             /** @description The message this one answers; null when not a reply or the original is deleted. */
             referenced_message: components["schemas"]["MessageStub"] | null;
+            attachments: components["schemas"]["Attachment"][];
             /** @description Only in the response to sending and in `MESSAGE_CREATE`, when the client sent one. */
             nonce?: string;
         };
         CreateMessageRequest: {
-            /** @description 1 to 4000 characters (Unicode code points) after trimming white space. */
-            content: string;
+            /** @description Up to 4000 characters after trimming. Required unless attachment_ids is non-empty. */
+            content?: string;
+            attachment_ids?: components["schemas"]["Snowflake"][];
             reply_to_id?: components["schemas"]["Snowflake"] | null;
             /** @description Client tag to match the response and the event to the request; a retry with it within 10 minutes returns the message already sent. */
             nonce?: string;
@@ -1769,6 +1861,7 @@ export interface components {
         RoleID: components["schemas"]["Snowflake"];
         /** @description First 16 hex digits of the SHA-256 of the stored PNG. */
         FileHash: string;
+        AttachmentID: components["schemas"]["Snowflake"];
         ChannelID: components["schemas"]["Snowflake"];
         /** @description The role or member the overwrite is for. */
         TargetID: components["schemas"]["Snowflake"];
@@ -3224,6 +3317,127 @@ export interface operations {
             500: components["responses"]["Problem"];
         };
     };
+    uploadAttachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The pending attachment. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Attachment"];
+                };
+            };
+            /** @description `invalid_body`, `validation_failed` or `not_a_text_channel`. */
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            /** @description `origin_not_allowed` or `missing_permission`. */
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            /** @description `file_too_large`: the file exceeds the upload limit. */
+            413: components["responses"]["Problem"];
+            415: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+            /** @description `server_busy`: the shared upload gate is full. */
+            503: components["responses"]["Problem"];
+        };
+    };
+    discardAttachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+                attachment_id: components["parameters"]["AttachmentID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's pending attachment was discarded. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Problem"];
+            /** @description `origin_not_allowed`. */
+            403: components["responses"]["Problem"];
+            /** @description `attachment_not_found`: missing, expired, bound, or owned by someone else. */
+            404: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    downloadAttachment: {
+        parameters: {
+            query?: never;
+            header?: {
+                Range?: string;
+            };
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+                attachment_id: components["parameters"]["AttachmentID"];
+                /** @description Cosmetic filename. The channel and attachment IDs select the file. */
+                filename: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The original bytes with their sniffed content type. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": string;
+                };
+            };
+            /** @description The requested byte range or ranges. */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": string;
+                };
+            };
+            /** @description The client's cached copy is current. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `attachment_not_found`: missing or inaccessible. */
+            404: components["responses"]["Problem"];
+            /** @description The requested range is unsatisfiable. */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            429: components["responses"]["RateLimited"];
+        };
+    };
     listMessages: {
         parameters: {
             query?: {
@@ -3289,7 +3503,8 @@ export interface operations {
             };
             /**
              * @description `invalid_body`, `body_too_large`, `validation_failed` (with
-             *     `errors`) or `not_a_text_channel`.
+             *     `errors`), `not_a_text_channel`, `attachment_not_found` or
+             *     `too_many_attachments` (field `attachment_ids`).
              */
             400: components["responses"]["Problem"];
             /** @description `unauthenticated`. */

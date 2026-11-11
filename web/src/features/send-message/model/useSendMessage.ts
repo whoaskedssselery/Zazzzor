@@ -12,9 +12,7 @@ import {
   updatePending,
   upsertMessage,
 } from "@/entities/message";
-import { ApiError, api, type components, errorText, unwrap } from "@/shared/api";
-
-type CreateMessageBody = components["schemas"]["CreateMessageRequest"];
+import { ApiError, api, errorText, unwrap } from "@/shared/api";
 
 /** How long a send waits for the gateway to come back before it fails. */
 export const SEND_WAIT_MS = 10_000;
@@ -67,13 +65,12 @@ const deliver = async (qc: QueryClient, channelId: string, nonce: string): Promi
     const message = unwrap(
       await api.POST("/channels/{channel_id}/messages", {
         params: { path: { channel_id: channelId } },
-        // attachment_ids: in the contract from C7 on; the generated body type catches up then.
         body: {
           content: p.content,
           reply_to_id: p.replyTo?.id ?? null,
           nonce,
           attachment_ids: p.attachments.map((a) => a.id),
-        } as CreateMessageBody,
+        },
       }),
     );
     updateHistory(qc, channelId, (h) => upsertMessage(h, message));

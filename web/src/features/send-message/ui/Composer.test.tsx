@@ -19,7 +19,7 @@ const serverCounts = () => {
   server.use(
     apiHandler("post", "/channels/{channel_id}/messages", async ({ request, params }) => {
       const body = await request.json();
-      counts.sends.push(body.content);
+      counts.sends.push(body.content ?? "");
       return HttpResponse.json(makeMessage(String(counts.sends.length), params.channel_id, me, body), { status: 201 });
     }),
     apiHandler("post", "/channels/{channel_id}/typing", () => {
