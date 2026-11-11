@@ -111,7 +111,15 @@ describe("applyMessageDispatch", () => {
 
   it("confirms the pending send with the nonce of an own MESSAGE_CREATE", () => {
     const qc = client(pages([1]));
-    addPending({ nonce: "abc", channelId: C, content: "привет", replyTo: null, status: "sending", error: null });
+    addPending({
+      nonce: "abc",
+      channelId: C,
+      content: "привет",
+      replyTo: null,
+      attachments: [],
+      status: "sending",
+      error: null,
+    });
     applyMessageDispatch(qc, "MESSAGE_CREATE", msg(2, { nonce: "abc", content: "привет" }));
     expect(getPending(C, "abc")).toBeUndefined();
   });
