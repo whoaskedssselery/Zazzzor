@@ -2,6 +2,7 @@ import {
   ConnectionState,
   LocalAudioTrack,
   type LocalTrackPublication,
+  LocalVideoTrack,
   type Participant,
   RemoteAudioTrack,
   type RemoteParticipant,
@@ -24,6 +25,7 @@ import {
 } from "./media";
 import { browserNoiseSuppression, createNoiseProcessor } from "./noise";
 import { noiseEngines } from "./noise-engines";
+import { steerScreenQuality } from "./screen-quality";
 
 type Listeners = { [K in keyof CallTransportEvents]: Set<CallTransportEvents[K]> };
 
@@ -75,6 +77,8 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
   let leaving = false;
   let listening = true;
   let screen: MediaStream | null = null;
+  /** Stops the 1080p/720p steering of the published screen share. */
+  let stopSteering = () => {};
   /** After one overload DeepFilterNet3 is not tried again in this tab. */
   const noiseMemory = { overloaded: false };
   const watching = new Set<string>();
@@ -171,6 +175,12 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
         if (pub.source === Track.Source.Microphone && pub.track instanceof LocalAudioTrack) {
           void cleanMicrophone(pub.track);
         }
+        // Also after a reconnect, which publishes the share again on a new sender.
+        const sender = pub.track instanceof LocalVideoTrack ? pub.track.sender : undefined;
+        if (pub.source === Track.Source.ScreenShare && sender) {
+          stopSteering();
+          stopSteering = steerScreenQuality(sender);
+        }
       })
       .on(RoomEvent.LocalTrackUnpublished, (pub: LocalTrackPublication) => {
         if (pub.source !== Track.Source.ScreenShare || screen === null) return;
@@ -189,12 +199,14 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
 
   /** Stops the captured screen without touching the room. */
   const stopCapture = () => {
+    stopSteering();
     const stream = screen;
     screen = null;
     for (const t of stream?.getTracks() ?? []) t.stop();
   };
 
   const unpublishScreen = async (r: Room) => {
+    stopSteering();
     const stream = screen;
     screen = null;
     try {

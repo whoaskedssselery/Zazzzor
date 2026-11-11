@@ -46,6 +46,10 @@ export const microphoneOptions = ({ inputId, noise }: Pick<VoicePrefs, "inputId"
  * VP8 alone held 1080p at ~30 fps with the viewer on the same machine.
  * The cost: no lower layer for a viewer on a slow link.
  *
+ * Holding the resolution has its own failure: when the sender's link is
+ * short, 1080p fell to 3–5 fps. Then the share steps down to 720p and back
+ * up when the link recovers (screen-quality.ts).
+ *
  * Firefox captures no sound; Chromium leaves this tab's sound (the voice
  * chat) out of the system sound where it can.
  */
