@@ -130,12 +130,18 @@ describe("server settings", () => {
 
   it("keeps an icon picked while the previous one uploads", async () => {
     const sizes: number[] = [];
+    const appended = vi.spyOn(FormData.prototype, "append");
+    onTestFinished(() => {
+      appended.mockRestore();
+    });
     let finish = () => {};
     signedIn(DEFAULT_EVERYONE | PERM.MANAGE_GUILD);
     server.use(
-      apiHandler("put", "/guilds/{guild_id}/icon", async ({ request }) => {
-        const file = (await request.formData()).get("file");
-        sizes.push(typeof file === "object" && file !== null ? file.size : -1);
+      apiHandler("put", "/guilds/{guild_id}/icon", async () => {
+        // The file as the app put it in the form: since Node 26 fetch cannot read a
+        // jsdom file back out of the request body (the browser has no such problem).
+        const file = appended.mock.calls.at(-1)?.[1];
+        sizes.push(file instanceof Blob ? file.size : -1);
         // The first upload waits for the test; later ones answer at once.
         if (sizes.length === 1) {
           await new Promise<void>((resolve) => {
