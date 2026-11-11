@@ -8,6 +8,7 @@ import { resetPending, usePendingMessages } from "@/entities/message";
 import { apiHandler, makeMessage, makeUser, server } from "@/shared/test";
 import { UiProviders } from "@/shared/ui";
 import { resetDrafts } from "../model/drafts";
+import { resetMentions } from "../model/mentions";
 import { NO_ATTACH_PERMISSION, resetUploads } from "../model/uploads";
 import { Composer, type ComposerProps, NO_SEND_PERMISSION, type ReplyTarget } from "./Composer";
 
@@ -101,6 +102,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  resetMentions();
   resetUploads();
   resetDrafts();
   resetPending();
@@ -297,5 +299,44 @@ describe("Composer with files", () => {
     fireEvent.paste(field(), { clipboardData: { files: [shot()], getData: () => "" } });
     expect(await screen.findByText(NO_ATTACH_PERMISSION)).toBeTruthy();
     expect(screen.queryByRole("list", { name: "Прикреплённые файлы" })).toBeNull();
+  });
+});
+
+describe("Composer mentions", () => {
+  const people = () => [
+    { kind: "user" as const, id: "1", name: "Аня", detail: "anya" },
+    { kind: "user" as const, id: "2", name: "Маня", detail: "manya" },
+    { kind: "everyone" as const, id: null, name: "everyone", detail: "Все" },
+  ];
+
+  it("suggests on @, picks with Enter and sends the server's token", async () => {
+    const counts = serverCounts();
+    const { user, field } = renderComposer({ mentionables: people });
+    await user.type(field(), "привет @ан");
+    const list = screen.getByRole("listbox", { name: "Кого упомянуть" });
+    const options = screen.getAllByRole("option");
+    expect(options.map((o) => o.querySelector("bdi")?.textContent)).toEqual(["Аня", "Маня"]);
+    expect(options[0]?.getAttribute("aria-selected")).toBe("true");
+    expect(field().getAttribute("aria-activedescendant")).toBe(list.firstElementChild?.id);
+    await user.keyboard("{Enter}");
+    expect(field().value).toBe("привет @Аня ");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    await user.type(field(), "глянь{Enter}");
+    await waitFor(() => {
+      expect(counts.sends).toEqual(["привет <@1> глянь"]);
+    });
+  });
+
+  it("moves with the arrows, picks @everyone as text and closes on Esc without sending", async () => {
+    const counts = serverCounts();
+    const { user, field } = renderComposer({ mentionables: people });
+    await user.type(field(), "@");
+    expect(screen.getAllByRole("option")).toHaveLength(3);
+    await user.keyboard("{ArrowUp}{Tab}");
+    expect(field().value).toBe("@everyone ");
+    await user.type(field(), "@м");
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(counts.sends).toEqual([]);
   });
 });

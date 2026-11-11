@@ -19,7 +19,13 @@ import {
   MessageToolbar,
   useDeleteMessage,
 } from "@/features/message-actions";
-import { Composer, type ReplyTarget, useAddFiles, useSendMessage } from "@/features/send-message";
+import {
+  Composer,
+  type MentionSuggestion,
+  type ReplyTarget,
+  useAddFiles,
+  useSendMessage,
+} from "@/features/send-message";
 import { errorText } from "@/shared/api";
 import type { MentionNames } from "@/shared/lib";
 import { Button, Skeleton } from "@/shared/ui";
@@ -166,6 +172,36 @@ const mentionNames = (entry: GuildEntry): MentionNames => ({
   },
 });
 
+/**
+ * Who `@` can reach in `channelId`: the members who can see it, by the name
+ * they go by here; the roles that may be mentioned (all of them with
+ * MENTION_EVERYONE, which also brings @everyone and @here).
+ */
+const mentionSuggestions = (
+  entry: GuildEntry,
+  channelId: string,
+  meId: string | null,
+  everyone: boolean,
+): MentionSuggestion[] => {
+  const users = Object.values(entry.members)
+    .filter((m) => m.user.id !== meId && has(computeChannel(entry, channelId, m.user.id), PERM.VIEW_CHANNEL))
+    .map((m): MentionSuggestion => {
+      const view = userDisplay(entry, m.user);
+      return { kind: "user", id: m.user.id, name: view.name, detail: m.user.username, avatarUrl: view.avatarUrl };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, "ru"));
+  const roles = Object.values(entry.roles)
+    .filter((r) => r.id !== entry.guild.id && (r.mentionable || everyone))
+    .map((r): MentionSuggestion => ({ kind: "role", id: r.id, name: r.name, color: r.color }));
+  const groups: MentionSuggestion[] = everyone
+    ? [
+        { kind: "everyone", id: null, name: "everyone", detail: "Все, кто видит канал" },
+        { kind: "here", id: null, name: "here", detail: "Все, кто сейчас в сети" },
+      ]
+    : [];
+  return [...users, ...roles, ...groups];
+};
+
 /** How a message author shows here; null for a deleted account. */
 const authorOf = (entry: GuildEntry, user: Message["author"]): AuthorView | null =>
   user === null ? null : userDisplay(entry, user);
@@ -186,6 +222,7 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
   const canSend = has(perms, PERM.SEND_MESSAGES);
   const canManage = has(perms, PERM.MANAGE_MESSAGES);
   const canAttach = canSend && has(perms, PERM.ATTACH_FILES);
+  const canMentionEveryone = has(perms, PERM.MENTION_EVERYONE);
 
   const history = useMessages(channel.id, canRead);
   const pending = usePendingMessages(channel.id);
@@ -409,6 +446,7 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
           setReplyTo(null);
         }}
         onEditLast={onEditLast}
+        mentionables={() => mentionSuggestions(entry, channel.id, meId, canMentionEveryone)}
       />
       <TypingIndicator
         channelId={channel.id}
