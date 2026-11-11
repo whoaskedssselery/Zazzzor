@@ -4,7 +4,7 @@ import { resetChannelUi } from "@/entities/channel";
 import { applyGatewayDispatch, getGuildsState, resetGuilds, setConnectionStatus } from "@/entities/guild";
 import { applyMessageDispatch, catchUpMessages, resetPending } from "@/entities/message";
 import { onSessionEnd, onUnauthorized, setSignedIn } from "@/entities/session";
-import { resetDrafts } from "@/features/send-message";
+import { resetDrafts, resetUploads } from "@/features/send-message";
 import { endCall, onVoiceMove, reconcileVoiceFlags } from "@/features/voice-call";
 import { getGateway, isCallEvent, parseCallEvent } from "@/shared/api";
 
@@ -51,6 +51,7 @@ export const useGatewaySession = (active: boolean): void => {
       resetGuilds();
       resetChannelUi();
       resetDrafts();
+      resetUploads();
       resetPending();
     });
     gateway.start();

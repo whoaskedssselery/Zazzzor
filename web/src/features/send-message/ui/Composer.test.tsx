@@ -1,13 +1,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { HttpResponse } from "msw";
+import { HttpResponse, http } from "msw";
 import { useState } from "react";
 import { resetGuilds, setConnectionStatus } from "@/entities/guild";
 import { resetPending, usePendingMessages } from "@/entities/message";
 import { apiHandler, makeMessage, makeUser, server } from "@/shared/test";
 import { UiProviders } from "@/shared/ui";
 import { resetDrafts } from "../model/drafts";
+import { NO_ATTACH_PERMISSION, resetUploads } from "../model/uploads";
 import { Composer, type ComposerProps, NO_SEND_PERMISSION, type ReplyTarget } from "./Composer";
 
 const me = makeUser("100");
@@ -44,6 +45,7 @@ const renderComposer = (props: Partial<ComposerProps> = {}) => {
     channelId: "101",
     channelName: "общий",
     canSend: true,
+    canAttach: true,
     replyTo: null,
     onCancelReply: () => {},
     onEditLast: () => false,
@@ -72,6 +74,7 @@ const Replying = () => {
       channelId="101"
       channelName="общий"
       canSend
+      canAttach
       replyTo={target}
       onCancelReply={() => {
         setTarget(null);
@@ -98,6 +101,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  resetUploads();
   resetDrafts();
   resetPending();
   resetGuilds();
@@ -220,5 +224,78 @@ describe("Composer", () => {
     await waitFor(() => {
       expect(counts.typing).toBe(1);
     });
+  });
+});
+
+describe("Composer with files", () => {
+  const shot = () => new File([new Uint8Array(4)], "shot.png", { type: "image/png" });
+
+  /** Uploads answer when `release` is called; sends record their bodies. */
+  const filesServer = () => {
+    const sent: unknown[] = [];
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      http.post("/api/v1/channels/:channel_id/attachments", async () => {
+        await gate;
+        return HttpResponse.json(
+          {
+            id: "900",
+            filename: "shot.png",
+            content_type: "image/png",
+            size: 4,
+            width: 2,
+            height: 1,
+            url: "/api/v1/attachments/101/900/shot.png",
+            pending: true,
+          },
+          { status: 201 },
+        );
+      }),
+      apiHandler("post", "/channels/{channel_id}/messages", async ({ request, params }) => {
+        const body = await request.json();
+        sent.push(body);
+        return HttpResponse.json(makeMessage("1", params.channel_id, me, body), { status: 201 });
+      }),
+    );
+    return {
+      sent,
+      release: () => {
+        release();
+      },
+    };
+  };
+
+  it("takes a pasted screenshot, waits for its upload, then sends it without text", async () => {
+    const { sent, release } = filesServer();
+    const { user, field } = renderComposer();
+    fireEvent.paste(field(), { clipboardData: { files: [shot()], getData: () => "" } });
+    expect(await screen.findByRole("listitem", { name: "shot.png" })).toBeTruthy();
+    const send = screen.getByRole("button", { name: "Файлы ещё загружаются" });
+    expect(send).toHaveProperty("disabled", true);
+    release();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Отправить" })).toHaveProperty("disabled", false);
+    });
+    await user.click(screen.getByRole("button", { name: "Отправить" }));
+    expect(screen.queryByRole("listitem", { name: "shot.png" })).toBeNull();
+    await waitFor(() => {
+      expect(sent).toHaveLength(1);
+    });
+    expect(sent[0]).toMatchObject({ content: "", reply_to_id: null, attachment_ids: ["900"] });
+    await waitFor(() => {
+      expect(sent).toHaveLength(1);
+    });
+  });
+
+  it("has no file button without ATTACH_FILES and refuses a pasted file", async () => {
+    filesServer();
+    const { field } = renderComposer({ canAttach: false });
+    expect(screen.queryByRole("button", { name: "Прикрепить файлы" })).toBeNull();
+    fireEvent.paste(field(), { clipboardData: { files: [shot()], getData: () => "" } });
+    expect(await screen.findByText(NO_ATTACH_PERMISSION)).toBeTruthy();
+    expect(screen.queryByRole("list", { name: "Прикреплённые файлы" })).toBeNull();
   });
 });
