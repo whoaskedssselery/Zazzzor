@@ -29,7 +29,7 @@ const VideoFrame = ({ video, children }: { video: RefObject<HTMLVideoElement | n
   return (
     <div className="flex size-full items-center justify-center [container-type:size]">
       <div
-        className="relative overflow-hidden rounded-lg bg-black"
+        className="relative overflow-hidden rounded-lg bg-[#000]"
         style={{ aspectRatio: ratio, width: `min(100cqw, calc(100cqh * ${String(ratio)}))` }}
       >
         {/* The sound plays with the call's, so deafening silences a stream too; the video itself is muted. */}
