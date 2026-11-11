@@ -328,3 +328,33 @@ func TestLatestMigrationIsWhereMigrateStops(t *testing.T) {
 		t.Errorf("LatestMigration = %d, want %d (the version after Migrate)", got, want)
 	}
 }
+
+// TestReactionPermissionMigration preserves configured permissions when upgrading @everyone.
+func TestReactionPermissionMigration(t *testing.T) {
+	ctx := t.Context()
+	pool := testkit.Postgres(t)
+	if err := db.MigrateDownTo(ctx, pool, 11); err != nil {
+		t.Fatalf("migrate down to 11: %v", err)
+	}
+	for _, stmt := range []string{
+		"INSERT INTO users (id, username, display_name, password_hash, created_at) VALUES (1, 'owner', 'Owner', 'test', now())",
+		"INSERT INTO guilds (id, name, owner_id, created_at) VALUES (2, 'Reactions', 1, now())",
+		"INSERT INTO roles (id, guild_id, name, position, permissions, created_at) VALUES (2, 2, '@everyone', 0, 1024, now()), (3, 2, 'Member', 1, 1024, now())",
+	} {
+		if _, err := pool.Exec(ctx, stmt); err != nil {
+			t.Fatalf("seed version 11: %v", err)
+		}
+	}
+	if err := db.Migrate(ctx, pool); err != nil {
+		t.Fatalf("migrate up: %v", err)
+	}
+	for id, want := range map[int]int64{2: 1024 | 64, 3: 1024} {
+		var got int64
+		if err := pool.QueryRow(ctx, "SELECT permissions FROM roles WHERE id = $1", id).Scan(&got); err != nil {
+			t.Fatalf("read role %d: %v", id, err)
+		}
+		if got != want {
+			t.Errorf("role %d permissions = %d, want %d", id, got, want)
+		}
+	}
+}

@@ -19,6 +19,7 @@ const (
 	Administrator      Permission = 1 << 3
 	ManageChannels     Permission = 1 << 4
 	ManageGuild        Permission = 1 << 5
+	AddReactions       Permission = 1 << 6
 	Stream             Permission = 1 << 9
 	ViewChannel        Permission = 1 << 10
 	SendMessages       Permission = 1 << 11
@@ -40,13 +41,13 @@ const (
 // All is the union of every defined permission. Unknown bits are never part
 // of it.
 const All = CreateInvite | KickMembers | BanMembers | Administrator |
-	ManageChannels | ManageGuild | Stream | ViewChannel | SendMessages |
+	ManageChannels | ManageGuild | AddReactions | Stream | ViewChannel | SendMessages |
 	ManageMessages | AttachFiles | ReadMessageHistory | MentionEveryone |
 	Connect | Speak | MuteMembers | DeafenMembers | MoveMembers |
 	UseVoiceActivity | ChangeNickname | ManageNicknames | ManageRoles
 
 // DefaultEveryone is the @everyone mask of a freshly created server.
-const DefaultEveryone = ViewChannel | SendMessages | ReadMessageHistory |
+const DefaultEveryone = AddReactions | ViewChannel | SendMessages | ReadMessageHistory |
 	AttachFiles | MentionEveryone | CreateInvite | ChangeNickname |
 	Connect | Speak | Stream | UseVoiceActivity
 

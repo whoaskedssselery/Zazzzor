@@ -117,6 +117,14 @@ type MessageNonce struct {
 	ExpiresAt time.Time
 }
 
+type MessageReaction struct {
+	MessageID    int64
+	Emoji        string
+	UserID       int64
+	CreatedAt    time.Time
+	FirstAddedAt time.Time
+}
+
 type Overwrite struct {
 	ChannelID  int64
 	TargetID   int64

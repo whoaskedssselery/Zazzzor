@@ -13,6 +13,35 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
 
+const addMessageReaction = `-- name: AddMessageReaction :execrows
+INSERT INTO message_reactions (message_id, emoji, user_id, first_added_at)
+VALUES ($1, $2, $3, COALESCE($4::timestamptz, (
+    SELECT GREATEST(clock_timestamp(), max(mr.first_added_at) + interval '1 microsecond')
+    FROM message_reactions AS mr WHERE mr.message_id = $1
+)))
+ON CONFLICT (message_id, emoji, user_id) DO NOTHING
+`
+
+type AddMessageReactionParams struct {
+	MessageID    int64
+	Emoji        string
+	UserID       int64
+	FirstAddedAt *time.Time
+}
+
+func (q *Queries) AddMessageReaction(ctx context.Context, db DBTX, arg AddMessageReactionParams) (int64, error) {
+	result, err := db.Exec(ctx, addMessageReaction,
+		arg.MessageID,
+		arg.Emoji,
+		arg.UserID,
+		arg.FirstAddedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const advanceReadStates = `-- name: AdvanceReadStates :many
 INSERT INTO read_states (user_id, guild_id, channel_id, last_read_id, mention_count)
 SELECT $1, $2, target.channel_id, target.message_id,
@@ -757,6 +786,127 @@ func (q *Queries) QueuedAttachmentTrash(ctx context.Context, db DBTX) ([]Attachm
 	return items, nil
 }
 
+const reactionGroupsForWrite = `-- name: ReactionGroupsForWrite :many
+WITH locked AS (
+    SELECT emoji, first_added_at FROM message_reactions
+    WHERE message_id = $1
+    FOR UPDATE
+)
+SELECT emoji, min(first_added_at)::timestamptz AS first_added_at
+FROM locked
+GROUP BY emoji
+ORDER BY first_added_at
+`
+
+type ReactionGroupsForWriteRow struct {
+	Emoji        string
+	FirstAddedAt time.Time
+}
+
+func (q *Queries) ReactionGroupsForWrite(ctx context.Context, db DBTX, messageID int64) ([]ReactionGroupsForWriteRow, error) {
+	rows, err := db.Query(ctx, reactionGroupsForWrite, messageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReactionGroupsForWriteRow
+	for rows.Next() {
+		var i ReactionGroupsForWriteRow
+		if err := rows.Scan(&i.Emoji, &i.FirstAddedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const reactionSummaries = `-- name: ReactionSummaries :many
+SELECT message_id, emoji, count(*) AS count, bool_or(user_id = $1::bigint)::bool AS me
+FROM message_reactions
+WHERE message_id = ANY($2::bigint[])
+GROUP BY message_id, emoji
+ORDER BY message_id, min(first_added_at), emoji
+`
+
+type ReactionSummariesParams struct {
+	CallerID   int64
+	MessageIds []int64
+}
+
+type ReactionSummariesRow struct {
+	MessageID int64
+	Emoji     string
+	Count     int64
+	Me        bool
+}
+
+func (q *Queries) ReactionSummaries(ctx context.Context, db DBTX, arg ReactionSummariesParams) ([]ReactionSummariesRow, error) {
+	rows, err := db.Query(ctx, reactionSummaries, arg.CallerID, arg.MessageIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReactionSummariesRow
+	for rows.Next() {
+		var i ReactionSummariesRow
+		if err := rows.Scan(
+			&i.MessageID,
+			&i.Emoji,
+			&i.Count,
+			&i.Me,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const reactionUserIDs = `-- name: ReactionUserIDs :many
+SELECT user_id FROM message_reactions
+WHERE message_id = $1 AND emoji = $2 AND user_id > $3::bigint
+ORDER BY user_id
+LIMIT $4::int
+`
+
+type ReactionUserIDsParams struct {
+	MessageID int64
+	Emoji     string
+	AfterID   int64
+	PageLimit int32
+}
+
+func (q *Queries) ReactionUserIDs(ctx context.Context, db DBTX, arg ReactionUserIDsParams) ([]int64, error) {
+	rows, err := db.Query(ctx, reactionUserIDs,
+		arg.MessageID,
+		arg.Emoji,
+		arg.AfterID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var user_id int64
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const readStatesForChannels = `-- name: ReadStatesForChannels :many
 SELECT user_id, channel_id, guild_id, last_read_id, mention_count FROM read_states WHERE user_id = $1 AND channel_id = ANY($2::bigint[])
 ORDER BY channel_id
@@ -807,6 +957,24 @@ func (q *Queries) RecomputeLastMessage(ctx context.Context, db DBTX, channelID s
 	var last_message_id pgtype.Int8
 	err := row.Scan(&last_message_id)
 	return last_message_id, err
+}
+
+const removeMessageReaction = `-- name: RemoveMessageReaction :execrows
+DELETE FROM message_reactions WHERE message_id = $1 AND emoji = $2 AND user_id = $3
+`
+
+type RemoveMessageReactionParams struct {
+	MessageID int64
+	Emoji     string
+	UserID    int64
+}
+
+func (q *Queries) RemoveMessageReaction(ctx context.Context, db DBTX, arg RemoveMessageReactionParams) (int64, error) {
+	result, err := db.Exec(ctx, removeMessageReaction, arg.MessageID, arg.Emoji, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const setLastMessage = `-- name: SetLastMessage :exec
