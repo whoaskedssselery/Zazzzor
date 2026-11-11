@@ -2,23 +2,21 @@ import { DisconnectReason } from "livekit-client";
 import { endCause, microphoneOptions, roomOptions, screenShareOptions } from "./media";
 
 describe("screenShareOptions", () => {
-  it("sends sharp 1080p at 30 fps and keeps the frame rate when the link is short", () => {
-    const { capture, publish } = screenShareOptions("chromium", true);
-    expect(capture.video).toMatchObject({ width: 1920, height: 1080, frameRate: 30 });
-    expect(publish).toMatchObject({
-      degradationPreference: "maintain-framerate",
-      simulcast: true,
-      screenShareEncoding: { maxBitrate: 6_000_000, maxFramerate: 30 },
-      videoCodec: "h264",
-    });
+  it("sends one VP8 stream at 1080p, up to 60 fps, and never drops the resolution", () => {
+    for (const browser of ["chromium", "firefox"] as const) {
+      const { capture, publish } = screenShareOptions(browser, false);
+      expect(capture.video).toMatchObject({ width: 1920, height: 1080, frameRate: 60 });
+      expect(publish).toMatchObject({
+        videoCodec: "vp8",
+        simulcast: false,
+        degradationPreference: "maintain-resolution",
+        screenShareEncoding: { maxBitrate: 10_000_000, maxFramerate: 60 },
+      });
+      expect(publish.screenShareSimulcastLayers).toBeUndefined();
+    }
   });
 
-  it("gives slow viewers a 720p layer, still at 30 fps", () => {
-    const layers = screenShareOptions("chromium", true).publish.screenShareSimulcastLayers ?? [];
-    expect(layers.map((l) => [l.width, l.height, l.encoding.maxFramerate])).toEqual([[1280, 720, 30]]);
-  });
-
-  it("asks viewers for the best layer, not the one that fits the tile", () => {
+  it("gives viewers the stream as sent, not one sized to their tile", () => {
     expect(roomOptions()).toMatchObject({ adaptiveStream: false, dynacast: true });
   });
 
@@ -27,7 +25,7 @@ describe("screenShareOptions", () => {
     expect(screenShareOptions("chromium", false).capture.audio).not.toHaveProperty("restrictOwnAudio");
   });
 
-  it("asks Firefox for no sound and publishes VP8", () => {
+  it("asks Firefox for no sound", () => {
     const { capture, publish } = screenShareOptions("firefox", false);
     expect(capture.audio).toBe(false);
     expect(publish.videoCodec).toBe("vp8");
