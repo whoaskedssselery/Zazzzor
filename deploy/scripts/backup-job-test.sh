@@ -86,6 +86,8 @@ fake_backup() {
 
 echo '- once публикует полную копию, время manifest — начало pg_dump'
 fresh_dirs once
+mkdir -p "$DATA_ROOT/attachments/1"
+printf 'original attachment' > "$DATA_ROOT/attachments/1/2"
 bash "$job" once >/dev/null
 name="$(newest)"
 for f in database.dump apidata.tar.gz manifest.json SHA256SUMS; do
@@ -93,6 +95,7 @@ for f in database.dump apidata.tar.gz manifest.json SHA256SUMS; do
 done
 bash "$job" verify "$name" >/dev/null
 tar -tzf "$BACKUP_ROOT/$name/apidata.tar.gz" | grep -q 'avatars/1/0123456789abcdef.png' || fail 'в архиве нет аватара'
+tar -tzf "$BACKUP_ROOT/$name/apidata.tar.gz" | grep -qx 'attachments/1/2' || fail 'в архиве нет вложения'
 stamp="$(sed -E 's/.*"time":"([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})Z".*/\1\2\3T\4\5\6Z/' "$BACKUP_ROOT/$name/manifest.json")"
 [[ "$name" == "$stamp"-* ]] || fail "время manifest $stamp не совпадает с именем $name"
 grep -q '"schema_version":9' "$BACKUP_ROOT/$name/manifest.json" || fail 'в manifest нет schema_version'
@@ -255,10 +258,13 @@ ZAZZZOR_SCHEMA_VERSION=12 bash "$job" check "$name" >/dev/null || fail 'копи
 
 echo '- restore: одна транзакция (схема заново, pg_restore --no-owner), затем картинки'
 fresh_dirs restore
+mkdir -p "$DATA_ROOT/attachments/1"
+printf 'original attachment' > "$DATA_ROOT/attachments/1/2"
 bash "$job" once >/dev/null
 name="$(newest)"
 rm -f "$DATA_ROOT/avatars/1/0123456789abcdef.png"
 printf 'stray' > "$DATA_ROOT/icons/stray"
+printf 'wrong bytes' > "$DATA_ROOT/attachments/1/2"
 mkdir "$DATA_ROOT/lost+found"
 ZAZZZOR_SCHEMA_VERSION=9 bash "$job" restore "$name" >/dev/null
 want="$(printf '%s\n' 'BEGIN;' 'DROP SCHEMA public CASCADE;' 'CREATE SCHEMA public;' \
@@ -266,6 +272,7 @@ want="$(printf '%s\n' 'BEGIN;' 'DROP SCHEMA public CASCADE;' 'CREATE SCHEMA publ
 [[ "$(sed 1d "$CALLS")" == "$want" ]] || fail "psql получил не то: $(cat "$CALLS")"
 [[ "$(head -n 1 "$CALLS")" == psql*ON_ERROR_STOP=1* ]] || fail "psql без ON_ERROR_STOP: $(head -n 1 "$CALLS")"
 [[ -f "$DATA_ROOT/avatars/1/0123456789abcdef.png" ]] || fail 'файлы не восстановлены'
+[[ "$(cat "$DATA_ROOT/attachments/1/2")" == 'original attachment' ]] || fail 'вложение не восстановилось побайтно'
 [[ ! -e "$DATA_ROOT/icons/stray" ]] || fail 'лишний файл остался после замены'
 [[ -d "$DATA_ROOT/lost+found" ]] || fail 'restore удалил постороннее (lost+found)'
 [[ -z "$(find "$DATA_ROOT" -maxdepth 1 -name '.restore-*')" ]] || fail 'остались .restore-*'

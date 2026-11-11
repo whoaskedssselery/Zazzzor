@@ -428,6 +428,14 @@ compose, и в стеке Swarm.
 полной. Срок задаёт `ZAZZZOR_FILE_RETENTION`, он должен быть больше суток.
 Корзину раз в час чистит сам API. Не удаляйте её руками.
 
+Вложения хранятся в исходном виде в том же томе. До 25 МиБ на файл,
+до 10 файлов на сообщение. Лимит загрузок на пользователя составляет
+30 в минуту (пакет до 10, одновременно до двух). Неотправленные файлы
+недоступны через час и удаляются очередным проходом фоновой задачи.
+Удалённые вложения лежат в общей корзине столько же, сколько картинки.
+Учитывайте исходный размер вложений, корзину и копии при расчёте места
+на диске.
+
 ### Восстановление
 
 Цели: терять не больше суток (RPO ≤ 24 ч) и подниматься примерно за час
@@ -549,7 +557,7 @@ docker compose -f deploy/docker-compose.yml stop api
 docker compose -f deploy/docker-compose.yml exec -T postgres \
   pg_dump -U zazzzor -d zazzzor -Fc > ~/zazzzor-manual/database.dump
 docker run --rm -v zazzzor_apidata:/data:ro "$PG_IMAGE" \
-  tar czf - -C /data avatars icons trash > ~/zazzzor-manual/apidata.tar.gz
+  tar czf - -C /data avatars icons attachments trash > ~/zazzzor-manual/apidata.tar.gz
 docker compose -f deploy/docker-compose.yml start api
 (cd ~/zazzzor-manual && sha256sum database.dump apidata.tar.gz > SHA256SUMS)
 ```
@@ -565,7 +573,7 @@ docker compose -f deploy/docker-compose.yml exec -T postgres psql -U zazzzor -d 
 docker compose -f deploy/docker-compose.yml exec -T postgres \
   pg_restore -U zazzzor -d zazzzor --exit-on-error --no-owner < ~/zazzzor-manual/database.dump
 docker run --rm -i --user 65532:65532 -v zazzzor_apidata:/data "$PG_IMAGE" \
-  sh -c 'rm -rf /data/avatars /data/icons /data/trash && tar xzf - -C /data' \
+  sh -c 'rm -rf /data/avatars /data/icons /data/attachments /data/trash && tar xzf - -C /data' \
   < ~/zazzzor-manual/apidata.tar.gz
 docker compose -f deploy/docker-compose.yml run --rm --no-deps api files reconcile
 docker compose -f deploy/docker-compose.yml start api
