@@ -1,9 +1,12 @@
 import { type MdNode, parseMarkdown } from "./parse";
+import { type MentionNames, mentionText } from "./render";
 
 /** Stands in for a spoiler's text, which a one-line preview must not give away. */
 export const SPOILER_TEXT = "▒▒▒▒";
 
-const text = (nodes: MdNode[]): string =>
+const NO_NAMES: MentionNames = { user: () => null, role: () => null };
+
+const text = (nodes: MdNode[], names: MentionNames): string =>
   nodes
     .map((n) => {
       switch (n.type) {
@@ -14,11 +17,13 @@ const text = (nodes: MdNode[]): string =>
         case "codeBlock":
           return ` ${n.value} `;
         case "quote":
-          return ` ${text(n.children)} `;
+          return ` ${text(n.children, names)} `;
         case "spoiler":
           return SPOILER_TEXT;
+        case "mention":
+          return mentionText(names, n.kind, n.id);
         default:
-          return text(n.children);
+          return text(n.children, names);
       }
     })
     .join("");
@@ -28,4 +33,7 @@ const text = (nodes: MdNode[]): string =>
  * answers): the markdown's text without its marks, spoilers hidden, line
  * breaks and runs of spaces as one space.
  */
-export const markdownText = (src: string): string => text(parseMarkdown(src)).replace(/\s+/g, " ").trim();
+export const markdownText = (src: string, names: MentionNames = NO_NAMES): string =>
+  text(parseMarkdown(src), names)
+    .replace(/\s+/g, " ")
+    .trim();

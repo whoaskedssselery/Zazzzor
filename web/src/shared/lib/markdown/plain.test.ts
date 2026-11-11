@@ -17,3 +17,10 @@ describe("markdownText", () => {
     expect(markdownText("> цитата\nответ\n```\na\n  b\n```")).toBe("цитата ответ a b");
   });
 });
+
+describe("markdownText with mentions", () => {
+  it("writes mentions by name", () => {
+    const names = { user: () => ({ name: "Аня" }), role: () => null };
+    expect(markdownText("<@1>, глянь @everyone", names)).toBe("@Аня, глянь @everyone");
+  });
+});

@@ -1,6 +1,6 @@
 import { CornerUpLeft } from "lucide-react";
 import type { ReactNode } from "react";
-import { formatMessageTime, Markdown, markdownText } from "@/shared/lib";
+import { formatMessageTime, Markdown, type MentionNames, markdownText } from "@/shared/lib";
 import { Avatar, cn, roleTextStyle, Tooltip } from "@/shared/ui";
 import type { Attachment } from "../model/attachment";
 import type { Message } from "../model/cache";
@@ -34,6 +34,8 @@ export interface MessageItemProps {
   state?: "sending" | "failed";
   /** Shown instead of the text while the message is edited. */
   editor?: ReactNode;
+  /** Names for the mentions in its text (and in the reply preview). */
+  mentions?: MentionNames;
   /** The files of the message, under its text. */
   attachments?: Attachment[];
   /** Under the text (the actions of a failed message). */
@@ -53,10 +55,12 @@ const ReplyPreview = ({
   message,
   author,
   onJump,
+  mentions,
 }: {
   message: MessageItemProps["message"];
   author: AuthorView | null;
   onJump: (() => void) | undefined;
+  mentions: MentionNames | undefined;
 }) => {
   const original = message.referenced_message;
   const body =
@@ -68,7 +72,7 @@ const ReplyPreview = ({
         <bdi className="role-text shrink-0 font-semibold" style={roleTextStyle(author?.color ?? 0)}>
           @{author?.name ?? DELETED_USER}
         </bdi>
-        <span className="truncate">{markdownText(original.content)}</span>
+        <span className="truncate">{markdownText(original.content, mentions)}</span>
       </>
     );
   return (
@@ -110,6 +114,7 @@ export const MessageItem = ({
   now,
   state,
   editor,
+  mentions,
   attachments = [],
   footer,
   toolbar,
@@ -125,6 +130,7 @@ export const MessageItem = ({
     <div className={cn("text-base", state === "sending" && "text-fg-muted", state === "failed" && "text-fg-danger")}>
       <Markdown
         source={message.content}
+        {...(mentions ? { mentions } : {})}
         after={
           edited && (
             <Tooltip content={formatMessageTime(edited, now)}>
@@ -155,7 +161,7 @@ export const MessageItem = ({
         </time>
       ) : (
         <>
-          {reply && <ReplyPreview message={message} author={replyAuthor} onJump={onJumpToReply} />}
+          {reply && <ReplyPreview message={message} author={replyAuthor} onJump={onJumpToReply} mentions={mentions} />}
           <div className={cn("absolute left-4", reply ? "top-7.5" : "top-1")}>
             <Avatar name={name} src={author?.avatarUrl} size={40} />
           </div>

@@ -166,3 +166,49 @@ describe("Markdown", () => {
     expect(screen.getByText(`a${rlo}b`)).toBeTruthy();
   });
 });
+
+describe("mentions", () => {
+  const user = (id: string): MdNode => ({ type: "mention", kind: "user", id });
+
+  it("reads users, roles, @everyone and @here", () => {
+    expect(parseMarkdown("<@123> и <@&45> @everyone @here")).toEqual([
+      user("123"),
+      text(" и "),
+      { type: "mention", kind: "role", id: "45" },
+      text(" "),
+      { type: "mention", kind: "everyone", id: null },
+      text(" "),
+      { type: "mention", kind: "here", id: null },
+    ]);
+  });
+
+  it("leaves mentions in code, inside words and malformed ones as text", () => {
+    expect(parseMarkdown("`<@1>` mail@everyone @everyones <@> <@12a> <@&>")).toEqual([
+      { type: "code", value: "<@1>" },
+      text(" mail@everyone @everyones <@> <@12a> <@&>"),
+    ]);
+  });
+
+  it("caps an id at 20 digits", () => {
+    expect(parseMarkdown(`<@${"1".repeat(21)}>`)).toEqual([text(`<@${"1".repeat(21)}>`)]);
+  });
+
+  it("shows names from the server, a role in its colour, and placeholders for the gone", () => {
+    renderUi(
+      <Markdown
+        source="<@1> <@2> <@&7> <@&8> @here"
+        mentions={{
+          user: (id) => (id === "1" ? { name: "Аня" } : null),
+          role: (id) => (id === "7" ? { name: "Модер", color: 0xe6b04f } : null),
+        }}
+      />,
+    );
+    expect(screen.getByText("@Аня").dataset.mention).toBe("user");
+    expect(screen.getByText("@неизвестный")).toBeTruthy();
+    const role = screen.getByText("@Модер");
+    expect(role.className).toContain("role-text");
+    expect(role.style.getPropertyValue("--role")).toBe("#e6b04f");
+    expect(screen.getByText("@удалённая роль")).toBeTruthy();
+    expect(screen.getByText("@here")).toBeTruthy();
+  });
+});

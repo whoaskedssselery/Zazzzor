@@ -21,6 +21,7 @@ import {
 } from "@/features/message-actions";
 import { Composer, type ReplyTarget, useAddFiles, useSendMessage } from "@/features/send-message";
 import { errorText } from "@/shared/api";
+import type { MentionNames } from "@/shared/lib";
 import { Button, Skeleton } from "@/shared/ui";
 import { buildRows, type ChatRow } from "../model/rows";
 import { MessageList } from "./MessageList";
@@ -153,6 +154,18 @@ const DropHint = ({ channelName }: { channelName: string }) => (
   </div>
 );
 
+/** Names for mentions as this server shows them: members by their name here, roles with their colour. */
+const mentionNames = (entry: GuildEntry): MentionNames => ({
+  user: (id) => {
+    const member = entry.members[id];
+    return member ? { name: userDisplay(entry, member.user).name } : null;
+  },
+  role: (id) => {
+    const role = entry.roles[id];
+    return role ? { name: role.name, color: role.color } : null;
+  },
+});
+
 /** How a message author shows here; null for a deleted account. */
 const authorOf = (entry: GuildEntry, user: Message["author"]): AuthorView | null =>
   user === null ? null : userDisplay(entry, user);
@@ -212,6 +225,7 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
   }, [fetchNextPage]);
 
   if (!entry) return null;
+  const mentions = mentionNames(entry);
   const name = (u: Message["author"]) => authorOf(entry, u)?.name ?? "Удалённый пользователь";
 
   const onEditLast = (): boolean => {
@@ -245,6 +259,7 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
         <div>
           <MessageItem
             message={m}
+            mentions={mentions}
             attachments={attachmentsOf(m)}
             author={authorOf(entry, m.author)}
             replyAuthor={original ? authorOf(entry, original.author) : null}
@@ -314,6 +329,7 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
               referenced_message: p.replyTo,
             }}
             attachments={p.attachments}
+            mentions={mentions}
             author={me ? userDisplay(entry, me) : null}
             replyAuthor={p.replyTo ? authorOf(entry, p.replyTo.author) : null}
             grouped={row.grouped}
