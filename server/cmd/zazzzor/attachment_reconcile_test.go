@@ -48,7 +48,7 @@ func TestFilesReconcileRestoresReferencedAttachment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("seed attachment reference: %v", err)
 	}
-	if err := m.Files.DeleteAttachment(ref); err != nil {
+	if err = m.Files.DeleteAttachment(ref); err != nil {
 		t.Fatalf("DeleteAttachment: %v", err)
 	}
 	var stdout, stderr bytes.Buffer

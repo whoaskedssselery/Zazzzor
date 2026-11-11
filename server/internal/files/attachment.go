@@ -35,12 +35,13 @@ func AttachmentReference(channelID, attachmentID snowflake.ID) Reference {
 }
 
 // SaveAttachment streams and hashes the original, then publishes it atomically.
-func (d *Disk) SaveAttachment(ctx context.Context, ref Reference, src io.Reader) (info AttachmentInfo, err error) {
+func (d *Disk) SaveAttachment(ctx context.Context, ref Reference, src io.Reader) (AttachmentInfo, error) {
 	if ref.Kind != KindAttachment || !ref.valid() {
-		return info, fmt.Errorf("files: invalid attachment reference %v", ref)
+		return AttachmentInfo{}, fmt.Errorf("files: invalid attachment reference %v", ref)
 	}
 	digest := sha256.New()
-	err = d.writeFile(d.path(ref.Kind, ref.OwnerID, ref.Hash), d.root, func(f *os.File) error {
+	var info AttachmentInfo
+	writeErr := d.writeFile(d.path(ref.Kind, ref.OwnerID, ref.Hash), d.root, func(f *os.File) error {
 		n, err := io.Copy(io.MultiWriter(f, digest), io.LimitReader(src, MaxAttachmentBytes+1))
 		if err != nil {
 			return fmt.Errorf("files: copy attachment: %w", err)
@@ -48,14 +49,14 @@ func (d *Disk) SaveAttachment(ctx context.Context, ref Reference, src io.Reader)
 		if n > MaxAttachmentBytes {
 			return ErrAttachmentTooLarge
 		}
-		if err := ctx.Err(); err != nil {
-			return fmt.Errorf("files: save attachment: %w", err)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return fmt.Errorf("files: save attachment: %w", ctxErr)
 		}
 		info, err = inspectAttachment(f, n)
 		return err
 	})
-	if err != nil {
-		return AttachmentInfo{}, err
+	if writeErr != nil {
+		return AttachmentInfo{}, writeErr
 	}
 	info.Digest = hex.EncodeToString(digest.Sum(nil))
 	return info, nil

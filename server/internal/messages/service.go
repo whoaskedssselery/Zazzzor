@@ -280,7 +280,7 @@ func (s *Service) createOnce(ctx context.Context, params store.CreateMessagePara
 			return err
 		}
 		if f.Nonce != nil {
-			if err := s.claimNonce(ctx, tx, params, *f.Nonce); err != nil {
+			if err = s.claimNonce(ctx, tx, params, *f.Nonce); err != nil {
 				return err
 			}
 		}

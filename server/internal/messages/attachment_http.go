@@ -48,10 +48,10 @@ func (s *Service) handleUploadAttachment(w http.ResponseWriter, r *http.Request)
 	}
 	ctx := r.Context()
 	user := auth.CurrentUser(r).ID
-	if _, _, err := s.access(ctx, user, ch, permissions.ViewChannel|permissions.SendMessages|permissions.AttachFiles); err != nil {
+	if _, _, err = s.access(ctx, user, ch, permissions.ViewChannel|permissions.SendMessages|permissions.AttachFiles); err != nil {
 		return fail(err)
 	}
-	if err := s.requireText(ctx, ch); err != nil {
+	if err = s.requireText(ctx, ch); err != nil {
 		return fail(err)
 	}
 	upload.ExtendDeadlines(w)
@@ -151,7 +151,7 @@ func (s *Service) handleReadAttachment(w http.ResponseWriter, r *http.Request) e
 	if user == 0 {
 		return attachmentNotFound()
 	}
-	if _, _, err := s.access(ctx, user, ch, permissions.ViewChannel|permissions.ReadMessageHistory); err != nil {
+	if _, _, err = s.access(ctx, user, ch, permissions.ViewChannel|permissions.ReadMessageHistory); err != nil {
 		if errors.Is(err, ErrMissingPerm) || errors.Is(err, channels.ErrNotFound) {
 			return attachmentNotFound()
 		}

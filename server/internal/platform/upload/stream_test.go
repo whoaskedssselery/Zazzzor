@@ -60,15 +60,15 @@ func TestStreamFileRejectsOversizedPartHeader(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreatePart: %v", err)
 	}
-	if err := m.Close(); err != nil {
-		t.Fatalf("Close multipart: %v", err)
+	if closeErr := m.Close(); closeErr != nil {
+		t.Fatalf("Close multipart: %v", closeErr)
 	}
 	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", &raw)
 	r.Header.Set("Content-Type", m.FormDataContentType())
 	err = upload.StreamFile(httptest.NewRecorder(), r, 25<<20, func(_ string, src io.Reader) error {
 		t.Error("consumer ran after an oversized multipart header")
-		_, err := io.Copy(io.Discard, src)
-		return err
+		_, copyErr := io.Copy(io.Discard, src)
+		return copyErr
 	})
 	status, code := problemCode(t, err)
 	if status != http.StatusBadRequest || code != "invalid_body" {
