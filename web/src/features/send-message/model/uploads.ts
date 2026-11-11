@@ -33,6 +33,12 @@ interface UploadStore {
 const store = create<UploadStore>()(() => ({ byChannel: {} }));
 /** Requests in flight by upload key, to abort when a file is dropped. */
 const requests = new Map<string, XMLHttpRequest>();
+/**
+ * Uploads at once, in all: the server lets a user run two (more get 429),
+ * so the rest wait their turn in `waiting`, in the order they were added.
+ */
+export const MAX_PARALLEL_UPLOADS = 2;
+const waiting: { channelId: string; key: string; file: File }[] = [];
 
 const NONE: Upload[] = [];
 
@@ -103,7 +109,7 @@ const start = (channelId: string, key: string, file: File): void => {
     if (e.lengthComputable) patch(channelId, key, { progress: e.loaded / e.total });
   };
   xhr.onload = () => {
-    requests.delete(key);
+    finished(key);
     if (xhr.status === 201) {
       try {
         const attachment = JSON.parse(xhr.responseText) as Attachment;
@@ -119,7 +125,7 @@ const start = (channelId: string, key: string, file: File): void => {
     });
   };
   xhr.onerror = () => {
-    requests.delete(key);
+    finished(key);
     patch(channelId, key, { status: "failed", error: errorText(new TypeError("network")) });
   };
   const form = new FormData();
@@ -127,8 +133,28 @@ const start = (channelId: string, key: string, file: File): void => {
   xhr.send(form);
 };
 
+/** Starts waiting uploads while there is room. */
+const pump = (): void => {
+  while (requests.size < MAX_PARALLEL_UPLOADS) {
+    const next = waiting.shift();
+    if (!next) return;
+    start(next.channelId, next.key, next.file);
+  }
+};
+
+/** An upload ended (or was aborted): its slot goes to the next one waiting. */
+function finished(key: string): void {
+  requests.delete(key);
+  pump();
+}
+
+const enqueue = (channelId: string, key: string, file: File): void => {
+  waiting.push({ channelId, key, file });
+  pump();
+};
+
 /**
- * Adds files to the composer of `channelId` and starts uploading them.
+ * Adds files to the composer of `channelId` and uploads them, two at a time.
  * Files over the limits are left out; the returned text says why (null when
  * all were taken).
  */
@@ -154,7 +180,7 @@ export const addFiles = (channelId: string, files: readonly File[]): string | nu
     }),
   );
   if (added.length > 0) setList(channelId, [...list(channelId), ...added]);
-  for (const u of added) start(channelId, u.key, u.file);
+  for (const u of added) enqueue(channelId, u.key, u.file);
   return problem;
 };
 
@@ -163,7 +189,7 @@ export const retryUpload = (channelId: string, key: string): void => {
   const u = list(channelId).find((x) => x.key === key);
   if (u?.status !== "failed") return;
   patch(channelId, key, { status: "uploading", progress: 0, error: null });
-  start(channelId, key, u.file);
+  enqueue(channelId, key, u.file);
 };
 
 const release = (u: Upload): void => {
@@ -177,8 +203,10 @@ const release = (u: Upload): void => {
 export const removeUpload = (channelId: string, key: string): void => {
   const u = list(channelId).find((x) => x.key === key);
   if (!u) return;
+  const at = waiting.findIndex((w) => w.key === key);
+  if (at !== -1) waiting.splice(at, 1);
   requests.get(key)?.abort();
-  requests.delete(key);
+  finished(key);
   release(u);
   setList(
     channelId,
@@ -212,6 +240,7 @@ export const takeUploads = (channelId: string): Attachment[] => {
 
 /** Drops every file of every composer (the session ended). */
 export const resetUploads = (): void => {
+  waiting.length = 0;
   for (const xhr of requests.values()) xhr.abort();
   requests.clear();
   for (const uploads of Object.values(store.getState().byChannel)) for (const u of uploads) release(u);

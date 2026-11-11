@@ -6,6 +6,7 @@ import {
   addFiles,
   EMPTY_FILE,
   FILE_TOO_BIG,
+  MAX_PARALLEL_UPLOADS,
   NO_ATTACH_PERMISSION,
   peekUploads,
   removeUpload,
@@ -63,6 +64,27 @@ describe("uploads", () => {
     });
     expect(uploads()[0]?.attachment?.id).toBe("1");
     expect(names).toEqual(["shot.png"]);
+  });
+
+  it("uploads two at a time, as the server allows a user, and the rest after them", async () => {
+    let inFlight = 0;
+    let most = 0;
+    let n = 0;
+    server.use(
+      http.post("/api/v1/channels/:channel_id/attachments", async () => {
+        inFlight += 1;
+        most = Math.max(most, inFlight);
+        await new Promise((r) => setTimeout(r, 20));
+        inFlight -= 1;
+        n += 1;
+        return HttpResponse.json(attachment(String(n), "x.png"), { status: 201 });
+      }),
+    );
+    addFiles(C, [png("a.png"), png("b.png"), png("c.png")]);
+    await waitFor(() => {
+      expect(uploads().map((u) => u.status)).toEqual(["done", "done", "done"]);
+    });
+    expect(most).toBe(MAX_PARALLEL_UPLOADS);
   });
 
   it("leaves out empty files, files over 25 MB and files past ten, and says why", () => {
