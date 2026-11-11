@@ -5,6 +5,7 @@ import { Avatar, cn, roleTextStyle, Tooltip } from "@/shared/ui";
 import type { Attachment } from "../model/attachment";
 import type { Message } from "../model/cache";
 import { Attachments } from "./Attachments";
+import { type Embed, Embeds } from "./Embeds";
 
 /** How a user shows in this server: their nickname (or display name), role colour and avatar. */
 export interface AuthorView {
@@ -38,6 +39,8 @@ export interface MessageItemProps {
   mentions?: MentionNames;
   /** The files of the message, under its text. */
   attachments?: Attachment[];
+  /** Link previews, under the attachments. */
+  embeds?: readonly Embed[];
   /** Under the text (the actions of a failed message). */
   footer?: ReactNode;
   /** The reactions under the message. */
@@ -120,6 +123,7 @@ export const MessageItem = ({
   editor,
   mentions,
   attachments = [],
+  embeds = [],
   footer,
   reactions,
   toolbar,
@@ -189,6 +193,7 @@ export const MessageItem = ({
       )}
       {body}
       <Attachments attachments={attachments} />
+      <Embeds embeds={embeds} />
       {reactions}
       {footer}
       {toolbar}

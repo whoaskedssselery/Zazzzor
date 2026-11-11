@@ -349,6 +349,7 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
             message={m}
             mentions={mentions}
             attachments={attachmentsOf(m)}
+            embeds={m.embeds}
             reactions={
               <ReactionBar
                 message={m}

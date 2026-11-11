@@ -275,6 +275,22 @@ const reactionSchema: z.ZodMiniType<S["Reaction"]> = z.object({
   me: z.boolean(),
 });
 
+const embedMediaSchema: z.ZodMiniType<S["EmbedMedia"]> = z.object({
+  url: z.string(),
+  width: z.int().check(z.positive()),
+  height: z.int().check(z.positive()),
+});
+
+const embedSchema: z.ZodMiniType<S["Embed"]> = z.object({
+  url: z.string(),
+  type: z.enum(["link", "image", "video"]),
+  site_name: nullableString,
+  title: nullableString,
+  description: nullableString,
+  image: z.nullable(embedMediaSchema),
+  video: z.nullable(embedMediaSchema),
+});
+
 const messageSchema: z.ZodMiniType<S["Message"]> = z.object({
   id: snowflake,
   channel_id: snowflake,
@@ -286,6 +302,7 @@ const messageSchema: z.ZodMiniType<S["Message"]> = z.object({
   reply_to_id: z.nullable(snowflake),
   referenced_message: z.nullable(messageStubSchema),
   attachments: z.array(attachmentSchema),
+  embeds: z.array(embedSchema),
   mention_user_ids: z.array(snowflake),
   mention_role_ids: z.array(snowflake),
   mention_everyone: z.boolean(),
