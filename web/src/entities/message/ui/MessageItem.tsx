@@ -46,6 +46,8 @@ export interface MessageItemProps {
   onJumpToReply?: (() => void) | undefined;
   /** Briefly marked after a jump to it. */
   highlighted?: boolean;
+  /** Mentions the reader: marked for as long as it is shown. */
+  mentioned?: boolean;
   /** Wraps the author's name (a button that opens their card); the name alone by default. */
   renderName?: (name: ReactNode) => ReactNode;
 }
@@ -120,6 +122,7 @@ export const MessageItem = ({
   toolbar,
   onJumpToReply,
   highlighted = false,
+  mentioned = false,
   renderName = (n) => n,
 }: MessageItemProps) => {
   const sent = new Date(message.created_at);
@@ -149,7 +152,8 @@ export const MessageItem = ({
       className={cn(
         "group relative py-0.5 pr-12 pl-18 transition-colors hover:bg-message-hover focus-within:bg-message-hover",
         !grouped && "mt-4",
-        highlighted && "bg-mention",
+        (highlighted || mentioned) && "bg-mention hover:bg-mention",
+        mentioned && "shadow-[inset_2px_0_0_var(--mention-bar)]",
       )}
     >
       {grouped ? (

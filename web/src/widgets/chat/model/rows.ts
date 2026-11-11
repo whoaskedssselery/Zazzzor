@@ -1,3 +1,4 @@
+import { newer } from "@/entities/guild";
 import type { Message, PendingMessage } from "@/entities/message";
 
 /** A message continues the group above it when it follows the same author within this long. */
@@ -8,6 +9,7 @@ export type ChatRow =
   | { kind: "start"; key: "start" }
   | { kind: "older"; key: "older" }
   | { kind: "day"; key: string; label: string }
+  | { kind: "new"; key: "new" }
   | { kind: "message"; key: string; message: Message; grouped: boolean }
   | { kind: "pending"; key: string; pending: PendingMessage; grouped: boolean };
 
@@ -31,19 +33,33 @@ export const continues = (prev: Message | undefined, m: Message): boolean => {
  * older history is left (else a row that loads it), each day's separator,
  * the messages grouped as Discord groups them, then the user's messages
  * still being sent (`meId` is the user), which join the last group when it
- * is theirs and recent.
+ * is theirs and recent. With `readFrom` (the user's read mark when they
+ * opened the channel) a «Новые» line goes above the first message after it
+ * by someone else, once history reaches back to the mark.
  */
 export function buildRows(
   messages: Message[],
   pending: PendingMessage[],
-  { hasOlder, meId, now }: { hasOlder: boolean; meId: string | null; now: Date },
+  {
+    hasOlder,
+    meId,
+    now,
+    readFrom = null,
+  }: { hasOlder: boolean; meId: string | null; now: Date; readFrom?: string | null },
 ): ChatRow[] {
   const rows: ChatRow[] = [hasOlder ? { kind: "older", key: "older" } : { kind: "start", key: "start" }];
+  const first = messages[0];
+  // Older history still to load may hold the mark: then where the line goes is not known yet.
+  let divide = readFrom !== null && first !== undefined && (!hasOlder || !newer(first.id, readFrom));
   let prev: Message | undefined;
   for (const m of messages) {
     const at = new Date(m.created_at);
     if (prev === undefined || dayKey(new Date(prev.created_at)) !== dayKey(at)) {
       rows.push({ kind: "day", key: `day-${dayKey(at)}`, label: dayFormat.format(at) });
+    }
+    if (divide && readFrom !== null && newer(m.id, readFrom) && m.author?.id !== meId) {
+      rows.push({ kind: "new", key: "new" });
+      divide = false;
     }
     rows.push({ kind: "message", key: m.id, message: m, grouped: continues(prev, m) });
     prev = m;

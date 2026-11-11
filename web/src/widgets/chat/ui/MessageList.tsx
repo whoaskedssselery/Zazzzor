@@ -17,6 +17,8 @@ export const estimateRow = (row: ChatRow | undefined): number => {
       return 96;
     case "day":
       return 40;
+    case "new":
+      return 24;
     case "message":
     case "pending":
       return row.grouped ? 26 : 64;
@@ -41,6 +43,8 @@ export interface MessageListProps {
   loadOlder: () => void;
   /** Scroll request to a message, by ID; a new object for every request. */
   scrollTo: { id: string } | null;
+  /** Told when the list reaches its bottom or leaves it (it starts there). */
+  onAtBottom?: (atBottom: boolean) => void;
 }
 
 /**
@@ -65,12 +69,19 @@ export const MessageList = ({
   loadingOlder,
   loadOlder,
   scrollTo,
+  onAtBottom,
 }: MessageListProps) => {
   const scroller = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
   const anchor = useRef<Anchor | null>(null);
   const lastKey = useRef(rows.at(-1)?.key);
   const [unseen, setUnseen] = useState(false);
+  /** Notes whether the list is at the bottom, telling the caller when that changes. */
+  const setAtBottom = (bottom: boolean) => {
+    if (atBottom.current === bottom) return;
+    atBottom.current = bottom;
+    onAtBottom?.(bottom);
+  };
 
   const v = useVirtualizer({
     count: rows.length,
@@ -86,7 +97,7 @@ export const MessageList = ({
   const remember = () => {
     const el = scroller.current;
     if (!el) return;
-    atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_SLACK_PX;
+    setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_SLACK_PX);
     if (atBottom.current) setUnseen(false);
     // From every row, not only the rendered ones: those may lag the scroll.
     const first = v.measurementsCache.find((i) => i.end > el.scrollTop);
@@ -97,7 +108,7 @@ export const MessageList = ({
     const el = scroller.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-    atBottom.current = true;
+    setAtBottom(true);
     setUnseen(false);
   };
 
@@ -142,7 +153,7 @@ export const MessageList = ({
   const jump = useEffectEvent((id: string) => {
     const index = rows.findIndex((r) => r.key === id);
     if (index === -1) return;
-    atBottom.current = false;
+    setAtBottom(false);
     v.scrollToIndex(index, { align: "center" });
   });
   useEffect(() => {

@@ -37,6 +37,7 @@
   --bg-selected: rgb(236 228 216 / 0.11);
   --bg-message-hover: rgb(0 0 0 / 0.14);
   --bg-mention: rgb(230 176 79 / 0.1);
+  --mention-bar: rgb(230 176 79);
   --bg-mention-chip: rgb(61 186 134 / 0.2);
   --bg-scrim: rgb(0 0 0 / 0.7);
   --bg-skeleton: rgb(236 228 216 / 0.08);
@@ -115,6 +116,7 @@
   --bg-selected: rgb(60 50 40 / 0.11);
   --bg-message-hover: rgb(60 50 40 / 0.04);
   --bg-mention: rgb(196 130 20 / 0.1);
+  --mention-bar: rgb(196 130 20);
   --bg-mention-chip: rgb(26 127 85 / 0.14);
   --bg-scrim: rgb(20 16 12 / 0.55);
   --bg-skeleton: rgb(60 50 40 / 0.09);
