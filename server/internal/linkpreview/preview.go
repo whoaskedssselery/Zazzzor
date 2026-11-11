@@ -3,6 +3,7 @@ package linkpreview
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"image"
 	_ "image/gif" // Register image formats supported by preview storage.
 	_ "image/jpeg"
@@ -36,77 +37,97 @@ type Media struct {
 // SaveImage stores validated bytes and returns their same-origin URL.
 type SaveImage func(context.Context, []byte, string) (string, error)
 
-// Fetch builds an embed within one time budget, including any thumbnail.
-func (f *Fetcher) Fetch(ctx context.Context, raw string, save SaveImage) *Embed {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+// Outcome tells how a preview went, for the cache and the log.
+type Outcome struct {
+	// Partial is set when the card was made but lost a part (its picture, a
+	// video's title) that a later try may get: it is cached briefly.
+	Partial bool
+	// Stage ("page", "image", "oembed") and Reason of what failed; empty when nothing did.
+	Stage, Reason string
+}
+
+func failed(stage, why string) Outcome { return Outcome{Stage: stage, Reason: why} }
+
+// Fetch builds an embed for raw. The page, its picture and a video's
+// oEmbed each get their own time budget, so a slow picture after a slow
+// page is not lost. A nil embed means no preview; the outcome says why.
+func (f *Fetcher) Fetch(ctx context.Context, raw string, save SaveImage) (*Embed, Outcome) {
 	u, err := url.Parse(raw)
 	if err != nil || validateURL(u) != nil {
-		return nil
+		return nil, failed("page", "refused address")
 	}
 	if id, video := youtubeID(u); video {
 		if id == "" {
-			return nil
+			return nil, failed("page", "invalid video id")
 		}
 		return f.video(ctx, raw, id, save)
 	}
-	res, err := f.read(ctx, raw)
+	pageCtx, cancel := context.WithTimeout(ctx, f.budget)
+	res, err := f.read(pageCtx, raw)
+	cancel()
 	if err != nil {
-		return nil
+		return nil, failed("page", reason(err))
 	}
 	if id, video := youtubeID(res.url); video {
 		if id == "" {
-			return nil
+			return nil, failed("page", "invalid video id")
 		}
 		return f.video(ctx, raw, id, save)
 	}
 	e := &Embed{URL: raw, Type: "link"}
+	var outcome Outcome
 	switch res.mediaType {
 	case "text/html":
 		metadata := parseMetadata(res.data, res.contentType)
 		e.Title, e.Description, e.SiteName = optional(metadata.title), optional(metadata.description), optional(metadata.siteName)
 		if metadata.image != "" {
 			if imageURL, resolveErr := metadata.imageURL(res.url); resolveErr == nil {
-				e.Image = f.thumbnail(ctx, imageURL.String(), save)
+				var why string
+				if e.Image, why = f.thumbnail(ctx, imageURL.String(), save); e.Image == nil {
+					outcome = Outcome{Partial: true, Stage: "image", Reason: why}
+				}
 			}
 		}
 		if e.Title == nil && e.Description == nil && e.SiteName == nil && e.Image == nil {
-			return nil
+			return nil, failed("page", "no metadata")
 		}
 	default:
 		e.Type = "image"
-		e.Image = saveImage(ctx, res, save)
-		if e.Image == nil {
-			return nil
+		var why string
+		if e.Image, why = saveImage(ctx, res, save); e.Image == nil {
+			return nil, failed("image", why)
 		}
 	}
-	return e
+	return e, outcome
 }
 
-// thumbnail applies the same request rules and image validation as direct links.
-func (f *Fetcher) thumbnail(ctx context.Context, raw string, save SaveImage) *Media {
+// thumbnail fetches a picture within its own budget, with the same request
+// rules and image validation as direct links. On failure it says why.
+func (f *Fetcher) thumbnail(ctx context.Context, raw string, save SaveImage) (*Media, string) {
+	ctx, cancel := context.WithTimeout(ctx, f.budget)
+	defer cancel()
 	res, err := f.read(ctx, raw)
 	if err != nil {
-		return nil
+		return nil, reason(err)
 	}
 	return saveImage(ctx, res, save)
 }
 
 // saveImage accepts only supported signatures with decodable dimensions.
-func saveImage(ctx context.Context, res response, save SaveImage) *Media {
+func saveImage(ctx context.Context, res response, save SaveImage) (*Media, string) {
 	mime := http.DetectContentType(res.data)
 	if mime != res.mediaType || !strings.HasPrefix(mime, "image/") {
-		return nil
+		return nil, "content type"
 	}
 	cfg, _, err := image.DecodeConfig(bytes.NewReader(res.data))
 	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 {
-		return nil
+		return nil, "undecodable image"
 	}
 	src, err := save(ctx, res.data, mime)
 	if err != nil {
-		return nil
+		return nil, "store"
 	}
-	return &Media{URL: src, Width: cfg.Width, Height: cfg.Height}
+	return &Media{URL: src, Width: cfg.Width, Height: cfg.Height}, ""
 }
 
 var youtubePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{11}$`)
@@ -135,17 +156,36 @@ func youtubeID(u *url.URL) (string, bool) {
 	return id, true
 }
 
-// video uses the canonical watch page for its title and a fixed privacy-mode player.
-func (f *Fetcher) video(ctx context.Context, raw, id string, save SaveImage) *Embed {
+// oembed is the part of YouTube's oEmbed answer a card shows.
+type oembed struct {
+	Title      string `json:"title"`
+	AuthorName string `json:"author_name"`
+}
+
+// video is a privacy-mode player with YouTube's cover, and the title and
+// channel from oEmbed (the watch page is too long to read its tags).
+func (f *Fetcher) video(ctx context.Context, raw, id string, save SaveImage) (*Embed, Outcome) {
 	e := &Embed{URL: raw, Type: "video", SiteName: optional("YouTube"),
 		Video: &Media{URL: "https://www.youtube-nocookie.com/embed/" + id, Width: 560, Height: 315}}
-	// Fetch the thumbnail first so a slow watch page cannot consume its budget.
-	e.Image = f.thumbnail(ctx, "https://i.ytimg.com/vi/"+id+"/hqdefault.jpg", save)
-	if res, err := f.read(ctx, "https://www.youtube.com/watch?v="+id); err == nil && res.mediaType == "text/html" {
-		metadata := parseMetadata(res.data, res.contentType)
-		e.Title, e.Description = optional(metadata.title), optional(metadata.description)
+	var outcome Outcome
+	var why string
+	if e.Image, why = f.thumbnail(ctx, "https://i.ytimg.com/vi/"+id+"/hqdefault.jpg", save); e.Image == nil {
+		outcome = Outcome{Partial: true, Stage: "image", Reason: why}
 	}
-	return e
+	octx, cancel := context.WithTimeout(ctx, f.budget)
+	defer cancel()
+	watch := "https://www.youtube.com/watch?v=" + id
+	res, err := f.readKind(octx, "https://www.youtube.com/oembed?format=json&url="+url.QueryEscape(watch), true)
+	var o oembed
+	switch {
+	case err != nil:
+		return e, Outcome{Partial: true, Stage: "oembed", Reason: reason(err)}
+	case res.mediaType != "application/json" || json.Unmarshal(res.data, &o) != nil:
+		return e, Outcome{Partial: true, Stage: "oembed", Reason: "content type"}
+	}
+	e.Title = optional(truncate(o.Title, maxTitle))
+	e.Description = optional(truncate(o.AuthorName, maxDescription))
+	return e, outcome
 }
 
 func optional(s string) *string {

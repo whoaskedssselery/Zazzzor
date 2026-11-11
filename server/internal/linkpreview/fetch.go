@@ -23,11 +23,21 @@ const (
 	MaxURL    = 2048
 	maxHTML   = 512 << 10
 	maxImage  = 5 << 20
+	maxJSON   = 64 << 10
 	timeout   = 5 * time.Second
 	userAgent = "Mozilla/5.0 (compatible; ZazzzorBot/1.0; +link-preview)"
 )
 
-var errTarget = errors.New("linkpreview: unsafe HTTP target")
+var (
+	errTarget      = errors.New("linkpreview: unsafe HTTP target")
+	errContentType = errors.New("linkpreview: unsupported content type")
+	errTooLarge    = errors.New("linkpreview: image exceeds size limit")
+)
+
+// statusError is an answer other than 200.
+type statusError int
+
+func (e statusError) Error() string { return fmt.Sprintf("linkpreview: HTTP status %d", int(e)) }
 var globalIPv6 = netip.MustParsePrefix("2000::/3")
 var specialNetworks = []netip.Prefix{
 	netip.MustParsePrefix("0.0.0.0/8"),
@@ -45,6 +55,8 @@ type Fetcher struct {
 	connect func(context.Context, string, string) (net.Conn, error)
 	mu      sync.Mutex
 	hosts   map[string]*hostLimit
+	// budget bounds each stage of a preview (the page, its picture, oEmbed) on its own.
+	budget time.Duration
 }
 
 type hostLimit struct {
@@ -54,7 +66,8 @@ type hostLimit struct {
 
 // New constructs a fetcher with a transport that only dials validated IPs.
 func New() *Fetcher {
-	f := &Fetcher{lookup: net.DefaultResolver.LookupNetIP, connect: (&net.Dialer{}).DialContext, hosts: make(map[string]*hostLimit)}
+	f := &Fetcher{lookup: net.DefaultResolver.LookupNetIP, connect: (&net.Dialer{}).DialContext,
+		hosts: make(map[string]*hostLimit), budget: timeout}
 	transport := &http.Transport{DialContext: f.dial, DisableKeepAlives: true, MaxResponseHeaderBytes: 64 << 10}
 	f.client = &http.Client{Transport: limitedTransport{f, transport}, Timeout: timeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -209,6 +222,12 @@ type response struct {
 
 // read obtains a bounded HTML prefix or a complete supported image.
 func (f *Fetcher) read(ctx context.Context, raw string) (response, error) {
+	return f.readKind(ctx, raw, false)
+}
+
+// readKind is read that also accepts a small JSON document when allowJSON
+// is set: oEmbed answers, never an ordinary link.
+func (f *Fetcher) readKind(ctx context.Context, raw string, allowJSON bool) (response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
 	if err != nil {
 		return response{}, fmt.Errorf("linkpreview: build request: %w", err)
@@ -223,7 +242,7 @@ func (f *Fetcher) read(ctx context.Context, raw string) (response, error) {
 	}
 	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusOK {
-		return response{}, fmt.Errorf("linkpreview: HTTP status %d", res.StatusCode)
+		return response{}, statusError(res.StatusCode)
 	}
 	contentType := res.Header.Get("Content-Type")
 	mediaType, _, err := mime.ParseMediaType(contentType)
@@ -234,17 +253,56 @@ func (f *Fetcher) read(ctx context.Context, raw string) (response, error) {
 	switch mediaType {
 	case "text/html":
 		limit = maxHTML
+	case "application/json":
+		if !allowJSON {
+			return response{}, fmt.Errorf("%w %q", errContentType, mediaType)
+		}
+		limit = maxJSON
 	case "image/png", "image/jpeg", "image/gif", "image/webp":
 		limit = maxImage + 1
 	default:
-		return response{}, fmt.Errorf("linkpreview: unsupported content type %q", mediaType)
+		return response{}, fmt.Errorf("%w %q", errContentType, mediaType)
 	}
 	data, err := io.ReadAll(io.LimitReader(res.Body, limit))
 	if err != nil {
 		return response{}, fmt.Errorf("linkpreview: read body: %w", err)
 	}
 	if len(data) > maxImage {
-		return response{}, errors.New("linkpreview: image exceeds size limit")
+		return response{}, errTooLarge
 	}
 	return response{data: data, contentType: contentType, mediaType: mediaType, url: res.Request.URL}, nil
+}
+
+// Host is the host of raw for logs: no path, query or credentials, which may carry tokens.
+func Host(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Hostname() == "" {
+		return "invalid"
+	}
+	return canonicalHost(u.Hostname())
+}
+
+// reason names why a request failed, without the URL that url.Error carries.
+func reason(err error) string {
+	var status statusError
+	switch {
+	case errors.Is(err, errTarget):
+		return "refused address"
+	case errors.Is(err, context.DeadlineExceeded) || isTimeout(err):
+		return "timeout"
+	case errors.As(err, &status):
+		return fmt.Sprintf("HTTP %d", int(status))
+	case errors.Is(err, errContentType):
+		return "content type"
+	case errors.Is(err, errTooLarge):
+		return "too large"
+	default:
+		return "network"
+	}
+}
+
+// isTimeout reports a client or dial timeout.
+func isTimeout(err error) bool {
+	var t interface{ Timeout() bool }
+	return errors.As(err, &t) && t.Timeout()
 }

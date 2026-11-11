@@ -28,7 +28,7 @@ const (
 
 // PreviewFetcher builds a preview and stores any image through save.
 type PreviewFetcher interface {
-	Fetch(ctx context.Context, rawURL string, save linkpreview.SaveImage) *linkpreview.Embed
+	Fetch(ctx context.Context, rawURL string, save linkpreview.SaveImage) (*linkpreview.Embed, linkpreview.Outcome)
 }
 
 type previews struct {
@@ -252,9 +252,20 @@ func (s *Service) fetchPreview(ctx context.Context, url string) error {
 		if err != nil || len(rows) > 0 {
 			return nil, err
 		}
-		embed := s.previews.fetcher.Fetch(ctx, url, s.saveEmbedImage)
+		embed, outcome := s.previews.fetcher.Fetch(ctx, url, s.saveEmbedImage)
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, fmt.Errorf("messages: fetch preview cancelled: %w", ctxErr)
+		}
+		if outcome.Stage != "" {
+			// A friend's bad link is not an incident: DEBUG, and only the host.
+			s.logger.DebugContext(ctx, "link preview incomplete", "host", linkpreview.Host(url),
+				"stage", outcome.Stage, "reason", outcome.Reason, "partial", outcome.Partial)
+		}
+		fetchedAt := s.now()
+		if embed != nil && outcome.Partial {
+			// A card that lost its picture or title expires with the failures,
+			// so a later send tries again soon instead of in a day.
+			fetchedAt = fetchedAt.Add(previewFailureTTL - previewSuccessTTL)
 		}
 		var data []byte
 		if embed != nil {
@@ -263,7 +274,7 @@ func (s *Service) fetchPreview(ctx context.Context, url string) error {
 				return nil, fmt.Errorf("messages: encode preview result: %w", err)
 			}
 		}
-		err = s.q.SavePreview(ctx, s.pool, store.SavePreviewParams{Url: url, FetchedAt: s.now(), Status: embed != nil, Embed: data})
+		err = s.q.SavePreview(ctx, s.pool, store.SavePreviewParams{Url: url, FetchedAt: fetchedAt, Status: embed != nil, Embed: data})
 		if err != nil {
 			return nil, fmt.Errorf("messages: save preview result: %w", err)
 		}
