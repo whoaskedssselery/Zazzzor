@@ -30,6 +30,7 @@ const (
 	ChannelDelete     = "CHANNEL_DELETE"
 	MessageCreate     = "MESSAGE_CREATE"
 	MessageUpdate     = "MESSAGE_UPDATE"
+	MessageAck        = "MESSAGE_ACK"
 	MessageDelete     = "MESSAGE_DELETE"
 	TypingStart       = "TYPING_START"
 	PresenceUpdate    = "PRESENCE_UPDATE"

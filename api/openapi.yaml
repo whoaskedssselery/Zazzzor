@@ -1362,7 +1362,8 @@ paths:
       summary: Mark visible channels of a guild read
       description: |
         Advances to the latest existing message of each channel the caller
-        may view. Sends one MESSAGE_ACK per changed channel to the caller's
+        may view. Preserves a marker past a deleted head and refreshes its count.
+        Sends one MESSAGE_ACK per changed channel to the caller's
         sessions only. Shares the acknowledgment rate limit.
       parameters:
         - $ref: "#/components/parameters/GuildID"
@@ -1963,7 +1964,8 @@ paths:
       summary: Mark a channel read through a message
       description: |
         Needs VIEW_CHANNEL and READ_MESSAGE_HISTORY in the channel. Advances
-        last_read_id only, then counts mentions after the acknowledged message.
+        last_read_id monotonically. Acknowledging the current marker refreshes
+        its count, and acknowledging an older message has no effect.
         Each changed marker is sent as MESSAGE_ACK to this user's sessions only.
         Acknowledgments share a limit of 10 per second per user, burst 20.
       parameters:

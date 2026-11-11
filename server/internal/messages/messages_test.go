@@ -484,7 +484,7 @@ func TestMessageEventsPublished(t *testing.T) {
 	if updated["id"] != m.ID || updated["content"] != "hello!" || updated["edited_at"] == nil {
 		t.Fatalf("MESSAGE_UPDATE payload = %v", updated)
 	}
-	want := map[string]any{"id": m.ID, "channel_id": general.ID, "guild_id": g.ID}
+	want := map[string]any{"id": m.ID, "channel_id": general.ID, "guild_id": g.ID, "last_message_id": nil}
 	if len(deleted) != len(want) || deleted["id"] != want["id"] || deleted["channel_id"] != want["channel_id"] ||
 		deleted["guild_id"] != want["guild_id"] {
 		t.Fatalf("MESSAGE_DELETE payload = %v, want %v", deleted, want)
