@@ -13,6 +13,27 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
 
+const addEmbedImage = `-- name: AddEmbedImage :exec
+INSERT INTO embed_images (id, token, content_type, created_at) VALUES ($1, $2, $3, $4)
+`
+
+type AddEmbedImageParams struct {
+	ID          int64
+	Token       string
+	ContentType string
+	CreatedAt   time.Time
+}
+
+func (q *Queries) AddEmbedImage(ctx context.Context, db DBTX, arg AddEmbedImageParams) error {
+	_, err := db.Exec(ctx, addEmbedImage,
+		arg.ID,
+		arg.Token,
+		arg.ContentType,
+		arg.CreatedAt,
+	)
+	return err
+}
+
 const addMessageReaction = `-- name: AddMessageReaction :execrows
 INSERT INTO message_reactions (message_id, emoji, user_id, first_added_at)
 VALUES ($1, $2, $3, COALESCE($4::timestamptz, (
@@ -133,7 +154,10 @@ func (q *Queries) AttachmentForReader(ctx context.Context, db DBTX, arg Attachme
 }
 
 const attachmentReferenced = `-- name: AttachmentReferenced :one
-SELECT EXISTS (SELECT 1 FROM message_attachments WHERE id = $1 AND channel_id = $2)
+SELECT EXISTS (
+    SELECT 1 FROM message_attachments AS a WHERE a.id = $1 AND a.channel_id = $2
+    UNION ALL SELECT 1 FROM embed_images AS i WHERE i.id = $1 AND $2 = 1
+)
 `
 
 type AttachmentReferencedParams struct {
@@ -150,6 +174,7 @@ func (q *Queries) AttachmentReferenced(ctx context.Context, db DBTX, arg Attachm
 
 const attachmentReferences = `-- name: AttachmentReferences :many
 SELECT id, channel_id FROM message_attachments
+UNION ALL SELECT id, 1::bigint AS channel_id FROM embed_images
 `
 
 type AttachmentReferencesRow struct {
@@ -271,6 +296,44 @@ func (q *Queries) BindAttachments(ctx context.Context, db DBTX, arg BindAttachme
 	return items, nil
 }
 
+const cachedPreviews = `-- name: CachedPreviews :many
+SELECT url, status, embed FROM link_previews
+WHERE url = ANY($1::text[])
+  AND fetched_at > CASE WHEN status THEN $2::timestamptz ELSE $3::timestamptz END
+`
+
+type CachedPreviewsParams struct {
+	Urls          []string
+	SuccessCutoff time.Time
+	FailureCutoff time.Time
+}
+
+type CachedPreviewsRow struct {
+	Url    string
+	Status bool
+	Embed  []byte
+}
+
+func (q *Queries) CachedPreviews(ctx context.Context, db DBTX, arg CachedPreviewsParams) ([]CachedPreviewsRow, error) {
+	rows, err := db.Query(ctx, cachedPreviews, arg.Urls, arg.SuccessCutoff, arg.FailureCutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CachedPreviewsRow
+	for rows.Next() {
+		var i CachedPreviewsRow
+		if err := rows.Scan(&i.Url, &i.Status, &i.Embed); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const claimNonce = `-- name: ClaimNonce :execrows
 INSERT INTO message_nonces (author_id, channel_id, nonce, message_id, expires_at)
 VALUES ($1, $2, $3, $4, now() + make_interval(secs => $5::float8))
@@ -363,10 +426,10 @@ func (q *Queries) CreateAttachment(ctx context.Context, db DBTX, arg CreateAttac
 
 const createMessage = `-- name: CreateMessage :one
 INSERT INTO messages (id, channel_id, author_id, content, reply_to_id, created_at,
-    mention_user_ids, mention_role_ids, mention_everyone, mention_here)
+    mention_user_ids, mention_role_ids, mention_everyone, mention_here, embeds)
 VALUES ($1, $2, $3, $4, $5, now(),
-    $6, $7, $8, $9)
-RETURNING id, channel_id, author_id, content, reply_to_id, edited_at, created_at, mention_user_ids, mention_role_ids, mention_everyone, mention_here
+    $6, $7, $8, $9, $10)
+RETURNING id, channel_id, author_id, content, reply_to_id, edited_at, created_at, mention_user_ids, mention_role_ids, mention_everyone, mention_here, embeds
 `
 
 type CreateMessageParams struct {
@@ -379,6 +442,7 @@ type CreateMessageParams struct {
 	MentionRoleIds  []int64
 	MentionEveryone bool
 	MentionHere     bool
+	Embeds          []byte
 }
 
 // created_at comes from the database clock, like edited_at.
@@ -393,6 +457,7 @@ func (q *Queries) CreateMessage(ctx context.Context, db DBTX, arg CreateMessageP
 		arg.MentionRoleIds,
 		arg.MentionEveryone,
 		arg.MentionHere,
+		arg.Embeds,
 	)
 	var i Message
 	err := row.Scan(
@@ -407,6 +472,7 @@ func (q *Queries) CreateMessage(ctx context.Context, db DBTX, arg CreateMessageP
 		&i.MentionRoleIds,
 		&i.MentionEveryone,
 		&i.MentionHere,
+		&i.Embeds,
 	)
 	return i, err
 }
@@ -464,9 +530,9 @@ func (q *Queries) DropExpiredNonces(ctx context.Context, db DBTX, authorID snowf
 
 const editMessage = `-- name: EditMessage :one
 UPDATE messages SET content = $1, edited_at = now(), mention_user_ids = $2,
-    mention_role_ids = $3, mention_everyone = $4, mention_here = $5
-WHERE id = $6 AND channel_id = $7 AND author_id = $8 AND content <> $1
-RETURNING id, channel_id, author_id, content, reply_to_id, edited_at, created_at, mention_user_ids, mention_role_ids, mention_everyone, mention_here
+    mention_role_ids = $3, mention_everyone = $4, mention_here = $5, embeds = $6
+WHERE id = $7 AND channel_id = $8 AND author_id = $9 AND content <> $1
+RETURNING id, channel_id, author_id, content, reply_to_id, edited_at, created_at, mention_user_ids, mention_role_ids, mention_everyone, mention_here, embeds
 `
 
 type EditMessageParams struct {
@@ -475,6 +541,7 @@ type EditMessageParams struct {
 	MentionRoleIds  []int64
 	MentionEveryone bool
 	MentionHere     bool
+	Embeds          []byte
 	ID              snowflake.ID
 	ChannelID       snowflake.ID
 	AuthorID        *snowflake.ID
@@ -489,6 +556,7 @@ func (q *Queries) EditMessage(ctx context.Context, db DBTX, arg EditMessageParam
 		arg.MentionRoleIds,
 		arg.MentionEveryone,
 		arg.MentionHere,
+		arg.Embeds,
 		arg.ID,
 		arg.ChannelID,
 		arg.AuthorID,
@@ -506,7 +574,24 @@ func (q *Queries) EditMessage(ctx context.Context, db DBTX, arg EditMessageParam
 		&i.MentionRoleIds,
 		&i.MentionEveryone,
 		&i.MentionHere,
+		&i.Embeds,
 	)
+	return i, err
+}
+
+const embedImageByToken = `-- name: EmbedImageByToken :one
+SELECT id, content_type FROM embed_images WHERE token = $1
+`
+
+type EmbedImageByTokenRow struct {
+	ID          int64
+	ContentType string
+}
+
+func (q *Queries) EmbedImageByToken(ctx context.Context, db DBTX, token string) (EmbedImageByTokenRow, error) {
+	row := db.QueryRow(ctx, embedImageByToken, token)
+	var i EmbedImageByTokenRow
+	err := row.Scan(&i.ID, &i.ContentType)
 	return i, err
 }
 
@@ -519,12 +604,39 @@ func (q *Queries) ExpirePendingAttachments(ctx context.Context, db DBTX, cutoff 
 	return err
 }
 
+const expirePreviews = `-- name: ExpirePreviews :exec
+DELETE FROM link_previews
+WHERE fetched_at <= CASE WHEN status THEN $1::timestamptz ELSE $2::timestamptz END
+`
+
+type ExpirePreviewsParams struct {
+	SuccessCutoff time.Time
+	FailureCutoff time.Time
+}
+
+func (q *Queries) ExpirePreviews(ctx context.Context, db DBTX, arg ExpirePreviewsParams) error {
+	_, err := db.Exec(ctx, expirePreviews, arg.SuccessCutoff, arg.FailureCutoff)
+	return err
+}
+
 const forgetAttachmentTrash = `-- name: ForgetAttachmentTrash :exec
 DELETE FROM attachment_trash WHERE id = $1
 `
 
 func (q *Queries) ForgetAttachmentTrash(ctx context.Context, db DBTX, id int64) error {
 	_, err := db.Exec(ctx, forgetAttachmentTrash, id)
+	return err
+}
+
+const forgetEmbedImage = `-- name: ForgetEmbedImage :exec
+WITH removed AS (
+    DELETE FROM embed_images AS i WHERE i.id = $1::bigint RETURNING i.id
+)
+INSERT INTO attachment_trash (id, channel_id) SELECT id, 1 FROM removed
+`
+
+func (q *Queries) ForgetEmbedImage(ctx context.Context, db DBTX, id int64) error {
+	_, err := db.Exec(ctx, forgetEmbedImage, id)
 	return err
 }
 
@@ -553,8 +665,27 @@ func (q *Queries) IncrementMentions(ctx context.Context, db DBTX, arg IncrementM
 	return err
 }
 
+const lockPreviewCleanup = `-- name: LockPreviewCleanup :exec
+SELECT pg_advisory_xact_lock(91403221130845)
+`
+
+func (q *Queries) LockPreviewCleanup(ctx context.Context, db DBTX) error {
+	_, err := db.Exec(ctx, lockPreviewCleanup)
+	return err
+}
+
+const lockPreviewReferences = `-- name: LockPreviewReferences :exec
+SELECT pg_advisory_xact_lock_shared(91403221130845)
+`
+
+// The cleanup writer excludes new references until its orphan scan commits.
+func (q *Queries) LockPreviewReferences(ctx context.Context, db DBTX) error {
+	_, err := db.Exec(ctx, lockPreviewReferences)
+	return err
+}
+
 const messageByNonce = `-- name: MessageByNonce :one
-SELECT id, channel_id, author_id, content, reply_to_id, edited_at, created_at, mention_user_ids, mention_role_ids, mention_everyone, mention_here FROM messages
+SELECT id, channel_id, author_id, content, reply_to_id, edited_at, created_at, mention_user_ids, mention_role_ids, mention_everyone, mention_here, embeds FROM messages
 WHERE id = (SELECT n.message_id FROM message_nonces n
             WHERE n.author_id = $1 AND n.channel_id = $2 AND n.nonce = $3 AND n.expires_at > now())
 `
@@ -581,12 +712,13 @@ func (q *Queries) MessageByNonce(ctx context.Context, db DBTX, arg MessageByNonc
 		&i.MentionRoleIds,
 		&i.MentionEveryone,
 		&i.MentionHere,
+		&i.Embeds,
 	)
 	return i, err
 }
 
 const messageInChannel = `-- name: MessageInChannel :one
-SELECT id, channel_id, author_id, content, reply_to_id, edited_at, created_at, mention_user_ids, mention_role_ids, mention_everyone, mention_here FROM messages WHERE id = $1 AND channel_id = $2
+SELECT id, channel_id, author_id, content, reply_to_id, edited_at, created_at, mention_user_ids, mention_role_ids, mention_everyone, mention_here, embeds FROM messages WHERE id = $1 AND channel_id = $2
 `
 
 type MessageInChannelParams struct {
@@ -609,12 +741,13 @@ func (q *Queries) MessageInChannel(ctx context.Context, db DBTX, arg MessageInCh
 		&i.MentionRoleIds,
 		&i.MentionEveryone,
 		&i.MentionHere,
+		&i.Embeds,
 	)
 	return i, err
 }
 
 const messagesAfter = `-- name: MessagesAfter :many
-SELECT id, channel_id, author_id, content, reply_to_id, edited_at, created_at, mention_user_ids, mention_role_ids, mention_everyone, mention_here FROM messages
+SELECT id, channel_id, author_id, content, reply_to_id, edited_at, created_at, mention_user_ids, mention_role_ids, mention_everyone, mention_here, embeds FROM messages
 WHERE channel_id = $1 AND id > $2::bigint
 ORDER BY id
 LIMIT $3
@@ -648,6 +781,7 @@ func (q *Queries) MessagesAfter(ctx context.Context, db DBTX, arg MessagesAfterP
 			&i.MentionRoleIds,
 			&i.MentionEveryone,
 			&i.MentionHere,
+			&i.Embeds,
 		); err != nil {
 			return nil, err
 		}
@@ -660,7 +794,7 @@ func (q *Queries) MessagesAfter(ctx context.Context, db DBTX, arg MessagesAfterP
 }
 
 const messagesBefore = `-- name: MessagesBefore :many
-SELECT id, channel_id, author_id, content, reply_to_id, edited_at, created_at, mention_user_ids, mention_role_ids, mention_everyone, mention_here FROM messages
+SELECT id, channel_id, author_id, content, reply_to_id, edited_at, created_at, mention_user_ids, mention_role_ids, mention_everyone, mention_here, embeds FROM messages
 WHERE channel_id = $1 AND ($2::bigint = 0 OR id < $2::bigint)
 ORDER BY id DESC
 LIMIT $3
@@ -694,6 +828,7 @@ func (q *Queries) MessagesBefore(ctx context.Context, db DBTX, arg MessagesBefor
 			&i.MentionRoleIds,
 			&i.MentionEveryone,
 			&i.MentionHere,
+			&i.Embeds,
 		); err != nil {
 			return nil, err
 		}
@@ -706,7 +841,7 @@ func (q *Queries) MessagesBefore(ctx context.Context, db DBTX, arg MessagesBefor
 }
 
 const messagesByIDs = `-- name: MessagesByIDs :many
-SELECT id, channel_id, author_id, content, reply_to_id, edited_at, created_at, mention_user_ids, mention_role_ids, mention_everyone, mention_here FROM messages WHERE channel_id = $1 AND id = ANY($2::bigint[])
+SELECT id, channel_id, author_id, content, reply_to_id, edited_at, created_at, mention_user_ids, mention_role_ids, mention_everyone, mention_here, embeds FROM messages WHERE channel_id = $1 AND id = ANY($2::bigint[])
 `
 
 type MessagesByIDsParams struct {
@@ -736,6 +871,7 @@ func (q *Queries) MessagesByIDs(ctx context.Context, db DBTX, arg MessagesByIDsP
 			&i.MentionRoleIds,
 			&i.MentionEveryone,
 			&i.MentionHere,
+			&i.Embeds,
 		); err != nil {
 			return nil, err
 		}
@@ -977,6 +1113,30 @@ func (q *Queries) RemoveMessageReaction(ctx context.Context, db DBTX, arg Remove
 	return result.RowsAffected(), nil
 }
 
+const savePreview = `-- name: SavePreview :exec
+INSERT INTO link_previews (url, fetched_at, status, embed)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (url) DO UPDATE
+SET fetched_at = EXCLUDED.fetched_at, status = EXCLUDED.status, embed = EXCLUDED.embed
+`
+
+type SavePreviewParams struct {
+	Url       string
+	FetchedAt time.Time
+	Status    bool
+	Embed     []byte
+}
+
+func (q *Queries) SavePreview(ctx context.Context, db DBTX, arg SavePreviewParams) error {
+	_, err := db.Exec(ctx, savePreview,
+		arg.Url,
+		arg.FetchedAt,
+		arg.Status,
+		arg.Embed,
+	)
+	return err
+}
+
 const setLastMessage = `-- name: SetLastMessage :exec
 UPDATE channels SET last_message_id = GREATEST(last_message_id, $1::bigint) WHERE id = $2
 `
@@ -989,4 +1149,66 @@ type SetLastMessageParams struct {
 func (q *Queries) SetLastMessage(ctx context.Context, db DBTX, arg SetLastMessageParams) error {
 	_, err := db.Exec(ctx, setLastMessage, arg.MessageID, arg.ChannelID)
 	return err
+}
+
+const setMessageEmbeds = `-- name: SetMessageEmbeds :execrows
+UPDATE messages SET embeds = $1
+WHERE id = $2 AND channel_id = $3 AND content = $4
+  AND edited_at IS NOT DISTINCT FROM $5
+  AND embeds <> $1
+`
+
+type SetMessageEmbedsParams struct {
+	Embeds    []byte
+	ID        snowflake.ID
+	ChannelID snowflake.ID
+	Content   string
+	EditedAt  *time.Time
+}
+
+func (q *Queries) SetMessageEmbeds(ctx context.Context, db DBTX, arg SetMessageEmbedsParams) (int64, error) {
+	result, err := db.Exec(ctx, setMessageEmbeds,
+		arg.Embeds,
+		arg.ID,
+		arg.ChannelID,
+		arg.Content,
+		arg.EditedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const unusedEmbedImages = `-- name: UnusedEmbedImages :many
+SELECT i.id FROM embed_images AS i
+WHERE i.created_at < $1
+  AND NOT EXISTS (
+      SELECT 1 FROM messages AS m
+      WHERE m.embeds <> '[]'::jsonb AND m.embeds @> jsonb_build_array(
+          jsonb_build_object('image', jsonb_build_object('url', '/api/v1/embeds/' || i.token))))
+  AND NOT EXISTS (
+      SELECT 1 FROM link_previews AS p WHERE p.embed -> 'image' ->> 'url' = '/api/v1/embeds/' || i.token)
+ORDER BY i.created_at
+LIMIT 100
+`
+
+func (q *Queries) UnusedEmbedImages(ctx context.Context, db DBTX, cutoff time.Time) ([]int64, error) {
+	rows, err := db.Query(ctx, unusedEmbedImages, cutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

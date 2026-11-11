@@ -30,6 +30,13 @@ type Channel struct {
 	LastMessageID    pgtype.Int8
 }
 
+type EmbedImage struct {
+	ID          int64
+	Token       string
+	ContentType string
+	CreatedAt   time.Time
+}
+
 type Guild struct {
 	ID        snowflake.ID
 	Name      string
@@ -62,6 +69,13 @@ type Invite struct {
 	CreatedAt time.Time
 }
 
+type LinkPreview struct {
+	Url       string
+	FetchedAt time.Time
+	Status    bool
+	Embed     []byte
+}
+
 type Member struct {
 	GuildID  snowflake.ID
 	UserID   snowflake.ID
@@ -87,6 +101,7 @@ type Message struct {
 	MentionRoleIds  []int64
 	MentionEveryone bool
 	MentionHere     bool
+	Embeds          []byte
 }
 
 type MessageAttachment struct {
