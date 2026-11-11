@@ -126,36 +126,34 @@ export const StreamTile = ({
       )}
     >
       {watching ? (
-        <>
-          <VideoFrame video={video}>
-            <div
-              className={cn(
-                "absolute right-2 bottom-2 z-10 flex gap-2 opacity-0 transition-opacity duration-(--duration-base) group-focus-within:opacity-100 group-hover:opacity-100",
-                compact && "hidden",
-              )}
+        <VideoFrame video={video}>
+          <div
+            className={cn(
+              "absolute right-2 bottom-2 z-10 flex gap-2 opacity-0 transition-opacity duration-(--duration-base) group-focus-within:opacity-100 group-hover:opacity-100",
+              compact && "hidden",
+            )}
+          >
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                void tile.current?.requestFullscreen();
+              }}
             >
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => {
-                  void tile.current?.requestFullscreen();
-                }}
-              >
-                <Maximize aria-hidden className="size-4" />
-                Во весь экран
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => {
-                  watchStream(userId, false);
-                }}
-              >
-                Перестать смотреть
-              </Button>
-            </div>
-          </VideoFrame>
-        </>
+              <Maximize aria-hidden className="size-4" />
+              Во весь экран
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                watchStream(userId, false);
+              }}
+            >
+              Перестать смотреть
+            </Button>
+          </div>
+        </VideoFrame>
       ) : (
         <>
           <Monitor aria-hidden className={cn("text-fg-faint", compact ? "size-6" : "size-10")} strokeWidth={1.5} />
