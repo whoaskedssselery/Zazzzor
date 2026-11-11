@@ -510,12 +510,19 @@ func eventually(t *testing.T, what string, cond func() bool) {
 
 // Payload shapes the tests read.
 type (
+	readStateBody struct {
+		ChannelID    string `json:"channel_id"`
+		LastReadID   string `json:"last_read_id"`
+		MentionCount int32  `json:"mention_count"`
+	}
 	readyBody struct {
-		User      userBody         `json:"user"`
-		Guilds    []guildStateBody `json:"guilds"`
-		Presences []presenceBody   `json:"presences"`
+		ReadStates []readStateBody  `json:"read_states"`
+		User       userBody         `json:"user"`
+		Guilds     []guildStateBody `json:"guilds"`
+		Presences  []presenceBody   `json:"presences"`
 	}
 	guildStateBody struct {
+		ReadStates  []readStateBody  `json:"read_states"`
 		Guild       guildBody        `json:"guild"`
 		Channels    []channelBody    `json:"channels"`
 		Members     []memberBody     `json:"members"`

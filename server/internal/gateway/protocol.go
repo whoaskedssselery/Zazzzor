@@ -18,6 +18,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
 	"github.com/whoaskedssselery/zazzzor/server/internal/channels"
 	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
+	"github.com/whoaskedssselery/zazzzor/server/internal/messages"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 	"github.com/whoaskedssselery/zazzzor/server/internal/voice"
 )
@@ -110,8 +111,8 @@ type Presence struct {
 
 // GuildState is a guild as one member sees it: the payload of GUILD_CREATE
 // and GUILD_SYNC and an entry of READY. Channels are only those the member
-// may view, and so are the voice states; members are capped at MaxMembers,
-// presences are not.
+// may view, and so are the voice and read states. The member list is capped
+// at MaxMembers. Presences include every online member.
 type GuildState struct {
 	Guild    guilds.PublicGuild       `json:"guild"`
 	Roles    []guilds.PublicRole      `json:"roles"`
@@ -120,6 +121,8 @@ type GuildState struct {
 	MyMember guilds.PublicMember      `json:"my_member"`
 	// Presences are the guild's online members (the receiver included).
 	Presences []Presence `json:"presences"`
+	// ReadStates are the member's stored read states in Channels.
+	ReadStates []messages.ReadState `json:"read_states"`
 	// VoiceStates are the states in the voice channels of Channels.
 	VoiceStates []voice.PublicState `json:"voice_states"`
 }
@@ -129,6 +132,8 @@ type Ready struct {
 	User      auth.PublicUser `json:"user"`
 	Guilds    []GuildState    `json:"guilds"`
 	Presences []Presence      `json:"presences"`
+	// ReadStates are the user's stored read states across all visible channels.
+	ReadStates []messages.ReadState `json:"read_states"`
 }
 
 // frame is a server frame on the wire.

@@ -99,8 +99,9 @@ func (g *Gateway) publishPresence(userID snowflake.ID, status string) {
 		Payload:       Presence{UserID: userID, Status: status}})
 }
 
-// onlineAmong returns the online users among ids, in their order.
-func (g *Gateway) onlineAmong(ids []snowflake.ID) []snowflake.ID {
+// OnlineAmong returns an online presence snapshot for ids, in their order.
+// Users in their presence grace period are still online.
+func (g *Gateway) OnlineAmong(ids []snowflake.ID) []snowflake.ID {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	out := make([]snowflake.ID, 0, len(ids))

@@ -420,6 +420,10 @@ func TestPresenceMultipleConnections(t *testing.T) {
 	bob, bu := e.user("bob")
 	g, _ := newGuild(t, alice, "guild")
 	e.join(g, bu)
+	peers := []snowflake.ID{bu.id(t), au.id(t)}
+	if got := e.gw.OnlineAmong(peers); len(got) != 0 {
+		t.Fatalf("online before connecting = %v, want none", got)
+	}
 	presences := func(fs []frame) []presenceBody {
 		var out []presenceBody
 		for _, f := range fs {
@@ -434,6 +438,9 @@ func TestPresenceMultipleConnections(t *testing.T) {
 
 	bcl, _ := connect(t, bob)
 	tab1, r := connect(t, alice)
+	if got := e.gw.OnlineAmong(peers); !slices.Equal(got, peers) {
+		t.Fatalf("online after both connect = %v, want %v", got, peers)
+	}
 	if !slices.ContainsFunc(r.Presences, func(p presenceBody) bool { return p.UserID == bu.ID }) {
 		t.Fatalf("alice's READY lacks bob's presence: %+v", r.Presences)
 	}
@@ -446,6 +453,9 @@ func TestPresenceMultipleConnections(t *testing.T) {
 	_ = tab1.ws.Close(websocket.StatusNormalClosure, "")
 	eventually(t, "tab 1 to go", func() bool { return e.metric("zazzzor_gateway_connections", "") == 2 })
 	time.Sleep(3 * grace)
+	if got := e.gw.OnlineAmong(peers); !slices.Equal(got, peers) {
+		t.Fatalf("online after one tab closes = %v, want %v", got, peers)
+	}
 	if got := presences(e.untilSentinel(bcl, bu)); len(got) != 0 {
 		t.Fatalf("with a second tab open bob got %+v", got)
 	}
@@ -455,6 +465,9 @@ func TestPresenceMultipleConnections(t *testing.T) {
 	decode(t, bcl.waitFor(events.PresenceUpdate).D, &p)
 	if p.UserID != au.ID || p.Status != gateway.StatusOffline {
 		t.Fatalf("after the last tab: %+v, want alice offline", p)
+	}
+	if got := e.gw.OnlineAmong(peers); !slices.Equal(got, peers[:1]) {
+		t.Fatalf("online after Alice's offline event = %v, want %v", got, peers[:1])
 	}
 	if d := time.Since(closed); d < grace {
 		t.Fatalf("offline after %v, before the grace period of %v", d, grace)
