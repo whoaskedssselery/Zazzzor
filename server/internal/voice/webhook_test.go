@@ -227,3 +227,30 @@ func TestJoinIsUnavailableWhenThePreviousRoomCannotBeLeft(t *testing.T) {
 		t.Fatalf("state = %+v (%v), want alice still in the first channel", st, ok)
 	}
 }
+
+func TestWebhookCameraSetsSelfVideo(t *testing.T) {
+	e := newEnv(t)
+	alice, a := e.user("alice")
+	g, _, vc := newGuild(t, alice, "home")
+	e.connect(alice, a, vc.ID, "RM_1", "PA_1")
+	track := func(event, sid string, src livekit.TrackSource) {
+		e.hook(&livekit.WebhookEvent{Event: event, Room: lkRoom(vc.ID, "RM_1"),
+			Participant: lkParticipant(a, "PA_1", ""), Track: &livekit.TrackInfo{Sid: sid, Source: src}})
+	}
+	flags := func() (video, stream bool) {
+		st, _ := e.stateOf(parseID(t, g.ID), a.id(t))
+		return st.SelfVideo, st.SelfStream
+	}
+	track("track_published", "TR_cam", livekit.TrackSource_CAMERA)
+	if video, stream := flags(); !video || stream {
+		t.Fatalf("after a camera: video=%v stream=%v, want video only", video, stream)
+	}
+	track("track_published", "TR_screen", livekit.TrackSource_SCREEN_SHARE)
+	track("track_unpublished", "TR_cam", livekit.TrackSource_CAMERA)
+	if video, stream := flags(); video || !stream {
+		t.Fatalf("after the camera went: video=%v stream=%v, want stream only", video, stream)
+	}
+	if n := len(e.pub.updates()); n != 4 {
+		t.Errorf("updates = %d, want 4 (join, camera on, stream on, camera off)", n)
+	}
+}

@@ -223,9 +223,9 @@ func newer(a, b Participant) bool {
 	return cmp.Less(b.SID, a.SID)
 }
 
-// syncScreensLocked sets the screen shares of userID's state, which is of
-// participant p, to what LiveKit listed, announcing a change of
-// self_stream.
+// syncScreensLocked sets the screen shares and cameras of userID's state,
+// which is of participant p, to what LiveKit listed, announcing a change of
+// self_stream or self_video once.
 func (s *Service) syncScreensLocked(ctx context.Context, userID snowflake.ID, p Participant) {
 	sess := s.sessions[userID]
 	if sess == nil || sess.sid != p.SID {
@@ -235,8 +235,13 @@ func (s *Service) syncScreensLocked(ctx context.Context, userID snowflake.ID, p 
 	for _, sid := range p.Screens {
 		sess.screens[sid] = true
 	}
-	if streaming := len(p.Screens) > 0; streaming != sess.state.SelfStream {
-		sess.state.SelfStream = streaming
+	sess.cameras = map[string]bool{}
+	for _, sid := range p.Cameras {
+		sess.cameras[sid] = true
+	}
+	streaming, video := len(p.Screens) > 0, len(p.Cameras) > 0
+	if streaming != sess.state.SelfStream || video != sess.state.SelfVideo {
+		sess.state.SelfStream, sess.state.SelfVideo = streaming, video
 		s.touchLocked(userID)
 		s.announceLocked(ctx, sess.state, false)
 	}

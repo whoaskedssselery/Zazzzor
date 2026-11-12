@@ -17,9 +17,9 @@ func TestMediaPermissionsCombineRolesAndModeration(t *testing.T) {
 		sources    []livekit.TrackSource
 	}{
 		{"speak", permissions.Speak, false, false, []livekit.TrackSource{livekit.TrackSource_MICROPHONE}},
-		{"muted", permissions.Speak | permissions.Stream, true, false, []livekit.TrackSource{livekit.TrackSource_SCREEN_SHARE, livekit.TrackSource_SCREEN_SHARE_AUDIO}},
+		{"muted", permissions.Speak | permissions.Stream, true, false, []livekit.TrackSource{livekit.TrackSource_SCREEN_SHARE, livekit.TrackSource_SCREEN_SHARE_AUDIO, livekit.TrackSource_CAMERA}},
 		{"deaf", permissions.Speak, false, true, []livekit.TrackSource{livekit.TrackSource_MICROPHONE}},
-		{"no_speak", permissions.Stream, false, false, []livekit.TrackSource{livekit.TrackSource_SCREEN_SHARE, livekit.TrackSource_SCREEN_SHARE_AUDIO}},
+		{"no_speak", permissions.Stream, false, false, []livekit.TrackSource{livekit.TrackSource_SCREEN_SHARE, livekit.TrackSource_SCREEN_SHARE_AUDIO, livekit.TrackSource_CAMERA}},
 		{"no_stream", permissions.Speak, false, false, []livekit.TrackSource{livekit.TrackSource_MICROPHONE}},
 		{"no_publish", 0, false, false, nil},
 		{"muted_without_stream", permissions.Speak, true, true, nil},

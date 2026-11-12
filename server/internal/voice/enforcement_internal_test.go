@@ -57,7 +57,8 @@ func refreshService(t *testing.T, read func(context.Context, snowflake.ID) (perm
 	r := &refreshRooms{updates: map[string]ParticipantPermissions{}, removed: map[string]bool{}}
 	s := NewService(Options{Channels: refreshChannels{read: read}, Rooms: r, APIKey: "key", APISecret: "secret"})
 	s.sessions[1] = &session{room: "42", sid: "PA_1", screens: map[string]bool{"SC_1": true},
-		state: State{GuildID: 7, ChannelID: 42, UserID: 1, SelfStream: true}}
+		cameras: map[string]bool{"CA_1": true},
+		state:   State{GuildID: 7, ChannelID: 42, UserID: 1, SelfStream: true, SelfVideo: true}}
 	return s, r
 }
 
@@ -95,8 +96,12 @@ func TestRefreshAppliesEachPermissionLoss(t *testing.T) {
 			if stream := slices.Contains(p.Sources, livekit.TrackSource_SCREEN_SHARE); stream != (tc.lost != permissions.Stream) {
 				t.Fatalf("screen=%v after loss %s", stream, tc.name)
 			}
-			if tc.lost == permissions.Stream && (s.sessions[1].state.SelfStream || len(s.sessions[1].screens) != 0) {
-				t.Fatal("successfully revoked stream remained public")
+			if camera := slices.Contains(p.Sources, livekit.TrackSource_CAMERA); camera != (tc.lost != permissions.Stream) {
+				t.Fatalf("camera=%v after loss %s", camera, tc.name)
+			}
+			if tc.lost == permissions.Stream && (s.sessions[1].state.SelfStream || len(s.sessions[1].screens) != 0 ||
+				s.sessions[1].state.SelfVideo || len(s.sessions[1].cameras) != 0) {
+				t.Fatal("successfully revoked stream or camera remained public")
 			}
 		})
 	}
