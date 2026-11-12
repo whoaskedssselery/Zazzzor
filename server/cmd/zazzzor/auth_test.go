@@ -56,9 +56,14 @@ func newModulesRouter(t *testing.T, deadlines httpx.DeadlineOptions) (http.Handl
 	reg := prometheus.NewRegistry()
 	bus := events.NewBus(reg)
 	t.Cleanup(bus.Close)
-	m, err := app.NewModules(cfg, testkit.Postgres(t), snowflake.NewGenerator(0, time.Now), bus)
+	pool := testkit.Postgres(t)
+	testkit.OpenRegistration(t, pool)
+	m, err := app.NewModules(cfg, pool, snowflake.NewGenerator(0, time.Now), bus)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if _, err := m.Auth.CreateAdmin(t.Context(), "boss", "password123"); err != nil {
+		t.Fatalf("create admin fixture: %v", err)
 	}
 	logger := slog.New(slog.NewJSONHandler(logs, nil))
 	gw := m.NewGateway(bus, cfg, logger, reg, gateway.Options{})

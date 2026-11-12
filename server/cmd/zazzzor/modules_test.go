@@ -25,7 +25,7 @@ func TestRegistrationFollowsInstanceSetting(t *testing.T) {
 	creds := func(name string) map[string]string {
 		return map[string]string{"username": name, "password": "password123"}
 	}
-	if resp := boss.Do(http.MethodPost, "/api/v1/auth/register", creds("boss")); resp.Status != http.StatusCreated {
+	if resp := boss.Do(http.MethodPost, "/api/v1/auth/login", creds("boss")); resp.Status != http.StatusOK {
 		t.Fatalf("register boss = %d", resp.Status)
 	}
 	if resp := boss.Do(http.MethodPatch, "/api/v1/admin/settings", map[string]bool{"registration_open": false}); resp.Status != http.StatusOK {

@@ -137,7 +137,7 @@ paths:
           description: "`origin_not_allowed` or `registration_closed`."
           $ref: "#/components/responses/Problem"
         "409":
-          description: "`username_taken`."
+          description: "`username_taken` for an existing or reserved username."
           $ref: "#/components/responses/Problem"
         "415":
           description: "`unsupported_media_type`: the body is not application/json."

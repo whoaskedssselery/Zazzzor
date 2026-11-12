@@ -37,6 +37,7 @@ func filesEnv(cfg config.Config) func(string) string {
 func newFilesModules(t *testing.T) (*app.Modules, config.Config) {
 	t.Helper()
 	pool := testkit.Postgres(t)
+	testkit.OpenRegistration(t, pool)
 	cfg := testConfig()
 	cfg.DatabaseURL = pool.Config().ConnString()
 	cfg.DataDir = t.TempDir()

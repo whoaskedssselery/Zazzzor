@@ -165,7 +165,9 @@ jobs:
         run: pnpm --filter @zazzzor/web exec playwright install --with-deps chromium firefox
       # The API image and Postgres of web/e2e/compose.yml, on loopback only.
       - name: Start the e2e API
-        run: pnpm --filter @zazzzor/web e2e:up
+        run: |
+          pnpm --filter @zazzzor/web e2e:up
+          docker compose -f web/e2e/compose.yml exec -T postgres psql -U zazzzor -d zazzzor -v ON_ERROR_STOP=1 -q -c 'UPDATE instance SET registration_open = true'
       # Builds the web client and serves it with `vite preview` under Caddy's CSP.
       - name: Every scenario in Chromium and Firefox
         run: pnpm --filter @zazzzor/web e2e

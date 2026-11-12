@@ -86,7 +86,11 @@ func TestUsersByIDs(t *testing.T) {
 	e := newEnv(t)
 	c := e.client()
 	a := userID(t, register(t, c, "oleg", "password123"))
-	b := userID(t, register(t, c, "boss", "password123"))
+	boss, err := e.svc.CreateAdmin(t.Context(), "boss", "password123")
+	if err != nil {
+		t.Fatalf("CreateAdmin: %v", err)
+	}
+	b := boss.ID
 	us, err := e.svc.UsersByIDs(t.Context(), []snowflake.ID{b, 42, a, a})
 	if err != nil {
 		t.Fatal(err)
@@ -109,8 +113,11 @@ func TestUsersByIDs(t *testing.T) {
 func TestIsAdminCaseInsensitive(t *testing.T) {
 	e := newEnv(t, func(o *auth.Options) { o.AdminUsernames = []string{"Root_User"} })
 	c := e.client()
-	id := userID(t, register(t, c, "ROOT_user", "password123"))
-	u, err := e.svc.GetUser(t.Context(), id)
+	created, err := e.svc.CreateAdmin(t.Context(), "ROOT_user", "password123")
+	if err != nil {
+		t.Fatalf("CreateAdmin: %v", err)
+	}
+	u, err := e.svc.GetUser(t.Context(), created.ID)
 	if err != nil || !u.IsAdmin {
 		t.Fatalf("GetUser = %+v, %v; want admin", u, err)
 	}
