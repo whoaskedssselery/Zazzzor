@@ -508,47 +508,57 @@ func (s *Service) login(ctx context.Context, username, password string, meta Ses
 	if row.DisabledAt != nil {
 		return User{}, "", ErrAccountDisabled
 	}
-	if rehash {
-		s.upgradeHash(ctx, row.ID, password)
-	}
 	var (
 		token   string
 		evicted []snowflake.ID
 	)
 	err = db.InTx(ctx, s.pool, func(tx pgx.Tx) error {
-		var txErr error
+		current, txErr := s.q.LockUserCredentials(ctx, tx, row.ID)
+		if errors.Is(txErr, pgx.ErrNoRows) {
+			return ErrInvalidCredentials
+		}
+		if txErr != nil {
+			return fmt.Errorf("auth: lock credentials: %w", txErr)
+		}
+		if current.DisabledAt != nil || current.PasswordHash != row.PasswordHash {
+			return ErrInvalidCredentials
+		}
 		token, evicted, txErr = s.createSession(ctx, tx, row.ID, meta, s.now())
+		row = current
 		return txErr
 	})
 	if err != nil {
 		return User{}, "", err
 	}
 	s.publishRevoked(ctx, row.ID, evicted)
+	if rehash {
+		s.upgradeHash(ctx, row, password)
+	}
 	return s.toUser(row), token, nil
 }
 
 // upgradeHash re-hashes a password stored with old parameters. Failure only
 // postpones the upgrade to the next login.
-func (s *Service) upgradeHash(ctx context.Context, userID snowflake.ID, password string) {
+func (s *Service) upgradeHash(ctx context.Context, verified store.User, password string) {
 	hash, err := HashPassword(ctx, password)
 	if err == nil {
-		_, err = s.q.SetPasswordHash(ctx, s.pool, store.SetPasswordHashParams{ID: userID, PasswordHash: hash})
+		_, err = s.q.ReplacePasswordHash(ctx, s.pool, store.ReplacePasswordHashParams{
+			ID: verified.ID, PasswordHash: hash, VerifiedHash: verified.PasswordHash,
+		})
 	}
 	if err != nil {
-		httpx.LoggerFrom(ctx).WarnContext(ctx, "upgrade password hash", "user_id", userID.String(), "err", err.Error())
+		httpx.LoggerFrom(ctx).WarnContext(ctx, "upgrade password hash", "user_id", verified.ID.String(), "err", err.Error())
 	}
 }
 
 // createSession opens a session inside tx. Past maxSessions it evicts the
 // oldest sessions of the user, returning their IDs for the caller to
-// announce once tx has committed.
+// announce once tx has committed. The caller holds the user row lock or
+// inserted the user in this transaction.
 func (s *Service) createSession(ctx context.Context, tx pgx.Tx, userID snowflake.ID, meta SessionMeta, now time.Time) (string, []snowflake.ID, error) {
 	token, hash, err := newToken()
 	if err != nil {
 		return "", nil, err
-	}
-	if err = s.q.LockUserSessions(ctx, tx, userID); err != nil {
-		return "", nil, fmt.Errorf("auth: lock sessions: %w", err)
 	}
 	if err = s.q.DeleteExpiredUserSessions(ctx, tx, store.DeleteExpiredUserSessionsParams{UserID: userID, Now: now}); err != nil {
 		return "", nil, fmt.Errorf("auth: purge expired sessions: %w", err)
@@ -800,12 +810,16 @@ func (s *Service) ChangePassword(ctx context.Context, userID snowflake.ID, curre
 	}
 	var revoked []snowflake.ID
 	err = db.InTx(ctx, s.pool, func(tx pgx.Tx) error {
-		n, txErr := s.q.SetPasswordHash(ctx, tx, store.SetPasswordHashParams{ID: userID, PasswordHash: hash})
+		// The conditional UPDATE locks the row and rechecks the verified hash
+		// before writing. Argon2 runs outside the transaction.
+		n, txErr := s.q.ReplacePasswordHash(ctx, tx, store.ReplacePasswordHashParams{
+			ID: userID, PasswordHash: hash, VerifiedHash: row.PasswordHash,
+		})
 		if txErr != nil {
 			return fmt.Errorf("auth: set password: %w", txErr)
 		}
 		if n == 0 {
-			return ErrUserNotFound
+			return ErrInvalidCredentials
 		}
 		revoked, txErr = s.q.DeleteOtherUserSessions(ctx, tx, store.DeleteOtherUserSessionsParams{UserID: userID, KeepID: keepSessionID})
 		if txErr != nil {

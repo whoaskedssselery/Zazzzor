@@ -279,14 +279,24 @@ func (q *Queries) EnableUser(ctx context.Context, db DBTX, id snowflake.ID) (Use
 	return i, err
 }
 
-const lockUserSessions = `-- name: LockUserSessions :exec
-SELECT 1 FROM users WHERE id = $1 FOR NO KEY UPDATE
+const lockUserCredentials = `-- name: LockUserCredentials :one
+SELECT id, username, display_name, password_hash, avatar_hash, disabled_at, created_at FROM users WHERE id = $1 FOR UPDATE
 `
 
-// Serializes the session cap of one user across concurrent sign-ins.
-func (q *Queries) LockUserSessions(ctx context.Context, db DBTX, userID snowflake.ID) error {
-	_, err := db.Exec(ctx, lockUserSessions, userID)
-	return err
+// Serializes session creation with credential changes and other sign-ins.
+func (q *Queries) LockUserCredentials(ctx context.Context, db DBTX, id snowflake.ID) (User, error) {
+	row := db.QueryRow(ctx, lockUserCredentials, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.DisplayName,
+		&i.PasswordHash,
+		&i.AvatarHash,
+		&i.DisabledAt,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const replaceAvatarHash = `-- name: ReplaceAvatarHash :one
@@ -321,6 +331,25 @@ func (q *Queries) ReplaceAvatarHash(ctx context.Context, db DBTX, arg ReplaceAva
 		&i.PreviousHash,
 	)
 	return i, err
+}
+
+const replacePasswordHash = `-- name: ReplacePasswordHash :execrows
+UPDATE users SET password_hash = $1
+WHERE id = $2 AND password_hash = $3 AND disabled_at IS NULL
+`
+
+type ReplacePasswordHashParams struct {
+	PasswordHash string
+	ID           snowflake.ID
+	VerifiedHash string
+}
+
+func (q *Queries) ReplacePasswordHash(ctx context.Context, db DBTX, arg ReplacePasswordHashParams) (int64, error) {
+	result, err := db.Exec(ctx, replacePasswordHash, arg.PasswordHash, arg.ID, arg.VerifiedHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const sessionByTokenHash = `-- name: SessionByTokenHash :one
