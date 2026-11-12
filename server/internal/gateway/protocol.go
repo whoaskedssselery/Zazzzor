@@ -133,6 +133,9 @@ type GuildState struct {
 // Ready is the payload of READY.
 type Ready struct {
 	PrivateChannels []channels.DMChannel `json:"private_channels"`
+	// PrivateVoiceStates and Calls are the calls going on in PrivateChannels and who is in them.
+	PrivateVoiceStates []voice.PublicState `json:"private_voice_states"`
+	Calls              []voice.Call        `json:"calls"`
 	// UserGuildSettings are the user's notification settings that differ from the defaults.
 	UserGuildSettings []notifysettings.Settings    `json:"user_guild_settings"`
 	Relationships     []relationships.Relationship `json:"relationships"`
