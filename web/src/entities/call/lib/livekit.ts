@@ -131,9 +131,13 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
     else if (pub.source === Track.Source.Camera) pub.setSubscribed(cameraViews.has(participant.identity));
   };
 
+  /** The noise suppression each microphone track runs now, so a switch mid-call changes only what differs. */
+  const noiseOf = new WeakMap<LocalAudioTrack, VoicePrefs["noise"]>();
+
   /** Puts the chosen noise suppression on a new microphone track, and says what runs. */
   const cleanMicrophone = async (track: LocalAudioTrack) => {
     const { noise } = prefs();
+    noiseOf.set(track, noise);
     if (noise !== "enhanced") {
       emit("noise", { running: noise });
       return;
@@ -151,6 +155,36 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
       );
     } catch {
       emit("noise", { running: await browserNoiseSuppression(track.mediaStreamTrack), reason: "failed" });
+    }
+  };
+
+  /**
+   * Brings the published microphone to the noise suppression chosen now:
+   * the setting changes during a call without joining again. The browser's
+   * own processing follows microphoneOptions; «Улучшенное» adds the processor.
+   */
+  const syncNoise = async (r: Room) => {
+    const track = r.localParticipant.getTrackPublication(Track.Source.Microphone)?.track;
+    if (!(track instanceof LocalAudioTrack)) return;
+    const { noise } = prefs();
+    if (noiseOf.get(track) === noise) return;
+    noiseOf.set(track, noise);
+    if (noise !== "enhanced" && track.getProcessor()) await track.stopProcessor().catch(() => undefined);
+    const input = track.mediaStreamTrack;
+    try {
+      await input.applyConstraints({
+        ...input.getConstraints(),
+        autoGainControl: noise !== "enhanced",
+        noiseSuppression: noise === "standard",
+      });
+    } catch {
+      // The browser keeps the track as it was.
+    }
+    if (noise === "enhanced") {
+      noiseOf.delete(track);
+      await cleanMicrophone(track);
+    } else {
+      emit("noise", { running: input.getSettings().noiseSuppression === true ? "standard" : "off" });
     }
   };
 
@@ -355,9 +389,11 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
     },
 
     async setMicrophone(on) {
-      if (!room) return;
+      const r = room;
+      if (!r) return;
       try {
-        await room.localParticipant.setMicrophoneEnabled(on, microphoneOptions(prefs()));
+        await r.localParticipant.setMicrophoneEnabled(on, microphoneOptions(prefs()));
+        if (room === r) await syncNoise(r);
       } catch (e) {
         // Callers do not wait for the microphone: nothing may escape as an unhandled rejection.
         if (isMicError(e)) emit("micDenied");

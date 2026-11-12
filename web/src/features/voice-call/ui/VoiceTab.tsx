@@ -91,8 +91,7 @@ const useDevices = () => {
 /**
  * «Голос и видео»: the microphone and the speakers, voice activity or
  * push-to-talk with its key, and the noise suppression with what actually
- * runs in the call. Kept in this browser and applied to the call at once
- * (the noise suppression from the next connection).
+ * runs in the call. Kept in this browser and applied to the call at once.
  */
 export const VoiceTab = () => {
   const [prefs, setPrefs] = useState(readVoicePrefs);
@@ -234,7 +233,7 @@ export const VoiceTab = () => {
       <Field
         htmlFor="voice-noise"
         label="Шумоподавление"
-        hint="Улучшенное — нейросеть на вашем компьютере, первая загрузка около 23 МБ; стандартное — браузера. Новое значение — со следующего подключения к голосу."
+        hint="Улучшенное — нейросеть на вашем компьютере, первая загрузка около 23 МБ; стандартное — браузера."
       >
         <Select
           options={NOISE}
