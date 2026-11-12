@@ -27,7 +27,7 @@ func TestSessionFailuresAreLimitedBeforeDatabase(t *testing.T) {
 		t.Helper()
 		r := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(t.Context())
 		r.RemoteAddr = addr
-		r.AddCookie(&http.Cookie{Name: CookieName, Value: token})
+		r.AddCookie(&http.Cookie{Name: CookieName, Value: token, Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode})
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, r)
 		if w.Code != status {

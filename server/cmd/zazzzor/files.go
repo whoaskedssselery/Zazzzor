@@ -56,8 +56,8 @@ func startBackground(ctx context.Context, run func(context.Context)) func() {
 // database refers to and the disk lacks (files.ErrMissingImage) fails the
 // run too: after a restore that means the files and the database disagree.
 func filesCommand(args []string, env func(string) string, stdout, stderr io.Writer) int {
-	strict := len(args) == 2 && args[1] == "--strict"
-	if len(args) == 0 || args[0] != "reconcile" || (len(args) != 1 && !strict) {
+	strict := slices.Equal(args, []string{"reconcile", "--strict"})
+	if !strict && !slices.Equal(args, []string{"reconcile"}) {
 		_, _ = fmt.Fprintln(stderr, filesUsage)
 		return 2
 	}

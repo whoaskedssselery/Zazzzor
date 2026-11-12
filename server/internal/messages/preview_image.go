@@ -58,7 +58,7 @@ func (s *Service) handleEmbedImage(w http.ResponseWriter, r *http.Request) error
 	if err != nil {
 		return fmt.Errorf("messages: look up preview image: %w", err)
 	}
-	if err := s.checkEmbedImageAccess(ctx, user, embedImagePrefix+token); err != nil {
+	if err = s.checkEmbedImageAccess(ctx, user, embedImagePrefix+token); err != nil {
 		return err
 	}
 	f, err := s.files.OpenAttachment(files.AttachmentReference(embedImageOwner, snowflake.ID(image.ID)))

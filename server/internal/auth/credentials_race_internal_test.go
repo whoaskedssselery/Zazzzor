@@ -27,22 +27,23 @@ func TestLoginRejectsCredentialsChangedDuringVerification(t *testing.T) {
 			}
 			fired := false
 			s.verify = func(ctx context.Context, pw, encoded string) (bool, bool, error) {
-				ok, rehash, err := VerifyPassword(ctx, pw, encoded)
-				if !fired && ok && err == nil {
+				ok, rehash, verifyErr := VerifyPassword(ctx, pw, encoded)
+				if !fired && ok && verifyErr == nil {
 					fired = true
+					var mutateErr error
 					switch mutation {
 					case "change":
-						err = s.ChangePassword(ctx, u.ID, "password123", "password456", keep)
+						mutateErr = s.ChangePassword(ctx, u.ID, "password123", "password456", keep)
 					case "disable":
-						_, err = s.SetDisabled(ctx, u.ID, true)
+						_, mutateErr = s.SetDisabled(ctx, u.ID, true)
 					default:
-						err = s.ResetPassword(ctx, u.ID, "password456")
+						mutateErr = s.ResetPassword(ctx, u.ID, "password456")
 					}
-					if err != nil {
-						t.Fatalf("set up credential race: %v", err)
+					if mutateErr != nil {
+						t.Fatalf("set up credential race: %v", mutateErr)
 					}
 				}
-				return ok, rehash || mutation == "rehash after reset", err
+				return ok, rehash || mutation == "rehash after reset", verifyErr
 			}
 			_, staleToken, err := s.Login(ctx, "racer", "password123", SessionMeta{})
 			s.verify = VerifyPassword
@@ -70,13 +71,13 @@ func TestChangePasswordCannotOverwriteConcurrentReset(t *testing.T) {
 		t.Fatalf("set up credential race: %v", err)
 	}
 	s.verify = func(ctx context.Context, pw, encoded string) (bool, bool, error) {
-		ok, rehash, err := VerifyPassword(ctx, pw, encoded)
-		if err == nil && ok {
-			if err := s.ResetPassword(ctx, u.ID, "resetpassword"); err != nil {
-				t.Fatalf("set up credential race: %v", err)
+		ok, rehash, verifyErr := VerifyPassword(ctx, pw, encoded)
+		if verifyErr == nil && ok {
+			if resetErr := s.ResetPassword(ctx, u.ID, "resetpassword"); resetErr != nil {
+				t.Fatalf("set up credential race: %v", resetErr)
 			}
 		}
-		return ok, rehash, err
+		return ok, rehash, verifyErr
 	}
 	err = s.ChangePassword(ctx, u.ID, "password123", "stalechange", 0)
 	s.verify = VerifyPassword

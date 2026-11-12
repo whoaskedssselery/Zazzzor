@@ -191,7 +191,7 @@ once() {
   local started name tag pg schema dump_size data_size
   validate_retention
   require_writable_root
-  take_lock
+  take_lock 2
   [[ -z "$(pending_restore)" ]] || die 'восстановление не завершено; сначала выполните restore с --resume'
   # Блокировка у нас, значит .partial-* остались от прерванных запусков.
   find "$root" -mindepth 1 -maxdepth 1 -name '.partial-*' -exec rm -rf -- '{}' +
@@ -423,7 +423,7 @@ restore() {
   (require_writable_root) || exit 3
   # При занятой блокировке нельзя отличить копию от параллельного restore.
   # Код 2 оставляет API остановленным до повторного запуска.
-  take_lock
+  take_lock 2
   if [[ "$data" == / || ! -d "$data" || ! -w "$data" ]]; then
     echo "Ошибка: в каталог изображений $data нельзя писать" >&2
     exit 3
@@ -457,7 +457,7 @@ restore_replicas() {
 # журнал целиком, даже если очистку каталога потом прервут.
 finish_restore() {
   local old completed
-  take_lock
+  take_lock 2
   old="$(restore_state "$1")"
   [[ -f "$old/database-restored" && -f "$old/files-restored" ]] || die 'сначала завершите подмену с --resume'
   completed="$data/.restore-complete-${old##*-}"
@@ -578,7 +578,7 @@ case "${1:-}" in
     health
     ;;
   prune)
-    take_lock
+    take_lock 2
     [[ -z "$(pending_restore)" ]] || die 'восстановление не завершено; сначала выполните restore с --resume'
     prune
     ;;
