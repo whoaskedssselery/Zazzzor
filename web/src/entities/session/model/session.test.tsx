@@ -1,5 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
-import { makeUser } from "@/shared/test";
+import { makeMe } from "@/shared/test";
 import { ME_KEY, safeNext, setSignedIn, type User, updateSignedIn } from "./session";
 
 describe("safeNext", () => {
@@ -40,8 +40,8 @@ describe("safeNext", () => {
 });
 
 describe("updateSignedIn", () => {
-  const anna = makeUser("1", { display_name: "Анна" });
-  const boris = makeUser("2");
+  const anna = makeMe("1", { display_name: "Анна" });
+  const boris = makeMe("2");
 
   it("takes a newer copy of the user still signed in", () => {
     const qc = new QueryClient();

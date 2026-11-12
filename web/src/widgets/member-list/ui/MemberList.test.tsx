@@ -1,6 +1,8 @@
 import { screen, within } from "@testing-library/react";
+import { HttpResponse } from "msw";
 import { applyGatewayDispatch, resetGuilds } from "@/entities/guild";
 import {
+  apiHandler,
   makeEveryone,
   makeGuild,
   makeGuildState,
@@ -8,7 +10,9 @@ import {
   makeReady,
   makeRole,
   makeUser,
+  renderRouted,
   renderUi,
+  server,
 } from "@/shared/test";
 import { MemberList } from "./MemberList";
 
@@ -46,7 +50,11 @@ beforeEach(() => {
           makeMember(seryozha, { roles: ["51"] }),
         ],
         my_member: mine,
-        presences: ["1", "2", "3", "4", "5"].map((id) => ({ user_id: id, status: "online" as const })),
+        presences: ["1", "2", "3", "4", "5"].map((id) => ({
+          user_id: id,
+          status: "online" as const,
+          custom_status: null,
+        })),
       }),
     ]),
   });
@@ -98,5 +106,30 @@ describe("MemberList", () => {
     renderUi(<MemberList guildId={G} />);
     expect(screen.getByRole("img", { name: "Аня, в сети" })).toBeTruthy();
     expect(screen.getByRole("img", { name: "Серёжа, не в сети" })).toBeTruthy();
+  });
+
+  it("shows away and do not disturb, and the status line under the name", () => {
+    applyGatewayDispatch("PRESENCE_UPDATE", { user_id: anya.id, status: "dnd", custom_status: "Не будить" });
+    applyGatewayDispatch("PRESENCE_UPDATE", { user_id: olya.id, status: "idle", custom_status: null });
+    renderUi(<MemberList guildId={G} />);
+    expect(screen.getByRole("img", { name: "Аня, не беспокоить" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Оля, нет на месте" })).toBeTruthy();
+    expect(screen.getByText("Не будить", { selector: "[data-member-line]" })).toBeTruthy();
+    // Away and do not disturb are still online.
+    expect(groups()).toContainEqual(["В сети — 2", ["Максим", "Оля"]]);
+  });
+
+  it("opens a card with the status line and «О себе»", async () => {
+    applyGatewayDispatch("PRESENCE_UPDATE", { user_id: olya.id, status: "online", custom_status: "Пеку пироги" });
+    server.use(
+      apiHandler("get", "/users/{user_id}/profile", ({ params }) =>
+        HttpResponse.json({ user: olya, bio: `Привет, я ${String(params.user_id)}`, mutual_guild_ids: [G] }),
+      ),
+    );
+    const { user } = await renderRouted(<MemberList guildId={G} />);
+    await user.click(nameEl("Оля"));
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).getByText("Пеку пироги")).toBeTruthy();
+    expect(await within(menu).findByText("Привет, я 5")).toBeTruthy();
   });
 });

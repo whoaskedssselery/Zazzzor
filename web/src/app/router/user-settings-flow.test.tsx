@@ -69,6 +69,26 @@ describe("user settings", () => {
     expect(panelName()).toBe("Василий");
   });
 
+  it("saves «О себе» trimmed, with its line breaks", async () => {
+    const bodies: unknown[] = [];
+    signedIn();
+    server.use(
+      apiHandler("patch", "/users/@me", async ({ request }) => {
+        const body = (await request.json()) as { bio: string };
+        bodies.push(body);
+        return HttpResponse.json({ ...testUser, bio: body.bio });
+      }),
+    );
+    const { user } = renderApp("/settings/profile");
+    const bio = await screen.findByRole("textbox", { name: "О себе" });
+    await user.type(bio, "  Люблю кино{Enter}и чай  ");
+    await user.click(screen.getByRole("button", { name: "Сохранить изменения" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("region", { name: UNSAVED })).toBeNull();
+    });
+    expect(bodies).toEqual([{ bio: "Люблю кино\nи чай" }]);
+  });
+
   it("checks the display name before sending it", async () => {
     signedIn();
     const { user } = renderApp("/settings/profile");
