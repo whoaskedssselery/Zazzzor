@@ -45,6 +45,9 @@ const (
 	RelationshipRemove    = "RELATIONSHIP_REMOVE"
 	VoiceStateUpdate      = "VOICE_STATE_UPDATE"
 	VoiceMove             = "VOICE_MOVE"
+	CallCreate            = "CALL_CREATE"
+	CallUpdate            = "CALL_UPDATE"
+	CallDelete            = "CALL_DELETE"
 	SessionRevoked        = "SESSION_REVOKED"
 
 	// Overflow is the last event a subscriber receives when it fell behind

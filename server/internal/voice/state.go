@@ -73,6 +73,9 @@ func (s *Service) setLocked(ctx context.Context, sess *session) {
 	s.sessions[sess.state.UserID] = sess
 	s.touchLocked(sess.state.UserID)
 	s.announceLocked(ctx, sess.state, false)
+	if sess.state.GuildID == 0 {
+		s.joinedCallLocked(ctx, sess.state.ChannelID, sess.state.UserID)
+	}
 }
 
 // dropLocked clears userID's state, if any, and announces that they left.
@@ -85,6 +88,9 @@ func (s *Service) dropLocked(ctx context.Context, userID snowflake.ID, remove bo
 	delete(s.sessions, userID)
 	s.touchLocked(userID)
 	s.announceLocked(ctx, sess.state, true)
+	if sess.state.GuildID == 0 {
+		s.leftCallLocked(ctx, sess.state.ChannelID)
+	}
 	if remove {
 		delete(s.moves, userID)
 		s.removeLocked(sess.room, userID.String(), sess.sid)

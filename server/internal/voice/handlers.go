@@ -13,6 +13,7 @@ import (
 // run auth.Middleware:
 //
 //	POST /channels/{channel_id}/voice
+//	POST /channels/{channel_id}/call/decline
 //	PATCH /users/@me/voice-state
 //	DELETE /users/@me/voice
 //	PATCH /guilds/{guild_id}/members/{user_id}/voice
@@ -23,6 +24,7 @@ func Mount(r chi.Router, s *Service) {
 		r.Use(auth.Require, httpx.NoStore)
 		writes := r.With(auth.LimitPerUser(s.writeLimiter))
 		writes.Post("/channels/{channel_id}/voice", httpx.Wrap(s.handleJoin))
+		writes.Post("/channels/{channel_id}/call/decline", httpx.Wrap(s.handleDecline))
 		writes.Patch("/users/@me/voice-state", httpx.Wrap(s.handleUpdateSelf))
 		writes.Delete("/users/@me/voice", httpx.Wrap(s.handleLeave))
 		writes.Patch("/guilds/{guild_id}/members/{user_id}/voice", httpx.Wrap(s.handleModerate))
@@ -41,6 +43,18 @@ func (s *Service) handleJoin(w http.ResponseWriter, r *http.Request) error {
 		return fail(err)
 	}
 	httpx.JSON(w, http.StatusOK, j)
+	return nil
+}
+
+func (s *Service) handleDecline(w http.ResponseWriter, r *http.Request) error {
+	id, err := httpx.PathID(r, "channel_id")
+	if err != nil {
+		return err
+	}
+	if err = s.DeclineCall(r.Context(), id, auth.CurrentUser(r)); err != nil {
+		return fail(err)
+	}
+	w.WriteHeader(http.StatusNoContent)
 	return nil
 }
 

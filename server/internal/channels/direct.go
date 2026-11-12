@@ -182,3 +182,24 @@ func (s *Service) ReopenPrivateIn(ctx context.Context, tx pgx.Tx, id snowflake.I
 	}
 	return out, nil
 }
+
+// PrepareCall checks that userID may start or join the call of private
+// channel id: a recipient, and in a 1:1 on the terms of a message. A closed
+// 1:1 reopens for the other recipient, so the call that rings them shows.
+// It returns every recipient.
+func (s *Service) PrepareCall(ctx context.Context, id, userID snowflake.ID) ([]snowflake.ID, error) {
+	var recipients []snowflake.ID
+	err := s.privateWrite(ctx, id, userID, func(tx pgx.Tx, snapshot privateSnapshot) ([]events.Event, error) {
+		if err := s.CheckPrivateSendIn(ctx, tx, id, userID); err != nil {
+			return nil, err
+		}
+		for _, m := range snapshot.members {
+			recipients = append(recipients, m.ID)
+		}
+		return s.ReopenPrivateIn(ctx, tx, id)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return recipients, nil
+}
