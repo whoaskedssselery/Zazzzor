@@ -206,7 +206,7 @@ func (s *Service) admitted(ctx context.Context, channelID snowflake.ID, p Partic
 	if err != nil {
 		return 0, 0, false, err
 	}
-	if c.Type != channels.TypeVoice {
+	if c.Type != channels.TypeVoice && !c.Type.Private() {
 		return 0, 0, false, nil
 	}
 	perm, guildID, err := s.channels.Permissions(ctx, userID, channelID)

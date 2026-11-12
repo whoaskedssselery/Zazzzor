@@ -125,21 +125,25 @@ type State struct {
 
 // PublicState is the JSON form of a State (schema VoiceState).
 type PublicState struct {
-	GuildID    snowflake.ID `json:"guild_id"`
-	ChannelID  snowflake.ID `json:"channel_id"`
-	UserID     snowflake.ID `json:"user_id"`
-	SelfMute   bool         `json:"self_mute"`
-	SelfDeaf   bool         `json:"self_deaf"`
-	SelfStream bool         `json:"self_stream"`
-	SelfVideo  bool         `json:"self_video"`
-	Mute       bool         `json:"mute"`
-	Deaf       bool         `json:"deaf"`
-	JoinedAt   string       `json:"joined_at"`
+	GuildID    *snowflake.ID `json:"guild_id"`
+	ChannelID  snowflake.ID  `json:"channel_id"`
+	UserID     snowflake.ID  `json:"user_id"`
+	SelfMute   bool          `json:"self_mute"`
+	SelfDeaf   bool          `json:"self_deaf"`
+	SelfStream bool          `json:"self_stream"`
+	SelfVideo  bool          `json:"self_video"`
+	Mute       bool          `json:"mute"`
+	Deaf       bool          `json:"deaf"`
+	JoinedAt   string        `json:"joined_at"`
 }
 
 // Public returns the JSON form of st.
 func (st State) Public() PublicState {
-	return PublicState{GuildID: st.GuildID, ChannelID: st.ChannelID, UserID: st.UserID, SelfMute: st.SelfMute,
+	var guildID *snowflake.ID
+	if st.GuildID != 0 { // a call has no guild
+		guildID = &st.GuildID
+	}
+	return PublicState{GuildID: guildID, ChannelID: st.ChannelID, UserID: st.UserID, SelfMute: st.SelfMute,
 		SelfDeaf: st.SelfDeaf, SelfStream: st.SelfStream, SelfVideo: st.SelfVideo, Mute: st.Mute, Deaf: st.Deaf,
 		JoinedAt: httpx.FormatTime(st.JoinedAt)}
 }
@@ -182,6 +186,10 @@ func (noMembers) Subject(context.Context, snowflake.ID, snowflake.ID) (permissio
 type Options struct {
 	Channels Channels
 	Members  Members
+	// Private checks and prepares calls; without it a call is refused.
+	Private Private
+	// RingFor is how long a call rings; zero means 60 seconds.
+	RingFor time.Duration
 	// Rooms is the LiveKit server API.
 	Rooms RoomClient
 	// APIKey and APISecret sign the join tokens and verify the webhooks.
@@ -263,6 +271,8 @@ type invalidation struct {
 type Service struct {
 	channels     Channels
 	members      Members
+	private      Private
+	ringFor      time.Duration
 	rooms        RoomClient
 	key, secret  string
 	enabled      bool
@@ -304,11 +314,14 @@ type Service struct {
 	refreshWake   chan struct{}
 	permissionRev uint64    // guild sync epoch, including guilds with no local state
 	lastReconcile time.Time // last wholly successful scan, zero before success
+	// calls are the calls of private channels; they end with their last
+	// participant or when they ring nobody and nobody is in them.
+	calls map[snowflake.ID]*call
 }
 
 // NewService builds a Service from o. It starts nothing and calls nothing.
 func NewService(o Options) *Service {
-	s := &Service{channels: o.Channels, members: o.Members, rooms: o.Rooms, key: o.APIKey, secret: o.APISecret, pub: o.Publisher,
+	s := &Service{channels: o.Channels, members: o.Members, private: o.Private, calls: make(map[snowflake.ID]*call), rooms: o.Rooms, key: o.APIKey, secret: o.APISecret, pub: o.Publisher,
 		log: o.Logger, now: o.Now, writeLimiter: o.WriteLimiter,
 		sessions: make(map[snowflake.ID]*session), intents: make(map[snowflake.ID]intent),
 		revs: make(map[snowflake.ID]uint64), seen: make(map[string]time.Time),
@@ -333,6 +346,10 @@ func NewService(o Options) *Service {
 	}
 	if s.now == nil {
 		s.now = time.Now
+	}
+	s.ringFor = o.RingFor
+	if s.ringFor <= 0 {
+		s.ringFor = defaultRingFor
 	}
 	if s.writeLimiter == nil {
 		s.writeLimiter = ratelimit.New(writeRate, writeBurst, writeTTL)

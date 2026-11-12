@@ -100,7 +100,7 @@ func NewModules(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator,
 			}
 			return nil
 		}})
-	vo := voice.Options{Channels: channelSvc, Members: guildSvc, Publisher: pub, Logger: slog.Default()}
+	vo := voice.Options{Channels: channelSvc, Members: guildSvc, Private: channelSvc, Publisher: pub, Logger: slog.Default()}
 	if cfg.VoiceEnabled() {
 		vo.Rooms = voice.NewLiveKit(cfg.LiveKitURL, cfg.LiveKitAPIKey, cfg.LiveKitAPISecret)
 		vo.APIKey, vo.APISecret = cfg.LiveKitAPIKey, cfg.LiveKitAPISecret

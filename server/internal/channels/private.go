@@ -16,8 +16,11 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
 
+// privatePermissions are every recipient's in a DM or a group DM: the
+// chat, and the call (voice, screen share and camera).
 const privatePermissions = permissions.ViewChannel | permissions.ReadMessageHistory |
-	permissions.SendMessages | permissions.AttachFiles | permissions.AddReactions
+	permissions.SendMessages | permissions.AttachFiles | permissions.AddReactions |
+	permissions.Connect | permissions.Speak | permissions.Stream | permissions.UseVoiceActivity
 
 // DMChannel is the private channel as seen by one recipient.
 type DMChannel struct {

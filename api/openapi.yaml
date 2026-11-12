@@ -2919,9 +2919,19 @@ paths:
     post:
       tags: [voice]
       operationId: joinVoice
-      summary: Get a token to join a voice channel
+      summary: Get a token to join a voice channel or a call
       description: |
-        Needs `VIEW_CHANNEL` and `CONNECT` in a voice channel. Returns a
+        Needs `VIEW_CHANNEL` and `CONNECT` in a voice channel. A DM or a
+        group DM is a call: every recipient may connect, speak, share the
+        screen and turn the camera on; a 1:1 DM refuses the call on the same
+        terms as a message (`403 cannot_message_user`: a block either way, no
+        shared server and not friends). The first token for a call with nobody
+        in it starts the call: `CALL_CREATE` rings the other recipients
+        (reopening a closed 1:1 DM for them first, as a message does). A
+        token for a call that rings the caller stops ringing them
+        (`CALL_UPDATE`). Server mute, deafen and moves do not apply to calls.
+
+        Returns a
         LiveKit access token for the room named by the channel ID, valid for
         10 minutes, with the caller's user ID as identity and display name as
         name. It may subscribe unless server-deafened; it may publish the
@@ -2967,13 +2977,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/VoiceJoin"
         "400":
-          description: "`not_a_voice_channel`."
+          description: "`not_a_voice_channel`: neither a voice channel nor a private channel."
           $ref: "#/components/responses/Problem"
         "401":
           description: "`unauthenticated`."
           $ref: "#/components/responses/Problem"
         "403":
-          description: "`origin_not_allowed` or `missing_permission` (no `CONNECT`)."
+          description: "`origin_not_allowed`, `missing_permission` (no `CONNECT`), or `cannot_message_user` (a 1:1 call refused)."
           $ref: "#/components/responses/Problem"
         "404":
           description: "`not_found`: no such channel, or the caller may not view it."
@@ -2984,6 +2994,37 @@ paths:
           $ref: "#/components/responses/Problem"
         "503":
           description: "`voice_unavailable`: voice is not configured, or LiveKit could not remove the caller from their previous channel."
+          $ref: "#/components/responses/Problem"
+  /channels/{channel_id}/call/decline:
+    post:
+      tags: [voice]
+      operationId: declineCall
+      summary: Stop a call ringing the caller
+      description: |
+        Takes the caller off the ringing list of the call in this DM or group
+        DM (`CALL_UPDATE` to the recipients). A call nobody is in and that
+        rings nobody any more ends (`CALL_DELETE`). Declining a call that
+        does not ring the caller, or no call, changes nothing. Shares the
+        per-user voice write limit.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      responses:
+        "204":
+          description: The call no longer rings the caller.
+        "400":
+          description: "`not_a_voice_channel`: not a private channel."
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such channel, or the caller is not a recipient."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+        "503":
+          description: "`voice_unavailable`: voice is not configured."
           $ref: "#/components/responses/Problem"
   /guilds/{guild_id}/members/{user_id}/voice:
     patch:
@@ -3840,6 +3881,28 @@ components:
           type: [string, "null"]
           minLength: 1
           maxLength: 100
+    Call:
+      type: object
+      additionalProperties: false
+      required: [channel_id, ringing]
+      description: A call going on in a DM or a group DM, and whom it rings.
+      properties:
+        channel_id:
+          $ref: "#/components/schemas/Snowflake"
+        ringing:
+          type: array
+          description: |
+            Recipients the call rings: everyone but the caller when it starts,
+            until they join, decline, or 60 seconds pass.
+          items:
+            $ref: "#/components/schemas/Snowflake"
+    CallDeleteEvent:
+      type: object
+      additionalProperties: false
+      required: [channel_id]
+      properties:
+        channel_id:
+          $ref: "#/components/schemas/Snowflake"
     DMChannelDeleteEvent:
       type: object
       additionalProperties: false
@@ -4450,6 +4513,8 @@ components:
             - $ref: "#/components/schemas/RelationshipRemove"
             - $ref: "#/components/schemas/DMChannel"
             - $ref: "#/components/schemas/DMChannelDeleteEvent"
+            - $ref: "#/components/schemas/Call"
+            - $ref: "#/components/schemas/CallDeleteEvent"
             - $ref: "#/components/schemas/UserGuildSettings"
             - $ref: "#/components/schemas/Guild"
             - $ref: "#/components/schemas/GuildDeleteEvent"
@@ -4479,8 +4544,18 @@ components:
     GatewayReady:
       type: object
       additionalProperties: false
-      required: [user, guilds, presences, read_states, relationships, private_channels, user_guild_settings]
+      required: [user, guilds, presences, read_states, relationships, private_channels, user_guild_settings, private_voice_states, calls]
       properties:
+        private_voice_states:
+          type: array
+          description: Who is in the calls of the receiver's DMs and group DMs.
+          items:
+            $ref: "#/components/schemas/VoiceState"
+        calls:
+          type: array
+          description: The calls going on in the receiver's DMs and group DMs.
+          items:
+            $ref: "#/components/schemas/Call"
         user_guild_settings:
           type: array
           description: Non-default personal notification settings for the receiving user.
@@ -4561,11 +4636,14 @@ components:
       additionalProperties: false
       required: [guild_id, channel_id, user_id, self_mute, self_deaf, self_stream, self_video, mute, deaf, joined_at]
       description: |
-        A user in a voice channel; a user is in at most one. It is also the
-        payload of VOICE_STATE_UPDATE, which adds `left`.
+        A user in a voice channel or a call; a user is in at most one. It is
+        also the payload of VOICE_STATE_UPDATE, which adds `left`.
       properties:
         guild_id:
-          $ref: "#/components/schemas/Snowflake"
+          description: The server, or null in a call (a DM or a group DM).
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
         channel_id:
           $ref: "#/components/schemas/Snowflake"
         user_id:
@@ -4844,6 +4922,12 @@ x-gateway:
     GUILD_SYNC) lists the voice states of the channels the receiver may
     view in `voice_states`.
 
+    Calls: in a DM or a group DM, VOICE_STATE_UPDATE (with `guild_id`
+    null) and CALL_CREATE, CALL_UPDATE and CALL_DELETE reach its
+    recipients. A recipient who leaves or is removed from a group leaves
+    its call. READY lists `private_voice_states` and `calls`. Calls live
+    in the API process: a restart ends them.
+
     On CHANNEL_DELETE or GUILD_DELETE, clients discard all cached voice
     states of that channel or guild without waiting for a leave event.
     GUILD_SYNC replaces the receiver's visible voice state snapshot;
@@ -4956,5 +5040,14 @@ x-gateway:
       $ref: "#/components/schemas/User"
     VOICE_STATE_UPDATE:
       $ref: "#/components/schemas/VoiceState"
+    CALL_CREATE:
+      description: A call started in a DM or a group DM; sent to its recipients.
+      $ref: "#/components/schemas/Call"
+    CALL_UPDATE:
+      description: Whom a call rings changed; sent to its recipients.
+      $ref: "#/components/schemas/Call"
+    CALL_DELETE:
+      description: The call ended (nobody in it, nobody rung); sent to its recipients.
+      $ref: "#/components/schemas/CallDeleteEvent"
     VOICE_MOVE:
       $ref: "#/components/schemas/VoiceMove"

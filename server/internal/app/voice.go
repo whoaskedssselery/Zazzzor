@@ -39,6 +39,14 @@ func (p *voiceCleanup) Publish(ctx context.Context, e events.Event) {
 			if e.Type == events.ChannelDelete {
 				p.voice.RemoveChannel(ctx, pl.ID)
 			}
+		case channels.DMChannelDelete:
+			// Closed, left or removed: only the last two end the recipient's
+			// part in the call, which a lookup tells apart. Not on this goroutine:
+			// Publish must not wait on the database.
+			if e.Type == events.DMChannelDelete && len(e.Audience.UserIDs) == 1 {
+				userID := e.Audience.UserIDs[0]
+				go p.voice.RecheckPrivate(context.WithoutCancel(ctx), pl.ID, userID)
+			}
 		}
 	}
 	if p.next != nil {

@@ -45,6 +45,8 @@ var _ Bus = (*events.Bus)(nil)
 // VoiceStates reads who is in the voice channels of a guild (voice.Service).
 type VoiceStates interface {
 	GuildStates(guildID snowflake.ID) []voice.State
+	// PrivateCalls returns the calls of these private channels and who is in them.
+	PrivateCalls(channelIDs []snowflake.ID) ([]voice.Call, []voice.State)
 }
 
 var _ VoiceStates = (*voice.Service)(nil)

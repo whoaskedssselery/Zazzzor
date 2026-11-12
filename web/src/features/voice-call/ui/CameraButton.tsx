@@ -15,7 +15,9 @@ export const CameraButton = ({ className }: { className?: string }) => {
   const guildId = useCall((s) => s.guildId);
   const channelId = useCall((s) => s.channelId);
   const allowed = useGuilds((s) => {
-    const entry = guildId === null ? undefined : s.guilds[guildId];
+    // In a DM or a group everyone may share and film.
+    if (guildId === null) return channelId !== null && channelId in s.privates;
+    const entry = s.guilds[guildId];
     if (!entry || channelId === null || s.me === null) return false;
     return has(computeChannel(entry, channelId, s.me.id), PERM.STREAM);
   });

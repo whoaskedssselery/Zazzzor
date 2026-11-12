@@ -46,6 +46,8 @@ const entry = () => {
     relationships: [],
     private_channels: [],
     user_guild_settings: [],
+    private_voice_states: [],
+    calls: [],
   }).guilds[G];
   if (!e) throw new Error("no entry");
   return e;

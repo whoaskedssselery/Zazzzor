@@ -5,6 +5,7 @@ import { loadSession, onUnauthorized, safeNext, useSession } from "@/entities/se
 import { NotificationPrompt, useMentionAlerts, useUnreadBadge } from "@/features/notify";
 import { CallNotices } from "@/features/voice-call";
 import { ConnectionBanner } from "@/widgets/connection-banner";
+import { IncomingCalls } from "@/widgets/incoming-call";
 import { useGatewaySession } from "./gateway-session";
 
 /** `beforeLoad` of the protected layout: no session → /login?next=<this page>. */
@@ -71,8 +72,9 @@ export const AuthGuard = () => {
       <div className="min-h-0 flex-1 overflow-auto">
         <Outlet />
       </div>
-      {/* Call toasts on every screen behind sign-in, the settings included. */}
+      {/* Call toasts and incoming calls on every screen behind sign-in, the settings included. */}
       <CallNotices />
+      <IncomingCalls />
     </div>
   );
 };

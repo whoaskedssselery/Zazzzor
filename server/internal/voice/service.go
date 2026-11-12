@@ -43,11 +43,20 @@ func (s *Service) Join(ctx context.Context, channelID snowflake.ID, user auth.Us
 	if err != nil {
 		return Join{}, err
 	}
-	if c.Type != channels.TypeVoice {
+	if c.Type != channels.TypeVoice && !c.Type.Private() {
 		return Join{}, ErrNotVoiceChannel
 	}
 	if !p.Has(permissions.Connect) {
 		return Join{}, ErrMissingPerm
+	}
+	var recipients []snowflake.ID
+	if c.Type.Private() {
+		if s.private == nil {
+			return Join{}, ErrNotVoiceChannel
+		}
+		if recipients, err = s.private.PrepareCall(ctx, channelID, user.ID); err != nil {
+			return Join{}, err
+		}
 	}
 	signaling, err := signalingURL(origin)
 	if err != nil {
@@ -64,6 +73,9 @@ func (s *Service) Join(ctx context.Context, channelID snowflake.ID, user auth.Us
 	token, err := s.token(user, channelID, p, join, flags)
 	if err != nil {
 		return Join{}, err
+	}
+	if c.Type.Private() {
+		s.ringCall(ctx, channelID, user.ID, recipients)
 	}
 	return Join{Token: token, URL: signaling}, nil
 }

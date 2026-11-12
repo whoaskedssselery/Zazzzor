@@ -34,6 +34,13 @@ export interface PrivateEntry {
   channel: DMChannel;
   /** Null before the user read anything there. */
   read: ReadMark | null;
+  /** Who is in its call, by user ID. */
+  voice: Record<string, VoiceState>;
+}
+
+/** A call going on in a DM or a group DM: whom it still rings. */
+export interface Call {
+  ringing: string[];
 }
 
 /** Relationship types, as Discord numbers them. */
@@ -85,6 +92,8 @@ export interface GuildsState {
   privates: Record<string, PrivateEntry>;
   /** The user's notification settings that differ from the defaults, by server ID or PRIVATE_SCOPE. */
   notify: Record<string, NotifySettings>;
+  /** The calls going on in the user's DMs and groups, by channel ID. */
+  calls: Record<string, Call>;
 }
 
 export const EMPTY_GUILDS: GuildsState = {
@@ -95,6 +104,7 @@ export const EMPTY_GUILDS: GuildsState = {
   relationships: {},
   privates: {},
   notify: {},
+  calls: {},
 };
 
 const scopeOf = (n: NotifySettings): string => n.guild_id ?? PRIVATE_SCOPE;
@@ -149,10 +159,19 @@ export function applyReady(d: ReadyPayload): GuildsState {
   const privates: Record<string, PrivateEntry> = {};
   for (const channel of d.private_channels) {
     const r = marks.get(channel.id);
-    privates[channel.id] = { channel, read: r ? { lastReadId: r.last_read_id, mentions: r.mention_count } : null };
+    privates[channel.id] = {
+      channel,
+      read: r ? { lastReadId: r.last_read_id, mentions: r.mention_count } : null,
+      voice: {},
+    };
   }
+  for (const { left: _left, ...v } of d.private_voice_states) {
+    const p = privates[v.channel_id];
+    if (p) p.voice[v.user_id] = v;
+  }
+  const calls = Object.fromEntries(d.calls.map((c) => [c.channel_id, { ringing: c.ringing }]));
   const notify = Object.fromEntries(d.user_guild_settings.map((n) => [scopeOf(n), n]));
-  return { me: d.user, guilds, order, presences, relationships: byId(d.relationships), privates, notify };
+  return { me: d.user, guilds, order, presences, relationships: byId(d.relationships), privates, notify, calls };
 }
 
 /** Changes private channel `id` with `fn`; one not held is left alone. */
@@ -166,7 +185,10 @@ function updatePrivate(s: GuildsState, id: string, fn: (p: PrivateEntry) => Priv
 /** A private channel opened, reopened or changed: its read mark stays. */
 function upsertPrivate(s: GuildsState, channel: DMChannel): GuildsState {
   const held = s.privates[channel.id];
-  return { ...s, privates: { ...s.privates, [channel.id]: { channel, read: held?.read ?? null } } };
+  return {
+    ...s,
+    privates: { ...s.privates, [channel.id]: { channel, read: held?.read ?? null, voice: held?.voice ?? {} } },
+  };
 }
 
 /** A server whole (GUILD_CREATE, GUILD_SYNC): replaced if held, else added at the end. */
@@ -284,8 +306,9 @@ function privateMessageCreated(s: GuildsState, m: NewMessage): GuildsState {
     const last = p.channel.last_message_id;
     if (last !== null && !newer(m.id, last)) return p;
     const channel = { ...p.channel, last_message_id: m.id };
-    if (m.author !== null && m.author.id === s.me?.id) return { channel, read: { lastReadId: m.id, mentions: 0 } };
-    return { channel, read: { lastReadId: p.read?.lastReadId ?? "0", mentions: (p.read?.mentions ?? 0) + 1 } };
+    if (m.author !== null && m.author.id === s.me?.id)
+      return { ...p, channel, read: { lastReadId: m.id, mentions: 0 } };
+    return { ...p, channel, read: { lastReadId: p.read?.lastReadId ?? "0", mentions: (p.read?.mentions ?? 0) + 1 } };
   });
 }
 
@@ -377,17 +400,28 @@ const handlers: Handlers = {
     (s.notify[scopeOf(n)]?.version ?? -1) > n.version ? s : { ...s, notify: { ...s.notify, [scopeOf(n)]: n } },
   DM_CHANNEL_CREATE: upsertPrivate,
   DM_CHANNEL_UPDATE: upsertPrivate,
-  DM_CHANNEL_DELETE: (s, d) => (d.id in s.privates ? { ...s, privates: without(s.privates, d.id) } : s),
+  DM_CHANNEL_DELETE: (s, d) =>
+    d.id in s.privates || d.id in s.calls
+      ? { ...s, privates: without(s.privates, d.id), calls: without(s.calls, d.id) }
+      : s,
   RELATIONSHIP_ADD: (s, r) => ({ ...s, relationships: { ...s.relationships, [r.id]: r } }),
   // Only the tie the event names: a request accepted meanwhile is a friendship now, and stays.
   RELATIONSHIP_REMOVE: (s, d) =>
     s.relationships[d.id]?.type === d.type ? { ...s, relationships: without(s.relationships, d.id) } : s,
-  VOICE_STATE_UPDATE: (s, { left, ...v }) =>
-    updateGuild(s, v.guild_id, (e) => {
-      if (!left) return { ...e, voice: { ...e.voice, [v.user_id]: v } };
+  VOICE_STATE_UPDATE: (s, { left, ...v }) => {
+    // One voice place at a time: joining one takes the user out of any other, here at once.
+    const voice = <T extends { voice: Record<string, VoiceState> }>(holder: T): T => {
+      if (!left) return { ...holder, voice: { ...holder.voice, [v.user_id]: v } };
       // A leave of a channel the user already moved out of changes nothing.
-      return e.voice[v.user_id]?.channel_id === v.channel_id ? { ...e, voice: without(e.voice, v.user_id) } : e;
-    }),
+      return holder.voice[v.user_id]?.channel_id === v.channel_id
+        ? { ...holder, voice: without(holder.voice, v.user_id) }
+        : holder;
+    };
+    return v.guild_id === null ? updatePrivate(s, v.channel_id, voice) : updateGuild(s, v.guild_id, voice);
+  },
+  CALL_CREATE: (s, c) => ({ ...s, calls: { ...s.calls, [c.channel_id]: { ringing: c.ringing } } }),
+  CALL_UPDATE: (s, c) => ({ ...s, calls: { ...s.calls, [c.channel_id]: { ringing: c.ringing } } }),
+  CALL_DELETE: (s, d) => (d.channel_id in s.calls ? { ...s, calls: without(s.calls, d.channel_id) } : s),
 };
 
 const isHandled = (t: string): t is keyof Handlers => Object.hasOwn(handlers, t);

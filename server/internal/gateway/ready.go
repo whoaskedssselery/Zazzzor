@@ -104,7 +104,7 @@ func (g *Gateway) ready(ctx context.Context, user auth.User) (Ready, error) {
 	}
 	r := Ready{User: user.Public(), Guilds: make([]GuildState, 0, len(ids)), Presences: []Presence{},
 		ReadStates: []messages.ReadState{}, Relationships: []relationships.Relationship{},
-		UserGuildSettings: []notifysettings.Settings{}}
+		UserGuildSettings: []notifysettings.Settings{}, PrivateVoiceStates: []voice.PublicState{}, Calls: []voice.Call{}}
 	if g.opts.NotifySettings != nil {
 		list, listErr := g.opts.NotifySettings.List(ctx, user.ID)
 		if listErr != nil {
@@ -165,6 +165,17 @@ func (g *Gateway) readyPrivate(ctx context.Context, user snowflake.ID, r *Ready)
 		return nil
 	}
 	r.PrivateChannels = list
+	if g.opts.Voice != nil {
+		ids := make([]snowflake.ID, len(list))
+		for i, c := range list {
+			ids[i] = c.ID
+		}
+		calls, states := g.opts.Voice.PrivateCalls(ids)
+		r.Calls = calls
+		for _, st := range states {
+			r.PrivateVoiceStates = append(r.PrivateVoiceStates, st.Public())
+		}
+	}
 	if g.opts.ReadStates == nil {
 		return nil
 	}

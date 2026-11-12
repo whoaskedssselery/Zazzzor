@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { PhoneOff } from "lucide-react";
 import { useCall } from "@/entities/call";
-import { useGuilds } from "@/entities/guild";
+import { privateName, useGuilds } from "@/entities/guild";
 import { CameraButton, leaveVoice, ScreenShareButton } from "@/features/voice-call";
 import { cn, IconButton } from "@/shared/ui";
 
@@ -23,7 +23,8 @@ export const VoicePanel = () => {
   const channel = useGuilds((s) =>
     guildId === null || channelId === null ? undefined : s.guilds[guildId]?.channels[channelId],
   );
-  if (status === "idle" || guildId === null || channelId === null) return null;
+  const dm = useGuilds((s) => (guildId === null && channelId !== null ? s.privates[channelId]?.channel : undefined));
+  if (status === "idle" || channelId === null) return null;
   return (
     <section
       aria-label="Голосовая связь"
@@ -33,13 +34,23 @@ export const VoicePanel = () => {
         <p className={cn("text-sm font-semibold", status === "connected" ? "text-fg-success" : "text-fg-warning")}>
           {STATUS[status]}
         </p>
-        <Link
-          to="/channels/$guildId/$channelId"
-          params={{ guildId, channelId }}
-          className="block truncate text-xs text-fg-muted hover:text-fg hover:underline"
-        >
-          {channel?.name ?? "Голосовой канал"} / {guild?.name ?? "Сервер"}
-        </Link>
+        {guildId === null ? (
+          <Link
+            to="/channels/@me/$channelId"
+            params={{ channelId }}
+            className="block truncate text-xs text-fg-muted hover:text-fg hover:underline"
+          >
+            {dm ? `Звонок: ${privateName(dm)}` : "Звонок"}
+          </Link>
+        ) : (
+          <Link
+            to="/channels/$guildId/$channelId"
+            params={{ guildId, channelId }}
+            className="block truncate text-xs text-fg-muted hover:text-fg hover:underline"
+          >
+            {channel?.name ?? "Голосовой канал"} / {guild?.name ?? "Сервер"}
+          </Link>
+        )}
       </div>
       <CameraButton />
       <ScreenShareButton />

@@ -18,7 +18,13 @@ import { CallControls } from "./CallControls";
 import { CameraView } from "./CameraView";
 import { OwnStreamTile, StreamTile } from "./StreamTile";
 
-const nameOf = (entry: GuildEntry, userId: string): { name: string; avatarUrl: string | null } => {
+/** How a person shows on the stage. */
+export interface StagePerson {
+  name: string;
+  avatarUrl: string | null;
+}
+
+const nameOf = (entry: GuildEntry, userId: string): StagePerson => {
   const user = entry.members[userId]?.user;
   return user ? userDisplay(entry, user) : { name: "Участник", avatarUrl: null };
 };
@@ -41,20 +47,20 @@ const Switches = ({ state }: { state: VoiceState }) => (
  * they switched off.
  */
 const PersonTile = ({
-  entry,
+  person,
   state,
   speaking,
   compact,
   camera,
 }: {
-  entry: GuildEntry;
+  person: StagePerson;
   state: VoiceState;
   speaking: boolean;
   compact: boolean;
   /** Their camera is on: "own" for the user's preview, "remote" for someone else's. */
   camera: "own" | "remote" | null;
 }) => {
-  const { name, avatarUrl } = nameOf(entry, state.user_id);
+  const { name, avatarUrl } = person;
   if (camera !== null) {
     return (
       <div className="relative size-full min-w-0 overflow-hidden rounded-lg bg-sidebar">
@@ -283,37 +289,30 @@ const CallStage = ({ tiles }: { tiles: Tile[] }) => {
 };
 
 /**
- * A voice channel's own screen. Outside the call: who is there and a way
- * in. In the call: a tile per person, the user's own screen share, then a
- * tile per other screen share (watched on demand); any tile can be brought
- * to the front, and the call's controls sit under them.
+ * The tiles of the call the user is in: a tile per person in `members`,
+ * the user's own screen share, then a tile per other screen share (watched
+ * on demand). `person` says how each user shows.
  */
-export const VoiceStage = ({ guildId, channel }: { guildId: string; channel: Channel }) => {
-  const entry = useGuilds((s) => s.guilds[guildId]);
+const useCallTiles = (members: VoiceState[], person: (userId: string) => StagePerson): Tile[] => {
   const meId = useGuilds((s) => s.me?.id ?? null);
-  const inCall = useCall((s) => s.status !== "idle" && s.channelId === channel.id);
   const speaking = useCall((s) => s.speaking);
   const streams = useCall((s) => s.streams);
   const watching = useCall((s) => s.watching);
   const sharing = useCall((s) => s.sharing);
   const cameras = useCall((s) => s.cameras);
   const myCamera = useCall((s) => s.camera);
-  if (!entry || meId === null) return null;
   const cameraOf = (userId: string): "own" | "remote" | null => {
     if (userId === meId) return myCamera ? "own" : null;
     return cameras.includes(userId) ? "remote" : null;
   };
-  const members = voiceMembers(entry, channel.id);
-  const canConnect = has(computeChannel(entry, channel.id, meId), PERM.VIEW_CHANNEL | PERM.CONNECT);
-
-  const tiles: Tile[] = [
+  return [
     ...members.map(
       (v): Tile => ({
         key: `user:${v.user_id}`,
-        name: nameOf(entry, v.user_id).name,
+        name: person(v.user_id).name,
         render: (compact) => (
           <PersonTile
-            entry={entry}
+            person={person(v.user_id)}
             state={v}
             speaking={speaking.includes(v.user_id)}
             compact={compact}
@@ -332,7 +331,7 @@ export const VoiceStage = ({ guildId, channel }: { guildId: string; channel: Cha
         ]
       : []),
     ...streams.map((id): Tile => {
-      const { name } = nameOf(entry, id);
+      const { name } = person(id);
       return {
         key: `stream:${id}`,
         name: `${name} — демонстрация экрана`,
@@ -346,6 +345,26 @@ export const VoiceStage = ({ guildId, channel }: { guildId: string; channel: Cha
       };
     }),
   ];
+};
+
+/** The stage of the call the user is in, with its controls: the tiles of `members`. */
+export const CallTiles = ({ members, person }: { members: VoiceState[]; person: (userId: string) => StagePerson }) => (
+  <CallStage tiles={useCallTiles(members, person)} />
+);
+
+/**
+ * A voice channel's own screen. Outside the call: who is there and a way
+ * in. In the call: a tile per person, the user's own screen share, then a
+ * tile per other screen share (watched on demand); any tile can be brought
+ * to the front, and the call's controls sit under them.
+ */
+export const VoiceStage = ({ guildId, channel }: { guildId: string; channel: Channel }) => {
+  const entry = useGuilds((s) => s.guilds[guildId]);
+  const meId = useGuilds((s) => s.me?.id ?? null);
+  const inCall = useCall((s) => s.status !== "idle" && s.channelId === channel.id);
+  if (!entry || meId === null) return null;
+  const members = voiceMembers(entry, channel.id);
+  const canConnect = has(computeChannel(entry, channel.id, meId), PERM.VIEW_CHANNEL | PERM.CONNECT);
 
   return (
     <section
@@ -353,7 +372,7 @@ export const VoiceStage = ({ guildId, channel }: { guildId: string; channel: Cha
       className={cn("flex min-h-0 flex-1 flex-col", !inCall && "overflow-y-auto p-4")}
     >
       {inCall ? (
-        <CallStage tiles={tiles} />
+        <CallTiles members={members} person={(id) => nameOf(entry, id)} />
       ) : (
         <div className="m-auto flex max-w-md flex-col items-center gap-4 text-center">
           <p className="text-base text-fg-muted">{members.length === 0 ? "Здесь пока никого нет." : "Сейчас здесь:"}</p>

@@ -100,9 +100,9 @@ describe("privateNotificationOf", () => {
 
   it("names the author alone in a DM, and the group after the author", () => {
     const m = makeMessage("5", "900", anya, { guild_id: null, content: "привет, <@300>" });
-    const dm = { channel: makeDMChannel("900", [anya]), read: null };
+    const dm = { channel: makeDMChannel("900", [anya]), read: null, voice: {} };
     expect(privateNotificationOf(dm, { ...m, content: "привет" })).toMatchObject({ title: "Аня", body: "привет" });
-    const group = { channel: makeDMChannel("901", [anya, petya], { name: "Пятница" }), read: null };
+    const group = { channel: makeDMChannel("901", [anya, petya], { name: "Пятница" }), read: null, voice: {} };
     expect(privateNotificationOf(group, m)).toMatchObject({ title: "Аня (Пятница)", body: "привет, @Петя" });
   });
 });
