@@ -292,10 +292,10 @@ type validRegistration struct {
 
 var usernameRE = regexp.MustCompile(`^[A-Za-z0-9_.]{2,32}$`)
 
-// normalizeUsername lower-cases a username that has the allowed shape. ASCII
+// NormalizeUsername lower-cases a username that has the allowed shape. ASCII
 // is checked before lower-casing, so look-alikes such as the Kelvin sign
 // cannot fold into a valid name.
-func normalizeUsername(s string) (string, bool) {
+func NormalizeUsername(s string) (string, bool) {
 	if !usernameRE.MatchString(s) {
 		return "", false
 	}
@@ -336,7 +336,7 @@ func NormalizeDisplayName(s string) (string, error) {
 func validateRegistration(in RegisterInput) (validRegistration, error) {
 	var v validRegistration
 	var fields []httpx.FieldError
-	name, ok := normalizeUsername(in.Username)
+	name, ok := NormalizeUsername(in.Username)
 	if !ok {
 		fields = append(fields, httpx.FieldError{Field: "username",
 			Message: "must be 2 to 32 characters: latin letters, digits, _ and ."})
@@ -450,7 +450,7 @@ func loginFailureKey(username string) string {
 func (s *Service) login(ctx context.Context, username, password string, meta SessionMeta) (User, string, error) {
 	var row store.User
 	found := false
-	if name, ok := normalizeUsername(username); ok {
+	if name, ok := NormalizeUsername(username); ok {
 		var err error
 		row, err = s.q.UserByUsername(ctx, s.pool, name)
 		switch {
@@ -644,7 +644,7 @@ func (s *Service) publishRevoked(ctx context.Context, userID snowflake.ID, ids [
 // at login: case-insensitively), or ErrUserNotFound, also for a string that
 // cannot be a username.
 func (s *Service) GetUserByUsername(ctx context.Context, username string) (User, error) {
-	name, ok := normalizeUsername(username)
+	name, ok := NormalizeUsername(username)
 	if !ok {
 		return User{}, ErrUserNotFound
 	}

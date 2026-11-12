@@ -38,6 +38,8 @@ const (
 	TypingStart           = "TYPING_START"
 	PresenceUpdate        = "PRESENCE_UPDATE"
 	UserUpdate            = "USER_UPDATE"
+	RelationshipAdd       = "RELATIONSHIP_ADD"
+	RelationshipRemove    = "RELATIONSHIP_REMOVE"
 	VoiceStateUpdate      = "VOICE_STATE_UPDATE"
 	VoiceMove             = "VOICE_MOVE"
 	SessionRevoked        = "SESSION_REVOKED"
@@ -60,7 +62,7 @@ const (
 	// AudienceGuildSync is every member of GuildID, each getting their own
 	// snapshot of the guild.
 	AudienceGuildSync
-	// AudiencePeers is UserIDs[0] and everyone sharing a guild with them; the
+	// AudiencePeers is UserIDs[0] and their friends and guild peers. The
 	// gateway resolves it through guilds.Directory.
 	AudiencePeers
 	// AudienceGuildPermission is the members of GuildID whose guild-level
