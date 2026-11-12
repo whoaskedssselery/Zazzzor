@@ -70,7 +70,7 @@ func (s *Service) Ack(ctx context.Context, channelID, messageID, userID snowflak
 		return fmt.Errorf("messages: acknowledge channel: %w", err)
 	}
 	var changed []store.ReadState
-	err = s.withGuildWrite(ctx, guildID, func(tx pgx.Tx) error {
+	err = s.withChannelWrite(ctx, guildID, channelID, func(tx pgx.Tx) error {
 		p, _, accessErr := s.channels.PermissionsIn(ctx, tx, userID, channelID)
 		if accessErr != nil {
 			return fmt.Errorf("messages: check acknowledgment access: %w", accessErr)
@@ -157,7 +157,7 @@ func (s *Service) advanceRead(ctx context.Context, tx pgx.Tx, guildID, userID sn
 	if len(channelIDs) == 0 {
 		return nil, nil
 	}
-	rows, err := s.q.AdvanceReadStates(ctx, tx, store.AdvanceReadStatesParams{UserID: int64(userID), GuildID: int64(guildID),
+	rows, err := s.q.AdvanceReadStates(ctx, tx, store.AdvanceReadStatesParams{UserID: int64(userID), GuildID: dbGuildID(guildID),
 		ChannelIds: channelIDs, MessageIds: messageIDs})
 	if err != nil {
 		return nil, fmt.Errorf("messages: advance read markers: %w", err)
@@ -168,8 +168,13 @@ func (s *Service) advanceRead(ctx context.Context, tx pgx.Tx, guildID, userID sn
 // publishAcks sends each changed marker only to the user's connections.
 func (s *Service) publishAcks(ctx context.Context, userID snowflake.ID, changed []store.ReadState) {
 	for _, row := range changed {
+		audience := events.Audience{Kind: events.AudienceUsers, UserIDs: []snowflake.ID{userID}}
+		if !row.GuildID.Valid {
+			audience.Kind = events.AudiencePrivateChannel
+			audience.ChannelID = snowflake.ID(row.ChannelID)
+		}
 		s.publish(ctx, events.Event{Type: events.MessageAck,
-			Audience: events.Audience{Kind: events.AudienceUsers, UserIDs: []snowflake.ID{userID}},
+			Audience: audience,
 			Payload:  readState(row)})
 	}
 }

@@ -173,7 +173,7 @@ type PublicStub struct {
 type PublicMessage struct {
 	ID                snowflake.ID        `json:"id"`
 	ChannelID         snowflake.ID        `json:"channel_id"`
-	GuildID           snowflake.ID        `json:"guild_id"`
+	GuildID           *snowflake.ID       `json:"guild_id"`
 	Author            *auth.PublicUser    `json:"author"`
 	Content           string              `json:"content"`
 	CreatedAt         string              `json:"created_at"`
@@ -200,7 +200,7 @@ func publicUser(u *auth.User) *auth.PublicUser {
 
 // Public returns the JSON form of m.
 func (m Message) Public() PublicMessage {
-	p := PublicMessage{ID: m.ID, ChannelID: m.ChannelID, GuildID: m.GuildID, Author: publicUser(m.Author),
+	p := PublicMessage{ID: m.ID, ChannelID: m.ChannelID, GuildID: nullableGuildID(m.GuildID), Author: publicUser(m.Author),
 		Content: m.Content, CreatedAt: httpx.FormatTime(m.CreatedAt), ReplyToID: m.ReplyToID, Nonce: m.Nonce}
 	p.MentionUserIDs, p.MentionRoleIDs = mentionIDs(m.mentions.userIDs), mentionIDs(m.mentions.roleIDs)
 	p.MentionEveryone, p.MentionHere = m.mentions.everyone, m.mentions.here
@@ -232,19 +232,24 @@ type DeletePayload struct {
 	LastMessageID *snowflake.ID `json:"last_message_id"`
 	ID            snowflake.ID  `json:"id"`
 	ChannelID     snowflake.ID  `json:"channel_id"`
-	GuildID       snowflake.ID  `json:"guild_id"`
+	GuildID       *snowflake.ID `json:"guild_id"`
 }
 
 // TypingPayload is the payload of TYPING_START.
 type TypingPayload struct {
-	ChannelID snowflake.ID `json:"channel_id"`
-	GuildID   snowflake.ID `json:"guild_id"`
-	UserID    snowflake.ID `json:"user_id"`
-	Timestamp string       `json:"timestamp"`
+	ChannelID snowflake.ID  `json:"channel_id"`
+	GuildID   *snowflake.ID `json:"guild_id"`
+	UserID    snowflake.ID  `json:"user_id"`
+	Timestamp string        `json:"timestamp"`
 }
 
 // Channels is what messages needs from the channels module.
 type Channels interface {
+	LockPrivateIn(context.Context, pgx.Tx, snowflake.ID) error
+	LockPrivateEvents(snowflake.ID) func()
+	CheckPrivateSendIn(context.Context, pgx.Tx, snowflake.ID, snowflake.ID) error
+	PrivateRecipientsIn(context.Context, pgx.Tx, snowflake.ID) ([]snowflake.ID, error)
+	ReopenPrivateIn(context.Context, pgx.Tx, snowflake.ID) ([]events.Event, error)
 	LockGuild(ctx context.Context, tx pgx.Tx, guildID snowflake.ID) error
 	PermissionsIn(ctx context.Context, tx pgx.Tx, userID, channelID snowflake.ID) (permissions.Permission, snowflake.ID, error)
 	VisibleChannelsIn(ctx context.Context, tx pgx.Tx, userID, guildID snowflake.ID) ([]channels.Channel, error)

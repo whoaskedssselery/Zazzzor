@@ -285,6 +285,68 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
+  /users/@me/channels:
+    get:
+      tags: [channels]
+      operationId: listPrivateChannels
+      summary: List the caller's open DMs and groups
+      responses:
+        "200":
+          description: Private channels, with recipients relative to the caller.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DMChannel"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    post:
+      tags: [channels]
+      operationId: openPrivateChannel
+      summary: Open a 1:1 DM or create a group DM
+      description: |
+        1:1 DMs require friendship or a shared server, with no block in either
+        direction. Groups require each invited user to be the caller's friend.
+        Limits are 30 opens per minute, 10 group creations per hour, and
+        membership in at most 100 groups.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpenDMChannelRequest"
+      responses:
+        "200":
+          description: The existing 1:1 channel, reopened for the caller if closed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DMChannel"
+        "201":
+          description: The newly created private channel.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DMChannel"
+        "400":
+          description: Invalid body, not_a_friend, or too_many_groups.
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: cannot_message_user for a denied 1:1 open, including self and unknown users.
+          $ref: "#/components/responses/Problem"
+        "415":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
   /users/@me/relationships:
     get:
       tags: [users]
@@ -1803,7 +1865,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Channel"
+                oneOf:
+                  - $ref: "#/components/schemas/Channel"
+                  - $ref: "#/components/schemas/DMChannel"
         "401":
           description: "`unauthenticated`."
           $ref: "#/components/responses/Problem"
@@ -1819,7 +1883,8 @@ paths:
       operationId: updateChannel
       summary: Change a channel
       description: |
-        Changes the fields that are present. Needs `MANAGE_CHANNELS` in the
+        For group DMs, any recipient can update only the name. A 1:1 DM cannot be renamed.
+        In a guild this changes the fields that are present. Needs `MANAGE_CHANNELS` in the
         channel; `sync_permissions` also needs `MANAGE_ROLES` there.
         `name` and `topic` follow the rules of creation (`topic: null`
         clears it). `parent_id` moves the channel to the end of that
@@ -1840,14 +1905,18 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UpdateChannelRequest"
+              anyOf:
+                - $ref: "#/components/schemas/UpdateChannelRequest"
+                - $ref: "#/components/schemas/UpdateDMChannelRequest"
       responses:
         "200":
           description: The channel.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Channel"
+                oneOf:
+                  - $ref: "#/components/schemas/Channel"
+                  - $ref: "#/components/schemas/DMChannel"
         "400":
           description: "`invalid_body`, `body_too_large` or `validation_failed` (with `errors`)."
           $ref: "#/components/responses/Problem"
@@ -1872,7 +1941,8 @@ paths:
       operationId: deleteChannel
       summary: Delete a channel or category
       description: |
-        Needs `MANAGE_CHANNELS` in the channel. The channels of a deleted
+        Closes a 1:1 DM for the caller or leaves a group DM.
+        In a guild it needs `MANAGE_CHANNELS`. The channels of a deleted
         category move to the end of the top level, keeping its overwrites
         as their own if they were synced. Its invites are deleted with it.
         Announced as `CHANNEL_DELETE` to the members who could view it, and
@@ -1891,6 +1961,53 @@ paths:
           $ref: "#/components/responses/Problem"
         "404":
           description: "`not_found`: no such channel, or the caller may not view it."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /channels/{channel_id}/recipients/{user_id}:
+    parameters:
+      - $ref: "#/components/parameters/ChannelID"
+      - $ref: "#/components/parameters/UserID"
+    put:
+      tags: [channels]
+      operationId: addDMRecipient
+      summary: Add a friend to a group DM
+      description: Any recipient can add a friend, up to 10 members. Repeated adds are idempotent.
+      responses:
+        "204":
+          description: The user is in the group.
+        "400":
+          description: not_a_friend, group_full, or too_many_groups.
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [channels]
+      operationId: removeDMRecipient
+      summary: Leave a group DM or remove a recipient
+      description: |
+        Only the owner can remove another recipient. The earliest joined
+        remaining recipient becomes owner if the owner leaves.
+      responses:
+        "204":
+          description: The user is no longer in the group.
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
           $ref: "#/components/responses/Problem"
         "429":
           $ref: "#/components/responses/RateLimited"
@@ -3589,6 +3706,70 @@ components:
           $ref: "#/components/schemas/Permission"
         deny:
           $ref: "#/components/schemas/Permission"
+    DMChannel:
+      type: object
+      additionalProperties: false
+      required: [id, type, name, owner_id, recipients, last_message_id]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        type:
+          type: integer
+          enum: [1, 3]
+          description: 1 for a 1:1 DM and 3 for a group DM.
+        name:
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 100
+        owner_id:
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
+        recipients:
+          type: array
+          maxItems: 9
+          description: All channel recipients except the caller.
+          items:
+            $ref: "#/components/schemas/User"
+        last_message_id:
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
+    OpenDMChannelRequest:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [recipient_id]
+          properties:
+            recipient_id:
+              $ref: "#/components/schemas/Snowflake"
+        - type: object
+          additionalProperties: false
+          required: [recipient_ids]
+          properties:
+            recipient_ids:
+              type: array
+              minItems: 2
+              maxItems: 9
+              uniqueItems: true
+              items:
+                $ref: "#/components/schemas/Snowflake"
+    UpdateDMChannelRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 100
+    DMChannelDeleteEvent:
+      type: object
+      additionalProperties: false
+      required: [id]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
     Channel:
       type: object
       additionalProperties: false
@@ -3875,7 +4056,10 @@ components:
         channel_id:
           $ref: "#/components/schemas/Snowflake"
         guild_id:
-          $ref: "#/components/schemas/Snowflake"
+          description: Null in a private channel.
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
         message_id:
           $ref: "#/components/schemas/Snowflake"
         user_id:
@@ -3935,7 +4119,10 @@ components:
         channel_id:
           $ref: "#/components/schemas/Snowflake"
         guild_id:
-          $ref: "#/components/schemas/Snowflake"
+          description: Null in a private channel.
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
         author:
           description: Null when the account of the author no longer exists.
           oneOf:
@@ -4093,6 +4280,8 @@ components:
             - $ref: "#/components/schemas/GuildEmojisUpdate"
             - $ref: "#/components/schemas/Relationship"
             - $ref: "#/components/schemas/RelationshipRemove"
+            - $ref: "#/components/schemas/DMChannel"
+            - $ref: "#/components/schemas/DMChannelDeleteEvent"
             - $ref: "#/components/schemas/Guild"
             - $ref: "#/components/schemas/GuildDeleteEvent"
             - $ref: "#/components/schemas/MemberEvent"
@@ -4121,8 +4310,12 @@ components:
     GatewayReady:
       type: object
       additionalProperties: false
-      required: [user, guilds, presences, read_states, relationships]
+      required: [user, guilds, presences, read_states, relationships, private_channels]
       properties:
+        private_channels:
+          type: array
+          items:
+            $ref: "#/components/schemas/DMChannel"
         relationships:
           type: array
           description: Relationships visible to the receiving user.
@@ -4355,7 +4548,10 @@ components:
         channel_id:
           $ref: "#/components/schemas/Snowflake"
         guild_id:
-          $ref: "#/components/schemas/Snowflake"
+          description: Null in a private channel.
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
         last_message_id:
           description: The newest existing message of the channel, or null if empty.
           oneOf:
@@ -4374,7 +4570,7 @@ components:
         mention_count:
           type: integer
           minimum: 0
-          description: Number of unread messages that mentioned this user at the last update.
+          description: Unread mentions in a guild or unread messages by other recipients in a DM.
     TypingStartEvent:
       type: object
       additionalProperties: false
@@ -4383,7 +4579,10 @@ components:
         channel_id:
           $ref: "#/components/schemas/Snowflake"
         guild_id:
-          $ref: "#/components/schemas/Snowflake"
+          description: Null in a private channel.
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
         user_id:
           $ref: "#/components/schemas/Snowflake"
         timestamp:
@@ -4530,6 +4729,15 @@ x-gateway:
       $ref: "#/components/schemas/RoleEvent"
     GUILD_ROLE_DELETE:
       $ref: "#/components/schemas/RoleDeleteEvent"
+    DM_CHANNEL_CREATE:
+      description: A private channel opened for the recipient.
+      $ref: "#/components/schemas/DMChannel"
+    DM_CHANNEL_UPDATE:
+      description: A private channel name, owner or recipient list changed.
+      $ref: "#/components/schemas/DMChannel"
+    DM_CHANNEL_DELETE:
+      description: The private channel was closed or the recipient left or was removed.
+      $ref: "#/components/schemas/DMChannelDeleteEvent"
     CHANNEL_CREATE:
       $ref: "#/components/schemas/Channel"
     CHANNEL_UPDATE:

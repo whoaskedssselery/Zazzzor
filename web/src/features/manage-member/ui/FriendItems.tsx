@@ -1,8 +1,10 @@
-import { Ban, UserCheck, UserPlus, UserX } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { Ban, MessageCircle, UserCheck, UserPlus, UserX } from "lucide-react";
 import {
   RELATIONSHIP,
   requestErrorText,
   useGuilds,
+  useOpenDirect,
   useRemoveRelationship,
   useRequestFriend,
   useSetRelationship,
@@ -31,9 +33,10 @@ export const BlockDialog = ({ userId, name, onClose }: { userId: string; name: s
 };
 
 /**
- * The friendship items of someone's menu, by where the user stands with
- * them: add, accept, cancel the request, or unblock; and «Заблокировать»
- * for anyone not blocked yet, which asks first (`onBlock`).
+ * The personal items of someone's menu, by where the user stands with
+ * them: «Написать сообщение» (a DM: the server says if it is not allowed);
+ * add, accept, cancel the request, or unblock; and «Заблокировать» for
+ * anyone not blocked yet, which asks first (`onBlock`).
  */
 export const FriendItems = ({
   userId,
@@ -51,6 +54,8 @@ export const FriendItems = ({
   const request = useRequestFriend();
   const set = useSetRelationship();
   const remove = useRemoveRelationship();
+  const open = useOpenDirect();
+  const navigate = useNavigate();
   const Row = kind === "context" ? ContextMenuItem : DropdownMenuItem;
 
   let item = null;
@@ -114,6 +119,18 @@ export const FriendItems = ({
   }
   return (
     <>
+      <Row
+        onSelect={() => {
+          open.mutate(userId, {
+            onSuccess: (channel) => {
+              void navigate({ to: "/channels/@me/$channelId", params: { channelId: channel.id } });
+            },
+          });
+        }}
+      >
+        Написать сообщение
+        <MessageCircle aria-hidden />
+      </Row>
       {item}
       <Row variant="danger" onSelect={onBlock}>
         Заблокировать

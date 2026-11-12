@@ -67,7 +67,7 @@ func (q *Queries) AddMessageReaction(ctx context.Context, db DBTX, arg AddMessag
 
 const advanceReadStates = `-- name: AdvanceReadStates :many
 INSERT INTO read_states (user_id, guild_id, channel_id, last_read_id, mention_count)
-SELECT $1, $2, target.channel_id, target.message_id,
+SELECT $1, $2::bigint, target.channel_id, target.message_id,
     (SELECT count(*) FROM messages AS m
         JOIN message_mention_recipients AS r ON r.message_id = m.id
         WHERE m.channel_id = target.channel_id AND m.id > target.message_id AND r.user_id = $1)
@@ -76,12 +76,12 @@ ON CONFLICT (user_id, channel_id) DO UPDATE
 SET last_read_id = EXCLUDED.last_read_id, mention_count = EXCLUDED.mention_count
 WHERE read_states.last_read_id < EXCLUDED.last_read_id
    OR (read_states.last_read_id = EXCLUDED.last_read_id AND read_states.mention_count <> EXCLUDED.mention_count)
-RETURNING user_id, channel_id, guild_id, last_read_id, mention_count
+RETURNING user_id, channel_id, guild_id, last_read_id, mention_count, private_channel_id
 `
 
 type AdvanceReadStatesParams struct {
 	UserID     int64
-	GuildID    int64
+	GuildID    pgtype.Int8
 	ChannelIds []int64
 	MessageIds []int64
 }
@@ -106,6 +106,7 @@ func (q *Queries) AdvanceReadStates(ctx context.Context, db DBTX, arg AdvanceRea
 			&i.GuildID,
 			&i.LastReadID,
 			&i.MentionCount,
+			&i.PrivateChannelID,
 		); err != nil {
 			return nil, err
 		}
@@ -664,7 +665,7 @@ func (q *Queries) ForgetEmbedImage(ctx context.Context, db DBTX, id int64) error
 
 const incrementMentions = `-- name: IncrementMentions :exec
 INSERT INTO read_states (user_id, channel_id, guild_id, last_read_id, mention_count)
-SELECT user_id, $1, $2, 0, 1
+SELECT user_id, $1, $2::bigint, 0, 1
 FROM unnest($3::bigint[]) AS target(user_id)
 ON CONFLICT (user_id, channel_id) DO UPDATE SET mention_count = read_states.mention_count + 1
 WHERE read_states.last_read_id < $4::bigint
@@ -672,7 +673,7 @@ WHERE read_states.last_read_id < $4::bigint
 
 type IncrementMentionsParams struct {
 	ChannelID int64
-	GuildID   int64
+	GuildID   pgtype.Int8
 	UserIds   []int64
 	MessageID int64
 }
@@ -1070,7 +1071,7 @@ func (q *Queries) ReactionUserIDs(ctx context.Context, db DBTX, arg ReactionUser
 }
 
 const readStatesForChannels = `-- name: ReadStatesForChannels :many
-SELECT user_id, channel_id, guild_id, last_read_id, mention_count FROM read_states WHERE user_id = $1 AND channel_id = ANY($2::bigint[])
+SELECT user_id, channel_id, guild_id, last_read_id, mention_count, private_channel_id FROM read_states WHERE user_id = $1 AND channel_id = ANY($2::bigint[])
 ORDER BY channel_id
 `
 
@@ -1094,6 +1095,7 @@ func (q *Queries) ReadStatesForChannels(ctx context.Context, db DBTX, arg ReadSt
 			&i.GuildID,
 			&i.LastReadID,
 			&i.MentionCount,
+			&i.PrivateChannelID,
 		); err != nil {
 			return nil, err
 		}

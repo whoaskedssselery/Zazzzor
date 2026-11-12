@@ -1,11 +1,21 @@
 import { Link } from "@tanstack/react-router";
-import { Compass, House, type LucideIcon, Plus } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { Compass, House, type LucideIcon, Plus, Users } from "lucide-react";
+import { type ReactNode, useMemo, useState } from "react";
 import { useChannelToOpen } from "@/entities/channel";
-import { guildMentionCount, isGuildUnread, useGuilds } from "@/entities/guild";
+import {
+  dmPeer,
+  guildMentionCount,
+  incomingCount,
+  isGuildUnread,
+  type PrivateEntry,
+  privateList,
+  privateName,
+  privateUnreadCount,
+  useGuilds,
+} from "@/entities/guild";
 import { CreateGuildDialog } from "@/features/create-guild";
 import { JoinGuildDialog } from "@/features/join-guild";
-import { Badge, cn, formatCount, GuildIcon, Tooltip } from "@/shared/ui";
+import { Avatar, Badge, cn, formatCount, GuildIcon, Tooltip } from "@/shared/ui";
 
 /** The round tile of the rail's own buttons (home, create, join): it squares off on hover and focus. */
 const tileClass =
@@ -99,12 +109,51 @@ const GuildItem = ({ guildId, active }: { guildId: string; active: boolean }) =>
 };
 
 /**
- * The server rail: home, the servers in the order of READY (then of
+ * A DM or a group with unread messages, under home as in Discord: its
+ * picture with the count; a click opens it.
+ */
+const PrivateItem = ({ entry }: { entry: PrivateEntry }) => {
+  const { channel } = entry;
+  const count = privateUnreadCount(entry);
+  const name = privateName(channel);
+  const peer = dmPeer(channel);
+  return (
+    <RailItem label={name} unread>
+      <Link
+        to="/channels/@me/$channelId"
+        params={{ channelId: channel.id }}
+        aria-label={`${name}, непрочитанных: ${String(count)}`}
+        className="group relative rounded-full"
+      >
+        {peer ? (
+          <Avatar name={peer.display_name} src={peer.avatar_url} size={80} className="size-12!" />
+        ) : (
+          <span className={cn(tileClass, "text-fg")}>
+            <Users aria-hidden className="size-6" strokeWidth={1.75} />
+          </span>
+        )}
+        <Badge
+          variant="count"
+          aria-hidden
+          className="absolute -right-1 -bottom-1 h-5 min-w-5 px-1.5 ring-4 ring-(--bg-rail)"
+        >
+          {formatCount(count)}
+        </Badge>
+      </Link>
+    </RailItem>
+  );
+};
+
+/**
+ * The server rail: home, the DMs and groups with unread messages, the servers in the order of READY (then of
  * joining), and the buttons to create a server or join one. The open server
  * (`activeGuildId`; null for home) is marked by the pill and a squared icon.
  */
 export const GuildRail = ({ activeGuildId }: { activeGuildId: string | null }) => {
   const order = useGuilds((s) => s.order);
+  const privates = useGuilds((s) => s.privates);
+  const unreadPrivates = useMemo(() => privateList({ privates }).filter((p) => privateUnreadCount(p) > 0), [privates]);
+  const requests = useGuilds((s) => incomingCount(s));
   const [dialog, setDialog] = useState<"create" | "join" | null>(null);
   const home = activeGuildId === null;
   const close = (open: boolean) => {
@@ -116,15 +165,27 @@ export const GuildRail = ({ activeGuildId }: { activeGuildId: string | null }) =
         <RailItem label="Главная" active={home}>
           <Link
             to="/channels/@me"
-            aria-label="Главная"
+            aria-label={requests > 0 ? `Главная, заявок в друзья: ${String(requests)}` : "Главная"}
             aria-current={home ? "page" : undefined}
-            className="group rounded-xl"
+            className="group relative rounded-xl"
           >
             <span className={cn(tileClass, home ? "rounded-xl bg-accent text-on-accent" : "text-fg")}>
               <House aria-hidden className="size-6" strokeWidth={1.75} />
             </span>
+            {requests > 0 && (
+              <Badge
+                variant="count"
+                aria-hidden
+                className="absolute -right-1 -bottom-1 h-5 min-w-5 px-1.5 ring-4 ring-(--bg-rail)"
+              >
+                {formatCount(requests)}
+              </Badge>
+            )}
           </Link>
         </RailItem>
+        {unreadPrivates.map((p) => (
+          <PrivateItem key={p.channel.id} entry={p} />
+        ))}
         <li aria-hidden className="h-0.5 w-8 shrink-0 rounded-full bg-control" />
         {order.map((id) => (
           <GuildItem key={id} guildId={id} active={id === activeGuildId} />

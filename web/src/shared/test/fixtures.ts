@@ -91,6 +91,21 @@ export function makeReady(me: User, guilds: GuildState[] = []): GatewayReady {
     presences: [{ user_id: me.id, status: "online" }],
     read_states: guilds.flatMap((g) => g.read_states),
     relationships: [],
+    private_channels: [],
+  };
+}
+
+/** A 1:1 DM with `peer` (type 1), or a group with `peers` owned by `ownerId` (type 3), as the user sees it. */
+export function makeDMChannel(id: string, peers: User[], over: Partial<S["DMChannel"]> = {}): S["DMChannel"] {
+  const group = peers.length !== 1 || over.type === 3;
+  return {
+    id,
+    type: group ? 3 : 1,
+    name: null,
+    owner_id: group ? (over.owner_id ?? peers[0]?.id ?? null) : null,
+    recipients: peers,
+    last_message_id: null,
+    ...over,
   };
 }
 

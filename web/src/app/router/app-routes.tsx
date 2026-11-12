@@ -1,6 +1,7 @@
 import { createRoute, lazyRouteComponent } from "@tanstack/react-router";
 import { ChannelPage } from "@/pages/channel";
 import { ChannelsHomePage } from "@/pages/channels-home";
+import { DirectMessagePage } from "@/pages/direct-message";
 import { AuthGuard, requireSession } from "./auth-guard";
 import { rootRoute } from "./root";
 import { ShellLayout } from "./shell-layout";
@@ -30,6 +31,13 @@ export const homeRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: "/channels/@me",
   component: ChannelsHomePage,
+});
+
+/** A DM or a group: `@me` is a word, so this wins over a server's channel address. */
+export const privateRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: "/channels/@me/$channelId",
+  component: () => <DirectMessagePage channelId={privateRoute.useParams().channelId} />,
 });
 
 /**
@@ -118,7 +126,7 @@ export const adminRoute = createRoute({
 });
 
 export const appRoutes = appRoute.addChildren([
-  shellRoute.addChildren([homeRoute, guildRoute, channelRoute]),
+  shellRoute.addChildren([homeRoute, privateRoute, guildRoute, channelRoute]),
   inviteRoute,
   guildSettingsRoute,
   channelSettingsRoute,

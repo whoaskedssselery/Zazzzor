@@ -40,7 +40,7 @@ func (s *Service) requireText(ctx context.Context, channelID snowflake.ID) error
 	if err != nil {
 		return err
 	}
-	if c.Type != channels.TypeText {
+	if !c.Type.Messages() {
 		return ErrNotTextChannel
 	}
 	return nil
@@ -249,9 +249,13 @@ func (s *Service) Create(ctx context.Context, channelID, userID snowflake.ID, f 
 	}
 	var row store.Message
 	var picked previewSelection
+	var reopened []events.Event
+	if guildID == 0 {
+		defer s.channels.LockPrivateEvents(channelID)()
+	}
 	// A claim that disappears before it is read frees the nonce for one retry.
 	for range 2 {
-		if row, err = s.createOnce(ctx, guildID, params, f, &m, &picked); !errors.Is(err, errNonceTaken) {
+		if row, err = s.createOnce(ctx, guildID, params, f, &m, &picked, &reopened); !errors.Is(err, errNonceTaken) {
 			break
 		}
 		if sent, ok, sentErr := s.sentWith(ctx, guildID, channelID, userID, *f.Nonce); ok || sentErr != nil {
@@ -267,6 +271,9 @@ func (s *Service) Create(ctx context.Context, channelID, userID snowflake.ID, f 
 	m.ID, m.CreatedAt, m.mentions = row.ID, row.CreatedAt, storedMentions(row)
 	m.Nonce = f.Nonce
 	m.Embeds = picked.embeds
+	for _, event := range reopened {
+		s.publish(ctx, event)
+	}
 	s.publish(ctx, events.Event{Type: events.MessageCreate, Audience: channelAudience(guildID, channelID),
 		Payload: m.Public()})
 	s.enqueuePreviews(m, picked.pending)
@@ -277,9 +284,10 @@ func (s *Service) Create(ctx context.Context, channelID, userID snowflake.ID, f 
 var errNonceTaken = errors.New("messages: nonce taken")
 
 // createOnce stores the message, nonce, files and unread state in one transaction.
-func (s *Service) createOnce(ctx context.Context, guildID snowflake.ID, params store.CreateMessageParams, f CreateFields, m *Message, picked *previewSelection) (store.Message, error) {
+func (s *Service) createOnce(ctx context.Context, guildID snowflake.ID, params store.CreateMessageParams, f CreateFields, m *Message, picked *previewSelection, reopened *[]events.Event) (store.Message, error) {
 	var row store.Message
-	err := s.withGuildWrite(ctx, guildID, func(tx pgx.Tx) error {
+	err := s.withChannelWrite(ctx, guildID, params.ChannelID, func(tx pgx.Tx) error {
+		*reopened = nil
 		p, _, err := s.channels.PermissionsIn(ctx, tx, *params.AuthorID, params.ChannelID)
 		if err != nil {
 			return fmt.Errorf("messages: recheck send access: %w", err)
@@ -294,7 +302,12 @@ func (s *Service) createOnce(ctx context.Context, guildID snowflake.ID, params s
 		if !p.Has(need) {
 			return ErrMissingPerm
 		}
-		resolved, err := s.resolveMentions(ctx, tx, params.ChannelID, *params.AuthorID, p, params.Content)
+		if guildID == 0 {
+			if sendErr := s.channels.CheckPrivateSendIn(ctx, tx, params.ChannelID, *params.AuthorID); sendErr != nil {
+				return sendErr
+			}
+		}
+		resolved, err := s.resolveMentions(ctx, tx, guildID, params.ChannelID, *params.AuthorID, p, params.Content)
 		if err != nil {
 			return err
 		}
@@ -325,7 +338,13 @@ func (s *Service) createOnce(ctx context.Context, guildID snowflake.ID, params s
 				return err
 			}
 		}
-		return s.recordUnread(ctx, tx, guildID, params, resolved)
+		if err = s.recordUnread(ctx, tx, guildID, params, resolved); err != nil {
+			return err
+		}
+		if guildID == 0 {
+			*reopened, err = s.channels.ReopenPrivateIn(ctx, tx, params.ChannelID)
+		}
+		return err
 	})
 	return row, err
 }
@@ -345,7 +364,7 @@ func (s *Service) recordUnread(ctx context.Context, tx pgx.Tx, guildID snowflake
 	if err := s.saveMentionRecipients(ctx, tx, msg.ID, m); err != nil {
 		return err
 	}
-	if err := s.q.IncrementMentions(ctx, tx, store.IncrementMentionsParams{GuildID: int64(guildID), ChannelID: channelID,
+	if err := s.q.IncrementMentions(ctx, tx, store.IncrementMentionsParams{GuildID: dbGuildID(guildID), ChannelID: channelID,
 		MessageID: messageID, UserIds: m.recipients}); err != nil {
 		return fmt.Errorf("messages: increment mention counters: %w", err)
 	}
@@ -501,12 +520,17 @@ func (s *Service) publishMessageUpdate(ctx context.Context, m Message) {
 // editOnce updates syntax and the recipients used on the next acknowledgment.
 func (s *Service) editOnce(ctx context.Context, guildID, channelID, messageID, userID snowflake.ID, content string, picked *previewSelection) (store.Message, error) {
 	var edited store.Message
-	err := s.withGuildWrite(ctx, guildID, func(tx pgx.Tx) error {
+	err := s.withChannelWrite(ctx, guildID, channelID, func(tx pgx.Tx) error {
 		p, _, err := s.channels.PermissionsIn(ctx, tx, userID, channelID)
 		if err != nil {
 			return fmt.Errorf("messages: recheck edit access: %w", err)
 		}
-		m, err := s.resolveMentions(ctx, tx, channelID, userID, p, content)
+		if guildID == 0 {
+			if sendErr := s.channels.CheckPrivateSendIn(ctx, tx, channelID, userID); sendErr != nil {
+				return sendErr
+			}
+		}
+		m, err := s.resolveMentions(ctx, tx, guildID, channelID, userID, p, content)
 		if err != nil {
 			return err
 		}
@@ -527,6 +551,9 @@ func (s *Service) editOnce(ctx context.Context, guildID, channelID, messageID, u
 			MentionEveryone: m.everyone, MentionHere: m.here})
 		if err != nil {
 			return fmt.Errorf("messages: update content: %w", err)
+		}
+		if guildID == 0 {
+			return nil
 		}
 		if err = s.q.ClearMentionRecipients(ctx, tx, int64(messageID)); err != nil {
 			return fmt.Errorf("messages: clear old mention recipients: %w", err)
@@ -553,7 +580,7 @@ func (s *Service) Delete(ctx context.Context, channelID, messageID, userID snowf
 		return ErrMissingPerm
 	}
 	var last *snowflake.ID
-	err = s.withGuildWrite(ctx, guildID, func(tx pgx.Tx) error {
+	err = s.withChannelWrite(ctx, guildID, channelID, func(tx pgx.Tx) error {
 		current, _, accessErr := s.channels.PermissionsIn(ctx, tx, userID, channelID)
 		if accessErr != nil {
 			return fmt.Errorf("messages: recheck delete access: %w", accessErr)
@@ -588,7 +615,7 @@ func (s *Service) Delete(ctx context.Context, channelID, messageID, userID snowf
 	}
 	s.tryAttachmentTrash(ctx)
 	s.publish(ctx, events.Event{Type: events.MessageDelete, Audience: channelAudience(guildID, channelID),
-		Payload: DeletePayload{ID: messageID, ChannelID: channelID, GuildID: guildID, LastMessageID: last}})
+		Payload: DeletePayload{ID: messageID, ChannelID: channelID, GuildID: nullableGuildID(guildID), LastMessageID: last}})
 	return nil
 }
 
@@ -608,9 +635,14 @@ func (s *Service) Typing(ctx context.Context, channelID, userID snowflake.ID) er
 	if err = s.requireText(ctx, channelID); err != nil {
 		return err
 	}
+	if guildID == 0 {
+		if err = s.checkPrivateWriter(ctx, channelID, userID); err != nil {
+			return err
+		}
+	}
 	s.publish(ctx, events.Event{Type: events.TypingStart, Audience: channelAudience(guildID, channelID),
 		ExcludeUserID: userID,
-		Payload: TypingPayload{ChannelID: channelID, GuildID: guildID, UserID: userID,
+		Payload: TypingPayload{ChannelID: channelID, GuildID: nullableGuildID(guildID), UserID: userID,
 			Timestamp: httpx.FormatTime(s.now())}})
 	return nil
 }

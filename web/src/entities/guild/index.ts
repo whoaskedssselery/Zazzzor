@@ -1,4 +1,14 @@
 export {
+  createGroup,
+  openDirect,
+  useAddRecipients,
+  useClosePrivate,
+  useCreateGroup,
+  useOpenDirect,
+  useRemoveRecipient,
+  useRenameGroup,
+} from "./api/privates";
+export {
   NO_SUCH_USER,
   requestErrorText,
   useRemoveRelationship,
@@ -31,6 +41,7 @@ export {
   applyEvent,
   applyReady,
   type Channel,
+  type DMChannel,
   EMPTY_GUILDS,
   type Guild,
   type GuildEmoji,
@@ -40,12 +51,23 @@ export {
   mentionsMe,
   newer,
   type PresenceStatus,
+  PRIVATE_TYPE,
+  type PrivateEntry,
   RELATIONSHIP,
   type ReadMark,
   type Relationship,
   type Role,
+  type User,
   type VoiceState,
 } from "./model/reducer";
+export {
+  dmPeer,
+  homeUnreadCount,
+  isPrivateUnread,
+  privateList,
+  privateName,
+  privateUnreadCount,
+} from "./model/private";
 export { type FriendLists, friendLists, incomingCount } from "./model/relationships";
 export {
   CHANNEL_SETTINGS_TABS,
@@ -69,5 +91,13 @@ export {
   useConnectionStatus,
   useGuilds,
 } from "./model/store";
-export { guildMentionCount, isGuildUnread, isUnread, mentionCount } from "./model/unread";
+export {
+  guildMentionCount,
+  isChannelUnread,
+  isGuildUnread,
+  isUnread,
+  lastMessageOf,
+  mentionCount,
+  unreadFrom,
+} from "./model/unread";
 export { myVoice, voiceMembers } from "./model/voice";

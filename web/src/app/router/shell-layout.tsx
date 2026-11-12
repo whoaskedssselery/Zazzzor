@@ -1,10 +1,11 @@
 import { Outlet, useParams } from "@tanstack/react-router";
 import { CHANNEL_TYPE } from "@/entities/channel";
-import { useGuilds } from "@/entities/guild";
+import { PRIVATE_TYPE, useGuilds } from "@/entities/guild";
 import { ServerMembers, ServerSidebar } from "@/pages/channel";
 import { HomeSidebar } from "@/pages/channels-home";
 import { AppShell } from "@/widgets/app-shell";
 import { GuildRail } from "@/widgets/guild-rail";
+import { PrivateMembers } from "@/widgets/private-list";
 import { UserPanel } from "@/widgets/user-panel";
 import { VoicePanel } from "@/widgets/voice-panel";
 
@@ -25,6 +26,14 @@ export const ShellLayout = () => {
       channelId !== undefined &&
       s.guilds[guildId]?.channels[channelId]?.type === CHANNEL_TYPE.VOICE,
   );
+  // A group shows its people in the member column; a DM has none.
+  const group = useGuilds(
+    (s) =>
+      guildId === undefined && channelId !== undefined && s.privates[channelId]?.channel.type === PRIVATE_TYPE.GROUP,
+  );
+  let members = {};
+  if (group && channelId !== undefined) members = { members: <PrivateMembers channelId={channelId} /> };
+  else if (guildId !== undefined && known && !voice) members = { members: <ServerMembers guildId={guildId} /> };
   return (
     <AppShell
       rail={<GuildRail activeGuildId={guildId ?? null} />}
@@ -37,7 +46,7 @@ export const ShellLayout = () => {
           <UserPanel />
         </>
       }
-      {...(guildId === undefined || !known || voice ? {} : { members: <ServerMembers guildId={guildId} /> })}
+      {...members}
     >
       <Outlet />
     </AppShell>

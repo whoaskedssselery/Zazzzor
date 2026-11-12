@@ -76,7 +76,10 @@ func (s *Service) guildOf(ctx context.Context, channelID snowflake.ID) (snowflak
 	if err != nil {
 		return 0, fmt.Errorf("channels: load channel: %w", err)
 	}
-	return row.GuildID, nil
+	if row.GuildID == nil {
+		return 0, ErrNotFound
+	}
+	return *row.GuildID, nil
 }
 
 // lockedChannel is locked for the guild of channelID, also handing fn the
@@ -153,7 +156,7 @@ func (s *Service) CreateChannel(ctx context.Context, guildID, actorID snowflake.
 			parent = *f.ParentID
 		}
 		row, err := s.q.CreateChannel(ctx, tx, store.CreateChannelParams{
-			ID: s.ids.Next(), GuildID: guildID, Type: int16(f.Type), Name: name, Topic: topic,
+			ID: s.ids.Next(), GuildID: int64(guildID), Type: int16(f.Type), Name: name, Topic: topic,
 			ParentID: f.ParentID, Position: int32(len(l.scopes()[parent])), //nolint:gosec // G115: at most MaxChannels
 			PermissionSynced: f.ParentID != nil, CreatedAt: s.now(),
 		})

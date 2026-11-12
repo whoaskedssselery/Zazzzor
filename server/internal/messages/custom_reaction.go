@@ -36,6 +36,9 @@ func (s *Service) resolveReactionEmoji(ctx context.Context, q store.DBTX, guildI
 	if id == 0 {
 		return Emoji{Name: key}, nil
 	}
+	if guildID == 0 {
+		return Emoji{}, invalid("emoji", "custom reactions are only available in a server")
+	}
 	name, err := s.q.CustomReactionEmoji(ctx, q, store.CustomReactionEmojiParams{
 		ID: int64(id), GuildID: int64(guildID), IncludeDeleted: includeDeleted,
 	})

@@ -18,15 +18,30 @@ type AttachmentTrash struct {
 
 type Channel struct {
 	ID               int64
-	GuildID          int64
+	GuildID          pgtype.Int8
 	Type             int16
-	Name             string
+	Name             *string
 	Topic            *string
 	ParentID         pgtype.Int8
 	Position         int32
 	PermissionSynced bool
 	CreatedAt        time.Time
 	LastMessageID    pgtype.Int8
+	OwnerID          pgtype.Int8
+	PositionParentID pgtype.Int8
+}
+
+type ChannelRecipient struct {
+	ChannelID int64
+	UserID    int64
+	JoinedAt  time.Time
+	Closed    bool
+}
+
+type DirectChannelPair struct {
+	LowID     int64
+	HighID    int64
+	ChannelID int64
 }
 
 type EmbedImage struct {
@@ -159,11 +174,12 @@ type Overwrite struct {
 }
 
 type ReadState struct {
-	UserID       int64
-	ChannelID    int64
-	GuildID      int64
-	LastReadID   int64
-	MentionCount int32
+	UserID           int64
+	ChannelID        int64
+	GuildID          pgtype.Int8
+	LastReadID       int64
+	MentionCount     int32
+	PrivateChannelID pgtype.Int8
 }
 
 type Relationship struct {

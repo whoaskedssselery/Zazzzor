@@ -1,4 +1,5 @@
-import { Check, Ellipsis, UserMinus, Users, X } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { Check, Ellipsis, MessageCircle, UserMinus, Users, X } from "lucide-react";
 import { type ReactNode, type SyntheticEvent, useMemo, useState } from "react";
 import {
   friendLists,
@@ -7,6 +8,7 @@ import {
   type Relationship,
   requestErrorText,
   useGuilds,
+  useOpenDirect,
   useRemoveRelationship,
   useRequestFriend,
   useSetRelationship,
@@ -54,6 +56,8 @@ type Ask = { kind: "remove" | "block"; r: Relationship };
 const Row = ({ r, online, onAsk }: { r: Relationship; online: boolean; onAsk: (a: Ask) => void }) => {
   const set = useSetRelationship();
   const remove = useRemoveRelationship();
+  const open = useOpenDirect();
+  const navigate = useNavigate();
   const name = r.user.display_name;
   let actions: ReactNode;
   switch (r.type) {
@@ -106,30 +110,48 @@ const Row = ({ r, online, onAsk }: { r: Relationship; online: boolean; onAsk: (a
       break;
     default:
       actions = (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <IconButton label={`Действия с ${name}`} icon={Ellipsis} className="rounded-full bg-control" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              variant="danger"
-              onSelect={() => {
-                onAsk({ kind: "remove", r });
-              }}
-            >
-              Удалить из друзей
-              <UserMinus aria-hidden />
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              variant="danger"
-              onSelect={() => {
-                onAsk({ kind: "block", r });
-              }}
-            >
-              Заблокировать
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <>
+          <IconButton
+            label={`Написать ${name}`}
+            icon={MessageCircle}
+            className="rounded-full bg-control"
+            disabled={open.isPending}
+            onClick={() => {
+              open.mutate(r.id, {
+                onSuccess: (channel) => {
+                  void navigate({
+                    to: "/channels/@me/$channelId",
+                    params: { channelId: channel.id },
+                  });
+                },
+              });
+            }}
+          />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <IconButton label={`Действия с ${name}`} icon={Ellipsis} className="rounded-full bg-control" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                variant="danger"
+                onSelect={() => {
+                  onAsk({ kind: "remove", r });
+                }}
+              >
+                Удалить из друзей
+                <UserMinus aria-hidden />
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                variant="danger"
+                onSelect={() => {
+                  onAsk({ kind: "block", r });
+                }}
+              >
+                Заблокировать
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </>
       );
   }
   return (
