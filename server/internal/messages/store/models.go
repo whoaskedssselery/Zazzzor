@@ -32,6 +32,16 @@ type Channel struct {
 	PositionParentID pgtype.Int8
 }
 
+type ChannelNotificationOverride struct {
+	UserID               int64
+	ChannelID            int64
+	GuildID              pgtype.Int8
+	PrivateChannelID     pgtype.Int8
+	Muted                bool
+	MuteUntil            *time.Time
+	MessageNotifications int16
+}
+
 type ChannelRecipient struct {
 	ChannelID int64
 	UserID    int64
@@ -226,4 +236,14 @@ type User struct {
 	AvatarHash   *string
 	DisabledAt   *time.Time
 	CreatedAt    time.Time
+}
+
+type UserGuildSetting struct {
+	UserID               int64
+	GuildID              pgtype.Int8
+	ScopeID              int64
+	Muted                bool
+	MuteUntil            *time.Time
+	MessageNotifications int16
+	SuppressEveryone     bool
 }
