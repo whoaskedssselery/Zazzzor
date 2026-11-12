@@ -1224,6 +1224,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/guilds/{guild_id}/messages/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search the messages of a server
+         * @description Full-text search in Russian over the text channels whose history the
+         *     caller may read (`VIEW_CHANNEL` and `READ_MESSAGE_HISTORY`); other
+         *     channels are left out silently. At most 2 searches a second per
+         *     user, 10 at once.
+         */
+        get: operations["searchGuildMessages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/channels/{channel_id}/messages/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search the messages of one channel
+         * @description The same search in one text channel, a direct message or a group.
+         *     Needs `VIEW_CHANNEL` and `READ_MESSAGE_HISTORY` there.
+         */
+        get: operations["searchChannelMessages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/channels/{channel_id}/messages/{message_id}/ack": {
         parameters: {
             query?: never;
@@ -1879,6 +1923,12 @@ export interface components {
             bio: string;
             status: components["schemas"]["ChosenStatus"];
             custom_status: string | null;
+        };
+        MessageSearchResult: {
+            /** @description Newest first, without `nonce`. */
+            messages: components["schemas"]["Message"][];
+            /** @description How many messages match in all, counting at most 1000. */
+            total_results: number;
         };
         /** @description `CurrentUser` to the user themself, `User` to everyone else. */
         UserUpdateEvent: components["schemas"]["CurrentUser"] | components["schemas"]["User"];
@@ -4755,6 +4805,98 @@ export interface operations {
             404: components["responses"]["Problem"];
             /** @description `unsupported_media_type`. */
             415: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    searchGuildMessages: {
+        parameters: {
+            query?: {
+                /** @description Only this channel; one the caller may not read finds nothing. */
+                channel_id?: components["schemas"]["Snowflake"];
+                /**
+                 * @description Words to find, up to 200 characters. Every word must match, as a
+                 *     word form ("фильмы" finds "фильм") or the start of a word ("кин"
+                 *     finds "кино"); letters and digits count, anything else only
+                 *     separates words. May be left out when `author_id` is given.
+                 */
+                content?: string;
+                /** @description Only messages by this user. */
+                author_id?: components["schemas"]["Snowflake"];
+                /** @description Only results with an ID below this one (the next page). */
+                before?: components["schemas"]["Snowflake"];
+                /** @description Page size, 1 to 25 (default 25). */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                guild_id: components["parameters"]["GuildID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of results, newest first, and how many there are. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageSearchResult"];
+                };
+            };
+            /** @description `validation_failed`: no word and no `author_id`, or a bad parameter. */
+            400: components["responses"]["Problem"];
+            /** @description `unauthenticated`. */
+            401: components["responses"]["Problem"];
+            /** @description `not_found`: no such server, or the caller is not a member. */
+            404: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    searchChannelMessages: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Words to find, up to 200 characters. Every word must match, as a
+                 *     word form ("фильмы" finds "фильм") or the start of a word ("кин"
+                 *     finds "кино"); letters and digits count, anything else only
+                 *     separates words. May be left out when `author_id` is given.
+                 */
+                content?: string;
+                /** @description Only messages by this user. */
+                author_id?: components["schemas"]["Snowflake"];
+                /** @description Only results with an ID below this one (the next page). */
+                before?: components["schemas"]["Snowflake"];
+                /** @description Page size, 1 to 25 (default 25). */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of results, newest first, and how many there are. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageSearchResult"];
+                };
+            };
+            /** @description `validation_failed`: no word and no `author_id`, or a bad parameter. */
+            400: components["responses"]["Problem"];
+            /** @description `unauthenticated`. */
+            401: components["responses"]["Problem"];
+            /** @description `missing_permission`: no `READ_MESSAGE_HISTORY`. */
+            403: components["responses"]["Problem"];
+            /** @description `not_found`: no such channel, or the caller may not view it. */
+            404: components["responses"]["Problem"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["Problem"];
         };

@@ -2455,6 +2455,132 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
+  /guilds/{guild_id}/messages/search:
+    get:
+      tags: [messages]
+      operationId: searchGuildMessages
+      summary: Search the messages of a server
+      description: |
+        Full-text search in Russian over the text channels whose history the
+        caller may read (`VIEW_CHANNEL` and `READ_MESSAGE_HISTORY`); other
+        channels are left out silently. At most 2 searches a second per
+        user, 10 at once.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+        - name: channel_id
+          in: query
+          description: Only this channel; one the caller may not read finds nothing.
+          schema:
+            $ref: "#/components/schemas/Snowflake"
+        - name: content
+          in: query
+          description: |
+            Words to find, up to 200 characters. Every word must match, as a
+            word form ("фильмы" finds "фильм") or the start of a word ("кин"
+            finds "кино"); letters and digits count, anything else only
+            separates words. May be left out when `author_id` is given.
+          schema:
+            type: string
+            maxLength: 200
+        - name: author_id
+          in: query
+          description: Only messages by this user.
+          schema:
+            $ref: "#/components/schemas/Snowflake"
+        - name: before
+          in: query
+          description: Only results with an ID below this one (the next page).
+          schema:
+            $ref: "#/components/schemas/Snowflake"
+        - name: limit
+          in: query
+          description: Page size, 1 to 25 (default 25).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 25
+            default: 25
+      responses:
+        "200":
+          description: A page of results, newest first, and how many there are.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageSearchResult"
+        "400":
+          description: "`validation_failed`: no word and no `author_id`, or a bad parameter."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or the caller is not a member."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /channels/{channel_id}/messages/search:
+    get:
+      tags: [messages]
+      operationId: searchChannelMessages
+      summary: Search the messages of one channel
+      description: |
+        The same search in one text channel, a direct message or a group.
+        Needs `VIEW_CHANNEL` and `READ_MESSAGE_HISTORY` there.
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+        - name: content
+          in: query
+          description: |
+            Words to find, up to 200 characters. Every word must match, as a
+            word form ("фильмы" finds "фильм") or the start of a word ("кин"
+            finds "кино"); letters and digits count, anything else only
+            separates words. May be left out when `author_id` is given.
+          schema:
+            type: string
+            maxLength: 200
+        - name: author_id
+          in: query
+          description: Only messages by this user.
+          schema:
+            $ref: "#/components/schemas/Snowflake"
+        - name: before
+          in: query
+          description: Only results with an ID below this one (the next page).
+          schema:
+            $ref: "#/components/schemas/Snowflake"
+        - name: limit
+          in: query
+          description: Page size, 1 to 25 (default 25).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 25
+            default: 25
+      responses:
+        "200":
+          description: A page of results, newest first, and how many there are.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageSearchResult"
+        "400":
+          description: "`validation_failed`: no word and no `author_id`, or a bad parameter."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`missing_permission`: no `READ_MESSAGE_HISTORY`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such channel, or the caller may not view it."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
   /channels/{channel_id}/messages/{message_id}/ack:
     post:
       tags: [messages]
@@ -3676,6 +3802,22 @@ components:
           type: [string, "null"]
           minLength: 1
           maxLength: 128
+    MessageSearchResult:
+      type: object
+      additionalProperties: false
+      required: [messages, total_results]
+      properties:
+        messages:
+          type: array
+          maxItems: 25
+          description: Newest first, without `nonce`.
+          items:
+            $ref: "#/components/schemas/Message"
+        total_results:
+          type: integer
+          minimum: 0
+          maximum: 1000
+          description: How many messages match in all, counting at most 1000.
     UserUpdateEvent:
       description: "`CurrentUser` to the user themself, `User` to everyone else."
       anyOf:
