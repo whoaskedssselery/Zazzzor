@@ -7,3 +7,10 @@ export const currentBrowser = (): Browser => (navigator.userAgent.includes("Fire
 export const canRestrictOwnAudio = (): boolean =>
   // mediaDevices is missing outside a secure context (and in jsdom).
   "mediaDevices" in navigator && "restrictOwnAudio" in navigator.mediaDevices.getSupportedConstraints();
+
+/**
+ * Whether this browser can share a screen at all. Phones' browsers cannot
+ * (no getDisplayMedia on Android and iOS): there the share button is not shown.
+ */
+export const canShareScreen = (): boolean =>
+  "mediaDevices" in navigator && typeof navigator.mediaDevices.getDisplayMedia === "function";

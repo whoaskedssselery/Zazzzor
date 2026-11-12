@@ -6,7 +6,7 @@ export type {
   NoiseStatus,
   ScreenShareResult,
 } from "@/shared/lib";
-export { type Browser, canRestrictOwnAudio, currentBrowser } from "./lib/browser";
+export { type Browser, canRestrictOwnAudio, canShareScreen, currentBrowser } from "./lib/browser";
 export {
   DEFAULT_VOICE_PREFS,
   readVoicePrefs,
