@@ -2769,10 +2769,24 @@ paths:
       operationId: listGuildInvites
       summary: Invites of a server
       description: |
-        Needs `MANAGE_GUILD`. Newest first, at most 1000, expired and used
-        up ones included; only invites to channels the caller can see.
+        Needs `MANAGE_GUILD`. Newest first, expired and used up ones
+        included. Only invites to visible channels count toward the page.
+        Use the last invite's code as `before` for the next page.
       parameters:
         - $ref: "#/components/parameters/GuildID"
+        - name: before
+          in: query
+          description: Exclusive invite code cursor. A missing or inaccessible cursor invite yields an empty page.
+          schema:
+            type: string
+            pattern: '^[0-9A-Za-z]{8}$'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
       responses:
         "200":
           description: The invites.
@@ -2783,6 +2797,9 @@ paths:
                 maxItems: 1000
                 items:
                   $ref: "#/components/schemas/Invite"
+        "400":
+          description: "`validation_failed`: invalid cursor format or limit."
+          $ref: "#/components/responses/Problem"
         "401":
           description: "`unauthenticated`."
           $ref: "#/components/responses/Problem"
