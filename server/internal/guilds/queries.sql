@@ -215,3 +215,22 @@ RETURNING *;
 SELECT e.* FROM guild_emojis AS e
 JOIN members AS m ON m.guild_id = e.guild_id AND m.user_id = @user_id::bigint
 WHERE e.id = @id AND e.deleted_at IS NULL;
+
+-- name: MutualGuildIDs :many
+-- The guilds both users are members of, ascending.
+SELECT mine.guild_id FROM members AS mine
+JOIN members AS other ON other.guild_id = mine.guild_id
+WHERE mine.user_id = @user_id AND other.user_id = @other_id
+ORDER BY mine.guild_id;
+
+-- name: KnowsOutsideGuilds :one
+-- Whether user_id is a friend of other_id, has a pending request with them
+-- either way, or shares a direct message or group with them.
+SELECT (EXISTS (
+    SELECT 1 FROM relationships AS rel
+    WHERE rel.user_id = @user_id AND rel.other_id = @other_id AND rel.type IN (1, 3, 4)
+) OR EXISTS (
+    SELECT 1 FROM channel_recipients AS mine
+    JOIN channel_recipients AS other ON other.channel_id = mine.channel_id
+    WHERE mine.user_id = @user_id AND other.user_id = @other_id
+))::bool AS known;

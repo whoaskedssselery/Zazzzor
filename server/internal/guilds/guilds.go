@@ -653,3 +653,22 @@ func (s *Service) member(ctx context.Context, db store.DBTX, guildID, userID sno
 	}
 	return ms[0], nil
 }
+
+// ProfileLink tells how viewer knows target: the guilds they share and
+// whether target's profile is visible to viewer at all (they share a guild,
+// are friends or have a pending request, or share a direct message or
+// group). A user always sees their own profile.
+func (s *Service) ProfileLink(ctx context.Context, viewer, target snowflake.ID) (mutual []snowflake.ID, visible bool, err error) {
+	mutual, err = s.q.MutualGuildIDs(ctx, s.pool, store.MutualGuildIDsParams{UserID: viewer, OtherID: target})
+	if err != nil {
+		return nil, false, fmt.Errorf("guilds: mutual guilds: %w", err)
+	}
+	if viewer == target || len(mutual) > 0 {
+		return mutual, true, nil
+	}
+	known, err := s.q.KnowsOutsideGuilds(ctx, s.pool, store.KnowsOutsideGuildsParams{UserID: int64(viewer), OtherID: int64(target)})
+	if err != nil {
+		return nil, false, fmt.Errorf("guilds: profile link: %w", err)
+	}
+	return mutual, known, nil
+}

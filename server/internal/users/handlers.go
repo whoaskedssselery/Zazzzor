@@ -11,13 +11,15 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
 	"github.com/whoaskedssselery/zazzzor/server/internal/files"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/upload"
 )
 
 // Mount registers the profile endpoints on r, which must already run
 // auth.Middleware:
 //
-//	GET, PATCH /users/@me; POST /users/@me/password; PUT, DELETE /users/@me/avatar
+//	GET, PATCH /users/@me; POST /users/@me/password; PUT, DELETE /users/@me/avatar;
+//	GET /users/{user_id}/profile
 func Mount(r chi.Router, s *Service) {
 	r.Group(func(r chi.Router) {
 		r.Use(auth.Require, httpx.NoStore)
@@ -26,6 +28,7 @@ func Mount(r chi.Router, s *Service) {
 		r.Post("/users/@me/password", httpx.Wrap(s.handlePassword))
 		r.With(s.limitProfileWrites, upload.Limit(auth.UserKey)).Put("/users/@me/avatar", httpx.Wrap(s.handlePutAvatar))
 		r.With(s.limitProfileWrites).Delete("/users/@me/avatar", httpx.Wrap(s.handleDeleteAvatar))
+		r.Get("/users/{user_id}/profile", httpx.Wrap(s.handleProfile))
 	})
 }
 
@@ -42,13 +45,41 @@ func (s *Service) limitProfileWrites(next http.Handler) http.Handler {
 }
 
 func handleMe(w http.ResponseWriter, r *http.Request) error {
-	httpx.JSON(w, http.StatusOK, auth.CurrentUser(r).Public())
+	httpx.JSON(w, http.StatusOK, auth.CurrentUser(r).Self())
+	return nil
+}
+
+func (s *Service) handleProfile(w http.ResponseWriter, r *http.Request) error {
+	target, err := snowflake.Parse(chi.URLParam(r, "user_id"))
+	if err != nil {
+		return httpx.NotFound()
+	}
+	p, err := s.GetProfile(r.Context(), auth.CurrentUser(r).ID, target)
+	if err != nil {
+		return auth.ToProblem(err)
+	}
+	httpx.JSON(w, http.StatusOK, p)
 	return nil
 }
 
 // patchMeRequest keeps the raw field to tell absent from null.
 type patchMeRequest struct {
-	DisplayName json.RawMessage `json:"display_name"`
+	DisplayName  json.RawMessage `json:"display_name"`
+	Bio          json.RawMessage `json:"bio"`
+	Status       json.RawMessage `json:"status"`
+	CustomStatus json.RawMessage `json:"custom_status"`
+}
+
+// stringField reads a field that must be a string when present.
+func stringField(raw json.RawMessage, field string) (*string, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	var v string
+	if bytes.Equal(raw, []byte("null")) || json.Unmarshal(raw, &v) != nil {
+		return nil, fieldError(field, "must be a string")
+	}
+	return &v, nil
 }
 
 func fieldError(field, msg string) error {
@@ -60,17 +91,32 @@ func (s *Service) handlePatchMe(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	u := auth.CurrentUser(r)
-	if req.DisplayName != nil {
-		var dn string
-		if bytes.Equal(req.DisplayName, []byte("null")) || json.Unmarshal(req.DisplayName, &dn) != nil {
-			return fieldError("display_name", "must be a string")
+	var c auth.ProfileChange
+	if c.DisplayName, err = stringField(req.DisplayName, "display_name"); err != nil {
+		return err
+	}
+	if c.Bio, err = stringField(req.Bio, "bio"); err != nil {
+		return err
+	}
+	if c.Status, err = stringField(req.Status, "status"); err != nil {
+		return err
+	}
+	if req.CustomStatus != nil {
+		// null clears the status line.
+		c.SetCustomStatus = true
+		if !bytes.Equal(req.CustomStatus, []byte("null")) {
+			if c.CustomStatus, err = stringField(req.CustomStatus, "custom_status"); err != nil {
+				return err
+			}
 		}
-		if u, err = s.UpdateDisplayName(r.Context(), u, dn); err != nil {
+	}
+	u := auth.CurrentUser(r)
+	if c != (auth.ProfileChange{}) {
+		if u, err = s.UpdateProfile(r.Context(), u, c); err != nil {
 			return auth.ToProblem(err)
 		}
 	}
-	httpx.JSON(w, http.StatusOK, u.Public())
+	httpx.JSON(w, http.StatusOK, u.Self())
 	return nil
 }
 
@@ -106,7 +152,7 @@ func (s *Service) handlePutAvatar(w http.ResponseWriter, r *http.Request) error 
 	if err != nil {
 		return auth.ToProblem(files.ToProblem(err))
 	}
-	httpx.JSON(w, http.StatusOK, u.Public())
+	httpx.JSON(w, http.StatusOK, u.Self())
 	return nil
 }
 
@@ -115,6 +161,6 @@ func (s *Service) handleDeleteAvatar(w http.ResponseWriter, r *http.Request) err
 	if err != nil {
 		return auth.ToProblem(err)
 	}
-	httpx.JSON(w, http.StatusOK, u.Public())
+	httpx.JSON(w, http.StatusOK, u.Self())
 	return nil
 }

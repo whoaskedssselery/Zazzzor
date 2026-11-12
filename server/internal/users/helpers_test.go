@@ -53,6 +53,18 @@ func (p *recordingPublisher) ofType(typ string) []events.Event {
 	return out
 }
 
+// peerUpdates is the USER_UPDATE events meant for the peers (the user
+// themself gets a CurrentUser of their own with each).
+func (p *recordingPublisher) peerUpdates() []events.Event {
+	var out []events.Event
+	for _, e := range p.ofType(events.UserUpdate) {
+		if e.Audience.Kind == events.AudiencePeers {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 type env struct {
 	t    *testing.T
 	auth *auth.Service

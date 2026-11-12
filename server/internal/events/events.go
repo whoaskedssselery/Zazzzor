@@ -49,6 +49,9 @@ const (
 	CallUpdate            = "CALL_UPDATE"
 	CallDelete            = "CALL_DELETE"
 	SessionRevoked        = "SESSION_REVOKED"
+	// PresenceSet is internal: the gateway takes the user's new status and
+	// status line and announces what changed for their peers.
+	PresenceSet = "PRESENCE_SET"
 
 	// Overflow is the last event a subscriber receives when it fell behind
 	// and was dropped by the bus.
@@ -103,6 +106,13 @@ type Event struct {
 // must not block.
 type Publisher interface {
 	Publish(ctx context.Context, e Event)
+}
+
+// PresenceSetPayload is the payload of a PresenceSet event.
+type PresenceSetPayload struct {
+	UserID       snowflake.ID
+	Status       string // online, idle, dnd or invisible
+	CustomStatus *string
 }
 
 // SessionRevokedPayload is the payload of a SessionRevoked event: the gateway
