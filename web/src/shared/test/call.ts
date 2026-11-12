@@ -1,4 +1,4 @@
-import type { CallTransport, CallTransportEvents, ScreenShareResult } from "@/shared/lib";
+import type { CallTransport, CallTransportEvents, CameraResult, ScreenShareResult } from "@/shared/lib";
 
 type Call = { method: string; args: unknown[] };
 
@@ -8,11 +8,12 @@ type Call = { method: string; args: unknown[] };
  * connection reports it ("disconnected", "left"), and a disconnect cancels a
  * connect still in progress. `connectGate` holds connects back until it
  * resolves; `screenResult` is what the next startScreenShare gives (or a
- * promise of it); `deviceError` makes useDevice fail.
+ * promise of it), `cameraResult` the same for startCamera; `deviceError` makes useDevice fail.
  */
 export class FakeTransport implements CallTransport {
   readonly calls: Call[] = [];
   screenResult: ScreenShareResult | Promise<ScreenShareResult> = { ok: true, surface: "browser", audio: true };
+  cameraResult: CameraResult | Promise<CameraResult> = { ok: true };
   connectGate: Promise<void> | null = null;
   deviceError: Error | null = null;
   private connected = false;
@@ -86,6 +87,30 @@ export class FakeTransport implements CallTransport {
     this.record("attachOwnScreen", el);
     return () => {
       this.record("detachOwnScreen", el);
+    };
+  }
+
+  startCamera(): Promise<CameraResult> {
+    this.record("startCamera");
+    return Promise.resolve(this.cameraResult);
+  }
+
+  stopCamera(): Promise<void> {
+    this.record("stopCamera");
+    return Promise.resolve();
+  }
+
+  attachCamera(userId: string, el: HTMLVideoElement): () => void {
+    this.record("attachCamera", userId, el);
+    return () => {
+      this.record("detachCamera", userId, el);
+    };
+  }
+
+  attachOwnCamera(el: HTMLVideoElement): () => void {
+    this.record("attachOwnCamera", el);
+    return () => {
+      this.record("detachOwnCamera", el);
     };
   }
 

@@ -2,11 +2,12 @@ export type {
   CallLink,
   CallTransport,
   CallTransportEvents,
+  CameraResult,
   EndCause,
   NoiseStatus,
   ScreenShareResult,
 } from "@/shared/lib";
-export { type Browser, canRestrictOwnAudio, canShareScreen, currentBrowser } from "./lib/browser";
+export { type Browser, canRestrictOwnAudio, canShareScreen, canUseCamera, currentBrowser } from "./lib/browser";
 export {
   DEFAULT_VOICE_PREFS,
   readVoicePrefs,

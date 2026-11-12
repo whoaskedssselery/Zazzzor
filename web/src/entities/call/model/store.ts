@@ -19,6 +19,10 @@ export interface CallState {
   watching: string[];
   /** The user shares their screen. */
   sharing: boolean;
+  /** Who has a camera on in the call (others only). */
+  cameras: string[];
+  /** The user's camera is on. */
+  camera: boolean;
   /** What cleans the microphone in this call; null until the microphone is on. */
   noise: NoiseStatus | null;
 }
@@ -32,6 +36,8 @@ const CALL_FREE = {
   streams: [],
   watching: [],
   sharing: false,
+  cameras: [],
+  camera: false,
   noise: null,
 } as const satisfies Partial<CallState>;
 

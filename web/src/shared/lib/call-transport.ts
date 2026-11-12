@@ -12,6 +12,9 @@ export type ScreenShareResult =
   | { ok: true; surface: "monitor" | "window" | "browser" | "unknown"; audio: boolean }
   | { ok: false; reason: "cancelled" | "failed" };
 
+/** The camera is on, or why not: refused by the user or the browser, no camera, or anything else. */
+export type CameraResult = { ok: true } | { ok: false; reason: "denied" | "missing" | "failed" };
+
 /**
  * What cleans the microphone now: DeepFilterNet3 ("enhanced", "loading" while
  * its model downloads), RNNoise as the fallback, the browser's own ("standard"),
@@ -32,6 +35,10 @@ export interface CallTransportEvents {
   micDenied: () => void;
   /** The browser stopped the user's screen share ("Stop sharing"). */
   screenEnded: () => void;
+  /** Who has a camera on now (others only). */
+  cameras: (userIds: string[]) => void;
+  /** The user's camera went off by itself: unplugged, taken by another app, or no longer allowed. */
+  cameraEnded: () => void;
   /** The microphone's noise suppression, each time it changes. */
   noise: (status: NoiseStatus) => void;
 }
@@ -54,6 +61,16 @@ export interface CallTransport {
   attachScreen(userId: string, el: HTMLVideoElement): () => void;
   /** Shows the user's own screen share in `el` (a local preview, nothing is received) until the returned function runs. */
   attachOwnScreen(el: HTMLVideoElement): () => void;
+  startCamera(): Promise<CameraResult>;
+  stopCamera(): Promise<void>;
+  /**
+   * Receives `userId`'s camera and shows it in `el` until the returned
+   * function runs: a camera costs bandwidth only while its tile is shown,
+   * and at the size of that tile.
+   */
+  attachCamera(userId: string, el: HTMLVideoElement): () => void;
+  /** Shows the user's own camera in `el` (a local preview) until the returned function runs. */
+  attachOwnCamera(el: HTMLVideoElement): () => void;
   useDevice(kind: "audioinput" | "audiooutput", deviceId: string): Promise<void>;
   on<K extends keyof CallTransportEvents>(event: K, fn: CallTransportEvents[K]): () => void;
 }
