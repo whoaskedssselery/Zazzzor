@@ -6,6 +6,7 @@ import { AddPeopleButton, RenameGroupDialog } from "@/features/private-groups";
 import { Avatar } from "@/shared/ui";
 import { MembersButton, NavButton, ShellHeader } from "@/widgets/app-shell";
 import { PrivateChatView } from "@/widgets/chat";
+import { CallButton, PrivateCallStage } from "@/widgets/voice-stage";
 
 /**
  * The main area of /channels/@me/$channelId: a DM or a group with its
@@ -72,11 +73,13 @@ export const DirectMessagePage = ({ channelId }: { channelId: string }) => {
           </>
         )}
         <div className="ml-auto flex shrink-0 items-center">
+          <CallButton channel={channel} />
           <NotifyButton guildId={null} channelId={channel.id} />
           <AddPeopleButton channel={channel} />
           {!peer && <MembersButton />}
         </div>
       </ShellHeader>
+      <PrivateCallStage channel={channel} />
       <PrivateChatView key={channel.id} channel={channel} />
       {!peer && <RenameGroupDialog channel={channel} open={renaming} onOpenChange={setRenaming} />}
     </>

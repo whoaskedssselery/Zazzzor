@@ -190,11 +190,13 @@ const wire = (t: CallTransport): CallTransport => {
 };
 
 /**
- * Joins voice channel `channelId` of server `guildId`: a fresh token (the
- * server drops the user from any other channel), then one connection with
- * the user's switches applied. A refused token is said in a notice.
+ * Joins voice channel `channelId` of server `guildId`, or the call of a
+ * DM or a group when `guildId` is null: a fresh token (the server drops
+ * the user from any other channel, and a call starts ringing the others),
+ * then one connection with the user's switches applied. A refused token is
+ * said in a notice.
  */
-export const joinVoice = async (guildId: string, channelId: string): Promise<void> => {
+export const joinVoice = async (guildId: string | null, channelId: string): Promise<void> => {
   const mine = ++generation;
   const latest = () => mine === generation;
   joining = true;
@@ -291,6 +293,15 @@ export const endCall = async (cause: EndCause): Promise<void> => {
 export const onVoiceMove = async (channelId: string): Promise<void> => {
   const { guildId } = getCall();
   if (guildId !== null) await joinVoice(guildId, channelId);
+};
+
+/** Stops the call of DM or group `channelId` ringing the user; a failure is said in a notice. */
+export const declineCall = async (channelId: string): Promise<void> => {
+  try {
+    unwrap(await api.POST("/channels/{channel_id}/call/decline", { params: { path: { channel_id: channelId } } }));
+  } catch (e) {
+    notify(errorText(e));
+  }
 };
 
 /** The microphone switch; applied at once in a call. */

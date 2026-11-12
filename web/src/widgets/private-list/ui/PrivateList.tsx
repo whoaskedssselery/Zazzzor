@@ -1,5 +1,5 @@
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { Crown, Users, X } from "lucide-react";
+import { Crown, Phone, Users, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
   type DMChannel,
@@ -47,6 +47,8 @@ const Row = ({ entry, active, onLeave }: { entry: PrivateEntry; active: boolean;
   let label = name;
   if (count > 0) label += `, непрочитанных: ${String(count)}`;
   if (muted) label += ", заглушено";
+  const calling = Object.keys(entry.voice).length > 0;
+  if (calling) label += ", идёт звонок";
   return (
     <li className="group/row relative">
       <Link
@@ -72,6 +74,7 @@ const Row = ({ entry, active, onLeave }: { entry: PrivateEntry; active: boolean;
             <span className="block truncate text-xs text-fg-faint">{`Участников: ${String(channel.recipients.length + 1)}`}</span>
           )}
         </span>
+        {calling && <Phone aria-hidden className="size-4 shrink-0 text-fg-success" strokeWidth={2} />}
         {count > 0 && (
           <Badge variant="count" aria-hidden>
             {formatCount(count)}
