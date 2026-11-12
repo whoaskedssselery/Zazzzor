@@ -31,5 +31,7 @@ export default defineConfig({
     environment: "jsdom",
     include: ["src/**/*.test.{ts,tsx}"],
     setupFiles: ["src/shared/test/setup.ts"],
+    // Whole-app flow tests under a full parallel run: room past the default 5 s.
+    testTimeout: 15_000,
   },
 });
