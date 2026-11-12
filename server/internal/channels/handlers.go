@@ -3,6 +3,7 @@ package channels
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -34,6 +35,8 @@ func Mount(r chi.Router, s *Service) {
 		r.Get("/channels/{channel_id}", httpx.Wrap(s.handleGet))
 		writes.Patch("/channels/{channel_id}", httpx.Wrap(s.handlePatch))
 		writes.Delete("/channels/{channel_id}", httpx.Wrap(s.handleDelete))
+		writes.Put("/channels/{channel_id}/recipients/{user_id}", httpx.Wrap(s.handleGroupRecipient))
+		writes.Delete("/channels/{channel_id}/recipients/{user_id}", httpx.Wrap(s.handleGroupRecipient))
 
 		writes.Put("/channels/{channel_id}/permissions/{target_id}", httpx.Wrap(s.handlePutOverwrite))
 		writes.Delete("/channels/{channel_id}/permissions/{target_id}", httpx.Wrap(s.handleDeleteOverwrite))
@@ -182,6 +185,13 @@ func (s *Service) handlePatch(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	kind, kindErr := s.channelKind(r.Context(), id)
+	if kindErr != nil && !errors.Is(kindErr, ErrNotFound) {
+		return fail(kindErr)
+	}
+	if kind.Private() {
+		return s.handlePatchPrivate(w, r, id)
+	}
 	req, err := httpx.Decode[patchRequest](r)
 	if err != nil {
 		return err
@@ -214,12 +224,18 @@ func (s *Service) handleDelete(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	row, lookupErr := s.Lookup(r.Context(), id)
+	kind, lookupErr := s.channelKind(r.Context(), id)
 	if lookupErr != nil {
 		return fail(lookupErr)
 	}
-	if row.Type.Private() {
-		if err = s.CloseDirect(r.Context(), id, auth.CurrentUser(r).ID); err != nil {
+	if kind.Private() {
+		actor := auth.CurrentUser(r).ID
+		if kind == TypeDM {
+			err = s.CloseDirect(r.Context(), id, actor)
+		} else {
+			err = s.RemoveGroupRecipient(r.Context(), id, actor, actor)
+		}
+		if err != nil {
 			return fail(err)
 		}
 		w.WriteHeader(http.StatusNoContent)

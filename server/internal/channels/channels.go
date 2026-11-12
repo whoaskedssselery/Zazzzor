@@ -203,6 +203,7 @@ type Service struct {
 	now           func() time.Time
 	writeLimiter  *ratelimit.Limiter
 	directLimiter *ratelimit.Limiter
+	groupLimiter  *ratelimit.Limiter
 	privateLocks  [64]sync.Mutex
 	directLocks   [64]sync.Mutex
 }
@@ -211,7 +212,8 @@ type Service struct {
 func NewService(o Options) *Service {
 	s := &Service{pool: o.Pool, q: store.New(), ids: o.IDs, guilds: o.Guilds, pub: o.Publisher,
 		now: o.Now, writeLimiter: o.WriteLimiter,
-		directLimiter: ratelimit.New(rate.Every(2*time.Second), 30, 2*time.Minute)}
+		directLimiter: ratelimit.New(rate.Every(2*time.Second), 30, 2*time.Minute),
+		groupLimiter:  ratelimit.New(rate.Every(6*time.Minute), 10, 2*time.Hour)}
 	if s.now == nil {
 		s.now = time.Now
 	}
