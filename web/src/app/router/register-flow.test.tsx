@@ -50,7 +50,7 @@ describe("RegisterPage", () => {
 
     await fill(user, { displayName: "  Вася  ", username: "Vasya", password: "password1" });
 
-    expect(await screen.findByText("Выберите сервер слева или создайте свой")).toBeTruthy();
+    expect(await screen.findByRole("heading", { level: 1, name: "Друзья" })).toBeTruthy();
     expect(currentHref(router)).toBe("/channels/@me");
     expect(register.bodies).toEqual([{ username: "vasya", password: "password1", display_name: "Вася" }]);
   });
@@ -62,7 +62,7 @@ describe("RegisterPage", () => {
 
     await fill(user, { username: "vasya", password: "password1" });
 
-    await screen.findByText("Выберите сервер слева или создайте свой");
+    await screen.findByRole("heading", { level: 1, name: "Друзья" });
     expect(register.bodies).toEqual([{ username: "vasya", password: "password1" }]);
   });
 

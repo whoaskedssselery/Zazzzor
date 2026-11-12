@@ -36,7 +36,7 @@ describe("LoginPage", () => {
 
     await signIn(user, "vasya", "password1");
 
-    expect(await screen.findByText("Выберите сервер слева или создайте свой")).toBeTruthy();
+    expect(await screen.findByRole("heading", { level: 1, name: "Друзья" })).toBeTruthy();
     expect(currentHref(router)).toBe("/channels/@me");
     expect(login.bodies).toEqual([{ username: "vasya", password: "password1" }]);
   });
@@ -71,7 +71,7 @@ describe("LoginPage", () => {
     expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Логин" }).value).toBe("ivan.petrov");
     await user.type(screen.getByLabelText("Пароль"), "password1");
     await user.click(screen.getByRole("button", { name: "Войти" }));
-    await screen.findByText("Выберите сервер слева или создайте свой");
+    await screen.findByRole("heading", { level: 1, name: "Друзья" });
     expect(login.bodies[0]?.username).toBe("ivan.petrov");
   });
 
@@ -109,7 +109,7 @@ describe("LoginPage", () => {
 
     await signIn(user, "vasya", "password1");
 
-    await screen.findByText("Выберите сервер слева или создайте свой");
+    await screen.findByRole("heading", { level: 1, name: "Друзья" });
     expect(currentHref(router)).toBe("/channels/@me");
   });
 

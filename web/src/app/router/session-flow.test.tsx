@@ -24,7 +24,7 @@ describe("session", () => {
   it("sends / to /channels/@me with a session", async () => {
     server.use(sessionHandler(testUser));
     const { router } = renderApp("/");
-    await screen.findByText("Выберите сервер слева или создайте свой");
+    await screen.findByRole("heading", { level: 1, name: "Друзья" });
     expect(router.state.location.pathname).toBe("/channels/@me");
   });
 
@@ -41,7 +41,7 @@ describe("session", () => {
   it("sends a signed-in user on /login with a dot-segment next to /channels/@me", async () => {
     server.use(sessionHandler(testUser));
     const { router } = renderApp(`/login?next=${encodeURIComponent("/.//evil.com")}`);
-    await screen.findByText("Выберите сервер слева или создайте свой");
+    await screen.findByRole("heading", { level: 1, name: "Друзья" });
     expect(currentHref(router)).toBe("/channels/@me");
   });
 
@@ -51,7 +51,7 @@ describe("session", () => {
       apiHandler("patch", "/users/@me", () => problem(401, "unauthenticated")),
     );
     const { router } = renderApp("/channels/@me");
-    await screen.findByText("Выберите сервер слева или создайте свой");
+    await screen.findByRole("heading", { level: 1, name: "Друзья" });
 
     await api.PATCH("/users/@me", { body: { display_name: "Вася" } });
 
@@ -86,7 +86,7 @@ describe("session", () => {
       apiHandler("get", "/guilds/{guild_id}", () => problem(401, "unauthenticated")),
     );
     const { router, queryClient } = renderApp("/channels/@me");
-    await screen.findByText("Выберите сервер слева или создайте свой");
+    await screen.findByRole("heading", { level: 1, name: "Друзья" });
     queryClient.setQueryData(["guilds", "1"], { stale: true });
 
     await api.GET("/guilds/{guild_id}", { params: { path: { guild_id: "1" } } });
@@ -107,7 +107,7 @@ describe("session", () => {
       }),
     );
     const { user, router, queryClient } = renderApp("/channels/@me");
-    await screen.findByText("Выберите сервер слева или создайте свой");
+    await screen.findByRole("heading", { level: 1, name: "Друзья" });
     queryClient.setQueryData(["guilds", "1"], { stale: true });
 
     await user.click(screen.getByRole("button", { name: "Выйти" }));
@@ -125,7 +125,7 @@ describe("session", () => {
       apiHandler("post", "/auth/logout", () => problem(429, "rate_limited")),
     );
     const { user, router } = renderApp("/channels/@me");
-    await screen.findByText("Выберите сервер слева или создайте свой");
+    await screen.findByRole("heading", { level: 1, name: "Друзья" });
 
     await user.click(screen.getByRole("button", { name: "Выйти" }));
 
