@@ -1,10 +1,33 @@
 import { Search } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
+import type { GuildEmoji } from "@/entities/guild";
 import { cn, Popover, PopoverContent, PopoverTrigger, Spinner } from "@/shared/ui";
-import { type EmojiGroup, loadEmoji, type PickerEmoji, recentEmoji, rememberEmoji, searchEmoji } from "../model/emoji";
+import {
+  customPickerEmoji,
+  type EmojiGroup,
+  loadEmoji,
+  type PickerEmoji,
+  recentEmoji,
+  rememberEmoji,
+  searchEmoji,
+} from "../model/emoji";
 
 /** The emoji the user's pointer or focus is on, for the line at the bottom. */
-type Hover = { emoji: string; label: string } | null;
+type Hover = PickerEmoji | null;
+
+/** An emoji of the picker: a custom one's picture, or the Unicode glyph. */
+const Glyph = ({ e, className }: { e: PickerEmoji; className?: string }) =>
+  e.url === undefined ? (
+    <span className={cn("leading-none", className)}>{e.emoji}</span>
+  ) : (
+    <img
+      src={e.url}
+      alt=""
+      draggable={false}
+      loading="lazy"
+      className={cn("size-[1.15em] object-contain", className)}
+    />
+  );
 
 const Cell = ({
   e,
@@ -29,7 +52,7 @@ const Cell = ({
       onHover(e);
     }}
   >
-    {e.emoji}
+    <Glyph e={e} />
   </button>
 );
 
@@ -54,24 +77,41 @@ const Section = ({
   </section>
 );
 
-/** Recent emoji with their names from the loaded list (a recent one no longer offered keeps its glyph as its name). */
-const recentOf = (groups: EmojiGroup[]): PickerEmoji[] => {
+/** The key's ID when it names a custom emoji. */
+const customId = (key: string): string | null => /:([0-9]+)$/.exec(key)?.[1] ?? null;
+
+/**
+ * Recent emoji with their names from the loaded list (a recent one no
+ * longer offered keeps its glyph as its name). A custom one shows only on
+ * its server, by its current name; another server's, or a deleted one, is left out.
+ */
+const recentOf = (groups: EmojiGroup[], custom: readonly PickerEmoji[]): PickerEmoji[] => {
   const all = new Map(groups.flatMap((g) => g.emoji).map((e) => [e.emoji, e]));
-  return recentEmoji().map((emoji) => all.get(emoji) ?? { emoji, label: emoji, terms: "" });
+  const byId = new Map(custom.map((e) => [customId(e.emoji), e]));
+  return recentEmoji().flatMap((emoji) => {
+    const id = customId(emoji);
+    if (id === null) return [all.get(emoji) ?? { emoji, label: emoji, terms: "" }];
+    const found = byId.get(id);
+    return found ? [found] : [];
+  });
 };
 
 /**
  * The reaction picker, as Discord's: search by name in Russian, the recent
- * ones first, then Unicode's groups. Enter in the search picks the first
- * match. The list loads the first time it opens.
+ * ones first, then the server's own emoji, then Unicode's groups. Enter in
+ * the search picks the first match. The list loads the first time it opens.
+ * A pick is the emoji's key: the Unicode emoji, or `name:id` for a custom one.
  */
 export const EmojiPicker = ({
   onPick,
   children,
   open,
   onOpenChange,
+  emojis,
 }: {
   onPick: (emoji: string) => void;
+  /** The server's custom emoji. */
+  emojis?: Readonly<Record<string, GuildEmoji>> | undefined;
   /** The trigger. */
   children: ReactNode;
   open?: boolean;
@@ -87,6 +127,7 @@ export const EmojiPicker = ({
   const [failed, setFailed] = useState(false);
   const [query, setQuery] = useState("");
   const [hover, setHover] = useState<Hover>(null);
+  const custom = useMemo(() => Object.values(emojis ?? {}).map(customPickerEmoji), [emojis]);
 
   useEffect(() => {
     if (!isOpen || groups !== null) return;
@@ -110,7 +151,10 @@ export const EmojiPicker = ({
     setOpen(false);
     setQuery("");
   };
-  const found = groups && query.trim() !== "" ? searchEmoji(groups, query) : null;
+  const found =
+    groups && query.trim() !== ""
+      ? [...searchEmoji([{ name: "", emoji: custom }], query), ...searchEmoji(groups, query)]
+      : null;
 
   let body: ReactNode;
   if (failed) body = <p className="p-6 text-center text-sm text-fg-muted">Не удалось загрузить эмодзи.</p>;
@@ -130,7 +174,8 @@ export const EmojiPicker = ({
   else
     body = (
       <>
-        <Section title="Недавние" emoji={recentOf(groups)} onPick={pick} onHover={setHover} />
+        <Section title="Недавние" emoji={recentOf(groups, custom)} onPick={pick} onHover={setHover} />
+        {custom.length > 0 && <Section title="Этого сервера" emoji={custom} onPick={pick} onHover={setHover} />}
         {groups.map((g) => (
           <Section key={g.name} title={g.name} emoji={g.emoji} onPick={pick} onHover={setHover} />
         ))}
@@ -186,7 +231,7 @@ export const EmojiPicker = ({
         >
           {hover ? (
             <>
-              <span className="text-2xl leading-none">{hover.emoji}</span>
+              <Glyph e={hover} className="text-2xl" />
               <span className="truncate">{hover.label}</span>
             </>
           ) : (

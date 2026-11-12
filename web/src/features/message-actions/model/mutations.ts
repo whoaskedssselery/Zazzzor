@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  emojiOfKey,
   type Message,
   removeMessage,
   replaceMessage,
@@ -77,12 +78,12 @@ export const useToggleReaction = () => {
     },
     onMutate: ({ message, emoji, add }) => {
       updateHistory(qc, message.channel_id, (h) =>
-        updateMessage(h, message.id, (m) => withReaction(m, emoji, true, add)),
+        updateMessage(h, message.id, (m) => withReaction(m, emojiOfKey(emoji), true, add)),
       );
     },
     onError: (e, { message, emoji, add }) => {
       updateHistory(qc, message.channel_id, (h) =>
-        updateMessage(h, message.id, (m) => withReaction(m, emoji, true, !add)),
+        updateMessage(h, message.id, (m) => withReaction(m, emojiOfKey(emoji), true, !add)),
       );
       toast.show({ text: errorText(e), tone: "error" });
     },
