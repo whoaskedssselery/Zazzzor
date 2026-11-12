@@ -331,7 +331,8 @@ webhook:
 			t.Fatalf("real permissions = %+v, want subscribe=%v sources=%v and no data/metadata", p, subscribe, sources)
 		}
 	}
-	all := []livekit.TrackSource{livekit.TrackSource_MICROPHONE, livekit.TrackSource_SCREEN_SHARE, livekit.TrackSource_SCREEN_SHARE_AUDIO}
+	all := []livekit.TrackSource{livekit.TrackSource_MICROPHONE, livekit.TrackSource_SCREEN_SHARE,
+		livekit.TrackSource_SCREEN_SHARE_AUDIO, livekit.TrackSource_CAMERA}
 	checkGrants(true, all...)
 	// Require an actual published MICROPHONE before shrinking its grants.
 	awaitLiveHook(t, notices, "published microphone", func() bool {
@@ -362,7 +363,8 @@ webhook:
 	awaitLiveSubscriptions(ctx, t, metricsURL, 1)
 	path := moderationPath(guild.ID, user.ID)
 	expect(t, owner.Do(http.MethodPatch, path, map[string]bool{"mute": true, "deaf": true}), http.StatusNoContent)
-	checkGrants(false, livekit.TrackSource_SCREEN_SHARE, livekit.TrackSource_SCREEN_SHARE_AUDIO)
+	// Server mute and deafen leave the screen share and the camera.
+	checkGrants(false, livekit.TrackSource_SCREEN_SHARE, livekit.TrackSource_SCREEN_SHARE_AUDIO, livekit.TrackSource_CAMERA)
 	awaitLiveHook(t, notices, "muted microphone unpublished", func() bool {
 		p, getErr := remote.GetParticipant(ctx, &livekit.RoomParticipantIdentity{Room: channel.ID, Identity: user.ID})
 		return getErr == nil && !slices.ContainsFunc(p.GetTracks(), func(track *livekit.TrackInfo) bool { return track.GetSource() == livekit.TrackSource_MICROPHONE })
