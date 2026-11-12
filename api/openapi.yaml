@@ -884,8 +884,12 @@ paths:
           $ref: "#/components/responses/Problem"
         "413":
           $ref: "#/components/responses/Problem"
+        "415":
+          $ref: "#/components/responses/Problem"
         "429":
           $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/Problem"
   /guilds/{guild_id}/emojis/{emoji_id}:
     parameters:
       - $ref: "#/components/parameters/GuildID"
@@ -3942,6 +3946,7 @@ components:
             - $ref: "#/components/schemas/GatewayHello"
             - $ref: "#/components/schemas/GatewayReady"
             - $ref: "#/components/schemas/GuildState"
+            - $ref: "#/components/schemas/GuildEmojisUpdate"
             - $ref: "#/components/schemas/Guild"
             - $ref: "#/components/schemas/GuildDeleteEvent"
             - $ref: "#/components/schemas/MemberEvent"
@@ -3994,6 +3999,8 @@ components:
       required: [guild, roles, channels, members, my_member, presences, voice_states, read_states, emojis]
       description: A server as the receiving member sees it.
       properties:
+        emojis:
+          $ref: "#/components/schemas/GuildEmojiList"
         guild:
           $ref: "#/components/schemas/Guild"
         roles:
@@ -4347,6 +4354,9 @@ x-gateway:
       $ref: "#/components/schemas/GatewayReady"
     GUILD_CREATE:
       $ref: "#/components/schemas/GuildState"
+    GUILD_EMOJIS_UPDATE:
+      description: The full emoji list after a change, sent to server members.
+      $ref: "#/components/schemas/GuildEmojisUpdate"
     GUILD_UPDATE:
       $ref: "#/components/schemas/Guild"
     GUILD_DELETE:
