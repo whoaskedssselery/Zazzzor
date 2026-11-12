@@ -141,8 +141,6 @@ test("enhanced noise suppression runs under the production CSP", async ({ browse
 });
 
 test("a camera shows in its owner's tile", async ({ browser, browserName, people }) => {
-  // Passed against a server patched to allow the camera; off until C15 lands.
-  test.fixme(true, "needs C15: the voice token does not allow the camera yet");
   test.skip(browserName === "firefox", "Firefox asks for the camera, Chromium's fake UI allows it");
   const anna = await signUp(browser, "Аня");
   const petr = await signUp(browser, "Пётр");

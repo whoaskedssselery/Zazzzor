@@ -1488,8 +1488,9 @@ export interface paths {
          *     10 minutes, with the caller's user ID as identity and display name as
          *     name. It may subscribe unless server-deafened; it may publish the
          *     microphone with `SPEAK` unless server-muted
-         *     and the screen share (video and audio) with `STREAM`, nothing with
-         *     neither, and never data, the camera or its own metadata. `url` is the
+         *     and the screen share (video and audio) and the camera with `STREAM`
+         *     (server mute and deafen leave the camera alone), nothing with
+         *     neither, and never data or its own metadata. `url` is the
          *     LiveKit signaling URL for this origin (`wss://` for an `https://`
          *     `Origin`, `ws://` for `http://`, same host and port).
          *
@@ -2272,6 +2273,8 @@ export interface components {
             self_deaf: boolean;
             /** @description The user shares their screen (from LiveKit). */
             self_stream: boolean;
+            /** @description The user has their camera on (from LiveKit). */
+            self_video: boolean;
             /** @description Server-muted in this guild; disables the microphone. Kept across voice reconnects until lifted, guild membership ends, the guild is deleted or the API restarts. */
             mute: boolean;
             /** @description Server-deafened in this guild; disables listening. Kept across voice reconnects until lifted, guild membership ends, the guild is deleted or the API restarts. */

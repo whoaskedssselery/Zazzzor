@@ -157,7 +157,7 @@ describe("voice in the sidebar and the panels", () => {
         ],
         members: [makeMember(testUser), makeMember(petya), makeMember(masha)],
         voice_states: [
-          makeVoiceState(G, LOUNGE, petya.id, { self_mute: true }),
+          makeVoiceState(G, LOUNGE, petya.id, { self_mute: true, self_video: true }),
           makeVoiceState(G, LOUNGE, masha.id, { deaf: true, self_stream: true }),
           ...(mine ? [makeVoiceState(G, LOUNGE, testUser.id, mine)] : []),
         ],
@@ -173,6 +173,8 @@ describe("voice in the sidebar and the panels", () => {
     const rows = within(list).getAllByRole("listitem");
     expect(rows.map((r) => r.textContent)).toEqual([expect.stringContaining("Петя"), expect.stringContaining("Маша")]);
     expect(within(rows[0] as HTMLElement).getByRole("img", { name: "Микрофон выключен" })).toBeTruthy();
+    expect(within(rows[0] as HTMLElement).getByRole("img", { name: "Камера включена" })).toBeTruthy();
+    expect(within(rows[1] as HTMLElement).queryByRole("img", { name: "Камера включена" })).toBeNull();
     expect(within(rows[1] as HTMLElement).getByRole("img", { name: "Звук выключен модератором" })).toBeTruthy();
     expect(within(rows[1] as HTMLElement).getByText("В ЭФИРЕ")).toBeTruthy();
   });
