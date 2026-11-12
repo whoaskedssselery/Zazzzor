@@ -8,9 +8,9 @@ import {
   incomingCount,
   isGuildUnread,
   type PrivateEntry,
+  privateBadgeCount,
   privateList,
   privateName,
-  privateBadgeCount,
   useGuilds,
 } from "@/entities/guild";
 import { CreateGuildDialog } from "@/features/create-guild";

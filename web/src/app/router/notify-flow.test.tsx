@@ -45,7 +45,7 @@ const signedIn = () => {
       () => new HttpResponse(null, { status: 204 }),
     ),
     apiHandler("patch", "/users/@me/guilds/{guild_id}/settings", async ({ params, request }) => {
-      const body = (await request.json());
+      const body = await request.json();
       patches.push({ scope: params.guild_id, body });
       const { channel_overrides: overrides, ...scope } = body;
       settings = { ...settings, ...scope };

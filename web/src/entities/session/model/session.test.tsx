@@ -1,6 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 import { makeUser } from "@/shared/test";
-import { ME_KEY, safeNext, setSignedIn, updateSignedIn, type User } from "./session";
+import { ME_KEY, safeNext, setSignedIn, type User, updateSignedIn } from "./session";
 
 describe("safeNext", () => {
   it.each([

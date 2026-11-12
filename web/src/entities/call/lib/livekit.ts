@@ -1,5 +1,6 @@
 import {
   ConnectionState,
+  createLocalVideoTrack,
   LocalAudioTrack,
   type LocalTrackPublication,
   LocalVideoTrack,
@@ -11,7 +12,6 @@ import {
   Room,
   RoomEvent,
   Track,
-  createLocalVideoTrack,
 } from "livekit-client";
 import type { CallLink, CallTransport, CallTransportEvents, CameraResult, ScreenShareResult } from "@/shared/lib";
 import type { VoicePrefs } from "../model/prefs";
@@ -209,14 +209,14 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
     const pub = participant.getTrackPublication(Track.Source.Camera);
     if (!pub) return () => {};
     pub.setSubscribed(true);
-    const fit = () => {
+    const fitToTile = () => {
       if (el.clientWidth > 0 && el.clientHeight > 0) {
         pub.setVideoDimensions({ width: el.clientWidth, height: el.clientHeight });
       }
     };
-    fit();
+    fitToTile();
     if (typeof ResizeObserver === "undefined") return () => {};
-    const observer = new ResizeObserver(fit);
+    const observer = new ResizeObserver(fitToTile);
     observer.observe(el);
     return () => {
       observer.disconnect();

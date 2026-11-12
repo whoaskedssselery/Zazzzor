@@ -81,13 +81,15 @@ export const PrivateChatView = ({ channel }: { channel: DMChannel }) => {
     mentions,
     mentionables: () =>
       channel.recipients
-        .map((u): MentionSuggestion => ({
-          kind: "user",
-          id: u.id,
-          name: u.display_name,
-          detail: u.username,
-          avatarUrl: u.avatar_url,
-        }))
+        .map(
+          (u): MentionSuggestion => ({
+            kind: "user",
+            id: u.id,
+            name: u.display_name,
+            detail: u.username,
+            avatarUrl: u.avatar_url,
+          }),
+        )
         .sort((a, b) => a.name.localeCompare(b.name, "ru")),
     emojis: {},
     composerEmojis: () => [],

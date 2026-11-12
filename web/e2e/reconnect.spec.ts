@@ -93,7 +93,9 @@ test("the chat survives a restart of the API and a dropped connection", async ({
     if (!m) throw new Error(`no message «${text}»`);
     return m.id;
   };
-  await call(anna, "PATCH", `/channels/${channelId}/messages/${idOf("снова на связи")}`, { content: "снова на связи!" });
+  await call(anna, "PATCH", `/channels/${channelId}/messages/${idOf("снова на связи")}`, {
+    content: "снова на связи!",
+  });
   await call(anna, "DELETE", `/channels/${channelId}/messages/${idOf("это я удалю")}`);
   petrGateway.restore();
   await expect(banner(petr.page)).toHaveText("", { timeout: 45_000 });

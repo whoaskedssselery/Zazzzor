@@ -1,4 +1,5 @@
 import { Bell, BellOff } from "lucide-react";
+import type { ReactNode } from "react";
 import {
   channelLevel,
   defaultNotify,
@@ -87,7 +88,7 @@ export const NotifyItems = ({ guildId, channelId }: Where) => {
   const what = channelId === undefined ? "сервер" : guildId === null ? "беседу" : "канал";
   const level = channelId === undefined ? settings.message_notifications : (own?.message_notifications ?? 3);
 
-  let mute;
+  let mute: ReactNode;
   if (scopeMuted && channelId !== undefined && guildId !== null) {
     mute = (
       <>

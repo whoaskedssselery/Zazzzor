@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type ChangeEvent, useEffect, useRef, useState } from "react";
-import { updateSignedIn, type User } from "@/entities/session";
+import { type User, updateSignedIn } from "@/entities/session";
 import { ApiError, api, errorText, fieldErrorText, unwrap } from "@/shared/api";
 import { fileForm, IMAGE_ACCEPT, imageProblem, runeLength, trimContent, useObjectUrl } from "@/shared/lib";
 import { Avatar, Button, Field, FormAlert, Input, SaveBar, useToast } from "@/shared/ui";

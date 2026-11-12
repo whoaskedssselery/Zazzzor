@@ -11,7 +11,7 @@ export {
   safeNext,
   sessionQuery,
   setSignedIn,
-  updateSignedIn,
   type User,
+  updateSignedIn,
   useSession,
 } from "./model/session";
