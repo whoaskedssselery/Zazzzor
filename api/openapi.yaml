@@ -1865,7 +1865,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Channel"
+                oneOf:
+                  - $ref: "#/components/schemas/Channel"
+                  - $ref: "#/components/schemas/DMChannel"
         "401":
           description: "`unauthenticated`."
           $ref: "#/components/responses/Problem"
@@ -1903,14 +1905,18 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UpdateChannelRequest"
+              anyOf:
+                - $ref: "#/components/schemas/UpdateChannelRequest"
+                - $ref: "#/components/schemas/UpdateDMChannelRequest"
       responses:
         "200":
           description: The channel.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Channel"
+                oneOf:
+                  - $ref: "#/components/schemas/Channel"
+                  - $ref: "#/components/schemas/DMChannel"
         "400":
           description: "`invalid_body`, `body_too_large` or `validation_failed` (with `errors`)."
           $ref: "#/components/responses/Problem"

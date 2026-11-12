@@ -261,6 +261,55 @@ func (q *Queries) DropReadStates(ctx context.Context, db DBTX, arg DropReadState
 	return err
 }
 
+const groupFriendIDs = `-- name: GroupFriendIDs :many
+SELECT other_id FROM relationships WHERE user_id = $1 AND type = 1 AND other_id = ANY($2::bigint[])
+`
+
+type GroupFriendIDsParams struct {
+	ActorID int64
+	UserIds []int64
+}
+
+func (q *Queries) GroupFriendIDs(ctx context.Context, db DBTX, arg GroupFriendIDsParams) ([]int64, error) {
+	rows, err := db.Query(ctx, groupFriendIDs, arg.ActorID, arg.UserIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var other_id int64
+		if err := rows.Scan(&other_id); err != nil {
+			return nil, err
+		}
+		items = append(items, other_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const groupsAtCapacity = `-- name: GroupsAtCapacity :one
+SELECT EXISTS (
+    SELECT 1 FROM channel_recipients AS r JOIN channels AS c ON c.id = r.channel_id
+    WHERE c.type = 3 AND r.user_id = ANY($1::bigint[])
+    GROUP BY r.user_id HAVING count(*) >= $2::integer
+)
+`
+
+type GroupsAtCapacityParams struct {
+	UserIds   []int64
+	MaxGroups int32
+}
+
+func (q *Queries) GroupsAtCapacity(ctx context.Context, db DBTX, arg GroupsAtCapacityParams) (bool, error) {
+	row := db.QueryRow(ctx, groupsAtCapacity, arg.UserIds, arg.MaxGroups)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const guildChannels = `-- name: GuildChannels :many
 SELECT id, guild_id, type, name, topic, parent_id, position, permission_synced, created_at, last_message_id, owner_id, position_parent_id FROM channels WHERE guild_id = $1 ORDER BY position, id
 `
@@ -602,6 +651,34 @@ func (q *Queries) PrivateRecipientIDs(ctx context.Context, db DBTX, channelID in
 		return nil, err
 	}
 	return items, nil
+}
+
+const removePrivateRecipient = `-- name: RemovePrivateRecipient :exec
+DELETE FROM channel_recipients WHERE channel_id = $1 AND user_id = $2
+`
+
+type RemovePrivateRecipientParams struct {
+	ChannelID int64
+	UserID    int64
+}
+
+func (q *Queries) RemovePrivateRecipient(ctx context.Context, db DBTX, arg RemovePrivateRecipientParams) error {
+	_, err := db.Exec(ctx, removePrivateRecipient, arg.ChannelID, arg.UserID)
+	return err
+}
+
+const renamePrivateGroup = `-- name: RenamePrivateGroup :exec
+UPDATE channels SET name = $1 WHERE id = $2 AND type = 3
+`
+
+type RenamePrivateGroupParams struct {
+	Name *string
+	ID   snowflake.ID
+}
+
+func (q *Queries) RenamePrivateGroup(ctx context.Context, db DBTX, arg RenamePrivateGroupParams) error {
+	_, err := db.Exec(ctx, renamePrivateGroup, arg.Name, arg.ID)
+	return err
 }
 
 const reopenPrivateRecipients = `-- name: ReopenPrivateRecipients :many

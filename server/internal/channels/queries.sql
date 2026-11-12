@@ -134,3 +134,19 @@ WHERE channel_id = @channel_id AND user_id = @user_id AND closed <> @closed;
 
 -- name: ReopenPrivateRecipients :many
 UPDATE channel_recipients SET closed = false WHERE channel_id = @channel_id AND closed RETURNING user_id;
+
+-- name: GroupFriendIDs :many
+SELECT other_id FROM relationships WHERE user_id = @actor_id AND type = 1 AND other_id = ANY(@user_ids::bigint[]);
+
+-- name: GroupsAtCapacity :one
+SELECT EXISTS (
+    SELECT 1 FROM channel_recipients AS r JOIN channels AS c ON c.id = r.channel_id
+    WHERE c.type = 3 AND r.user_id = ANY(@user_ids::bigint[])
+    GROUP BY r.user_id HAVING count(*) >= @max_groups::integer
+);
+
+-- name: RenamePrivateGroup :exec
+UPDATE channels SET name = sqlc.narg(name) WHERE id = @id AND type = 3;
+
+-- name: RemovePrivateRecipient :exec
+DELETE FROM channel_recipients WHERE channel_id = @channel_id AND user_id = @user_id;
