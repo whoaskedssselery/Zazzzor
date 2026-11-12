@@ -248,3 +248,25 @@ WITH removed AS (
     DELETE FROM embed_images AS i WHERE i.id = @id::bigint RETURNING i.id
 )
 INSERT INTO attachment_trash (id, channel_id) SELECT id, 1 FROM removed;
+
+-- name: SearchMessages :many
+-- Newest first among channel_ids: the text matches query (a to_tsquery
+-- the service builds), from author_id if set, older than before if set.
+SELECT * FROM messages
+WHERE channel_id = ANY(@channel_ids::bigint[])
+    AND (@query::text = '' OR to_tsvector('russian', content) @@ to_tsquery('russian', @query::text))
+    AND (@author_id::bigint = 0 OR author_id = @author_id::bigint)
+    AND (@before::bigint = 0 OR id < @before::bigint)
+ORDER BY id DESC
+LIMIT @lim;
+
+-- name: CountSearchMessages :one
+-- How many messages SearchMessages would find without before and limit,
+-- counting at most cap.
+SELECT count(*) FROM (
+    SELECT 1 FROM messages
+    WHERE channel_id = ANY(@channel_ids::bigint[])
+        AND (@query::text = '' OR to_tsvector('russian', content) @@ to_tsquery('russian', @query::text))
+        AND (@author_id::bigint = 0 OR author_id = @author_id::bigint)
+    LIMIT @cap
+) AS found;

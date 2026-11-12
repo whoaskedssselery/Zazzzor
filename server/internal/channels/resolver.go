@@ -242,3 +242,31 @@ func viewers(a guilds.Access, ows []permissions.Overwrite, readers map[snowflake
 	}
 	return out
 }
+
+// SearchableChannels returns the text channels of guildID whose history
+// userID may read (VIEW_CHANNEL and READ_MESSAGE_HISTORY), in display
+// order; guilds.ErrNotMember for someone outside the guild.
+func (s *Service) SearchableChannels(ctx context.Context, userID, guildID snowflake.ID) ([]snowflake.ID, error) {
+	out := []snowflake.ID{}
+	err := s.read(ctx, func(tx pgx.Tx) error {
+		sub, err := s.guilds.SubjectIn(ctx, tx, guildID, userID)
+		if err != nil {
+			return err
+		}
+		l, err := loadLayout(ctx, s.q, tx, guildID)
+		if err != nil {
+			return err
+		}
+		for _, n := range l.sorted() {
+			p := permissions.InChannel(sub, l.effective(n))
+			if n.ch.Type.Messages() && p.Has(permissions.ViewChannel|permissions.ReadMessageHistory) {
+				out = append(out, n.ch.ID)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}

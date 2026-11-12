@@ -35,6 +35,9 @@ func Mount(r chi.Router, s *Service) {
 
 		s.mountReactions(r)
 		r.Get("/channels/{channel_id}/messages", httpx.Wrap(s.handleList))
+		searches := r.With(auth.LimitPerUser(s.searchLimiter))
+		searches.Get("/guilds/{guild_id}/messages/search", httpx.Wrap(s.handleSearchGuild))
+		searches.Get("/channels/{channel_id}/messages/search", httpx.Wrap(s.handleSearchChannel))
 		sends.Post("/channels/{channel_id}/messages", httpx.Wrap(s.handleCreate))
 		writes.Patch("/channels/{channel_id}/messages/{message_id}", httpx.Wrap(s.handleEdit))
 		writes.Delete("/channels/{channel_id}/messages/{message_id}", httpx.Wrap(s.handleDelete))
@@ -225,5 +228,77 @@ func (s *Service) handleAckGuild(w http.ResponseWriter, r *http.Request) error {
 		return fail(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+// searchResponse is schema MessageSearchResult.
+type searchResponse struct {
+	Messages     []PublicMessage `json:"messages"`
+	TotalResults int             `json:"total_results"`
+}
+
+// parseSearch reads content, author_id, before and limit; channel_id only
+// where the guild is searched.
+func parseSearch(r *http.Request, withChannel bool) (SearchFilter, error) {
+	f := SearchFilter{Content: r.URL.Query().Get("content")}
+	var err error
+	if f.AuthorID, err = queryID(r, "author_id"); err != nil {
+		return f, err
+	}
+	if withChannel {
+		if f.ChannelID, err = queryID(r, "channel_id"); err != nil {
+			return f, err
+		}
+	}
+	if f.Before, err = queryID(r, "before"); err != nil {
+		return f, err
+	}
+	q := r.URL.Query()
+	if q.Has("limit") {
+		raw := q.Get("limit")
+		n, convErr := strconv.Atoi(raw)
+		if convErr != nil || strconv.Itoa(n) != raw || n < 1 || n > SearchLimit {
+			return f, invalid("limit", fmt.Sprintf("must be from 1 to %d", SearchLimit))
+		}
+		f.Limit = n
+	}
+	return f, nil
+}
+
+func writeSearch(w http.ResponseWriter, res SearchResult) {
+	httpx.JSON(w, http.StatusOK, searchResponse{Messages: publicMessages(res.Messages), TotalResults: res.Total})
+}
+
+func (s *Service) handleSearchGuild(w http.ResponseWriter, r *http.Request) error {
+	id, err := httpx.PathID(r, "guild_id")
+	if err != nil {
+		return err
+	}
+	f, err := parseSearch(r, true)
+	if err != nil {
+		return fail(err)
+	}
+	res, err := s.SearchGuild(r.Context(), auth.CurrentUser(r).ID, id, f)
+	if err != nil {
+		return fail(err)
+	}
+	writeSearch(w, res)
+	return nil
+}
+
+func (s *Service) handleSearchChannel(w http.ResponseWriter, r *http.Request) error {
+	id, err := httpx.PathID(r, "channel_id")
+	if err != nil {
+		return err
+	}
+	f, err := parseSearch(r, false)
+	if err != nil {
+		return fail(err)
+	}
+	res, err := s.SearchChannel(r.Context(), auth.CurrentUser(r).ID, id, f)
+	if err != nil {
+		return fail(err)
+	}
+	writeSearch(w, res)
 	return nil
 }
