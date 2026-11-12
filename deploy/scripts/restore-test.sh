@@ -119,4 +119,4 @@ bash "$script_dir/backup.sh" compose restore "$folder" --yes
 "${compose[@]}" up -d --wait --no-deps api
 api_check verify < "$test_root/state.json"
 
-echo 'restore test: OK (новая схема и чистые тома: вход, сообщение, байты иконки и аватара)'
+echo 'restore test: OK (новая схема и чистые тома: вход, сообщение, SHA-256 аватара, иконки, вложения и эмодзи)'

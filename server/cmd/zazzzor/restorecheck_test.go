@@ -74,6 +74,33 @@ func TestRestoreCheckDetectsChangedImage(t *testing.T) {
 	}
 }
 
+func TestRestoreCheckDetectsChangedAttachmentAndEmoji(t *testing.T) {
+	for _, tc := range []struct{ name, path, label string }{
+		{"attachment", "/api/v1/attachments/", "вложение"},
+		{"emoji", "/api/v1/emojis/", "эмодзи"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			api, _ := newAuthRouter(t)
+			var tamper atomic.Bool
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if tamper.Load() && strings.HasPrefix(r.URL.Path, tc.path) {
+					_, _ = w.Write([]byte("unexpected bytes"))
+					return
+				}
+				api.ServeHTTP(w, r)
+			}))
+			t.Cleanup(srv.Close)
+			state := seedAgainst(t, srv.URL)
+			tamper.Store(true)
+			var out, stderr bytes.Buffer
+			code := runRestoreCheck(t.Context(), "verify", srv.URL, testkit.DefaultOrigin, bytes.NewReader(state), &out, &stderr)
+			if code != 1 || !strings.Contains(stderr.String(), tc.label) {
+				t.Fatalf("verify = %d, %q; want exit 1 and step %q", code, stderr.String(), tc.label)
+			}
+		})
+	}
+}
+
 func TestRestoreCheckRejectsBrokenState(t *testing.T) {
 	var errOut bytes.Buffer
 	code := runRestoreCheck(t.Context(), "verify", "http://127.0.0.1:1", testkit.DefaultOrigin,

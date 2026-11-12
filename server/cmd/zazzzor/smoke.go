@@ -136,7 +136,7 @@ func (s *smokeSession) run(ctx context.Context, opts smokeOptions) (err error) {
 		map[string]string{"content": "smoke"}, http.StatusCreated, &msg)); err != nil {
 		return err
 	}
-	if err = s.step("чтение истории", s.findMessage(ctx, channelID, msg.ID)); err != nil {
+	if err = s.step("чтение истории", s.findMessage(ctx, channelID, msg.ID, "")); err != nil {
 		return err
 	}
 	return s.step("WebSocket", s.gateway(ctx, opts.GatewayTimeout))
@@ -187,15 +187,28 @@ func (s *smokeSession) textChannel(ctx context.Context, guildID string) (string,
 	return "", errors.New("у нового сервера нет текстового канала")
 }
 
-func (s *smokeSession) findMessage(ctx context.Context, channelID, messageID string) error {
-	var page []struct{ ID string }
+// findMessage confirms the message and, when specified, its bound attachment.
+func (s *smokeSession) findMessage(ctx context.Context, channelID, messageID, attachmentURL string) error {
+	var page []struct {
+		ID          string
+		Attachments []struct{ URL string }
+	}
 	if err := s.do(ctx, http.MethodGet, "/api/v1/channels/"+channelID+"/messages", nil, http.StatusOK, &page); err != nil {
 		return err
 	}
 	for _, m := range page {
-		if m.ID == messageID {
+		if m.ID != messageID {
+			continue
+		}
+		if attachmentURL == "" {
 			return nil
 		}
+		for _, file := range m.Attachments {
+			if file.URL == attachmentURL {
+				return nil
+			}
+		}
+		return errors.New("в сообщении нет ожидаемого вложения")
 	}
 	return errors.New("отправленного сообщения нет в истории")
 }
@@ -289,11 +302,21 @@ func (s *smokeSession) send(ctx context.Context, method, path string, body any) 
 // client uploads avatars and icons, expects 200 and decodes the body into
 // out.
 func (s *smokeSession) upload(ctx context.Context, path string, image []byte, out any) error {
+	return s.uploadFile(ctx, http.MethodPut, path, "image.png", image, nil, http.StatusOK, out)
+}
+
+// uploadFile sends one file and optional text fields in a multipart request.
+func (s *smokeSession) uploadFile(ctx context.Context, method, path, name string, data []byte, fields map[string]string, status int, out any) error {
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
-	part, err := mw.CreateFormFile("file", "image.png")
+	for key, value := range fields {
+		if err := mw.WriteField(key, value); err != nil {
+			return fmt.Errorf("сборка поля формы: %w", err)
+		}
+	}
+	part, err := mw.CreateFormFile("file", name)
 	if err == nil {
-		_, err = part.Write(image)
+		_, err = part.Write(data)
 	}
 	if err == nil {
 		err = mw.Close()
@@ -301,12 +324,12 @@ func (s *smokeSession) upload(ctx context.Context, path string, image []byte, ou
 	if err != nil {
 		return fmt.Errorf("сборка запроса: %w", err)
 	}
-	resp, err := s.sendRaw(ctx, http.MethodPut, path, mw.FormDataContentType(), &body)
+	resp, err := s.sendRaw(ctx, method, path, mw.FormDataContentType(), &body)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	return expectStatus(resp, http.StatusOK, out)
+	return expectStatus(resp, status, out)
 }
 
 // fetch GETs path, expects 200 and returns the body.
