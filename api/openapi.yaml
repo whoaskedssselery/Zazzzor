@@ -285,6 +285,123 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
+  /users/@me/relationships:
+    get:
+      tags: [users]
+      operationId: listRelationships
+      summary: List the caller's relationships
+      responses:
+        "200":
+          description: The caller's friends, blocks and pending requests.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Relationship"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+    post:
+      tags: [users]
+      operationId: requestFriend
+      summary: Send or reciprocate a friend request
+      description: |
+        Matches usernames case-insensitively. A request in the opposite
+        direction becomes a friendship. A blocked recipient and an existing
+        outgoing request both produce a successful response with no change.
+        A caller can have up to 1000 friends and 100 outgoing requests.
+        This endpoint allows 10 attempts per minute and 100 per day per caller.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [username]
+              properties:
+                username:
+                  type: string
+      responses:
+        "204":
+          description: The request was handled.
+        "400":
+          description: Invalid body, blocked_by_you, too_many_friends or too_many_outgoing_requests.
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: Identical for a missing username or the caller.
+          $ref: "#/components/responses/Problem"
+        "415":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /users/@me/relationships/{user_id}:
+    parameters:
+      - $ref: "#/components/parameters/UserID"
+    put:
+      tags: [users]
+      operationId: putRelationship
+      summary: Accept a friend request or block a user
+      description: |
+        Type 1 accepts an incoming request. Type 2 creates a private block
+        and removes any existing friendship or request between the users.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [type]
+              properties:
+                type:
+                  type: integer
+                  enum: [1, 2]
+      responses:
+        "204":
+          description: The requested relationship is in effect.
+        "400":
+          description: Invalid body or too_many_friends.
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: Unknown user or no incoming request to accept.
+          $ref: "#/components/responses/Problem"
+        "415":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags: [users]
+      operationId: deleteRelationship
+      summary: Remove a friend, request or block
+      description: The operation is idempotent. Unblocking removes only the caller's block.
+      responses:
+        "204":
+          description: The caller's relationship is absent.
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: Malformed user ID.
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+
   /users/@me/password:
     post:
       tags: [users]
@@ -3921,6 +4038,33 @@ components:
           type: string
           minLength: 1
           description: 1 to 4000 characters (Unicode code points) after trimming white space.
+    RelationshipType:
+      type: integer
+      enum: [1, 2, 3, 4]
+      description: 1 friend, 2 blocked, 3 incoming request, 4 outgoing request.
+    Relationship:
+      type: object
+      additionalProperties: false
+      required: [id, type, user, since]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        type:
+          $ref: "#/components/schemas/RelationshipType"
+        user:
+          $ref: "#/components/schemas/User"
+        since:
+          type: string
+          format: date-time
+    RelationshipRemove:
+      type: object
+      additionalProperties: false
+      required: [id, type]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        type:
+          $ref: "#/components/schemas/RelationshipType"
     GatewayFrame:
       type: object
       additionalProperties: false
@@ -3947,6 +4091,8 @@ components:
             - $ref: "#/components/schemas/GatewayReady"
             - $ref: "#/components/schemas/GuildState"
             - $ref: "#/components/schemas/GuildEmojisUpdate"
+            - $ref: "#/components/schemas/Relationship"
+            - $ref: "#/components/schemas/RelationshipRemove"
             - $ref: "#/components/schemas/Guild"
             - $ref: "#/components/schemas/GuildDeleteEvent"
             - $ref: "#/components/schemas/MemberEvent"
@@ -3975,8 +4121,13 @@ components:
     GatewayReady:
       type: object
       additionalProperties: false
-      required: [user, guilds, presences, read_states]
+      required: [user, guilds, presences, read_states, relationships]
       properties:
+        relationships:
+          type: array
+          description: Relationships visible to the receiving user.
+          items:
+            $ref: "#/components/schemas/Relationship"
         user:
           $ref: "#/components/schemas/User"
         guilds:
@@ -4406,6 +4557,12 @@ x-gateway:
       $ref: "#/components/schemas/TypingStartEvent"
     PRESENCE_UPDATE:
       $ref: "#/components/schemas/Presence"
+    RELATIONSHIP_ADD:
+      description: Upsert of the relationship as seen by this user only.
+      $ref: "#/components/schemas/Relationship"
+    RELATIONSHIP_REMOVE:
+      description: Removal of the relationship as seen by this user only.
+      $ref: "#/components/schemas/RelationshipRemove"
     USER_UPDATE:
       $ref: "#/components/schemas/User"
     VOICE_STATE_UPDATE:
