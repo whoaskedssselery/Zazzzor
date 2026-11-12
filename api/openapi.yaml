@@ -129,7 +129,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/User"
+                $ref: "#/components/schemas/CurrentUser"
         "400":
           description: "`invalid_body`, `body_too_large` or `validation_failed` (with `errors`)."
           $ref: "#/components/responses/Problem"
@@ -178,7 +178,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/User"
+                $ref: "#/components/schemas/CurrentUser"
         "400":
           description: "`invalid_body` or `body_too_large`."
           $ref: "#/components/responses/Problem"
@@ -235,7 +235,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/User"
+                $ref: "#/components/schemas/CurrentUser"
         "401":
           description: "`unauthenticated`: no valid session."
           $ref: "#/components/responses/Problem"
@@ -249,10 +249,18 @@ paths:
       summary: Change the profile
       description: |
         Changes the fields that are present; an empty object changes nothing.
+        `bio` ("about me") is trimmed and may then be up to 190 characters,
+        with line breaks but no other control or bidirectional control
+        characters. `status` is the status the user chooses: `invisible`
+        shows them offline to everyone else. `custom_status` is a status line
+        of up to 128 characters, trimmed; null, or a line with nothing visible
+        left, clears it.
         `display_name` is trimmed and must then be 1 to 32 characters with a
         visible character and no control or bidirectional control characters.
-        A change is announced as `USER_UPDATE` to the user and everyone
-        sharing a server with them.
+        A change is announced as `USER_UPDATE` with `CurrentUser` to the
+        user, and, if the display name changed, with `User` to everyone
+        sharing a server or a friendship with them. A new status or status
+        line reaches them as `PRESENCE_UPDATE` while the user is connected.
 
         Profile writes (this operation and the avatar PUT and DELETE) share a
         limit of 10 per 10 minutes per user.
@@ -268,7 +276,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/User"
+                $ref: "#/components/schemas/CurrentUser"
         "400":
           description: "`invalid_body`, `body_too_large` or `validation_failed` (with `errors`)."
           $ref: "#/components/responses/Problem"
@@ -280,6 +288,38 @@ paths:
           $ref: "#/components/responses/Problem"
         "415":
           description: "`unsupported_media_type`."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /users/{user_id}/profile:
+    get:
+      tags: [users]
+      operationId: getUserProfile
+      summary: Someone's profile
+      description: |
+        The profile of a user the caller shares a server, a friendship, a
+        pending friend request or a direct message with, or the caller's own.
+        Anyone else is `404`, as is an unknown user.
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/Snowflake"
+      responses:
+        "200":
+          description: The profile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such user, or not one the caller knows."
           $ref: "#/components/responses/Problem"
         "429":
           $ref: "#/components/responses/RateLimited"
@@ -536,7 +576,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/User"
+                $ref: "#/components/schemas/CurrentUser"
         "400":
           description: |
             `unsupported_image` (not a supported image, unreadable, too
@@ -574,7 +614,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/User"
+                $ref: "#/components/schemas/CurrentUser"
         "401":
           description: "`unauthenticated`."
           $ref: "#/components/responses/Problem"
@@ -3592,6 +3632,70 @@ components:
           type: string
           minLength: 1
           maxLength: 32
+        bio:
+          type: string
+          maxLength: 190
+        status:
+          $ref: "#/components/schemas/ChosenStatus"
+        custom_status:
+          type: [string, "null"]
+          maxLength: 128
+    ChosenStatus:
+      type: string
+      enum: [online, idle, dnd, invisible]
+      description: What the user chose; `invisible` shows as offline to everyone else.
+    CurrentUser:
+      type: object
+      additionalProperties: false
+      description: The signed-in user's own account, with the fields only they see.
+      required: [id, username, display_name, avatar_url, created_at, bio, status, custom_status]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        username:
+          type: string
+          pattern: "^[a-z0-9_.]{2,32}$"
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 32
+        avatar_url:
+          type: [string, "null"]
+          pattern: '^/api/v1/files/avatars/[0-9]{1,19}/[0-9a-f]{16}\.png$'
+        created_at:
+          type: string
+          format: date-time
+          examples: ["2026-10-21T12:00:00.000Z"]
+        bio:
+          type: string
+          maxLength: 190
+          description: '"About me"; empty when not set.'
+        status:
+          $ref: "#/components/schemas/ChosenStatus"
+        custom_status:
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 128
+    UserUpdateEvent:
+      description: "`CurrentUser` to the user themself, `User` to everyone else."
+      anyOf:
+        - $ref: "#/components/schemas/CurrentUser"
+        - $ref: "#/components/schemas/User"
+    UserProfile:
+      type: object
+      additionalProperties: false
+      required: [user, bio, mutual_guild_ids]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        bio:
+          type: string
+          maxLength: 190
+        mutual_guild_ids:
+          type: array
+          description: Servers both users are members of, ascending.
+          items:
+            $ref: "#/components/schemas/Snowflake"
     ChangePasswordRequest:
       type: object
       additionalProperties: false
@@ -4530,6 +4634,7 @@ components:
             - $ref: "#/components/schemas/TypingStartEvent"
             - $ref: "#/components/schemas/Presence"
             - $ref: "#/components/schemas/User"
+            - $ref: "#/components/schemas/UserUpdateEvent"
             - $ref: "#/components/schemas/VoiceState"
             - $ref: "#/components/schemas/VoiceMove"
     GatewayHello:
@@ -4571,7 +4676,7 @@ components:
           items:
             $ref: "#/components/schemas/Relationship"
         user:
-          $ref: "#/components/schemas/User"
+          $ref: "#/components/schemas/CurrentUser"
         guilds:
           type: array
           items:
@@ -4720,13 +4825,19 @@ components:
     Presence:
       type: object
       additionalProperties: false
-      required: [user_id, status]
+      required: [user_id, status, custom_status]
       properties:
         user_id:
           $ref: "#/components/schemas/Snowflake"
         status:
           type: string
-          enum: [online, offline]
+          enum: [online, idle, dnd, offline]
+          description: An invisible user is offline here.
+        custom_status:
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 128
+          description: The user's status line; always null when offline.
     GuildDeleteEvent:
       type: object
       additionalProperties: false
@@ -5037,7 +5148,7 @@ x-gateway:
       description: Full personal settings after a PATCH, sent only to that user.
       $ref: "#/components/schemas/UserGuildSettings"
     USER_UPDATE:
-      $ref: "#/components/schemas/User"
+      $ref: "#/components/schemas/UserUpdateEvent"
     VOICE_STATE_UPDATE:
       $ref: "#/components/schemas/VoiceState"
     CALL_CREATE:
