@@ -28,7 +28,8 @@ func TestAttachmentUploadSize(t *testing.T) {
 }
 
 func TestAttachmentUploadRate(t *testing.T) {
-	e := newEnv(t)
+	now := time.Now()
+	e := newEnv(t, func(o *messages.Options) { o.Now = func() time.Time { return now } })
 	c, _ := e.user("alice")
 	_, ch, _ := newGuild(t, c, "club")
 	for range 10 {

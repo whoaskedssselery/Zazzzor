@@ -47,9 +47,13 @@ func WithMaxKeys(n int) Option {
 	return func(l *Limiter) { l.maxKeys = max(n, 1) }
 }
 
-// WithClock reads the time from now instead of time.Now.
+// WithClock sets the clock used for refill and expiry. Nil keeps the default.
 func WithClock(now func() time.Time) Option {
-	return func(l *Limiter) { l.now = now }
+	return func(l *Limiter) {
+		if now != nil {
+			l.now = now
+		}
+	}
 }
 
 // New returns a limiter allowing burst events at once per key, refilled at r.

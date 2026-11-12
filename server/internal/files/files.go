@@ -86,6 +86,7 @@ const (
 // Disk is a Store on the local file system.
 type Disk struct {
 	root      string
+	freeSpace freeSpaceSample
 	now       func() time.Time
 	retention time.Duration
 	// mu serializes the changes this process makes to the tree (writes,

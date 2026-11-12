@@ -55,6 +55,12 @@ SELECT * FROM messages
 WHERE id = (SELECT n.message_id FROM message_nonces n
             WHERE n.author_id = @author_id AND n.channel_id = @channel_id AND n.nonce = @nonce AND n.expires_at > now());
 
+-- name: LockAttachmentQuota :exec
+SELECT pg_advisory_xact_lock(hashtextextended('attachment-quota:' || @user_key::text, 0));
+
+-- name: AttachmentBytesByUploader :one
+SELECT COALESCE(SUM(size), 0)::bigint FROM message_attachments WHERE uploader_id = @uploader_id;
+
 -- name: CreateAttachment :one
 INSERT INTO message_attachments (id, channel_id, uploader_id, filename, content_type, size, width, height, digest, created_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)

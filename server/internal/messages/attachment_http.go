@@ -18,6 +18,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/files"
 	"github.com/whoaskedssselery/zazzzor/server/internal/messages/store"
 	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/db"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/upload"
@@ -60,6 +61,9 @@ func (s *Service) handleUploadAttachment(w http.ResponseWriter, r *http.Request)
 			return fail(err)
 		}
 	}
+	if err = s.checkAttachmentSpace(); err != nil {
+		return err
+	}
 	upload.ExtendDeadlines(w)
 	id := s.ids.Next()
 	ref := files.AttachmentReference(ch, id)
@@ -91,6 +95,9 @@ func (s *Service) handleUploadAttachment(w http.ResponseWriter, r *http.Request)
 	attempted := false
 	record := func(q store.DBTX) error {
 		attempted = true
+		if quotaErr := s.checkAttachmentQuota(ctx, q, user, params.Size); quotaErr != nil {
+			return quotaErr
+		}
 		var recordErr error
 		row, recordErr = s.q.CreateAttachment(ctx, q, params)
 		return recordErr
@@ -102,6 +109,8 @@ func (s *Service) handleUploadAttachment(w http.ResponseWriter, r *http.Request)
 			}
 			return record(tx)
 		})
+	} else if s.attachmentQuota > 0 {
+		err = db.InTx(ctx, s.pool, func(tx pgx.Tx) error { return record(tx) })
 	} else {
 		err = record(s.pool)
 	}
@@ -109,6 +118,13 @@ func (s *Service) handleUploadAttachment(w http.ResponseWriter, r *http.Request)
 		if !attempted {
 			s.trashUncommitted(ref)
 			return fail(err)
+		}
+		if errors.Is(err, errAttachmentQuota) {
+			if removeErr := s.files.RemoveUncommittedAttachment(ref); removeErr != nil {
+				s.logger.Warn("remove quota-rejected attachment", "err", removeErr)
+			}
+			return &httpx.Problem{Status: http.StatusRequestEntityTooLarge, Code: "attachment_quota_exceeded",
+				Detail: "Достигнут лимит хранилища для ваших файлов. Удалите старые вложения или попросите администратора."}
 		}
 		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23503" {
 			s.trashUncommitted(ref)
