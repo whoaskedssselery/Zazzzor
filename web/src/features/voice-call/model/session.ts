@@ -1,5 +1,6 @@
 import {
   type CallTransport,
+  type CameraResult,
   canRestrictOwnAudio,
   clearCall,
   currentBrowser,
@@ -23,6 +24,10 @@ export const NO_CONNECT = "Нет права подключаться к это�
 export const NO_STREAM = "Нет права на демонстрацию экрана";
 export const SHARE_FAILED = "Не удалось начать демонстрацию";
 export const DEVICE_FAILED = "Не удалось переключить устройство";
+export const NO_VIDEO = "Нет права на видео";
+export const CAMERA_DENIED = "Нет доступа к камере: разрешите её в настройках сайта";
+export const CAMERA_MISSING = "Камера не найдена";
+export const CAMERA_FAILED = "Не удалось включить камеру";
 
 /** How long a removal waits for the server to say whether the user left voice (a moderator) or not (a newer join). */
 const REMOVAL_SETTLE_MS = 2000;
@@ -171,6 +176,12 @@ const wire = (t: CallTransport): CallTransport => {
   t.on("screenEnded", () => {
     setCall({ sharing: false });
   });
+  t.on("cameras", (cameras) => {
+    setCall({ cameras });
+  });
+  t.on("cameraEnded", () => {
+    setCall({ camera: false });
+  });
   t.on("noise", (noise) => {
     if (getCall().status !== "idle") setCall({ noise });
   });
@@ -216,6 +227,8 @@ export const joinVoice = async (guildId: string, channelId: string): Promise<voi
       streams: [],
       watching: [],
       sharing: false,
+      cameras: [],
+      camera: false,
       noise: null,
     });
     try {
@@ -393,3 +406,49 @@ export const stopScreenShare = async (): Promise<void> => {
   setCall({ sharing: false });
   await transport?.stopScreenShare();
 };
+
+const CAMERA_NOTICE = { denied: CAMERA_DENIED, missing: CAMERA_MISSING, failed: CAMERA_FAILED } as const;
+
+let startingCamera = false;
+
+/**
+ * Turns the camera on: the browser asks for it the first time, and the
+ * others see it in the user's tile. A refusal or a missing camera is said
+ * in a notice.
+ */
+export const startCamera = async (): Promise<void> => {
+  // One request at a time: a second click would open the camera twice.
+  if (!transport || startingCamera || getCall().status === "idle") return;
+  const t = transport;
+  const mine = generation;
+  startingCamera = true;
+  let result: CameraResult;
+  try {
+    result = await t.startCamera();
+  } finally {
+    startingCamera = false;
+  }
+  // The call ended or changed while the browser asked: turn it back off.
+  if (result.ok && (mine !== generation || getCall().status === "idle")) {
+    await t.stopCamera();
+    return;
+  }
+  if (!result.ok) {
+    notify(CAMERA_NOTICE[result.reason]);
+    return;
+  }
+  setCall({ camera: true });
+};
+
+export const stopCamera = async (): Promise<void> => {
+  setCall({ camera: false });
+  await transport?.stopCamera();
+};
+
+/** Shows `userId`'s camera in `el` (it is received only meanwhile); the returned function lets go of it. */
+export const attachCamera = (userId: string, el: HTMLVideoElement): (() => void) =>
+  transport?.attachCamera(userId, el) ?? (() => undefined);
+
+/** Shows the user's own camera in `el`; the returned function lets go of it. */
+export const attachOwnCamera = (el: HTMLVideoElement): (() => void) =>
+  transport?.attachOwnCamera(el) ?? (() => undefined);

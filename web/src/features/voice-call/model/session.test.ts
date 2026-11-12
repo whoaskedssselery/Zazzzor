@@ -20,6 +20,9 @@ import {
   applyVoicePrefs,
   CALL_REMOVED,
   CALL_REPLACED,
+  CAMERA_DENIED,
+  CAMERA_FAILED,
+  CAMERA_MISSING,
   DEVICE_FAILED,
   endCall,
   joinVoice,
@@ -31,7 +34,9 @@ import {
   setSelfDeaf,
   setSelfMute,
   setTransportFactory,
+  startCamera,
   startScreenShare,
+  stopCamera,
   switchAudioDevice,
   watchStream,
 } from "./session";
@@ -467,5 +472,60 @@ describe("the second review's cases", () => {
     meIn(LOUNGE);
     await vi.advanceTimersByTimeAsync(3000);
     expect(notices).toEqual([]);
+  });
+});
+
+describe("the camera in the call", () => {
+  it("turns on and off, and keeps whose cameras are on", async () => {
+    await joinVoice(G, LOUNGE);
+    await startCamera();
+    expect(getCall().camera).toBe(true);
+    fake.emit("cameras", ["200", "201"]);
+    expect(getCall().cameras).toEqual(["200", "201"]);
+    await stopCamera();
+    expect(getCall().camera).toBe(false);
+    expect(fake.argsOf("stopCamera")).toHaveLength(1);
+  });
+
+  it.each([
+    ["denied", CAMERA_DENIED],
+    ["missing", CAMERA_MISSING],
+    ["failed", CAMERA_FAILED],
+  ] as const)("says why the camera stayed off (%s)", async (reason, text) => {
+    await joinVoice(G, LOUNGE);
+    fake.cameraResult = { ok: false, reason };
+    await startCamera();
+    expect(getCall().camera).toBe(false);
+    expect(notices).toEqual([text]);
+  });
+
+  it("does nothing outside a call", async () => {
+    await startCamera();
+    expect(fake.argsOf("startCamera")).toHaveLength(0);
+    expect(getCall().camera).toBe(false);
+  });
+
+  it("turns a camera allowed after the call ended back off", async () => {
+    await joinVoice(G, LOUNGE);
+    let allow: (r: { ok: true }) => void = () => {};
+    fake.cameraResult = new Promise((resolve) => {
+      allow = resolve;
+    });
+    const starting = startCamera();
+    await leaveVoice();
+    allow({ ok: true });
+    await starting;
+    expect(getCall().camera).toBe(false);
+    expect(fake.argsOf("stopCamera")).toHaveLength(1);
+  });
+
+  it("shows the camera as off when it went off by itself, and forgets cameras with the call", async () => {
+    await joinVoice(G, LOUNGE);
+    await startCamera();
+    fake.emit("cameras", ["200"]);
+    fake.emit("cameraEnded");
+    expect(getCall().camera).toBe(false);
+    await leaveVoice();
+    expect(getCall().cameras).toEqual([]);
   });
 });

@@ -15,6 +15,7 @@ import {
 import { joinVoice, NO_CONNECT, watchStream } from "@/features/voice-call";
 import { Avatar, Badge, Button, cn } from "@/shared/ui";
 import { CallControls } from "./CallControls";
+import { CameraView } from "./CameraView";
 import { OwnStreamTile, StreamTile } from "./StreamTile";
 
 const nameOf = (entry: GuildEntry, userId: string): { name: string; avatarUrl: string | null } => {
@@ -22,19 +23,64 @@ const nameOf = (entry: GuildEntry, userId: string): { name: string; avatarUrl: s
   return user ? userDisplay(entry, user) : { name: "Участник", avatarUrl: null };
 };
 
-/** One person in the call: the avatar ringed while they speak, their name and what they switched off. */
+/** What a person switched off, as icons after their name. */
+const Switches = ({ state }: { state: VoiceState }) => (
+  <>
+    {(state.mute || state.self_mute) && (
+      <MicOff role="img" aria-label="Микрофон выключен" className="size-4 shrink-0 text-fg-danger" />
+    )}
+    {(state.deaf || state.self_deaf) && (
+      <HeadphoneOff role="img" aria-label="Звук выключен" className="size-4 shrink-0 text-fg-danger" />
+    )}
+  </>
+);
+
+/**
+ * One person in the call: their camera filling the tile when it is on,
+ * otherwise the avatar; ringed while they speak, with their name and what
+ * they switched off.
+ */
 const PersonTile = ({
   entry,
   state,
   speaking,
   compact,
+  camera,
 }: {
   entry: GuildEntry;
   state: VoiceState;
   speaking: boolean;
   compact: boolean;
+  /** Their camera is on: "own" for the user's preview, "remote" for someone else's. */
+  camera: "own" | "remote" | null;
 }) => {
   const { name, avatarUrl } = nameOf(entry, state.user_id);
+  if (camera !== null) {
+    return (
+      <div className="relative size-full min-w-0 overflow-hidden rounded-lg bg-sidebar">
+        <CameraView userId={state.user_id} own={camera === "own"} />
+        <span
+          data-speaking={speaking || undefined}
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute inset-0 rounded-lg ring-inset ring-transparent transition-shadow duration-(--duration-base) ease-(--ease-out)",
+            compact ? "ring-2" : "ring-3",
+            speaking && "ring-online",
+          )}
+        />
+        <span
+          className={cn(
+            "absolute bottom-2 left-2 flex max-w-[calc(100%-1rem)] items-center gap-1.5 rounded-md bg-scrim font-medium text-[#fff]",
+            compact ? "px-1.5 py-0.5 text-xs" : "px-2 py-1 text-sm",
+          )}
+        >
+          <span className="truncate">{name}</span>
+          {state.self_stream && !compact && <Badge variant="live">В ЭФИРЕ</Badge>}
+          <Switches state={state} />
+        </span>
+      </div>
+    );
+  }
   return (
     <div
       // The avatar follows the tile's height (a low window, the strip), so nothing spills out of it.
@@ -56,12 +102,7 @@ const PersonTile = ({
       <span className={cn("flex max-w-full items-center gap-1.5 font-medium", compact ? "text-xs" : "text-sm")}>
         <span className="truncate">{name}</span>
         {state.self_stream && !compact && <Badge variant="live">В ЭФИРЕ</Badge>}
-        {(state.mute || state.self_mute) && (
-          <MicOff role="img" aria-label="Микрофон выключен" className="size-4 shrink-0 text-fg-danger" />
-        )}
-        {(state.deaf || state.self_deaf) && (
-          <HeadphoneOff role="img" aria-label="Звук выключен" className="size-4 shrink-0 text-fg-danger" />
-        )}
+        <Switches state={state} />
       </span>
     </div>
   );
@@ -255,7 +296,13 @@ export const VoiceStage = ({ guildId, channel }: { guildId: string; channel: Cha
   const streams = useCall((s) => s.streams);
   const watching = useCall((s) => s.watching);
   const sharing = useCall((s) => s.sharing);
+  const cameras = useCall((s) => s.cameras);
+  const myCamera = useCall((s) => s.camera);
   if (!entry || meId === null) return null;
+  const cameraOf = (userId: string): "own" | "remote" | null => {
+    if (userId === meId) return myCamera ? "own" : null;
+    return cameras.includes(userId) ? "remote" : null;
+  };
   const members = voiceMembers(entry, channel.id);
   const canConnect = has(computeChannel(entry, channel.id, meId), PERM.VIEW_CHANNEL | PERM.CONNECT);
 
@@ -265,7 +312,13 @@ export const VoiceStage = ({ guildId, channel }: { guildId: string; channel: Cha
         key: `user:${v.user_id}`,
         name: nameOf(entry, v.user_id).name,
         render: (compact) => (
-          <PersonTile entry={entry} state={v} speaking={speaking.includes(v.user_id)} compact={compact} />
+          <PersonTile
+            entry={entry}
+            state={v}
+            speaking={speaking.includes(v.user_id)}
+            compact={compact}
+            camera={cameraOf(v.user_id)}
+          />
         ),
       }),
     ),

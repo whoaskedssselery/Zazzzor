@@ -1,5 +1,5 @@
 import { HeadphoneOff, Headphones, Maximize, Mic, MicOff, Minimize, PhoneOff } from "lucide-react";
-import { leaveVoice, ScreenShareButton, useSelfSwitches } from "@/features/voice-call";
+import { CameraButton, leaveVoice, ScreenShareButton, useSelfSwitches } from "@/features/voice-call";
 import { cn, IconButton } from "@/shared/ui";
 
 const pill =
@@ -7,7 +7,7 @@ const pill =
 
 /**
  * The call's own controls under the stage, as in Discord: the microphone,
- * the sound, the screen share, and the way out in red; at the right, the
+ * the sound, the camera, the screen share, and the way out in red; at the right, the
  * stage over the whole screen and back.
  */
 export const CallControls = ({ fullscreen, onFullscreen }: { fullscreen: boolean; onFullscreen: () => void }) => {
@@ -34,6 +34,7 @@ export const CallControls = ({ fullscreen, onFullscreen }: { fullscreen: boolean
         className={cn(pill, sound.off && "bg-danger/15 text-fg-danger hover:bg-danger/25")}
         onClick={sound.toggle}
       />
+      <CameraButton className={pill} />
       <ScreenShareButton className={pill} />
       <IconButton
         label="Отключиться"

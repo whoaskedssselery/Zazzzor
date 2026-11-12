@@ -6,9 +6,11 @@ import { getCall, resetCall, setCall } from "@/entities/call";
 import { DEFAULT_EVERYONE, formatMask, PERM, resetGuilds } from "@/entities/guild";
 import {
   CALL_REPLACED,
+  CAMERA_DENIED,
   joinVoice,
   NO_CONNECT,
   NO_STREAM,
+  NO_VIDEO,
   setTransportFactory,
   WINDOW_NO_AUDIO,
 } from "@/features/voice-call";
@@ -478,6 +480,94 @@ describe("screen sharing", () => {
     await screen.findByRole("textbox", { name: "Сообщение в #общий" });
     await act(() => joinVoice(G, LOUNGE));
     expect(within(await panel()).getByRole("button", { name: NO_STREAM })).toHaveProperty("disabled", true);
+  });
+});
+
+describe("the camera", () => {
+  const petya = makeUser("200", { display_name: "Петя" });
+
+  /** Server 10 owned by someone else, @everyone with `everyone`, Петя in the lounge. */
+  const withEveryone = (everyone: bigint) => {
+    guildState = () =>
+      makeGuildState(G, testUser, {
+        guild: makeGuild(G, "999"),
+        roles: [makeEveryone(G, formatMask(everyone))],
+        channels: [makeChannel(TEXT, G, { name: "общий" }), makeChannel(LOUNGE, G, { type: 2, name: "Лаунж" })],
+        members: [makeMember(testUser), makeMember(petya)],
+        voice_states: [makeVoiceState(G, LOUNGE, petya.id)],
+      });
+  };
+
+  /** A browser with a camera API (jsdom has no mediaDevices). */
+  beforeEach(() => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getSupportedConstraints: () => ({}), getUserMedia: () => Promise.reject(new Error("fake")) },
+    });
+  });
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, "mediaDevices");
+  });
+
+  const controls = () => screen.findByRole("toolbar", { name: "Управление звонком" });
+
+  it("turns the camera on from the call's controls and shows it in the user's own tile", async () => {
+    withEveryone(DEFAULT_EVERYONE);
+    const { user } = renderApp(`/channels/${G}/${LOUNGE}`);
+    await screen.findByRole("region", { name: "Голосовой канал Лаунж" });
+    await act(() => joinVoice(G, LOUNGE));
+    act(() => {
+      send("VOICE_STATE_UPDATE", { ...makeVoiceState(G, LOUNGE, testUser.id), left: false });
+    });
+    await user.click(within(await controls()).getByRole("button", { name: "Включить камеру" }));
+    expect(fake.argsOf("startCamera")).toHaveLength(1);
+    await waitFor(() => {
+      expect(fake.argsOf("attachOwnCamera")).toHaveLength(1);
+    });
+    await user.click(within(await controls()).getByRole("button", { name: "Выключить камеру" }));
+    expect(fake.argsOf("stopCamera")).toHaveLength(1);
+    await waitFor(() => {
+      expect(fake.argsOf("detachOwnCamera")).toHaveLength(1);
+    });
+  });
+
+  it("shows someone's camera in their tile while it is on", async () => {
+    withEveryone(DEFAULT_EVERYONE);
+    renderApp(`/channels/${G}/${LOUNGE}`);
+    await screen.findByRole("region", { name: "Голосовой канал Лаунж" });
+    await act(() => joinVoice(G, LOUNGE));
+    act(() => {
+      fake.emit("cameras", [petya.id]);
+    });
+    await waitFor(() => {
+      expect(fake.argsOf("attachCamera").map(([id]) => id)).toEqual([petya.id]);
+    });
+    expect(within(screen.getByRole("listitem", { name: "Петя" })).getByText("Петя")).toBeTruthy();
+    act(() => {
+      fake.emit("cameras", []);
+    });
+    await waitFor(() => {
+      expect(fake.argsOf("detachCamera").map(([id]) => id)).toEqual([petya.id]);
+    });
+  });
+
+  it("says why the camera stayed off", async () => {
+    withEveryone(DEFAULT_EVERYONE);
+    fake.cameraResult = { ok: false, reason: "denied" };
+    const { user } = renderApp(`/channels/${G}/${LOUNGE}`);
+    await screen.findByRole("region", { name: "Голосовой канал Лаунж" });
+    await act(() => joinVoice(G, LOUNGE));
+    await user.click(within(await controls()).getByRole("button", { name: "Включить камеру" }));
+    expect(await screen.findByText(CAMERA_DENIED, { exact: true })).toBeTruthy();
+    expect(getCall().camera).toBe(false);
+  });
+
+  it("is not offered without STREAM", async () => {
+    withEveryone(DEFAULT_EVERYONE & ~PERM.STREAM);
+    renderApp(`/channels/${G}/${LOUNGE}`);
+    await screen.findByRole("region", { name: "Голосовой канал Лаунж" });
+    await act(() => joinVoice(G, LOUNGE));
+    expect(within(await controls()).getByRole("button", { name: NO_VIDEO })).toHaveProperty("disabled", true);
   });
 });
 
