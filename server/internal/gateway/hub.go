@@ -10,6 +10,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/channels"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
+	"github.com/whoaskedssselery/zazzzor/server/internal/messages"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 	"github.com/whoaskedssselery/zazzzor/server/internal/relationships"
 )
@@ -105,9 +106,12 @@ func (g *Gateway) dispatch(ctx context.Context, e events.Event) {
 	perRecipient := e.Type == events.GuildCreate || e.Type == events.GuildSync ||
 		e.Audience.Kind == events.AudienceGuildSync
 	var (
-		shared  json.RawMessage
-		guildID snowflake.ID
+		shared   json.RawMessage
+		redacted json.RawMessage
+		guildID  snowflake.ID
 	)
+	message, hasMessage := e.Payload.(messages.PublicMessage)
+	hasReference := hasMessage && message.ReferencedMessage != nil
 	if perRecipient {
 		if guildID = guildOf(e); guildID == 0 {
 			g.dropped(e, errors.New("no guild id"))
@@ -140,13 +144,27 @@ func (g *Gateway) dispatch(ctx context.Context, e events.Event) {
 				continue
 			}
 		} else {
-			if shared == nil {
-				if shared, err = json.Marshal(e.Payload); err != nil {
+			cached, payload := &shared, e.Payload
+			if hasReference && e.Audience.GuildID != 0 {
+				p, _, accessErr := g.opts.Channels.Permissions(ctx, uid, e.Audience.ChannelID)
+				if errors.Is(accessErr, channels.ErrNotFound) {
+					continue
+				}
+				if accessErr != nil {
+					p = 0
+					g.dropped(e, accessErr)
+				}
+				if projected := message.ForReader(p); projected.ReferencedMessage == nil {
+					cached, payload = &redacted, projected
+				}
+			}
+			if *cached == nil {
+				if *cached, err = json.Marshal(payload); err != nil {
 					g.dropped(e, err)
 					return
 				}
 			}
-			d = shared
+			d = *cached
 		}
 		for _, c := range cs {
 			c.enqueue(outgoing{op: OpDispatch, t: e.Type, d: d})

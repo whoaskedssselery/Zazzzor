@@ -4200,7 +4200,9 @@ components:
             - $ref: "#/components/schemas/Snowflake"
             - type: "null"
         referenced_message:
-          description: The message this one answers; null when not a reply or the original is deleted.
+          description: |
+            The message this one answers. Null if absent, deleted, or the
+            recipient cannot read the channel history. The reply ID is retained.
           oneOf:
             - $ref: "#/components/schemas/MessageStub"
             - type: "null"

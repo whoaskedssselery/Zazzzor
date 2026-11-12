@@ -190,6 +190,20 @@ type PublicMessage struct {
 	Reactions         *[]Reaction         `json:"reactions,omitempty"`
 }
 
+// referenceForReader keeps the reply link separate from the protected content.
+func referenceForReader[T any](p permissions.Permission, ref *T) *T {
+	if !p.Has(permissions.ViewChannel | permissions.ReadMessageHistory) {
+		return nil
+	}
+	return ref
+}
+
+// ForReader projects the event payload using the recipient's channel access.
+func (m PublicMessage) ForReader(p permissions.Permission) PublicMessage {
+	m.ReferencedMessage = referenceForReader(p, m.ReferencedMessage)
+	return m
+}
+
 func publicUser(u *auth.User) *auth.PublicUser {
 	if u == nil {
 		return nil
