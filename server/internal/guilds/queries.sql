@@ -185,3 +185,30 @@ SELECT id, COALESCE(icon_hash, '')::text AS hash FROM guilds WHERE icon_hash IS 
 
 -- name: IconReferenced :one
 SELECT EXISTS (SELECT 1 FROM guilds WHERE id = @id AND icon_hash = @hash::text);
+
+-- name: ListGuildEmojis :many
+SELECT * FROM guild_emojis WHERE guild_id = $1 AND deleted_at IS NULL ORDER BY id;
+
+-- name: CountGuildEmojis :one
+SELECT count(*) FROM guild_emojis WHERE guild_id = $1 AND animated = $2 AND deleted_at IS NULL;
+
+-- name: CreateGuildEmoji :one
+INSERT INTO guild_emojis (id, guild_id, name, animated, creator_id, created_at)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING *;
+
+-- name: ActiveGuildEmoji :one
+SELECT * FROM guild_emojis WHERE id = $1 AND guild_id = $2 AND deleted_at IS NULL;
+
+-- name: RenameGuildEmoji :one
+UPDATE guild_emojis SET name = @name WHERE id = @id AND guild_id = @guild_id AND deleted_at IS NULL
+RETURNING *;
+
+-- name: DeleteGuildEmoji :one
+UPDATE guild_emojis SET deleted_at = now() WHERE id = $1 AND guild_id = $2 AND deleted_at IS NULL
+RETURNING *;
+
+-- name: GuildEmojiForMember :one
+SELECT e.* FROM guild_emojis AS e
+JOIN members AS m ON m.guild_id = e.guild_id AND m.user_id = @user_id::bigint
+WHERE e.id = @id AND e.deleted_at IS NULL;

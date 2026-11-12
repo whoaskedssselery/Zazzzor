@@ -35,11 +35,11 @@ func (q *Queries) AddEmbedImage(ctx context.Context, db DBTX, arg AddEmbedImageP
 }
 
 const addMessageReaction = `-- name: AddMessageReaction :execrows
-INSERT INTO message_reactions (message_id, emoji, user_id, first_added_at)
+INSERT INTO message_reactions (message_id, emoji, user_id, first_added_at, emoji_id)
 VALUES ($1, $2, $3, COALESCE($4::timestamptz, (
     SELECT GREATEST(clock_timestamp(), max(mr.first_added_at) + interval '1 microsecond')
     FROM message_reactions AS mr WHERE mr.message_id = $1
-)))
+)), $5)
 ON CONFLICT (message_id, emoji, user_id) DO NOTHING
 `
 
@@ -48,6 +48,7 @@ type AddMessageReactionParams struct {
 	Emoji        string
 	UserID       int64
 	FirstAddedAt *time.Time
+	EmojiID      pgtype.Int8
 }
 
 func (q *Queries) AddMessageReaction(ctx context.Context, db DBTX, arg AddMessageReactionParams) (int64, error) {
@@ -56,6 +57,7 @@ func (q *Queries) AddMessageReaction(ctx context.Context, db DBTX, arg AddMessag
 		arg.Emoji,
 		arg.UserID,
 		arg.FirstAddedAt,
+		arg.EmojiID,
 	)
 	if err != nil {
 		return 0, err
@@ -157,6 +159,7 @@ const attachmentReferenced = `-- name: AttachmentReferenced :one
 SELECT EXISTS (
     SELECT 1 FROM message_attachments AS a WHERE a.id = $1 AND a.channel_id = $2
     UNION ALL SELECT 1 FROM embed_images AS i WHERE i.id = $1 AND $2 = 1
+    UNION ALL SELECT 1 FROM guild_emojis AS e WHERE e.id = $1 AND $2 = 2 AND e.deleted_at IS NULL
 )
 `
 
@@ -175,6 +178,7 @@ func (q *Queries) AttachmentReferenced(ctx context.Context, db DBTX, arg Attachm
 const attachmentReferences = `-- name: AttachmentReferences :many
 SELECT id, channel_id FROM message_attachments
 UNION ALL SELECT id, 1::bigint AS channel_id FROM embed_images
+UNION ALL SELECT id, 2::bigint AS channel_id FROM guild_emojis WHERE deleted_at IS NULL
 `
 
 type AttachmentReferencesRow struct {
@@ -475,6 +479,24 @@ func (q *Queries) CreateMessage(ctx context.Context, db DBTX, arg CreateMessageP
 		&i.Embeds,
 	)
 	return i, err
+}
+
+const customReactionEmoji = `-- name: CustomReactionEmoji :one
+SELECT name FROM guild_emojis WHERE id = $1 AND guild_id = $2
+  AND (deleted_at IS NULL OR $3::boolean)
+`
+
+type CustomReactionEmojiParams struct {
+	ID             int64
+	GuildID        int64
+	IncludeDeleted bool
+}
+
+func (q *Queries) CustomReactionEmoji(ctx context.Context, db DBTX, arg CustomReactionEmojiParams) (string, error) {
+	row := db.QueryRow(ctx, customReactionEmoji, arg.ID, arg.GuildID, arg.IncludeDeleted)
+	var name string
+	err := row.Scan(&name)
+	return name, err
 }
 
 const deleteMessage = `-- name: DeleteMessage :execrows
@@ -960,11 +982,13 @@ func (q *Queries) ReactionGroupsForWrite(ctx context.Context, db DBTX, messageID
 }
 
 const reactionSummaries = `-- name: ReactionSummaries :many
-SELECT message_id, emoji, count(*) AS count, bool_or(user_id = $1::bigint)::bool AS me
-FROM message_reactions
-WHERE message_id = ANY($2::bigint[])
-GROUP BY message_id, emoji
-ORDER BY message_id, min(first_added_at), emoji
+SELECT r.message_id, r.emoji_id, COALESCE(e.name, r.emoji)::text AS emoji_name,
+    count(*) AS count, bool_or(r.user_id = $1::bigint)::bool AS me
+FROM message_reactions AS r
+LEFT JOIN guild_emojis AS e ON e.id = r.emoji_id
+WHERE r.message_id = ANY($2::bigint[])
+GROUP BY r.message_id, r.emoji, r.emoji_id, e.name
+ORDER BY r.message_id, min(r.first_added_at), r.emoji
 `
 
 type ReactionSummariesParams struct {
@@ -974,7 +998,8 @@ type ReactionSummariesParams struct {
 
 type ReactionSummariesRow struct {
 	MessageID int64
-	Emoji     string
+	EmojiID   pgtype.Int8
+	EmojiName string
 	Count     int64
 	Me        bool
 }
@@ -990,7 +1015,8 @@ func (q *Queries) ReactionSummaries(ctx context.Context, db DBTX, arg ReactionSu
 		var i ReactionSummariesRow
 		if err := rows.Scan(
 			&i.MessageID,
-			&i.Emoji,
+			&i.EmojiID,
+			&i.EmojiName,
 			&i.Count,
 			&i.Me,
 		); err != nil {

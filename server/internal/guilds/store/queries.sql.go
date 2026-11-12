@@ -9,8 +9,33 @@ import (
 	"context"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
+
+const activeGuildEmoji = `-- name: ActiveGuildEmoji :one
+SELECT id, guild_id, name, animated, creator_id, created_at, deleted_at FROM guild_emojis WHERE id = $1 AND guild_id = $2 AND deleted_at IS NULL
+`
+
+type ActiveGuildEmojiParams struct {
+	ID      int64
+	GuildID int64
+}
+
+func (q *Queries) ActiveGuildEmoji(ctx context.Context, db DBTX, arg ActiveGuildEmojiParams) (GuildEmoji, error) {
+	row := db.QueryRow(ctx, activeGuildEmoji, arg.ID, arg.GuildID)
+	var i GuildEmoji
+	err := row.Scan(
+		&i.ID,
+		&i.GuildID,
+		&i.Name,
+		&i.Animated,
+		&i.CreatorID,
+		&i.CreatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
 
 const addMember = `-- name: AddMember :execrows
 INSERT INTO members (guild_id, user_id, joined_at)
@@ -115,6 +140,22 @@ func (q *Queries) CloseRoleGap(ctx context.Context, db DBTX, arg CloseRoleGapPar
 	return err
 }
 
+const countGuildEmojis = `-- name: CountGuildEmojis :one
+SELECT count(*) FROM guild_emojis WHERE guild_id = $1 AND animated = $2 AND deleted_at IS NULL
+`
+
+type CountGuildEmojisParams struct {
+	GuildID  int64
+	Animated bool
+}
+
+func (q *Queries) CountGuildEmojis(ctx context.Context, db DBTX, arg CountGuildEmojisParams) (int64, error) {
+	row := db.QueryRow(ctx, countGuildEmojis, arg.GuildID, arg.Animated)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countRoles = `-- name: CountRoles :one
 SELECT count(*) FROM roles WHERE guild_id = $1
 `
@@ -197,6 +238,43 @@ func (q *Queries) CreateGuild(ctx context.Context, db DBTX, arg CreateGuildParam
 	return i, err
 }
 
+const createGuildEmoji = `-- name: CreateGuildEmoji :one
+INSERT INTO guild_emojis (id, guild_id, name, animated, creator_id, created_at)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, guild_id, name, animated, creator_id, created_at, deleted_at
+`
+
+type CreateGuildEmojiParams struct {
+	ID        int64
+	GuildID   int64
+	Name      string
+	Animated  bool
+	CreatorID pgtype.Int8
+	CreatedAt time.Time
+}
+
+func (q *Queries) CreateGuildEmoji(ctx context.Context, db DBTX, arg CreateGuildEmojiParams) (GuildEmoji, error) {
+	row := db.QueryRow(ctx, createGuildEmoji,
+		arg.ID,
+		arg.GuildID,
+		arg.Name,
+		arg.Animated,
+		arg.CreatorID,
+		arg.CreatedAt,
+	)
+	var i GuildEmoji
+	err := row.Scan(
+		&i.ID,
+		&i.GuildID,
+		&i.Name,
+		&i.Animated,
+		&i.CreatorID,
+		&i.CreatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const createRole = `-- name: CreateRole :one
 INSERT INTO roles (id, guild_id, name, color, position, permissions, hoist, mentionable, created_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -272,6 +350,31 @@ func (q *Queries) DeleteGuild(ctx context.Context, db DBTX, id snowflake.ID) (Gu
 		&i.IconHash,
 		&i.OwnerID,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const deleteGuildEmoji = `-- name: DeleteGuildEmoji :one
+UPDATE guild_emojis SET deleted_at = now() WHERE id = $1 AND guild_id = $2 AND deleted_at IS NULL
+RETURNING id, guild_id, name, animated, creator_id, created_at, deleted_at
+`
+
+type DeleteGuildEmojiParams struct {
+	ID      int64
+	GuildID int64
+}
+
+func (q *Queries) DeleteGuildEmoji(ctx context.Context, db DBTX, arg DeleteGuildEmojiParams) (GuildEmoji, error) {
+	row := db.QueryRow(ctx, deleteGuildEmoji, arg.ID, arg.GuildID)
+	var i GuildEmoji
+	err := row.Scan(
+		&i.ID,
+		&i.GuildID,
+		&i.Name,
+		&i.Animated,
+		&i.CreatorID,
+		&i.CreatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
@@ -367,6 +470,32 @@ func (q *Queries) GuildByID(ctx context.Context, db DBTX, id snowflake.ID) (Guil
 		&i.IconHash,
 		&i.OwnerID,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const guildEmojiForMember = `-- name: GuildEmojiForMember :one
+SELECT e.id, e.guild_id, e.name, e.animated, e.creator_id, e.created_at, e.deleted_at FROM guild_emojis AS e
+JOIN members AS m ON m.guild_id = e.guild_id AND m.user_id = $1::bigint
+WHERE e.id = $2 AND e.deleted_at IS NULL
+`
+
+type GuildEmojiForMemberParams struct {
+	UserID int64
+	ID     int64
+}
+
+func (q *Queries) GuildEmojiForMember(ctx context.Context, db DBTX, arg GuildEmojiForMemberParams) (GuildEmoji, error) {
+	row := db.QueryRow(ctx, guildEmojiForMember, arg.UserID, arg.ID)
+	var i GuildEmoji
+	err := row.Scan(
+		&i.ID,
+		&i.GuildID,
+		&i.Name,
+		&i.Animated,
+		&i.CreatorID,
+		&i.CreatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
@@ -537,6 +666,38 @@ func (q *Queries) IsMember(ctx context.Context, db DBTX, arg IsMemberParams) (bo
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const listGuildEmojis = `-- name: ListGuildEmojis :many
+SELECT id, guild_id, name, animated, creator_id, created_at, deleted_at FROM guild_emojis WHERE guild_id = $1 AND deleted_at IS NULL ORDER BY id
+`
+
+func (q *Queries) ListGuildEmojis(ctx context.Context, db DBTX, guildID int64) ([]GuildEmoji, error) {
+	rows, err := db.Query(ctx, listGuildEmojis, guildID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GuildEmoji
+	for rows.Next() {
+		var i GuildEmoji
+		if err := rows.Scan(
+			&i.ID,
+			&i.GuildID,
+			&i.Name,
+			&i.Animated,
+			&i.CreatorID,
+			&i.CreatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const lockGuild = `-- name: LockGuild :one
@@ -810,6 +971,32 @@ func (q *Queries) RenameGuild(ctx context.Context, db DBTX, arg RenameGuildParam
 		&i.IconHash,
 		&i.OwnerID,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const renameGuildEmoji = `-- name: RenameGuildEmoji :one
+UPDATE guild_emojis SET name = $1 WHERE id = $2 AND guild_id = $3 AND deleted_at IS NULL
+RETURNING id, guild_id, name, animated, creator_id, created_at, deleted_at
+`
+
+type RenameGuildEmojiParams struct {
+	Name    string
+	ID      int64
+	GuildID int64
+}
+
+func (q *Queries) RenameGuildEmoji(ctx context.Context, db DBTX, arg RenameGuildEmojiParams) (GuildEmoji, error) {
+	row := db.QueryRow(ctx, renameGuildEmoji, arg.Name, arg.ID, arg.GuildID)
+	var i GuildEmoji
+	err := row.Scan(
+		&i.ID,
+		&i.GuildID,
+		&i.Name,
+		&i.Animated,
+		&i.CreatorID,
+		&i.CreatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
