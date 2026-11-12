@@ -309,6 +309,8 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
     stopSteering();
     const stream = screen;
     screen = null;
+    // The capture ends at once; taking the tracks off the room may wait on the network.
+    for (const t of stream?.getTracks() ?? []) t.stop();
     try {
       for (const pub of [...r.localParticipant.trackPublications.values()]) {
         if (pub.track && SCREEN.has(pub.source)) await r.localParticipant.unpublishTrack(pub.track);
@@ -399,9 +401,19 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
           emit("screenEnded");
         });
       });
+      // A stop (the browser's button, the user, the call ending) may come while a track is being
+      // published: then this share is over, and whatever got published comes down again.
+      const stopped = async (): Promise<boolean> => {
+        if (screen === stream) return false;
+        if (room === r) await unpublishScreen(r).catch(() => undefined);
+        for (const t of stream.getTracks()) t.stop();
+        return true;
+      };
       try {
         await r.localParticipant.publishTrack(video, { ...publish, source: Track.Source.ScreenShare });
+        if (await stopped()) return { ok: false, reason: "cancelled" };
         if (audio) await r.localParticipant.publishTrack(audio, { source: Track.Source.ScreenShareAudio });
+        if (await stopped()) return { ok: false, reason: "cancelled" };
       } catch {
         await unpublishScreen(r).catch(() => undefined);
         for (const t of stream.getTracks()) t.stop();

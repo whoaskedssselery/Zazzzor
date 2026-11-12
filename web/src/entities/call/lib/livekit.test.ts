@@ -135,6 +135,37 @@ describe("LiveKit transport", () => {
     expect(video.stop).toHaveBeenCalled();
   });
 
+  it("I6: a stop while the screen is being published ends the share instead of reporting it started", async () => {
+    const t = await connected();
+    const ended = vi.fn();
+    t.on("screenEnded", ended);
+    const { video, stream } = capture();
+    pickScreen(Promise.resolve(stream));
+    const lp = room().localParticipant;
+    let published: () => void = () => {};
+    lp.publishTrack.mockImplementationOnce((track: unknown, opts: { source: string }) => {
+      room().publications.set(opts.source, { source: opts.source as Track.Source, track });
+      return new Promise<void>((resolve) => {
+        published = resolve;
+      });
+    });
+    const sharing = t.startScreenShare();
+    await vi.waitFor(() => {
+      expect(video.addEventListener).toHaveBeenCalled();
+    });
+    // The browser's own «Stop sharing», while the publish is still in flight.
+    const onEnded = video.addEventListener.mock.calls.find(([type]) => type === "ended")?.[1] as () => void;
+    onEnded();
+    expect(video.stop).toHaveBeenCalled();
+    published();
+    expect(await sharing).toEqual({ ok: false, reason: "cancelled" });
+    const unpublish = (lp as unknown as { unpublishTrack: Mock }).unpublishTrack;
+    expect(unpublish).toHaveBeenCalledWith(video);
+    await vi.waitFor(() => {
+      expect(ended).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("I4: keeps sharing through a reconnect that republishes the screen", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const t = await connected();
