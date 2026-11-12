@@ -1,6 +1,7 @@
 package gateway_test
 
 import (
+	"bytes"
 	"net/http"
 	"testing"
 
@@ -78,6 +79,13 @@ func TestOpenDirectChannelIsUniqueAndPrivate(t *testing.T) {
 	}
 	channel := "/api/v1/channels/" + first.ID
 	dmExpect(t, outsider.Do(http.MethodGet, channel, nil), http.StatusNotFound)
+	malformed := []byte("{")
+	opt := testkit.WithHeader("Content-Type", "application/json")
+	missing := outsider.Do(http.MethodPatch, "/api/v1/channels/999", malformed, opt)
+	hidden := outsider.Do(http.MethodPatch, channel, malformed, opt)
+	if missing.Status != http.StatusNotFound || hidden.Status != missing.Status || !bytes.Equal(hidden.Body, missing.Body) {
+		t.Fatalf("malformed PATCH to hidden/missing channel = %d/%d: %s / %s", hidden.Status, missing.Status, hidden.Body, missing.Body)
+	}
 	dmExpect(t, alice.Do(http.MethodDelete, channel, nil), http.StatusNoContent)
 	if got := dmList(t, alice); len(got) != 0 {
 		t.Fatalf("closed channels = %+v, want []", got)

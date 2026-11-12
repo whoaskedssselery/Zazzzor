@@ -57,9 +57,9 @@ func (s *Service) OpenDirect(ctx context.Context, actor, other snowflake.ID) (DM
 	mu.Lock()
 	defer mu.Unlock()
 	pair := store.DirectChannelOfPairParams{LowID: int64(low), HighID: int64(high)}
-	existing, err := s.q.DirectChannelOfPair(ctx, s.pool, pair)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return DMChannel{}, false, fmt.Errorf("channels: find direct pair: %w", err)
+	existing, pairErr := s.q.DirectChannelOfPair(ctx, s.pool, pair)
+	if pairErr != nil && !errors.Is(pairErr, pgx.ErrNoRows) {
+		return DMChannel{}, false, fmt.Errorf("channels: find direct pair: %w", pairErr)
 	}
 	id := snowflake.ID(existing)
 	if id == 0 {
@@ -70,7 +70,7 @@ func (s *Service) OpenDirect(ctx context.Context, actor, other snowflake.ID) (DM
 	var snapshot privateSnapshot
 	var announce []events.Event
 	var created bool
-	err = db.InTx(ctx, s.pool, func(tx pgx.Tx) error {
+	err := db.InTx(ctx, s.pool, func(tx pgx.Tx) error {
 		if err := s.q.LockDirectPair(ctx, tx, store.LockDirectPairParams(pair)); err != nil {
 			return fmt.Errorf("channels: serialize direct open: %w", err)
 		}

@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 
 	"github.com/jackc/pgx/v5"
-	"net/http"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
@@ -77,9 +77,6 @@ func (s *Service) channelKind(ctx context.Context, id snowflake.ID) (Type, error
 
 func (s *Service) handlePatchPrivate(w http.ResponseWriter, r *http.Request, id snowflake.ID) error {
 	actor := auth.CurrentUser(r).ID
-	if _, err := s.PrivateChannel(r.Context(), actor, id); err != nil {
-		return fail(err)
-	}
 	req, err := httpx.Decode[struct {
 		Name json.RawMessage `json:"name"`
 	}](r)

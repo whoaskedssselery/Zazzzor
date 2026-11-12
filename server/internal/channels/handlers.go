@@ -3,7 +3,6 @@ package channels
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -185,11 +184,11 @@ func (s *Service) handlePatch(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	kind, kindErr := s.channelKind(r.Context(), id)
-	if kindErr != nil && !errors.Is(kindErr, ErrNotFound) {
-		return fail(kindErr)
+	channel, err := s.Channel(r.Context(), auth.CurrentUser(r).ID, id)
+	if err != nil {
+		return fail(err)
 	}
-	if kind.Private() {
+	if channel.Type.Private() {
 		return s.handlePatchPrivate(w, r, id)
 	}
 	req, err := httpx.Decode[patchRequest](r)
