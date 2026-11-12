@@ -87,7 +87,18 @@ func (g *Gateway) dispatch(ctx context.Context, e events.Event) {
 	recipients, err := g.recipients(ctx, e)
 	if err != nil {
 		if g.dropped(e, err) {
-			g.resync(e.Audience.GuildID)
+			switch a := e.Audience; {
+			case a.Kind == events.AudiencePrivateChannel:
+				for _, user := range a.UserIDs {
+					for _, c := range conns[user] {
+						c.closeWith(CloseOverloaded)
+					}
+				}
+			case a.Kind == events.AudienceChannel && a.GuildID == 0:
+				g.resync(a.ChannelID)
+			default:
+				g.resync(a.GuildID)
+			}
 		}
 		return
 	}
@@ -142,6 +153,14 @@ func (g *Gateway) dispatch(ctx context.Context, e events.Event) {
 			switch e.Type {
 			case events.GuildCreate:
 				c.hold(guildID)
+			case events.DMChannelCreate:
+				if p, ok := e.Payload.(channels.DMChannel); ok {
+					c.hold(p.ID)
+				}
+			case events.DMChannelDelete:
+				if p, ok := e.Payload.(channels.DMChannelDelete); ok {
+					c.release(p.ID)
+				}
 			case events.GuildDelete:
 				if p, ok := e.Payload.(guilds.GuildDeletePayload); ok {
 					c.release(p.ID)
@@ -294,17 +313,17 @@ func (g *Gateway) dropped(e events.Event, err error) bool {
 	return true
 }
 
-// resync closes with 4008 every connection holding the state of guildID
+// resync closes with 4008 every connection holding the state of scopeID
 // (none for 0): it missed an event of the guild, and reconnecting gives it
 // a fresh READY.
-func (g *Gateway) resync(guildID snowflake.ID) {
-	if guildID == 0 {
+func (g *Gateway) resync(scopeID snowflake.ID) {
+	if scopeID == 0 {
 		return
 	}
 	g.mu.Lock()
 	var cs []*conn
 	for c := range g.conns {
-		if c.holds(guildID) {
+		if c.holds(scopeID) {
 			cs = append(cs, c)
 		}
 	}
@@ -334,10 +353,13 @@ func (g *Gateway) recipients(ctx context.Context, e events.Event) ([]snowflake.I
 	switch a.Kind {
 	case events.AudienceGuild, events.AudienceGuildSync:
 		return g.opts.Guilds.MemberIDs(ctx, a.GuildID)
-	case events.AudienceChannel:
+	case events.AudienceChannel, events.AudiencePrivateChannel:
 		ids, err := g.opts.Channels.Viewers(ctx, a.ChannelID)
 		if errors.Is(err, channels.ErrNotFound) {
 			return nil, nil // the channel is gone: nobody may see it
+		}
+		if err == nil && a.Kind == events.AudiencePrivateChannel {
+			ids = slices.DeleteFunc(slices.Clone(ids), func(id snowflake.ID) bool { return !slices.Contains(a.UserIDs, id) })
 		}
 		return ids, err
 	case events.AudienceUsers:

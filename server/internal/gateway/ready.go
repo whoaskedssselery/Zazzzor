@@ -123,6 +123,9 @@ func (g *Gateway) ready(ctx context.Context, user auth.User) (Ready, error) {
 		r.Guilds = append(r.Guilds, st)
 		r.ReadStates = append(r.ReadStates, st.ReadStates...)
 	}
+	if privateErr := g.readyPrivate(ctx, user.ID, &r); privateErr != nil {
+		return Ready{}, privateErr
+	}
 	peers, err := g.opts.Guilds.PeerIDs(ctx, user.ID)
 	if err != nil {
 		return Ready{}, err
@@ -135,4 +138,33 @@ func (g *Gateway) ready(ctx context.Context, user auth.User) (Ready, error) {
 		r.Presences = append(r.Presences, Presence{UserID: id, Status: StatusOnline})
 	}
 	return r, nil
+}
+
+// readyPrivate adds open private channels and only their stored read markers.
+func (g *Gateway) readyPrivate(ctx context.Context, user snowflake.ID, r *Ready) error {
+	r.PrivateChannels = []channels.DMChannel{}
+	if g.opts.PrivateChannels == nil {
+		return nil
+	}
+	list, err := g.opts.PrivateChannels.PrivateChannels(ctx, user)
+	if err != nil {
+		return fmt.Errorf("gateway: list private channels: %w", err)
+	}
+	if len(list) == 0 {
+		return nil
+	}
+	r.PrivateChannels = list
+	if g.opts.ReadStates == nil {
+		return nil
+	}
+	ids := make([]snowflake.ID, len(list))
+	for i, channel := range list {
+		ids[i] = channel.ID
+	}
+	states, err := g.opts.ReadStates.ReadStates(ctx, user, ids)
+	if err != nil {
+		return fmt.Errorf("gateway: read private markers: %w", err)
+	}
+	r.ReadStates = append(r.ReadStates, states...)
+	return nil
 }

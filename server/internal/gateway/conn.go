@@ -46,9 +46,8 @@ type conn struct {
 	// abort skips the close handshake (a peer that stopped reading).
 	abort atomic.Bool
 
-	// held are the guilds whose state this client got (READY, GUILD_CREATE)
-	// and still keeps (no GUILD_DELETE since); a guild event that cannot be
-	// delivered closes the connections holding it, so they resync.
+	// held tracks guilds and open private channels known to the client.
+	// A delivery failure closes connections holding that state so they resync.
 	heldMu sync.Mutex
 	held   map[snowflake.ID]struct{}
 
@@ -190,9 +189,12 @@ func (c *conn) sendReady() bool {
 		c.closeWith(closeInternal)
 		return true
 	}
-	ids := make([]snowflake.ID, len(ready.Guilds))
-	for i, st := range ready.Guilds {
-		ids[i] = st.Guild.ID
+	ids := make([]snowflake.ID, 0, len(ready.Guilds)+len(ready.PrivateChannels))
+	for _, st := range ready.Guilds {
+		ids = append(ids, st.Guild.ID)
+	}
+	for _, ch := range ready.PrivateChannels {
+		ids = append(ids, ch.ID)
 	}
 	c.hold(ids...)
 	d, err := json.Marshal(ready)
@@ -258,7 +260,7 @@ func (c *conn) readLoop() {
 	}
 }
 
-// hold records that the client got the state of the guilds ids.
+// hold records the guild or private channel IDs known to the client.
 func (c *conn) hold(ids ...snowflake.ID) {
 	c.heldMu.Lock()
 	defer c.heldMu.Unlock()
@@ -270,7 +272,7 @@ func (c *conn) hold(ids ...snowflake.ID) {
 	}
 }
 
-// release records that the client dropped the guild id (GUILD_DELETE).
+// release records that the client dropped a guild or private channel.
 func (c *conn) release(id snowflake.ID) {
 	c.heldMu.Lock()
 	defer c.heldMu.Unlock()

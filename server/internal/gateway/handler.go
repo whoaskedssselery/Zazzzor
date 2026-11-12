@@ -58,6 +58,11 @@ type RelationshipReader interface {
 	List(context.Context, snowflake.ID) ([]relationships.Relationship, error)
 }
 
+// PrivateChannelReader lists the user's open private channels for READY.
+type PrivateChannelReader interface {
+	PrivateChannels(context.Context, snowflake.ID) ([]channels.DMChannel, error)
+}
+
 // Options configures a Gateway. Auth, Guilds, Channels and Bus are
 // required; zero tuning fields take the defaults.
 type Options struct {
@@ -71,7 +76,8 @@ type Options struct {
 	// ReadStates fills snapshot read_states; nil leaves them empty.
 	ReadStates ReadStates
 	// Relationships fills READY relationships. Nil leaves the list empty.
-	Relationships RelationshipReader
+	Relationships   RelationshipReader
+	PrivateChannels PrivateChannelReader
 	// AllowedOrigins are the only Origin values accepted for the upgrade.
 	AllowedOrigins []string
 	// Logger is for failures; nil discards.

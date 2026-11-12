@@ -48,11 +48,17 @@ func (s *Service) handleUploadAttachment(w http.ResponseWriter, r *http.Request)
 	}
 	ctx := r.Context()
 	user := auth.CurrentUser(r).ID
-	if _, _, err = s.access(ctx, user, ch, permissions.ViewChannel|permissions.SendMessages|permissions.AttachFiles); err != nil {
+	_, guildID, err := s.access(ctx, user, ch, permissions.ViewChannel|permissions.SendMessages|permissions.AttachFiles)
+	if err != nil {
 		return fail(err)
 	}
 	if err = s.requireText(ctx, ch); err != nil {
 		return fail(err)
+	}
+	if guildID == 0 {
+		if err = s.checkPrivateWriter(ctx, ch, user); err != nil {
+			return fail(err)
+		}
 	}
 	upload.ExtendDeadlines(w)
 	id := s.ids.Next()
@@ -78,10 +84,32 @@ func (s *Service) handleUploadAttachment(w http.ResponseWriter, r *http.Request)
 		}
 		return fmt.Errorf("messages: upload attachment: %w", err)
 	}
-	row, err := s.q.CreateAttachment(ctx, s.pool, store.CreateAttachmentParams{ID: int64(id), ChannelID: int64(ch),
+	params := store.CreateAttachmentParams{ID: int64(id), ChannelID: int64(ch),
 		UploaderID: dbID(user), Filename: name, ContentType: info.ContentType, Size: info.Size,
-		Width: dbDimension(info.Width), Height: dbDimension(info.Height), Digest: info.Digest, CreatedAt: s.now()})
+		Width: dbDimension(info.Width), Height: dbDimension(info.Height), Digest: info.Digest, CreatedAt: s.now()}
+	var row store.MessageAttachment
+	attempted := false
+	record := func(q store.DBTX) error {
+		attempted = true
+		var recordErr error
+		row, recordErr = s.q.CreateAttachment(ctx, q, params)
+		return recordErr
+	}
+	if guildID == 0 {
+		err = s.withChannelWrite(ctx, 0, ch, func(tx pgx.Tx) error {
+			if accessErr := s.checkPrivateWriterIn(ctx, tx, ch, user); accessErr != nil {
+				return accessErr
+			}
+			return record(tx)
+		})
+	} else {
+		err = record(s.pool)
+	}
 	if err != nil {
+		if !attempted {
+			s.trashUncommitted(ref)
+			return fail(err)
+		}
 		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23503" {
 			s.trashUncommitted(ref)
 			return httpx.NotFound()

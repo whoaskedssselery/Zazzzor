@@ -168,8 +168,13 @@ func (s *Service) advanceRead(ctx context.Context, tx pgx.Tx, guildID, userID sn
 // publishAcks sends each changed marker only to the user's connections.
 func (s *Service) publishAcks(ctx context.Context, userID snowflake.ID, changed []store.ReadState) {
 	for _, row := range changed {
+		audience := events.Audience{Kind: events.AudienceUsers, UserIDs: []snowflake.ID{userID}}
+		if !row.GuildID.Valid {
+			audience.Kind = events.AudiencePrivateChannel
+			audience.ChannelID = snowflake.ID(row.ChannelID)
+		}
 		s.publish(ctx, events.Event{Type: events.MessageAck,
-			Audience: events.Audience{Kind: events.AudienceUsers, UserIDs: []snowflake.ID{userID}},
+			Audience: audience,
 			Payload:  readState(row)})
 	}
 }

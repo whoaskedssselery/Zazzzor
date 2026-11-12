@@ -138,6 +138,7 @@ func (m *Modules) NewGateway(bus *events.Bus, cfg config.Config, logger *slog.Lo
 	opts.Logger = logger
 	opts.Registerer = reg
 	opts.ReadStates = m.Messages
+	opts.PrivateChannels = m.Channels
 	opts.Relationships = m.Relationships
 	gw := gateway.New(opts)
 	if m.presence != nil {

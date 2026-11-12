@@ -635,6 +635,11 @@ func (s *Service) Typing(ctx context.Context, channelID, userID snowflake.ID) er
 	if err = s.requireText(ctx, channelID); err != nil {
 		return err
 	}
+	if guildID == 0 {
+		if err = s.checkPrivateWriter(ctx, channelID, userID); err != nil {
+			return err
+		}
+	}
 	s.publish(ctx, events.Event{Type: events.TypingStart, Audience: channelAudience(guildID, channelID),
 		ExcludeUserID: userID,
 		Payload: TypingPayload{ChannelID: channelID, GuildID: nullableGuildID(guildID), UserID: userID,

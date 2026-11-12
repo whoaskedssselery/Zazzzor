@@ -60,3 +60,18 @@ func (s *Service) privateMentions(ctx context.Context, tx pgx.Tx, id, author sno
 	}
 	return m, nil
 }
+
+// checkPrivateWriterIn verifies both current membership and send eligibility.
+func (s *Service) checkPrivateWriterIn(ctx context.Context, tx pgx.Tx, channel, user snowflake.ID) error {
+	if _, _, err := s.channels.PermissionsIn(ctx, tx, user, channel); err != nil {
+		return err
+	}
+	return s.channels.CheckPrivateSendIn(ctx, tx, channel, user)
+}
+
+// checkPrivateWriter allows callers to deny ineligible work before I/O.
+func (s *Service) checkPrivateWriter(ctx context.Context, channel, user snowflake.ID) error {
+	return s.withChannelWrite(ctx, 0, channel, func(tx pgx.Tx) error {
+		return s.checkPrivateWriterIn(ctx, tx, channel, user)
+	})
+}
