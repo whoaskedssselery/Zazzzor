@@ -1,19 +1,7 @@
-import { Hash, Upload } from "lucide-react";
+import { Upload } from "lucide-react";
 import { type DragEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getGuildsState, unreadFrom, useGuilds } from "@/entities/guild";
 import {
-  type Channel,
-  computeChannel,
-  type GuildEntry,
-  getGuildsState,
-  has,
-  isUnread,
-  mentionsMe,
-  PERM,
-  useGuilds,
-  userDisplay,
-} from "@/entities/guild";
-import {
-  type AuthorView,
   attachmentsOf,
   emojiOfKey,
   inOrder,
@@ -25,7 +13,6 @@ import {
   useMessages,
   usePendingMessages,
 } from "@/entities/message";
-import { MemberMenu } from "@/features/manage-member";
 import {
   DeleteMessageDialog,
   MessageContextMenu,
@@ -36,17 +23,11 @@ import {
   useToggleReaction,
 } from "@/features/message-actions";
 import { useReadChannel } from "@/features/read-channel";
-import {
-  Composer,
-  type MentionSuggestion,
-  type ReplyTarget,
-  useAddFiles,
-  useSendMessage,
-} from "@/features/send-message";
+import { Composer, type ReplyTarget, useAddFiles, useSendMessage } from "@/features/send-message";
 import { errorText } from "@/shared/api";
-import type { MentionNames } from "@/shared/lib";
 import { Button, Skeleton } from "@/shared/ui";
 import { buildRows, type ChatRow } from "../model/rows";
+import type { ChatScope } from "../model/scope";
 import { MessageList } from "./MessageList";
 import { TypingIndicator } from "./TypingIndicator";
 
@@ -67,16 +48,6 @@ const useMinute = (): Date => {
   }, []);
   return now;
 };
-
-const Welcome = ({ name }: { name: string }) => (
-  <div className="mx-4 mt-6 mb-2">
-    <span aria-hidden className="flex size-17 items-center justify-center rounded-full bg-control">
-      <Hash className="size-10 text-fg" strokeWidth={1.75} />
-    </span>
-    <h2 className="mt-3 text-xl font-bold break-words">{`Добро пожаловать в #${name}!`}</h2>
-    <p className="mt-1 text-base text-fg-muted">{`Это начало канала #${name}.`}</p>
-  </div>
-);
 
 /** Placeholder rows while older history loads. */
 const Loading = ({ label }: { label: string }) => (
@@ -108,13 +79,6 @@ const NewDivider = () => (
   </div>
 );
 
-/** The user's read mark in `channelId` as they open it, if the channel has unread messages then. */
-const unreadFrom = (guildId: string, channelId: string): string | null => {
-  const e = getGuildsState().guilds[guildId];
-  if (!e || !isUnread(e, channelId)) return null;
-  return e.reads[channelId]?.lastReadId ?? "0";
-};
-
 const DaySeparator = ({ label }: { label: string }) => (
   <div className="mx-4 mt-6 mb-1 flex items-center gap-2 text-xs font-semibold text-fg-faint">
     <span aria-hidden className="h-px flex-1 bg-border" />
@@ -141,6 +105,16 @@ const FailedFooter = ({
     {" · "}
     <button type="button" className="cursor-pointer font-semibold text-link hover:underline" onClick={onDiscard}>
       Удалить
+    </button>
+  </p>
+);
+
+/** A message of someone the user blocked, folded as Discord folds it, with a way to read it anyway. */
+const BlockedMessage = ({ onShow }: { onShow: () => void }) => (
+  <p className="mx-4 my-1 py-1 pl-14 text-sm text-fg-faint">
+    Сообщение от заблокированного пользователя.{" "}
+    <button type="button" className="cursor-pointer font-medium text-link hover:underline" onClick={onShow}>
+      Показать
     </button>
   </p>
 );
@@ -187,90 +161,36 @@ const useFileDrop = (onFiles: (files: File[]) => void) => {
   };
 };
 
-const DropHint = ({ channelName }: { channelName: string }) => (
+const DropHint = ({ text }: { text: string }) => (
   <div
     aria-hidden
     className="pointer-events-none absolute inset-2 z-(--z-sticky) flex animate-fade-in flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-accent bg-[color-mix(in_srgb,var(--bg-chat)_88%,transparent)] text-center"
   >
     <Upload className="size-10 text-accent" strokeWidth={1.5} />
     <p className="text-lg font-semibold">Отпустите, чтобы прикрепить</p>
-    <p className="text-sm text-fg-muted">{`Файлы уйдут в #${channelName}`}</p>
+    <p className="text-sm text-fg-muted">{text}</p>
   </div>
 );
 
-/** Names for mentions as this server shows them: members by their name here, roles with their colour. */
-const mentionNames = (entry: GuildEntry): MentionNames => ({
-  user: (id) => {
-    const member = entry.members[id];
-    return member ? { name: userDisplay(entry, member.user).name } : null;
-  },
-  role: (id) => {
-    const role = entry.roles[id];
-    return role ? { name: role.name, color: role.color } : null;
-  },
-  emoji: (id) => entry.emojis[id] ?? null,
-});
-
 /**
- * Who `@` can reach in `channelId`: the members who can see it, by the name
- * they go by here; the roles that may be mentioned (all of them with
- * MENTION_EVERYONE, which also brings @everyone and @here).
+ * A chat: its history (with the start at the top once it is all loaded),
+ * the messages being sent, who is typing, and the composer. Where it is
+ * and what the user may do there come from `scope` (a server channel or a
+ * private one). Only the author, or someone with `can.manage`, deletes a
+ * message. The caller keys it by channel.
  */
-const mentionSuggestions = (
-  entry: GuildEntry,
-  channelId: string,
-  meId: string | null,
-  everyone: boolean,
-): MentionSuggestion[] => {
-  const users = Object.values(entry.members)
-    .filter((m) => m.user.id !== meId && has(computeChannel(entry, channelId, m.user.id), PERM.VIEW_CHANNEL))
-    .map((m): MentionSuggestion => {
-      const view = userDisplay(entry, m.user);
-      return { kind: "user", id: m.user.id, name: view.name, detail: m.user.username, avatarUrl: view.avatarUrl };
-    })
-    .sort((a, b) => a.name.localeCompare(b.name, "ru"));
-  const roles = Object.values(entry.roles)
-    .filter((r) => r.id !== entry.guild.id && (r.mentionable || everyone))
-    .map((r): MentionSuggestion => ({ kind: "role", id: r.id, name: r.name, color: r.color }));
-  const groups: MentionSuggestion[] = everyone
-    ? [
-        { kind: "everyone", id: null, name: "everyone", detail: "Все, кто видит канал" },
-        { kind: "here", id: null, name: "here", detail: "Все, кто сейчас в сети" },
-      ]
-    : [];
-  return [...users, ...roles, ...groups];
-};
-
-/** How a message author shows here; null for a deleted account. */
-const authorOf = (entry: GuildEntry, user: Message["author"]): AuthorView | null =>
-  user === null ? null : userDisplay(entry, user);
-
-/**
- * The chat of a text channel: its history (with the start of the channel at
- * the top once it is all loaded), the messages being sent, who is typing,
- * and the composer. What the user may do follows their permissions in the
- * channel: without READ_MESSAGE_HISTORY no history is asked for, without
- * SEND_MESSAGES the composer gives way to a notice, and only the author or
- * MANAGE_MESSAGES may delete. The caller keys it by channel.
- */
-export const ChatView = ({ guildId, channel }: { guildId: string; channel: Channel }) => {
-  const entry = useGuilds((s) => s.guilds[guildId]);
+export const Chat = ({ scope }: { scope: ChatScope }) => {
+  const { channelId, can } = scope;
   const meId = useGuilds((s) => s.me?.id ?? null);
-  const perms = entry && meId !== null ? computeChannel(entry, channel.id, meId) : 0n;
-  const canRead = has(perms, PERM.READ_MESSAGE_HISTORY);
-  const canSend = has(perms, PERM.SEND_MESSAGES);
-  const canManage = has(perms, PERM.MANAGE_MESSAGES);
-  const canAttach = canSend && has(perms, PERM.ATTACH_FILES);
-  const canMentionEveryone = has(perms, PERM.MENTION_EVERYONE);
-  const canAddReactions = canRead && has(perms, PERM.ADD_REACTIONS);
+  const me = useGuilds((s) => s.me);
 
-  const history = useMessages(channel.id, canRead);
-  const pending = usePendingMessages(channel.id);
-  const sender = useSendMessage(channel.id);
+  const history = useMessages(channelId, can.read);
+  const pending = usePendingMessages(channelId);
+  const sender = useSendMessage(channelId);
   const remove = useDeleteMessage();
   const react = useToggleReaction();
   const now = useMinute();
-  const addFiles = useAddFiles(channel.id, canAttach);
+  const addFiles = useAddFiles(channelId, can.attach);
   const drop = useFileDrop(addFiles);
 
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
@@ -278,9 +198,10 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
   const [deleting, setDeleting] = useState<Message | null>(null);
   const [scrollTo, setScrollTo] = useState<{ id: string } | null>(null);
   const [highlighted, setHighlighted] = useState<string | null>(null);
+  const [shown, setShown] = useState<ReadonlySet<string>>(() => new Set());
   const [atBottom, setAtBottom] = useState(true);
   // Fixed while the channel stays open, so the line does not move as the user reads.
-  const [readFrom] = useState(() => unreadFrom(guildId, channel.id));
+  const [readFrom] = useState(() => unreadFrom(getGuildsState(), channelId));
 
   useEffect(() => {
     if (highlighted === null) return;
@@ -293,7 +214,7 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
   }, [highlighted]);
 
   // Read only once the history shows: until then there is nothing to have read.
-  useReadChannel(guildId, channel.id, history.isSuccess && atBottom);
+  useReadChannel(channelId, history.isSuccess && atBottom);
 
   const messages = useMemo(() => (history.data ? inOrder(history.data) : []), [history.data]);
   const loaded = useMemo(() => new Set(messages.map((m) => m.id)), [messages]);
@@ -308,9 +229,8 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
     void fetchNextPage();
   }, [fetchNextPage]);
 
-  if (!entry) return null;
-  const mentions = mentionNames(entry);
-  const name = (u: Message["author"]) => authorOf(entry, u)?.name ?? "Удалённый пользователь";
+  const authorOf = (user: Message["author"]) => (user === null ? null : scope.author(user));
+  const name = (u: Message["author"]) => authorOf(u)?.name ?? "Удалённый пользователь";
 
   const onEditLast = (): boolean => {
     const last = [...messages].reverse().find((m) => m.author?.id === meId);
@@ -320,12 +240,21 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
   };
 
   const renderMessage = (m: Message, grouped: boolean): ReactNode => {
+    if (scope.hidden(m) && !shown.has(m.id)) {
+      return (
+        <BlockedMessage
+          onShow={() => {
+            setShown((s) => new Set(s).add(m.id));
+          }}
+        />
+      );
+    }
     const own = m.author?.id === meId;
     const handlers = {
       message: m,
       canEdit: own,
-      canDelete: own || canManage,
-      canReply: canSend,
+      canDelete: own || can.manage,
+      canReply: can.send,
       onReply: () => {
         setReplyTo({ message: { id: m.id, author: m.author, content: m.content }, name: name(m.author) });
       },
@@ -336,7 +265,7 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
         if (skipConfirm) remove.mutate(m);
         else setDeleting(m);
       },
-      onReact: canAddReactions
+      onReact: can.react
         ? (emoji: string) => {
             // Picking one already the user's leaves it, as in Discord.
             const picked = emojiOfKey(emoji);
@@ -344,7 +273,7 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
               react.mutate({ message: m, emoji, add: true });
           }
         : undefined,
-      emojis: entry.emojis,
+      emojis: scope.emojis,
     };
     const original = m.referenced_message;
     return (
@@ -352,37 +281,29 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
         <div>
           <MessageItem
             message={m}
-            mentions={mentions}
+            mentions={scope.mentions}
             attachments={attachmentsOf(m)}
             embeds={m.embeds}
             reactions={
               <ReactionBar
                 message={m}
-                canAdd={canAddReactions}
+                canAdd={can.react}
                 onToggle={(emoji, add) => {
                   react.mutate({ message: m, emoji, add });
                 }}
-                nameOf={(u) => userDisplay(entry, u).name}
-                emojis={entry.emojis}
+                nameOf={(u) => scope.author(u).name}
+                emojis={scope.emojis}
               />
             }
-            author={authorOf(entry, m.author)}
-            replyAuthor={original ? authorOf(entry, original.author) : null}
+            author={authorOf(m.author)}
+            replyAuthor={original ? authorOf(original.author) : null}
             grouped={grouped && editing !== m.id}
             now={now}
             highlighted={highlighted === m.id}
-            mentioned={!own && mentionsMe(entry, m)}
+            mentioned={!own && scope.mentioned(m)}
             renderName={(nameNode) => {
               const authorId = m.author?.id;
-              // A member's name opens their card; a former member's is only a name.
-              if (authorId === undefined || !(authorId in entry.members)) return nameNode;
-              return (
-                <MemberMenu guildId={guildId} userId={authorId} mode="dropdown">
-                  <button type="button" className="min-w-0 cursor-pointer truncate hover:underline">
-                    {nameNode}
-                  </button>
-                </MemberMenu>
-              );
+              return authorId === undefined ? nameNode : scope.nameMenu(authorId, nameNode);
             }}
             editor={
               editing === m.id ? (
@@ -414,7 +335,7 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
   const renderRow = (row: ChatRow): ReactNode => {
     switch (row.kind) {
       case "start":
-        return <Welcome name={channel.name} />;
+        return scope.welcome;
       case "older":
         return <Loading label="Загружаем более ранние сообщения…" />;
       case "day":
@@ -425,7 +346,6 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
         return renderMessage(row.message, row.grouped);
       case "pending": {
         const p = row.pending;
-        const me = meId === null ? undefined : entry.members[meId]?.user;
         return (
           <MessageItem
             message={{
@@ -437,9 +357,9 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
               referenced_message: p.replyTo,
             }}
             attachments={p.attachments}
-            mentions={mentions}
-            author={me ? userDisplay(entry, me) : null}
-            replyAuthor={p.replyTo ? authorOf(entry, p.replyTo.author) : null}
+            mentions={scope.mentions}
+            author={me ? scope.author(me) : null}
+            replyAuthor={p.replyTo ? authorOf(p.replyTo.author) : null}
             grouped={row.grouped}
             now={now}
             state={p.status}
@@ -462,9 +382,8 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
     }
   };
 
-  const label = `Сообщения в #${channel.name}`;
   let body: ReactNode;
-  if (!canRead) {
+  if (!can.read) {
     body = (
       <div className="flex min-h-0 flex-1 items-end">
         <p className="mx-4 mb-4 text-base text-fg-muted">{NO_HISTORY}</p>
@@ -493,7 +412,7 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
   } else {
     body = (
       <MessageList
-        label={label}
+        label={scope.listLabel}
         rows={rows}
         renderRow={renderRow}
         hasOlder={hasOlder}
@@ -506,29 +425,23 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
   }
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col" {...(canSend ? drop.handlers : {})}>
+    <div className="relative flex min-h-0 flex-1 flex-col" {...(can.send ? drop.handlers : {})}>
       {body}
       <Composer
-        channelId={channel.id}
-        channelName={channel.name}
-        canSend={canSend}
-        canAttach={canAttach}
+        channelId={channelId}
+        label={scope.composerLabel}
+        placeholder={scope.composerPlaceholder}
+        canSend={can.send}
+        canAttach={can.attach}
         replyTo={replyTo}
         onCancelReply={() => {
           setReplyTo(null);
         }}
         onEditLast={onEditLast}
-        mentionables={() => mentionSuggestions(entry, channel.id, meId, canMentionEveryone)}
-        emojis={() => Object.values(entry.emojis)}
+        mentionables={scope.mentionables}
+        emojis={scope.composerEmojis}
       />
-      <TypingIndicator
-        channelId={channel.id}
-        meId={meId}
-        nameOf={(userId) => {
-          const member = entry.members[userId];
-          return member ? userDisplay(entry, member.user).name : "Кто-то";
-        }}
-      />
+      <TypingIndicator channelId={channelId} meId={meId} nameOf={scope.typingName} />
       <DeleteMessageDialog
         message={deleting}
         onClose={() => {
@@ -538,7 +451,7 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
           remove.mutate(m);
         }}
       />
-      {drop.over && <DropHint channelName={channel.name} />}
+      {drop.over && <DropHint text={scope.dropHint} />}
     </div>
   );
 };
