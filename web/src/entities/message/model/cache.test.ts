@@ -4,10 +4,12 @@ import { apiHandler, makeMessage, makeUser, problem, server } from "@/shared/tes
 import {
   applyMessageDispatch,
   catchUpMessages,
+  fetchHistoryPage,
   inOrder,
   type Message,
   type MessagePages,
   messagesKey,
+  nextBefore,
   PAGE_SIZE,
   removeMessage,
   replaceMessage,
@@ -170,28 +172,64 @@ describe("catchUpMessages", () => {
     return observer.subscribe(() => {});
   };
 
-  it("fetches what was missed page by page with after=<newest>, without duplicates", async () => {
-    const all = Array.from({ length: 150 }, (_, i) => msg(i + 1));
-    const afters: string[] = [];
+  /** The server's history: GET /messages with `after`, oldest first, as the API pages it. */
+  const serve = (all: () => Message[], afters: string[] = []) => {
     server.use(
       apiHandler("get", "/channels/{channel_id}/messages", ({ request }) => {
         const url = new URL(request.url);
         const after = Number(url.searchParams.get("after"));
         afters.push(String(after));
         const limit = Number(url.searchParams.get("limit"));
-        return HttpResponse.json(all.filter((m) => Number(m.id) > after).slice(0, limit));
+        return HttpResponse.json(all().filter((m) => Number(m.id) > after).slice(0, limit));
       }),
     );
+    return afters;
+  };
+
+  it("fetches the loaded span and what was missed page by page, without duplicates", async () => {
+    const all = Array.from({ length: 150 }, (_, i) => msg(i + 1));
+    const afters = serve(() => all);
     const qc = new QueryClient();
     const stop = shown(qc, C, pages([1, 2, 3]));
-    // An event of the reconnect lands in the middle of catching up.
-    applyMessageDispatch(qc, "MESSAGE_CREATE", msg(4));
     await catchUpMessages(qc);
     stop();
     const d = qc.getQueryData<MessagePages>(messagesKey(C));
     if (!d) throw new Error("history expected");
     expect(order(d)).toEqual(all.map((m) => Number(m.id)));
-    expect(afters).toEqual(["4", "104"]);
+    // From just before the oldest loaded message.
+    expect(afters).toEqual(["0", "100"]);
+  });
+
+  it("brings edits, deletions and reactions made while away into the loaded messages", async () => {
+    const reacted = msg(1, { reactions: [{ emoji: { id: null, name: "👍" }, count: 1, me: false }] });
+    const edited = msg(2, { content: "исправлено", edited_at: "2026-10-23T19:00:00.000Z" });
+    serve(() => [reacted, edited, msg(4)]);
+    const qc = new QueryClient();
+    const stop = shown(qc, C, pages([1, 2, 3]));
+    await catchUpMessages(qc);
+    stop();
+    const d = qc.getQueryData<MessagePages>(messagesKey(C));
+    if (!d) throw new Error("history expected");
+    expect(order(d)).toEqual([1, 2, 4]);
+    const [one, two] = inOrder(d);
+    expect(two?.content).toBe("исправлено");
+    expect(one?.reactions).toEqual(reacted.reactions);
+  });
+
+  it("keeps a message that arrived while catching up", async () => {
+    let qc = new QueryClient();
+    server.use(
+      apiHandler("get", "/channels/{channel_id}/messages", () => {
+        // The gateway delivers message 5 while the history is in flight.
+        applyMessageDispatch(qc, "MESSAGE_CREATE", msg(5));
+        return HttpResponse.json([msg(1), msg(2)]);
+      }),
+    );
+    qc = new QueryClient();
+    const stop = shown(qc, C, pages([1, 2]));
+    await catchUpMessages(qc);
+    stop();
+    expect(order(qc.getQueryData<MessagePages>(messagesKey(C)) ?? pages())).toEqual([1, 2, 5]);
   });
 
   it("drops a history no screen shows, to load fresh when opened", async () => {
@@ -208,5 +246,33 @@ describe("catchUpMessages", () => {
     await catchUpMessages(qc);
     stop();
     expect(order(qc.getQueryData<MessagePages>(messagesKey(C)) ?? pages())).toEqual([1]);
+  });
+});
+
+describe("the end of the history", () => {
+  it("is known from the page that came back short, not from what deletions left", async () => {
+    const older = Array.from({ length: 120 }, (_, i) => msg(i + 1)).reverse();
+    server.use(
+      apiHandler("get", "/channels/{channel_id}/messages", ({ request }) => {
+        const before = new URL(request.url).searchParams.get("before");
+        const rest = before === null ? older : older.filter((m) => Number(m.id) < Number(before));
+        return HttpResponse.json(rest.slice(0, PAGE_SIZE));
+      }),
+    );
+    const newest = await fetchHistoryPage(C, undefined);
+    // A deletion leaves 49 of the 50: older history is still there.
+    const left = removeMessage({ pages: [newest], pageParams: [undefined] }, "100").pages[0] ?? [];
+    expect(left).toHaveLength(PAGE_SIZE - 1);
+    expect(nextBefore(C, left, undefined)).toBe("71");
+
+    const third = await fetchHistoryPage(C, "21");
+    expect(third).toHaveLength(20);
+    expect(nextBefore(C, third, "21")).toBeUndefined();
+  });
+
+  it("lets an older message in only when nothing older is left to load", () => {
+    const shrunk: MessagePages = { pages: [Array.from({ length: 49 }, (_, i) => msg(100 - i))], pageParams: [undefined] };
+    expect(order(upsertMessage(shrunk, msg(10), false))).not.toContain(10);
+    expect(order(upsertMessage(shrunk, msg(10), true))).toContain(10);
   });
 });

@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import type { Page, WebSocketRoute } from "@playwright/test";
 import { API_PORT, COMPOSE_FILE } from "./env";
-import { composer, createGuild, expect, invite, join, messages, openChannel, signUp, test } from "./fixtures";
+import { call, composer, createGuild, expect, invite, join, messages, openChannel, signUp, test } from "./fixtures";
 
 test.setTimeout(120_000);
 
@@ -77,14 +77,27 @@ test("the chat survives a restart of the API and a dropped connection", async ({
   await composer(anna.page, channelName).press("Enter");
   await expect(petrList.getByText("снова на связи")).toBeVisible();
 
-  // Petr alone drops off; what Anna writes meanwhile reaches him once, after.
+  await composer(anna.page, channelName).fill("это я удалю");
+  await composer(anna.page, channelName).press("Enter");
+  await expect(petrList.getByText("это я удалю")).toBeVisible();
+
+  // Petr alone drops off. Meanwhile Anna writes, edits and deletes: he gets all of it once, after.
   await petrGateway.drop();
   await expect(banner(petr.page)).toHaveText("Переподключение…");
   await composer(anna.page, channelName).fill("пока тебя не было");
   await composer(anna.page, channelName).press("Enter");
   await expect(messages(anna.page, channelName).getByText("пока тебя не было")).toBeVisible();
+  const sent = await call<{ id: string; content: string }[]>(anna, "GET", `/channels/${channelId}/messages`);
+  const idOf = (text: string) => {
+    const m = sent.find((x) => x.content === text);
+    if (!m) throw new Error(`no message «${text}»`);
+    return m.id;
+  };
+  await call(anna, "PATCH", `/channels/${channelId}/messages/${idOf("снова на связи")}`, { content: "снова на связи!" });
+  await call(anna, "DELETE", `/channels/${channelId}/messages/${idOf("это я удалю")}`);
   petrGateway.restore();
   await expect(banner(petr.page)).toHaveText("", { timeout: 45_000 });
   await expect(petrList.getByText("пока тебя не было")).toHaveCount(1);
-  await expect(petrList.getByText("снова на связи")).toHaveCount(1);
+  await expect(petrList.getByText("снова на связи!")).toHaveCount(1);
+  await expect(petrList.getByText("это я удалю")).toHaveCount(0);
 });
