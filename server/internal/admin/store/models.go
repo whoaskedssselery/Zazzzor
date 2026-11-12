@@ -235,6 +235,9 @@ type User struct {
 	AvatarHash   *string
 	DisabledAt   *time.Time
 	CreatedAt    time.Time
+	Bio          string
+	Status       string
+	CustomStatus *string
 }
 
 type UserGuildSetting struct {

@@ -101,7 +101,7 @@ func TestLimitReadsChargesSignedInGets(t *testing.T) {
 				return
 			}
 			w.Header().Set("Cache-Control", "no-store")
-			httpx.JSON(w, http.StatusOK, u.Public())
+			httpx.JSON(w, http.StatusOK, u.Self())
 		})
 	})
 	anon := testkit.NewClient(t, r)

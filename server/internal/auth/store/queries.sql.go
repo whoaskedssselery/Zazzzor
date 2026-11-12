@@ -58,6 +58,51 @@ func (q *Queries) AvatarReferences(ctx context.Context, db DBTX) ([]AvatarRefere
 	return items, nil
 }
 
+const changeProfile = `-- name: ChangeProfile :one
+UPDATE users SET
+    display_name  = COALESCE($1::text, display_name),
+    bio           = COALESCE($2::text, bio),
+    status        = COALESCE($3::text, status),
+    custom_status = CASE WHEN $4::bool THEN $5::text ELSE custom_status END
+WHERE id = $6 RETURNING id, username, display_name, password_hash, avatar_hash, disabled_at, created_at, bio, status, custom_status
+`
+
+type ChangeProfileParams struct {
+	DisplayName     *string
+	Bio             *string
+	Status          *string
+	SetCustomStatus bool
+	CustomStatus    *string
+	ID              snowflake.ID
+}
+
+// Changes the fields given (a null leaves one as it is); custom_status is
+// written only with set_custom_status, so it can be cleared.
+func (q *Queries) ChangeProfile(ctx context.Context, db DBTX, arg ChangeProfileParams) (User, error) {
+	row := db.QueryRow(ctx, changeProfile,
+		arg.DisplayName,
+		arg.Bio,
+		arg.Status,
+		arg.SetCustomStatus,
+		arg.CustomStatus,
+		arg.ID,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.DisplayName,
+		&i.PasswordHash,
+		&i.AvatarHash,
+		&i.DisabledAt,
+		&i.CreatedAt,
+		&i.Bio,
+		&i.Status,
+		&i.CustomStatus,
+	)
+	return i, err
+}
+
 const createSession = `-- name: CreateSession :exec
 INSERT INTO sessions (id, user_id, token_hash, created_at, last_used_at, expires_at, user_agent, ip)
 VALUES ($1, $2, $3, $4, $4, $5, $6, $7)
@@ -90,7 +135,7 @@ const createUser = `-- name: CreateUser :one
 INSERT INTO users (id, username, display_name, password_hash, created_at)
 VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (username) DO NOTHING
-RETURNING id, username, display_name, password_hash, avatar_hash, disabled_at, created_at
+RETURNING id, username, display_name, password_hash, avatar_hash, disabled_at, created_at, bio, status, custom_status
 `
 
 type CreateUserParams struct {
@@ -118,6 +163,9 @@ func (q *Queries) CreateUser(ctx context.Context, db DBTX, arg CreateUserParams)
 		&i.AvatarHash,
 		&i.DisabledAt,
 		&i.CreatedAt,
+		&i.Bio,
+		&i.Status,
+		&i.CustomStatus,
 	)
 	return i, err
 }
@@ -236,7 +284,7 @@ func (q *Queries) DeleteUserSessions(ctx context.Context, db DBTX, userID snowfl
 }
 
 const disableUser = `-- name: DisableUser :one
-UPDATE users SET disabled_at = COALESCE(disabled_at, $1::timestamptz) WHERE id = $2 RETURNING id, username, display_name, password_hash, avatar_hash, disabled_at, created_at
+UPDATE users SET disabled_at = COALESCE(disabled_at, $1::timestamptz) WHERE id = $2 RETURNING id, username, display_name, password_hash, avatar_hash, disabled_at, created_at, bio, status, custom_status
 `
 
 type DisableUserParams struct {
@@ -256,12 +304,15 @@ func (q *Queries) DisableUser(ctx context.Context, db DBTX, arg DisableUserParam
 		&i.AvatarHash,
 		&i.DisabledAt,
 		&i.CreatedAt,
+		&i.Bio,
+		&i.Status,
+		&i.CustomStatus,
 	)
 	return i, err
 }
 
 const enableUser = `-- name: EnableUser :one
-UPDATE users SET disabled_at = NULL WHERE id = $1 RETURNING id, username, display_name, password_hash, avatar_hash, disabled_at, created_at
+UPDATE users SET disabled_at = NULL WHERE id = $1 RETURNING id, username, display_name, password_hash, avatar_hash, disabled_at, created_at, bio, status, custom_status
 `
 
 func (q *Queries) EnableUser(ctx context.Context, db DBTX, id snowflake.ID) (User, error) {
@@ -275,12 +326,15 @@ func (q *Queries) EnableUser(ctx context.Context, db DBTX, id snowflake.ID) (Use
 		&i.AvatarHash,
 		&i.DisabledAt,
 		&i.CreatedAt,
+		&i.Bio,
+		&i.Status,
+		&i.CustomStatus,
 	)
 	return i, err
 }
 
 const lockUserCredentials = `-- name: LockUserCredentials :one
-SELECT id, username, display_name, password_hash, avatar_hash, disabled_at, created_at FROM users WHERE id = $1 FOR UPDATE
+SELECT id, username, display_name, password_hash, avatar_hash, disabled_at, created_at, bio, status, custom_status FROM users WHERE id = $1 FOR UPDATE
 `
 
 // Serializes session creation with credential changes and other sign-ins.
@@ -295,6 +349,9 @@ func (q *Queries) LockUserCredentials(ctx context.Context, db DBTX, id snowflake
 		&i.AvatarHash,
 		&i.DisabledAt,
 		&i.CreatedAt,
+		&i.Bio,
+		&i.Status,
+		&i.CustomStatus,
 	)
 	return i, err
 }
@@ -303,7 +360,7 @@ const replaceAvatarHash = `-- name: ReplaceAvatarHash :one
 UPDATE users SET avatar_hash = $1
 FROM (SELECT users.avatar_hash FROM users WHERE users.id = $2 FOR UPDATE) AS prev
 WHERE users.id = $2
-RETURNING users.id, users.username, users.display_name, users.password_hash, users.avatar_hash, users.disabled_at, users.created_at, prev.avatar_hash AS previous_hash
+RETURNING users.id, users.username, users.display_name, users.password_hash, users.avatar_hash, users.disabled_at, users.created_at, users.bio, users.status, users.custom_status, prev.avatar_hash AS previous_hash
 `
 
 type ReplaceAvatarHashParams struct {
@@ -328,6 +385,9 @@ func (q *Queries) ReplaceAvatarHash(ctx context.Context, db DBTX, arg ReplaceAva
 		&i.User.AvatarHash,
 		&i.User.DisabledAt,
 		&i.User.CreatedAt,
+		&i.User.Bio,
+		&i.User.Status,
+		&i.User.CustomStatus,
 		&i.PreviousHash,
 	)
 	return i, err
@@ -353,7 +413,7 @@ func (q *Queries) ReplacePasswordHash(ctx context.Context, db DBTX, arg ReplaceP
 }
 
 const sessionByTokenHash = `-- name: SessionByTokenHash :one
-SELECT sessions.id AS session_id, sessions.last_used_at, sessions.expires_at, users.id, users.username, users.display_name, users.password_hash, users.avatar_hash, users.disabled_at, users.created_at
+SELECT sessions.id AS session_id, sessions.last_used_at, sessions.expires_at, users.id, users.username, users.display_name, users.password_hash, users.avatar_hash, users.disabled_at, users.created_at, users.bio, users.status, users.custom_status
 FROM sessions
 JOIN users ON users.id = sessions.user_id
 WHERE sessions.token_hash = $1
@@ -388,12 +448,15 @@ func (q *Queries) SessionByTokenHash(ctx context.Context, db DBTX, arg SessionBy
 		&i.User.AvatarHash,
 		&i.User.DisabledAt,
 		&i.User.CreatedAt,
+		&i.User.Bio,
+		&i.User.Status,
+		&i.User.CustomStatus,
 	)
 	return i, err
 }
 
 const setDisplayName = `-- name: SetDisplayName :one
-UPDATE users SET display_name = $1 WHERE id = $2 RETURNING id, username, display_name, password_hash, avatar_hash, disabled_at, created_at
+UPDATE users SET display_name = $1 WHERE id = $2 RETURNING id, username, display_name, password_hash, avatar_hash, disabled_at, created_at, bio, status, custom_status
 `
 
 type SetDisplayNameParams struct {
@@ -412,6 +475,9 @@ func (q *Queries) SetDisplayName(ctx context.Context, db DBTX, arg SetDisplayNam
 		&i.AvatarHash,
 		&i.DisabledAt,
 		&i.CreatedAt,
+		&i.Bio,
+		&i.Status,
+		&i.CustomStatus,
 	)
 	return i, err
 }
@@ -460,7 +526,7 @@ func (q *Queries) TouchSession(ctx context.Context, db DBTX, arg TouchSessionPar
 }
 
 const userByID = `-- name: UserByID :one
-SELECT id, username, display_name, password_hash, avatar_hash, disabled_at, created_at FROM users WHERE id = $1
+SELECT id, username, display_name, password_hash, avatar_hash, disabled_at, created_at, bio, status, custom_status FROM users WHERE id = $1
 `
 
 func (q *Queries) UserByID(ctx context.Context, db DBTX, id snowflake.ID) (User, error) {
@@ -474,12 +540,15 @@ func (q *Queries) UserByID(ctx context.Context, db DBTX, id snowflake.ID) (User,
 		&i.AvatarHash,
 		&i.DisabledAt,
 		&i.CreatedAt,
+		&i.Bio,
+		&i.Status,
+		&i.CustomStatus,
 	)
 	return i, err
 }
 
 const userByUsername = `-- name: UserByUsername :one
-SELECT id, username, display_name, password_hash, avatar_hash, disabled_at, created_at FROM users WHERE username = $1
+SELECT id, username, display_name, password_hash, avatar_hash, disabled_at, created_at, bio, status, custom_status FROM users WHERE username = $1
 `
 
 func (q *Queries) UserByUsername(ctx context.Context, db DBTX, username string) (User, error) {
@@ -493,12 +562,15 @@ func (q *Queries) UserByUsername(ctx context.Context, db DBTX, username string) 
 		&i.AvatarHash,
 		&i.DisabledAt,
 		&i.CreatedAt,
+		&i.Bio,
+		&i.Status,
+		&i.CustomStatus,
 	)
 	return i, err
 }
 
 const usersByIDs = `-- name: UsersByIDs :many
-SELECT id, username, display_name, password_hash, avatar_hash, disabled_at, created_at FROM users WHERE id = ANY($1::bigint[]) ORDER BY id
+SELECT id, username, display_name, password_hash, avatar_hash, disabled_at, created_at, bio, status, custom_status FROM users WHERE id = ANY($1::bigint[]) ORDER BY id
 `
 
 func (q *Queries) UsersByIDs(ctx context.Context, db DBTX, ids []int64) ([]User, error) {
@@ -518,6 +590,9 @@ func (q *Queries) UsersByIDs(ctx context.Context, db DBTX, ids []int64) ([]User,
 			&i.AvatarHash,
 			&i.DisabledAt,
 			&i.CreatedAt,
+			&i.Bio,
+			&i.Status,
+			&i.CustomStatus,
 		); err != nil {
 			return nil, err
 		}

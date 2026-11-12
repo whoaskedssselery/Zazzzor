@@ -99,6 +99,12 @@ type User struct {
 	AvatarHash  *string
 	CreatedAt   time.Time
 	DisabledAt  *time.Time
+	// Bio is "about me", possibly empty; it is shown only in the profile.
+	Bio string
+	// Status is what the user chose: online, idle, dnd or invisible.
+	Status string
+	// CustomStatus is the user's own status line, or nil.
+	CustomStatus *string
 	// IsAdmin is true for usernames listed in ZAZZZOR_ADMIN_USERNAMES.
 	IsAdmin bool
 }
@@ -110,6 +116,20 @@ type PublicUser struct {
 	DisplayName string       `json:"display_name"`
 	AvatarURL   *string      `json:"avatar_url"`
 	CreatedAt   string       `json:"created_at"`
+}
+
+// SelfUser is the JSON form of a User for that user themself (schema
+// CurrentUser in api/openapi.yaml).
+type SelfUser struct {
+	PublicUser
+	Bio          string  `json:"bio"`
+	Status       string  `json:"status"`
+	CustomStatus *string `json:"custom_status"`
+}
+
+// Self returns the JSON form of u for u themself.
+func (u User) Self() SelfUser {
+	return SelfUser{PublicUser: u.Public(), Bio: u.Bio, Status: u.Status, CustomStatus: u.CustomStatus}
 }
 
 // Public returns the JSON form of u.
@@ -135,6 +155,8 @@ type Accounts interface {
 	// UsersByIDsIn reads through dbtx (a transaction the caller holds).
 	UsersByIDsIn(ctx context.Context, dbtx DB, ids []snowflake.ID) ([]User, error)
 	UpdateProfile(ctx context.Context, userID snowflake.ID, displayName string) (User, error)
+	// ChangeProfile validates and writes the fields c sets, in one update.
+	ChangeProfile(ctx context.Context, userID snowflake.ID, c ProfileChange) (User, error)
 	// SetAvatar sets (hash = 16 lower-case hex digits) or clears (nil) the
 	// avatar and returns the hash it replaced (nil if there was none).
 	SetAvatar(ctx context.Context, userID snowflake.ID, hash *string) (u User, previous *string, err error)
@@ -272,13 +294,16 @@ func NewService(o Options) *Service {
 
 func (s *Service) toUser(u store.User) User {
 	return User{
-		ID:          u.ID,
-		Username:    u.Username,
-		DisplayName: u.DisplayName,
-		AvatarHash:  u.AvatarHash,
-		CreatedAt:   u.CreatedAt,
-		DisabledAt:  u.DisabledAt,
-		IsAdmin:     s.admins[u.Username],
+		ID:           u.ID,
+		Username:     u.Username,
+		DisplayName:  u.DisplayName,
+		AvatarHash:   u.AvatarHash,
+		CreatedAt:    u.CreatedAt,
+		DisabledAt:   u.DisabledAt,
+		Bio:          u.Bio,
+		Status:       u.Status,
+		CustomStatus: u.CustomStatus,
+		IsAdmin:      s.admins[u.Username],
 	}
 }
 
@@ -784,6 +809,104 @@ func (s *Service) UpdateProfile(ctx context.Context, userID snowflake.ID, displa
 		return User{}, fmt.Errorf("auth: update display name: %w", err)
 	}
 	return s.toUser(row), nil
+}
+
+// ProfileChange lists the profile fields to change; nil leaves a field as it
+// is. CustomStatus is written only when SetCustomStatus is true, and nil
+// then clears it.
+type ProfileChange struct {
+	DisplayName     *string
+	Bio             *string
+	Status          *string
+	SetCustomStatus bool
+	CustomStatus    *string
+}
+
+// Statuses a user can choose.
+const (
+	StatusOnline    = "online"
+	StatusIdle      = "idle"
+	StatusDND       = "dnd"
+	StatusInvisible = "invisible"
+)
+
+// ChangeProfile implements Accounts. Every field is checked first; the
+// errors of all fields come back together.
+func (s *Service) ChangeProfile(ctx context.Context, userID snowflake.ID, c ProfileChange) (User, error) {
+	var fields []httpx.FieldError
+	arg := store.ChangeProfileParams{ID: userID, SetCustomStatus: c.SetCustomStatus}
+	if c.DisplayName != nil {
+		dn, err := NormalizeDisplayName(*c.DisplayName)
+		var verr *ValidationError
+		if errors.As(err, &verr) {
+			fields = append(fields, verr.Fields...)
+		}
+		arg.DisplayName = &dn
+	}
+	if c.Bio != nil {
+		bio, msg := normalizeBio(*c.Bio)
+		if msg != "" {
+			fields = append(fields, httpx.FieldError{Field: "bio", Message: msg})
+		}
+		arg.Bio = &bio
+	}
+	if c.Status != nil {
+		switch *c.Status {
+		case StatusOnline, StatusIdle, StatusDND, StatusInvisible:
+			arg.Status = c.Status
+		default:
+			fields = append(fields, httpx.FieldError{Field: "status", Message: "must be online, idle, dnd or invisible"})
+		}
+	}
+	if c.SetCustomStatus && c.CustomStatus != nil {
+		line, msg := normalizeCustomStatus(*c.CustomStatus)
+		if msg != "" {
+			fields = append(fields, httpx.FieldError{Field: "custom_status", Message: msg})
+		}
+		arg.CustomStatus = line
+	}
+	if len(fields) > 0 {
+		return User{}, &ValidationError{Fields: fields}
+	}
+	row, err := s.q.ChangeProfile(ctx, s.pool, arg)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return User{}, ErrUserNotFound
+	}
+	if err != nil {
+		return User{}, fmt.Errorf("auth: change profile: %w", err)
+	}
+	return s.toUser(row), nil
+}
+
+// normalizeBio trims the ends of "about me"; line breaks inside are kept.
+func normalizeBio(s string) (string, string) {
+	t := strings.TrimFunc(s, func(r rune) bool { return unicode.IsSpace(r) || unicode.Is(unicode.Cf, r) })
+	switch {
+	case textx.ContainsBidiControl(s):
+		return "", "must not contain bidirectional control characters"
+	case utf8.RuneCountInString(t) > 190:
+		return "", "must be at most 190 characters"
+	case strings.ContainsFunc(t, func(r rune) bool { return r != '\n' && unicode.IsControl(r) }):
+		return "", "must not contain control characters other than line breaks"
+	}
+	return t, ""
+}
+
+// normalizeCustomStatus trims a status line; one with nothing visible left
+// clears the status (nil).
+func normalizeCustomStatus(s string) (*string, string) {
+	t := strings.TrimFunc(s, func(r rune) bool { return unicode.IsSpace(r) || unicode.Is(unicode.Cf, r) })
+	switch {
+	case textx.ContainsBidiControl(s):
+		return nil, "must not contain bidirectional control characters"
+	case utf8.RuneCountInString(t) > 128:
+		return nil, "must be at most 128 characters"
+	case strings.ContainsFunc(t, unicode.IsControl):
+		return nil, "must not contain control characters"
+	case !textx.HasVisible(t):
+		return nil, ""
+	}
+	return &t, ""
 }
 
 var avatarHashRE = regexp.MustCompile(`^[0-9a-f]{16}$`)

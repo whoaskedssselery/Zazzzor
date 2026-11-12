@@ -119,7 +119,7 @@ func newEnv(t *testing.T, opts ...envOption) *env {
 		r.With(auth.Require).Get("/users/@me", func(w http.ResponseWriter, r *http.Request) {
 			u, _ := auth.FromContext(r.Context())
 			w.Header().Set("Cache-Control", "no-store")
-			httpx.JSON(w, http.StatusOK, u.Public())
+			httpx.JSON(w, http.StatusOK, u.Self())
 		})
 	})
 	e.h = r

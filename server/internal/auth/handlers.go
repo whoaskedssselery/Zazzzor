@@ -60,7 +60,7 @@ func (s *Service) handleRegister(w http.ResponseWriter, r *http.Request) error {
 		return ToProblem(err)
 	}
 	s.setSessionCookie(w, token)
-	httpx.JSON(w, http.StatusCreated, u.Public())
+	httpx.JSON(w, http.StatusCreated, u.Self())
 	return nil
 }
 
@@ -78,7 +78,7 @@ func (s *Service) handleLogin(w http.ResponseWriter, r *http.Request) error {
 		return ToProblem(err)
 	}
 	s.setSessionCookie(w, token)
-	httpx.JSON(w, http.StatusOK, u.Public())
+	httpx.JSON(w, http.StatusOK, u.Self())
 	return nil
 }
 
