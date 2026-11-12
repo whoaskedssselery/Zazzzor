@@ -87,6 +87,8 @@ if [[ "$(uname -s)" == Linux ]]; then
 fi
 docker build -f "$repo_dir/server/Dockerfile" --build-arg VERSION=restore-test -t "$ZAZZZOR_API_IMAGE" "$repo_dir/server"
 "${compose[@]}" up -d --wait postgres api
+# Регистрация нужна только для заполнения тестовой базы.
+"${compose[@]}" exec -T postgres psql -U zazzzor -d zazzzor -v ON_ERROR_STOP=1 -q -c 'UPDATE instance SET registration_open = true'
 
 echo '2. Данные через API'
 api_check seed > "$test_root/state.json"
@@ -117,4 +119,4 @@ bash "$script_dir/backup.sh" compose restore "$folder" --yes
 "${compose[@]}" up -d --wait --no-deps api
 api_check verify < "$test_root/state.json"
 
-echo 'restore test: OK (новая схема и чистые тома: вход, сообщение, байты иконки и аватара)'
+echo 'restore test: OK (новая схема и чистые тома: вход, сообщение, SHA-256 аватара, иконки, вложения и эмодзи)'

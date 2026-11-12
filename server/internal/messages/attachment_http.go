@@ -18,6 +18,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/files"
 	"github.com/whoaskedssselery/zazzzor/server/internal/messages/store"
 	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/db"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/upload"
@@ -60,6 +61,9 @@ func (s *Service) handleUploadAttachment(w http.ResponseWriter, r *http.Request)
 			return fail(err)
 		}
 	}
+	if err = s.checkAttachmentSpace(); err != nil {
+		return err
+	}
 	upload.ExtendDeadlines(w)
 	id := s.ids.Next()
 	ref := files.AttachmentReference(ch, id)
@@ -77,7 +81,7 @@ func (s *Service) handleUploadAttachment(w http.ResponseWriter, r *http.Request)
 	})
 	if err != nil {
 		if saved {
-			s.trashUncommitted(ref)
+			s.removeUncommitted(ref)
 		}
 		if errors.Is(err, files.ErrAttachmentTooLarge) {
 			return upload.TooLarge(files.MaxAttachmentBytes)
@@ -91,6 +95,9 @@ func (s *Service) handleUploadAttachment(w http.ResponseWriter, r *http.Request)
 	attempted := false
 	record := func(q store.DBTX) error {
 		attempted = true
+		if quotaErr := s.checkAttachmentQuota(ctx, q, user, params.Size); quotaErr != nil {
+			return quotaErr
+		}
 		var recordErr error
 		row, recordErr = s.q.CreateAttachment(ctx, q, params)
 		return recordErr
@@ -102,16 +109,23 @@ func (s *Service) handleUploadAttachment(w http.ResponseWriter, r *http.Request)
 			}
 			return record(tx)
 		})
+	} else if s.attachmentQuota > 0 {
+		err = db.InTx(ctx, s.pool, func(tx pgx.Tx) error { return record(tx) })
 	} else {
 		err = record(s.pool)
 	}
 	if err != nil {
 		if !attempted {
-			s.trashUncommitted(ref)
+			s.removeUncommitted(ref)
 			return fail(err)
 		}
+		if errors.Is(err, errAttachmentQuota) {
+			s.removeUncommitted(ref)
+			return &httpx.Problem{Status: http.StatusRequestEntityTooLarge, Code: "attachment_quota_exceeded",
+				Detail: "Достигнут лимит хранилища для ваших файлов. Удалите старые вложения или попросите администратора."}
+		}
 		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23503" {
-			s.trashUncommitted(ref)
+			s.removeUncommitted(ref)
 			return httpx.NotFound()
 		}
 		// A lost database response leaves the commit outcome unknown. Reconcile
@@ -122,10 +136,10 @@ func (s *Service) handleUploadAttachment(w http.ResponseWriter, r *http.Request)
 	return nil
 }
 
-// trashUncommitted removes a file whose metadata was never committed.
-func (s *Service) trashUncommitted(ref files.Reference) {
-	if err := s.files.DeleteAttachment(ref); err != nil {
-		s.logger.Warn("trash uncommitted attachment", "err", err)
+// removeUncommitted removes a file whose metadata was never committed.
+func (s *Service) removeUncommitted(ref files.Reference) {
+	if err := s.files.RemoveUncommittedAttachment(ref); err != nil {
+		s.logger.Warn("remove uncommitted attachment", "err", err)
 	}
 }
 
@@ -227,7 +241,7 @@ func serveAttachment(w http.ResponseWriter, r *http.Request, row store.MessageAt
 	h.Set("Content-Disposition", disposition+"; filename*=UTF-8''"+name)
 	h.Set("Content-Security-Policy", "default-src 'none'; sandbox")
 	h.Set("X-Content-Type-Options", "nosniff")
-	h.Set("Cache-Control", "private, max-age=31536000, immutable")
+	h.Set("Cache-Control", "private, no-cache")
 	h.Add("Vary", "Cookie")
 	h.Set("ETag", `"`+row.Digest+`"`)
 	http.ServeContent(w, r, row.Filename, row.CreatedAt, f)

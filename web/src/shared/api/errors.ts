@@ -39,6 +39,9 @@ export const ERROR_TEXTS: Readonly<Record<string, string>> = {
   file_too_large: "Файл больше 4 МБ.",
   attachment_not_found: "Файл больше недоступен. Прикрепите его заново.",
   too_many_attachments: "Не больше 10 файлов в одном сообщении.",
+  attachment_quota_exceeded:
+    "Достигнут лимит хранилища для ваших файлов. Удалите старые вложения или попросите администратора.",
+  storage_full: "На сервере закончилось место для файлов. Сообщите администратору.",
   unsupported_image: "Нужна картинка PNG, JPEG, GIF или WebP.",
   body_too_large: "Слишком большой запрос.",
   invalid_body: "Сервер не понял запрос. Обновите страницу и попробуйте снова.",

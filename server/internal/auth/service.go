@@ -30,12 +30,13 @@ import (
 
 // Errors returned by Service. ToProblem maps them to HTTP problems.
 var (
-	ErrInvalidCredentials = errors.New("auth: invalid credentials")
-	ErrAccountDisabled    = errors.New("auth: account disabled")
-	ErrUsernameTaken      = errors.New("auth: username taken")
-	ErrRegistrationClosed = errors.New("auth: registration closed")
-	ErrUnauthenticated    = errors.New("auth: no valid session")
-	ErrUserNotFound       = errors.New("auth: user not found")
+	ErrInvalidCredentials     = errors.New("auth: invalid credentials")
+	ErrAccountDisabled        = errors.New("auth: account disabled")
+	ErrUsernameTaken          = errors.New("auth: username taken")
+	ErrAdminUsernameNotListed = errors.New("auth: username is not listed in ZAZZZOR_ADMIN_USERNAMES")
+	ErrRegistrationClosed     = errors.New("auth: registration closed")
+	ErrUnauthenticated        = errors.New("auth: no valid session")
+	ErrUserNotFound           = errors.New("auth: user not found")
 )
 
 // ValidationError lists the request fields that failed validation.
@@ -385,10 +386,49 @@ func (s *Service) Register(ctx context.Context, in RegisterInput, meta SessionMe
 	return s.register(ctx, v, meta)
 }
 
+// CreateAdmin provisions a configured administrator without opening a session.
+func (s *Service) CreateAdmin(ctx context.Context, username, password string) (User, error) {
+	v, err := validateRegistration(RegisterInput{Username: username, Password: password})
+	if err != nil {
+		return User{}, err
+	}
+	if !s.admins[v.username] {
+		return User{}, ErrAdminUsernameNotListed
+	}
+	hash, err := HashPassword(ctx, v.password)
+	if err != nil {
+		return User{}, err
+	}
+	row, err := s.createAccount(ctx, s.pool, v, hash, s.now())
+	if err != nil {
+		return User{}, err
+	}
+	return s.toUser(row), nil
+}
+
+// createAccount inserts a validated user, preserving the unique username on a retry.
+func (s *Service) createAccount(ctx context.Context, q store.DBTX, v validRegistration, hash string, now time.Time) (store.User, error) {
+	row, err := s.q.CreateUser(ctx, q, store.CreateUserParams{
+		ID: s.ids.Next(), Username: v.username, DisplayName: v.displayName,
+		PasswordHash: hash, CreatedAt: now,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.User{}, ErrUsernameTaken
+	}
+	if err != nil {
+		return store.User{}, fmt.Errorf("auth: create user: %w", err)
+	}
+	return row, nil
+}
+
+// register creates an ordinary account and its first session in one transaction.
 func (s *Service) register(ctx context.Context, v validRegistration, meta SessionMeta) (User, string, error) {
 	hash, err := HashPassword(ctx, v.password)
 	if err != nil {
 		return User{}, "", err
+	}
+	if s.admins[v.username] {
+		return User{}, "", ErrUsernameTaken
 	}
 	now := s.now()
 	var (
@@ -398,18 +438,9 @@ func (s *Service) register(ctx context.Context, v validRegistration, meta Sessio
 	)
 	err = db.InTx(ctx, s.pool, func(tx pgx.Tx) error {
 		var txErr error
-		row, txErr = s.q.CreateUser(ctx, tx, store.CreateUserParams{
-			ID:           s.ids.Next(),
-			Username:     v.username,
-			DisplayName:  v.displayName,
-			PasswordHash: hash,
-			CreatedAt:    now,
-		})
-		if errors.Is(txErr, pgx.ErrNoRows) {
-			return ErrUsernameTaken
-		}
+		row, txErr = s.createAccount(ctx, tx, v, hash, now)
 		if txErr != nil {
-			return fmt.Errorf("auth: create user: %w", txErr)
+			return txErr
 		}
 		token, evicted, txErr = s.createSession(ctx, tx, row.ID, meta, now)
 		return txErr

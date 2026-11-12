@@ -93,7 +93,8 @@ func NewModules(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator,
 	channelSvc := channels.NewService(channels.Options{Pool: pool, IDs: ids, Guilds: guildSvc, Publisher: cleanup})
 	presence := new(atomic.Pointer[gateway.Gateway])
 	messageSvc := messages.NewService(messages.Options{Pool: pool, IDs: ids, Channels: channelSvc, Users: authSvc,
-		Publisher: pub, Files: disk, PreviewFetcher: linkpreview.New(), OnlineAmong: func(ids []snowflake.ID) []snowflake.ID {
+		Publisher: pub, Files: disk, AttachmentQuotaBytes: cfg.AttachmentQuotaBytes, MinFreeBytes: cfg.MinFreeBytes,
+		PreviewFetcher: linkpreview.New(), OnlineAmong: func(ids []snowflake.ID) []snowflake.ID {
 			if gw := presence.Load(); gw != nil {
 				return gw.OnlineAmong(ids)
 			}

@@ -118,6 +118,17 @@ func (q *Queries) AdvanceReadStates(ctx context.Context, db DBTX, arg AdvanceRea
 	return items, nil
 }
 
+const attachmentBytesByUploader = `-- name: AttachmentBytesByUploader :one
+SELECT COALESCE(SUM(size), 0)::bigint FROM message_attachments WHERE uploader_id = $1
+`
+
+func (q *Queries) AttachmentBytesByUploader(ctx context.Context, db DBTX, uploaderID pgtype.Int8) (int64, error) {
+	row := db.QueryRow(ctx, attachmentBytesByUploader, uploaderID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const attachmentForReader = `-- name: AttachmentForReader :one
 SELECT id, channel_id, uploader_id, message_id, filename, content_type, size, width, height, digest, position, created_at FROM message_attachments
 WHERE id = $1 AND channel_id = $2
@@ -685,6 +696,15 @@ func (q *Queries) IncrementMentions(ctx context.Context, db DBTX, arg IncrementM
 		arg.UserIds,
 		arg.MessageID,
 	)
+	return err
+}
+
+const lockAttachmentQuota = `-- name: LockAttachmentQuota :exec
+SELECT pg_advisory_xact_lock(hashtextextended('attachment-quota:' || $1::text, 0))
+`
+
+func (q *Queries) LockAttachmentQuota(ctx context.Context, db DBTX, userKey string) error {
+	_, err := db.Exec(ctx, lockAttachmentQuota, userKey)
 	return err
 }
 

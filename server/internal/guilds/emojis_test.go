@@ -70,7 +70,7 @@ func TestGuildEmojiPermissionsAndFile(t *testing.T) {
 	}
 	res = bob.Do(http.MethodGet, emoji.URL, nil)
 	expect(t, res, http.StatusOK)
-	if res.Header.Get("Content-Type") != "image/png" || res.Header.Get("Cache-Control") != "private, max-age=86400" ||
+	if res.Header.Get("Content-Type") != "image/png" || res.Header.Get("Cache-Control") != "private, no-cache" ||
 		res.Header.Get("X-Content-Type-Options") != "nosniff" {
 		t.Errorf("image headers = %v, want private PNG with nosniff", res.Header)
 	}

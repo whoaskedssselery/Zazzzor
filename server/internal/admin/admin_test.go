@@ -62,6 +62,7 @@ func newEnv(t *testing.T, opts ...func(*admin.Options)) *env {
 	t.Helper()
 	e := &env{t: t, pub: &recordingPublisher{}}
 	pool := testkit.Postgres(t)
+	testkit.OpenRegistration(t, pool)
 	settings := admin.NewSettings(pool)
 	authSvc := auth.NewService(auth.Options{
 		Pool:             pool,
@@ -72,6 +73,9 @@ func newEnv(t *testing.T, opts ...func(*admin.Options)) *env {
 		RegistrationOpen: settings.RegistrationOpen,
 		RegisterLimiter:  ratelimit.New(rate.Inf, 1, time.Minute),
 	})
+	if _, err := authSvc.CreateAdmin(t.Context(), "boss", "password123"); err != nil {
+		t.Fatalf("create admin fixture: %v", err)
+	}
 	disk, err := files.NewDisk(t.TempDir(), files.Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -133,6 +137,20 @@ func register(t *testing.T, c *testkit.Client, username, password string) snowfl
 	return id
 }
 
+// loginAdmin starts a session for the administrator provisioned by newEnv.
+func loginAdmin(t *testing.T, c *testkit.Client) snowflake.ID {
+	t.Helper()
+	resp := c.Do(http.MethodPost, "/api/v1/auth/login", creds("boss", "password123"))
+	expect(t, resp, http.StatusOK, "")
+	var u userBody
+	resp.JSON(&u)
+	id, err := snowflake.Parse(u.ID)
+	if err != nil {
+		t.Fatalf("parse admin ID: %v", err)
+	}
+	return id
+}
+
 func expect(t *testing.T, resp *testkit.Response, status int, code string) {
 	t.Helper()
 	if resp.Status != status {
@@ -161,7 +179,7 @@ func adminPaths(id snowflake.ID) [][2]string {
 func TestAdminOnly(t *testing.T) {
 	e := newEnv(t)
 	boss := e.client()
-	bossID := register(t, boss, "boss", "password123")
+	bossID := loginAdmin(t, boss)
 	user := e.client()
 	register(t, user, "alice", "password123")
 	anon := e.client()
@@ -191,7 +209,7 @@ func TestAdminOnly(t *testing.T) {
 func TestAdminSettings(t *testing.T) {
 	e := newEnv(t)
 	boss := e.client()
-	register(t, boss, "boss", "password123")
+	loginAdmin(t, boss)
 	type settings struct {
 		RegistrationOpen bool `json:"registration_open"`
 	}
@@ -221,7 +239,7 @@ func TestAdminSettings(t *testing.T) {
 func TestRegistrationToggle(t *testing.T) {
 	e := newEnv(t)
 	boss := e.client()
-	register(t, boss, "boss", "password123")
+	loginAdmin(t, boss)
 	expect(t, boss.Do(http.MethodPatch, "/api/v1/admin/settings", map[string]bool{"registration_open": false}), http.StatusOK, "")
 
 	guest := e.client()
@@ -237,7 +255,7 @@ func TestRegistrationToggle(t *testing.T) {
 func TestAdminPasswordReset(t *testing.T) {
 	e := newEnv(t)
 	boss := e.client()
-	register(t, boss, "boss", "password123")
+	loginAdmin(t, boss)
 	alice := e.client()
 	aliceID := register(t, alice, "alice", "password123")
 	alice2 := e.client()
@@ -284,7 +302,7 @@ func TestAdminPasswordReset(t *testing.T) {
 func TestDisabledUserCannotLogin(t *testing.T) {
 	e := newEnv(t)
 	boss := e.client()
-	bossID := register(t, boss, "boss", "password123")
+	bossID := loginAdmin(t, boss)
 	alice := e.client()
 	aliceID := register(t, alice, "alice", "password123")
 	path := "/api/v1/admin/users/" + aliceID.String()
@@ -315,7 +333,7 @@ func TestDisabledUserCannotLogin(t *testing.T) {
 func TestAdminFindsUserByUsername(t *testing.T) {
 	e := newEnv(t)
 	boss := e.client()
-	register(t, boss, "boss", "password123")
+	loginAdmin(t, boss)
 	alice := e.client()
 	aliceID := register(t, alice, "alice", "password123")
 	type adminUser struct {
@@ -357,7 +375,7 @@ func TestAdminFindsUserByUsername(t *testing.T) {
 func TestAdminUserIDsAreCanonical(t *testing.T) {
 	e := newEnv(t)
 	boss := e.client()
-	register(t, boss, "boss", "password123")
+	loginAdmin(t, boss)
 	alice := e.client()
 	aliceID := register(t, alice, "alice", "password123")
 	for _, id := range []string{"0" + aliceID.String(), "+" + aliceID.String()} {
@@ -369,7 +387,7 @@ func TestAdminUserIDsAreCanonical(t *testing.T) {
 func TestAdminRateLimited(t *testing.T) {
 	e := newEnv(t, func(o *admin.Options) { o.Limiter = ratelimit.New(rate.Every(time.Hour), 2, time.Hour) })
 	boss := e.client()
-	register(t, boss, "boss", "password123")
+	loginAdmin(t, boss)
 	expect(t, boss.Do(http.MethodGet, "/api/v1/admin/settings", nil), http.StatusOK, "")
 	expect(t, boss.Do(http.MethodGet, "/api/v1/admin/users?username=boss", nil), http.StatusOK, "")
 	resp := boss.Do(http.MethodPost, "/api/v1/admin/users/42/enable", nil)

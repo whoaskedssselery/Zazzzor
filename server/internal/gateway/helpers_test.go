@@ -77,6 +77,7 @@ func newEnvFrom(t *testing.T, vars map[string]string, opts gateway.Options, hook
 	}
 	cfg.DataDir = t.TempDir()
 	e := &env{t: t, pool: testkit.Postgres(t), reg: prometheus.NewRegistry()}
+	testkit.OpenRegistration(t, e.pool)
 	e.bus = events.NewBus(e.reg)
 	t.Cleanup(e.bus.Close)
 	if e.m, err = app.NewModules(cfg, e.pool, snowflake.NewGenerator(0, time.Now), e.bus); err != nil {

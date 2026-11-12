@@ -112,6 +112,21 @@ func (d *Disk) DeleteAttachment(ref Reference) error {
 	return d.trash(ref)
 }
 
+// RemoveUncommittedAttachment discards a file known to have no committed metadata.
+func (d *Disk) RemoveUncommittedAttachment(ref Reference) error {
+	if ref.Kind != KindAttachment || !ref.valid() {
+		return fmt.Errorf("files: invalid attachment reference %v", ref)
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	path := d.path(ref.Kind, ref.OwnerID, ref.Hash)
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("files: remove uncommitted attachment: %w", err)
+	}
+	syncDir(filepath.Dir(path))
+	return nil
+}
+
 // writeFile writes to a staging directory, then syncs and renames within the data volume.
 func (d *Disk) writeFile(target, tempDir string, write func(*os.File) error) error {
 	tmp, err := os.CreateTemp(tempDir, ".upload-*.tmp")

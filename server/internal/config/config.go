@@ -14,15 +14,17 @@ import (
 
 // Config is the validated server configuration.
 type Config struct {
-	HTTPAddr       string         // ZAZZZOR_HTTP_ADDR, default ":8080"
-	MetricsAddr    string         // ZAZZZOR_METRICS_ADDR, default ":9090"
-	DatabaseURL    string         // ZAZZZOR_DATABASE_URL, required
-	AllowedOrigins []string       // ZAZZZOR_ALLOWED_ORIGINS, comma-separated, required
-	TrustedProxies []netip.Prefix // ZAZZZOR_TRUSTED_PROXIES, default "127.0.0.1/32,::1/128"
-	AdminUsernames []string       // ZAZZZOR_ADMIN_USERNAMES, comma-separated, lower-cased
-	DataDir        string         // ZAZZZOR_DATA_DIR, default "/data"
-	CookieSecure   bool           // ZAZZZOR_COOKIE_SECURE, default true
-	FileRetention  time.Duration  // ZAZZZOR_FILE_RETENTION, default DefaultFileRetention; over a day
+	HTTPAddr             string         // ZAZZZOR_HTTP_ADDR, default ":8080"
+	MetricsAddr          string         // ZAZZZOR_METRICS_ADDR, default ":9090"
+	DatabaseURL          string         // ZAZZZOR_DATABASE_URL, required
+	AllowedOrigins       []string       // ZAZZZOR_ALLOWED_ORIGINS, comma-separated, required
+	TrustedProxies       []netip.Prefix // ZAZZZOR_TRUSTED_PROXIES, default "127.0.0.1/32,::1/128"
+	AdminUsernames       []string       // ZAZZZOR_ADMIN_USERNAMES, comma-separated, lower-cased
+	DataDir              string         // ZAZZZOR_DATA_DIR, default "/data"
+	CookieSecure         bool           // ZAZZZOR_COOKIE_SECURE, default true
+	AttachmentQuotaBytes int64          // ZAZZZOR_ATTACHMENT_QUOTA_BYTES; zero disables the quota
+	MinFreeBytes         uint64         // ZAZZZOR_MIN_FREE_BYTES; zero disables the floor
+	FileRetention        time.Duration  // ZAZZZOR_FILE_RETENTION, default DefaultFileRetention; over a day
 	// LiveKitURL is where the API calls the LiveKit server API
 	// (ZAZZZOR_LIVEKIT_URL, default DefaultLiveKitURL).
 	LiveKitURL string
@@ -45,6 +47,10 @@ const (
 	// DefaultFileRetention keeps deleted images through eight daily
 	// backups.
 	DefaultFileRetention = 8 * 24 * time.Hour
+	// DefaultAttachmentQuotaBytes is the combined size of one user's uploads.
+	DefaultAttachmentQuotaBytes = 2 << 30
+	// DefaultMinFreeBytes reserves space on the files volume.
+	DefaultMinFreeBytes = 2 << 30
 	// DefaultLiveKitURL is LiveKit on the same host network.
 	DefaultLiveKitURL = "http://127.0.0.1:7880"
 )
@@ -118,6 +124,16 @@ func Load(env func(string) string) (Config, error) {
 	// Deleted images must outlive the next daily backup, or a restored
 	// database can refer to an image that no archive holds.
 	cfg.FileRetention = DefaultFileRetention
+	quota, err := strconv.ParseInt(get("ZAZZZOR_ATTACHMENT_QUOTA_BYTES", strconv.FormatInt(DefaultAttachmentQuotaBytes, 10)), 10, 64)
+	if err != nil || quota < 0 {
+		errs = append(errs, errors.New("ZAZZZOR_ATTACHMENT_QUOTA_BYTES: must be a non-negative byte count"))
+	}
+	cfg.AttachmentQuotaBytes = quota
+	floor, err := strconv.ParseUint(get("ZAZZZOR_MIN_FREE_BYTES", strconv.FormatUint(DefaultMinFreeBytes, 10)), 10, 64)
+	if err != nil {
+		errs = append(errs, errors.New("ZAZZZOR_MIN_FREE_BYTES: must be a non-negative byte count"))
+	}
+	cfg.MinFreeBytes = floor
 	if v := get("ZAZZZOR_FILE_RETENTION", ""); v != "" {
 		retention, err := time.ParseDuration(v)
 		if err != nil || retention <= backupInterval {

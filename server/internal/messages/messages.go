@@ -270,15 +270,19 @@ var _ Users = (auth.Accounts)(nil)
 // Options configures a Service. Pool, IDs, Channels and Users are required.
 type Options struct {
 	// OnlineAmong snapshots which of the given guild members are online.
-	OnlineAmong    func([]snowflake.ID) []snowflake.ID
-	Pool           *pgxpool.Pool
-	IDs            *snowflake.Generator
-	Channels       Channels
-	Users          Users
-	Publisher      events.Publisher // nil: events are dropped
-	PreviewFetcher PreviewFetcher   // nil disables outbound preview fetching.
-	Files          *files.Disk      // nil disables attachment routes
-	Logger         *slog.Logger     // nil uses the default logger
+	OnlineAmong          func([]snowflake.ID) []snowflake.ID
+	Pool                 *pgxpool.Pool
+	IDs                  *snowflake.Generator
+	Channels             Channels
+	Users                Users
+	Publisher            events.Publisher // nil: events are dropped
+	PreviewFetcher       PreviewFetcher   // nil disables outbound preview fetching.
+	Files                *files.Disk      // nil disables attachment routes
+	AttachmentQuotaBytes int64            // zero disables the per-user quota
+	MinFreeBytes         uint64           // zero disables the volume floor
+	// FreeBytes reports available space on the files volume. Nil uses Files.AvailableBytes.
+	FreeBytes func() (uint64, error)
+	Logger    *slog.Logger // nil uses the default logger
 	// Now is the clock of typing notices; nil means time.Now.
 	Now func() time.Time
 	// SendLimiter limits sending per user; nil takes the default (5 per
@@ -310,6 +314,9 @@ type Service struct {
 	pub             events.Publisher
 	files           *files.Disk
 	logger          *slog.Logger
+	attachmentQuota int64
+	minFreeBytes    uint64
+	freeBytes       func() (uint64, error)
 	trashMu         sync.Mutex
 	uploadLimiter   *ratelimit.Limiter
 	now             func() time.Time
@@ -323,8 +330,12 @@ type Service struct {
 func NewService(o Options) *Service {
 	s := &Service{reactionLimiter: ratelimit.New(reactionRate, reactionBurst, reactionTTL), onlineAmong: o.OnlineAmong, ackLimiter: ratelimit.New(ackRate, ackBurst, ackTTL), pool: o.Pool, q: store.New(), ids: o.IDs, channels: o.Channels, users: o.Users,
 		pub: o.Publisher, files: o.Files, logger: o.Logger, now: o.Now,
-		uploadLimiter: ratelimit.New(uploadRate, uploadBurst, uploadTTL), sendLimiter: o.SendLimiter, writeLimiter: o.WriteLimiter,
+		uploadLimiter: ratelimit.New(uploadRate, uploadBurst, uploadTTL, ratelimit.WithClock(o.Now)), sendLimiter: o.SendLimiter, writeLimiter: o.WriteLimiter,
 		typingLimiter: o.TypingLimiter, typingCalls: o.TypingCallLimiter}
+	s.attachmentQuota, s.minFreeBytes, s.freeBytes = o.AttachmentQuotaBytes, o.MinFreeBytes, o.FreeBytes
+	if s.freeBytes == nil && s.files != nil {
+		s.freeBytes = s.files.AvailableBytes
+	}
 	if o.PreviewFetcher != nil && o.Files != nil {
 		s.previews = &previews{fetcher: o.PreviewFetcher, jobs: make(chan previewJob, previewQueueSize)}
 	}

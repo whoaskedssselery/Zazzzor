@@ -137,7 +137,7 @@ paths:
           description: "`origin_not_allowed` or `registration_closed`."
           $ref: "#/components/responses/Problem"
         "409":
-          description: "`username_taken`."
+          description: "`username_taken` for an existing or reserved username."
           $ref: "#/components/responses/Problem"
         "415":
           description: "`unsupported_media_type`: the body is not application/json."
@@ -1182,7 +1182,7 @@ paths:
         - $ref: "#/components/parameters/GuildEmojiID"
       responses:
         "200":
-          description: Raster image with private caching for 24 hours and nosniff.
+          description: Raster image with private cache revalidation and nosniff.
           content:
             image/png:
               schema:
@@ -2155,8 +2155,9 @@ paths:
       description: |
         Needs `VIEW_CHANNEL`, `SEND_MESSAGES` and `ATTACH_FILES` in a text
         channel. Upload one file up to 25 MiB per request. Pending uploads
-        expire after one hour. Limited to 30 per minute per user, with a burst
-        of 10 and at most two concurrent uploads per user.
+        expire after one hour and count toward the user's storage quota.
+        Limited to 30 per minute per user, with a burst of 10 and at most
+        two concurrent uploads per user.
       parameters:
         - $ref: "#/components/parameters/ChannelID"
       requestBody:
@@ -2189,7 +2190,7 @@ paths:
         "404":
           $ref: "#/components/responses/Problem"
         "413":
-          description: "`file_too_large`: the file exceeds the upload limit."
+          description: "`file_too_large` or `attachment_quota_exceeded`."
           $ref: "#/components/responses/Problem"
         "415":
           $ref: "#/components/responses/Problem"
@@ -2197,6 +2198,9 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "503":
           description: "`server_busy`: the shared upload gate is full."
+          $ref: "#/components/responses/Problem"
+        "507":
+          description: "`storage_full`: the files volume is below the minimum free space."
           $ref: "#/components/responses/Problem"
   /channels/{channel_id}/attachments/{attachment_id}:
     delete:
@@ -2253,7 +2257,7 @@ paths:
         return 404. Supports byte ranges and conditional requests. PNG, JPEG,
         WebP, GIF, MP4, WebM, MP3, OGG and WAV are served inline when identified
         by their bytes. All other files download as application/octet-stream.
-        Successful responses use private immutable caching, an ETag,
+        Successful responses use private cache revalidation, an ETag,
         nosniff, and a sandboxed Content Security Policy.
       parameters:
         - $ref: "#/components/parameters/ChannelID"

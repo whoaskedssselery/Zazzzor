@@ -132,6 +132,8 @@ services:
       ZAZZZOR_DATA_DIR: /data
       # Empty takes the server default (config.DefaultFileRetention).
       ZAZZZOR_FILE_RETENTION: ${ZAZZZOR_FILE_RETENTION:-}
+      ZAZZZOR_ATTACHMENT_QUOTA_BYTES: ${ZAZZZOR_ATTACHMENT_QUOTA_BYTES:-}
+      ZAZZZOR_MIN_FREE_BYTES: ${ZAZZZOR_MIN_FREE_BYTES:-}
       # LiveKit's server API: LiveKit (host network) listens on the gateway
       # of the api network too.
       ZAZZZOR_LIVEKIT_URL: http://172.31.250.1:7880

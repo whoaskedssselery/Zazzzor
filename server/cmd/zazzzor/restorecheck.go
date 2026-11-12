@@ -24,8 +24,8 @@ import (
 // once, so trash has an entry, and a message) and prints what it created as
 // JSON on stdout. `zazzzor restore-check verify <base_url>` reads that JSON
 // on stdin and checks, after a backup was restored, that the user can sign
-// in, the message is there, and the avatar and the current icon download
-// with the same bytes. deploy/scripts/restore-test.sh runs both inside the
+// in, the message is there, and the avatar, icon, attachment and emoji
+// download with the same bytes. deploy/scripts/restore-test.sh runs both inside the
 // api container, like smoke; the data is left in place, so it is meant for
 // a throwaway stack. The JSON holds the test user's password.
 
@@ -34,15 +34,19 @@ const restoreCheckUsage = "использование: zazzzor restore-check see
 
 // restoreState is what seed created and verify expects.
 type restoreState struct {
-	Username  string `json:"username"`
-	Password  string `json:"password"`
-	GuildID   string `json:"guild_id"`
-	ChannelID string `json:"channel_id"`
-	MessageID string `json:"message_id"`
-	AvatarURL string `json:"avatar_url"`
-	IconURL   string `json:"icon_url"`
-	AvatarSHA string `json:"avatar_sha256"`
-	IconSHA   string `json:"icon_sha256"`
+	Username      string `json:"username"`
+	Password      string `json:"password"`
+	GuildID       string `json:"guild_id"`
+	ChannelID     string `json:"channel_id"`
+	MessageID     string `json:"message_id"`
+	AvatarURL     string `json:"avatar_url"`
+	IconURL       string `json:"icon_url"`
+	AvatarSHA     string `json:"avatar_sha256"`
+	IconSHA       string `json:"icon_sha256"`
+	AttachmentURL string `json:"attachment_url,omitempty"`
+	AttachmentSHA string `json:"attachment_sha256,omitempty"`
+	EmojiURL      string `json:"emoji_url,omitempty"`
+	EmojiSHA      string `json:"emoji_sha256,omitempty"`
 }
 
 // restoreCheckCommand parses `restore-check seed|verify <base_url>`; the
@@ -91,7 +95,8 @@ func runRestoreCheck(ctx context.Context, mode, base, origin string, stdin io.Re
 		return 0
 	}
 	var st restoreState
-	if err := json.NewDecoder(stdin).Decode(&st); err != nil || st.Username == "" {
+	if err := json.NewDecoder(stdin).Decode(&st); err != nil || st.Username == "" ||
+		(st.AttachmentURL == "") != (st.AttachmentSHA == "") || (st.EmojiURL == "") != (st.EmojiSHA == "") {
 		_, _ = fmt.Fprintf(stderr, "не читается состояние от restore-check seed на stdin: %v\n", err)
 		return 2
 	}
@@ -138,12 +143,32 @@ func (s *smokeSession) seed(ctx context.Context) (restoreState, error) {
 		return st, err
 	}
 	st.ChannelID = channelID
+	var attachment struct{ ID, URL string }
+	if err = s.step("вложение", s.uploadFile(ctx, http.MethodPost, "/api/v1/channels/"+channelID+"/attachments",
+		"restore.txt", []byte("restore attachment\n"), nil, http.StatusCreated, &attachment)); err != nil {
+		return st, err
+	}
+	st.AttachmentURL = attachment.URL
 	var msg struct{ ID string }
 	if err = s.step("отправка сообщения", s.do(ctx, http.MethodPost, "/api/v1/channels/"+channelID+"/messages",
-		map[string]string{"content": "restore"}, http.StatusCreated, &msg)); err != nil {
+		map[string]any{"content": "restore", "attachment_ids": []string{attachment.ID}}, http.StatusCreated, &msg)); err != nil {
 		return st, err
 	}
 	st.MessageID = msg.ID
+	var emoji struct{ URL string }
+	if err = s.step("эмодзи", s.uploadFile(ctx, http.MethodPost, "/api/v1/guilds/"+guild.ID+"/emojis",
+		"emoji.png", solidPNG(110), map[string]string{"name": "restore"}, http.StatusCreated, &emoji)); err != nil {
+		return st, err
+	}
+	st.EmojiURL = emoji.URL
+	st.AttachmentSHA, err = s.digest(ctx, st.AttachmentURL)
+	if err = s.step("загрузка вложения", err); err != nil {
+		return st, err
+	}
+	st.EmojiSHA, err = s.digest(ctx, st.EmojiURL)
+	if err = s.step("загрузка эмодзи", err); err != nil {
+		return st, err
+	}
 	st.AvatarSHA, err = s.digest(ctx, st.AvatarURL)
 	if err = s.step("загрузка аватара", err); err != nil {
 		return st, err
@@ -196,13 +221,27 @@ func (s *smokeSession) verify(ctx context.Context, st restoreState) error {
 	if err = s.step("сервер", err); err != nil {
 		return err
 	}
-	if err = s.step("сообщение", s.findMessage(ctx, st.ChannelID, st.MessageID)); err != nil {
+	if err = s.step("сообщение", s.findMessage(ctx, st.ChannelID, st.MessageID, st.AttachmentURL)); err != nil {
 		return err
 	}
 	if err = s.step("аватар", s.sameBytes(ctx, st.AvatarURL, st.AvatarSHA)); err != nil {
 		return err
 	}
-	return s.step("иконка", s.sameBytes(ctx, st.IconURL, st.IconSHA))
+	if err = s.step("иконка", s.sameBytes(ctx, st.IconURL, st.IconSHA)); err != nil {
+		return err
+	}
+	for _, file := range []struct{ label, url, sha string }{
+		{"вложение", st.AttachmentURL, st.AttachmentSHA},
+		{"эмодзи", st.EmojiURL, st.EmojiSHA},
+	} {
+		// Older seed states predate these files.
+		if file.url != "" {
+			if err = s.step(file.label, s.sameBytes(ctx, file.url, file.sha)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // digest downloads path and returns the hex SHA-256 of its body.

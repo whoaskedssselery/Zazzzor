@@ -161,6 +161,8 @@ services:
       ZAZZZOR_DATA_DIR: /data
       # Empty takes the server default (config.DefaultFileRetention).
       ZAZZZOR_FILE_RETENTION: ${ZAZZZOR_FILE_RETENTION:-}
+      ZAZZZOR_ATTACHMENT_QUOTA_BYTES: ${ZAZZZOR_ATTACHMENT_QUOTA_BYTES:-}
+      ZAZZZOR_MIN_FREE_BYTES: ${ZAZZZOR_MIN_FREE_BYTES:-}
       # LiveKit's server API is on loopback (config.DefaultLiveKitURL).
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}

@@ -102,6 +102,7 @@ func TestServeClosesGatewayOnShutdown(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	pool := testkit.Postgres(t)
+	testkit.OpenRegistration(t, pool)
 	go func() { done <- serve(ctx, slog.New(slog.DiscardHandler), cfg, pool, apiLn, metricsLn) }()
 
 	jar, err := cookiejar.New(nil)
