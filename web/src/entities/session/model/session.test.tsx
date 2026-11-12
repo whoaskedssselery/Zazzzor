@@ -1,4 +1,6 @@
-import { safeNext } from "./session";
+import { QueryClient } from "@tanstack/react-query";
+import { makeUser } from "@/shared/test";
+import { ME_KEY, safeNext, setSignedIn, type User, updateSignedIn } from "./session";
 
 describe("safeNext", () => {
   it.each([
@@ -34,5 +36,27 @@ describe("safeNext", () => {
     [42],
   ])("falls back to /channels/@me for %j", (next) => {
     expect(safeNext(next)).toBe("/channels/@me");
+  });
+});
+
+describe("updateSignedIn", () => {
+  const anna = makeUser("1", { display_name: "Анна" });
+  const boris = makeUser("2");
+
+  it("takes a newer copy of the user still signed in", () => {
+    const qc = new QueryClient();
+    setSignedIn(qc, anna);
+    updateSignedIn(qc, { ...anna, display_name: "Аня" });
+    expect(qc.getQueryData<User>(ME_KEY)?.display_name).toBe("Аня");
+  });
+
+  it("drops an answer that arrives after a sign-out or as someone else", () => {
+    const qc = new QueryClient();
+    qc.setQueryData(ME_KEY, null);
+    updateSignedIn(qc, anna);
+    expect(qc.getQueryData(ME_KEY)).toBeNull();
+    setSignedIn(qc, boris);
+    updateSignedIn(qc, anna);
+    expect(qc.getQueryData<User>(ME_KEY)?.id).toBe("2");
   });
 });

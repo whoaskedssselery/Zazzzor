@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { resetChannelUi } from "@/entities/channel";
 import { applyGatewayDispatch, getGuildsState, resetGuilds, setConnectionStatus } from "@/entities/guild";
 import { applyMessageDispatch, catchUpMessages, resetPending } from "@/entities/message";
-import { onSessionEnd, onUnauthorized, setSignedIn } from "@/entities/session";
+import { onSessionEnd, onUnauthorized, updateSignedIn } from "@/entities/session";
 import { resetDrafts, resetMentions, resetUploads } from "@/features/send-message";
 import { endCall, onVoiceMove, reconcileVoiceFlags } from "@/features/voice-call";
 import { getGateway, isCallEvent, parseCallEvent } from "@/shared/api";
@@ -30,7 +30,7 @@ export const useGatewaySession = (active: boolean): void => {
         applyGatewayDispatch(t, d);
         applyMessageDispatch(queryClient, t, d, getGuildsState().me?.id ?? null);
         const after = getGuildsState();
-        if (after.me && after.me !== before.me) setSignedIn(queryClient, after.me);
+        if (after.me && after.me !== before.me) updateSignedIn(queryClient, after.me);
         // Voice: follow a moderator's move; keep the server's view of the switches in step.
         if (isCallEvent(t)) {
           const move = parseCallEvent(t, d);

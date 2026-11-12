@@ -1,5 +1,6 @@
 import {
   ConnectionState,
+  createLocalVideoTrack,
   LocalAudioTrack,
   type LocalTrackPublication,
   LocalVideoTrack,
@@ -11,7 +12,6 @@ import {
   Room,
   RoomEvent,
   Track,
-  createLocalVideoTrack,
 } from "livekit-client";
 import type { CallLink, CallTransport, CallTransportEvents, CameraResult, ScreenShareResult } from "@/shared/lib";
 import type { VoicePrefs } from "../model/prefs";
@@ -131,9 +131,13 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
     else if (pub.source === Track.Source.Camera) pub.setSubscribed(cameraViews.has(participant.identity));
   };
 
+  /** The noise suppression each microphone track runs now, so a switch mid-call changes only what differs. */
+  const noiseOf = new WeakMap<LocalAudioTrack, VoicePrefs["noise"]>();
+
   /** Puts the chosen noise suppression on a new microphone track, and says what runs. */
   const cleanMicrophone = async (track: LocalAudioTrack) => {
     const { noise } = prefs();
+    noiseOf.set(track, noise);
     if (noise !== "enhanced") {
       emit("noise", { running: noise });
       return;
@@ -151,6 +155,36 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
       );
     } catch {
       emit("noise", { running: await browserNoiseSuppression(track.mediaStreamTrack), reason: "failed" });
+    }
+  };
+
+  /**
+   * Brings the published microphone to the noise suppression chosen now:
+   * the setting changes during a call without joining again. The browser's
+   * own processing follows microphoneOptions; «Улучшенное» adds the processor.
+   */
+  const syncNoise = async (r: Room) => {
+    const track = r.localParticipant.getTrackPublication(Track.Source.Microphone)?.track;
+    if (!(track instanceof LocalAudioTrack)) return;
+    const { noise } = prefs();
+    if (noiseOf.get(track) === noise) return;
+    noiseOf.set(track, noise);
+    if (noise !== "enhanced" && track.getProcessor()) await track.stopProcessor().catch(() => undefined);
+    const input = track.mediaStreamTrack;
+    try {
+      await input.applyConstraints({
+        ...input.getConstraints(),
+        autoGainControl: noise !== "enhanced",
+        noiseSuppression: noise === "standard",
+      });
+    } catch {
+      // The browser keeps the track as it was.
+    }
+    if (noise === "enhanced") {
+      noiseOf.delete(track);
+      await cleanMicrophone(track);
+    } else {
+      emit("noise", { running: input.getSettings().noiseSuppression === true ? "standard" : "off" });
     }
   };
 
@@ -175,14 +209,14 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
     const pub = participant.getTrackPublication(Track.Source.Camera);
     if (!pub) return () => {};
     pub.setSubscribed(true);
-    const fit = () => {
+    const fitToTile = () => {
       if (el.clientWidth > 0 && el.clientHeight > 0) {
         pub.setVideoDimensions({ width: el.clientWidth, height: el.clientHeight });
       }
     };
-    fit();
+    fitToTile();
     if (typeof ResizeObserver === "undefined") return () => {};
-    const observer = new ResizeObserver(fit);
+    const observer = new ResizeObserver(fitToTile);
     observer.observe(el);
     return () => {
       observer.disconnect();
@@ -309,6 +343,8 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
     stopSteering();
     const stream = screen;
     screen = null;
+    // The capture ends at once; taking the tracks off the room may wait on the network.
+    for (const t of stream?.getTracks() ?? []) t.stop();
     try {
       for (const pub of [...r.localParticipant.trackPublications.values()]) {
         if (pub.track && SCREEN.has(pub.source)) await r.localParticipant.unpublishTrack(pub.track);
@@ -353,9 +389,11 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
     },
 
     async setMicrophone(on) {
-      if (!room) return;
+      const r = room;
+      if (!r) return;
       try {
-        await room.localParticipant.setMicrophoneEnabled(on, microphoneOptions(prefs()));
+        await r.localParticipant.setMicrophoneEnabled(on, microphoneOptions(prefs()));
+        if (room === r) await syncNoise(r);
       } catch (e) {
         // Callers do not wait for the microphone: nothing may escape as an unhandled rejection.
         if (isMicError(e)) emit("micDenied");
@@ -399,9 +437,19 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
           emit("screenEnded");
         });
       });
+      // A stop (the browser's button, the user, the call ending) may come while a track is being
+      // published: then this share is over, and whatever got published comes down again.
+      const stopped = async (): Promise<boolean> => {
+        if (screen === stream) return false;
+        if (room === r) await unpublishScreen(r).catch(() => undefined);
+        for (const t of stream.getTracks()) t.stop();
+        return true;
+      };
       try {
         await r.localParticipant.publishTrack(video, { ...publish, source: Track.Source.ScreenShare });
+        if (await stopped()) return { ok: false, reason: "cancelled" };
         if (audio) await r.localParticipant.publishTrack(audio, { source: Track.Source.ScreenShareAudio });
+        if (await stopped()) return { ok: false, reason: "cancelled" };
       } catch {
         await unpublishScreen(r).catch(() => undefined);
         for (const t of stream.getTracks()) t.stop();

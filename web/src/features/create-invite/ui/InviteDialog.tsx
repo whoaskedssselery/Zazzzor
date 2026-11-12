@@ -84,9 +84,11 @@ const InviteForm = ({ channelId, channelName }: { channelId: string; channelName
       setLink(inviteLink(invite.code));
       setMade(with_);
       setEditing(false);
-      // «Копировать» is the point of the dialog: it takes the focus once it has a link.
+      // «Копировать» is the point of the dialog: it takes the focus once it has a link,
+      // unless the user moved it meanwhile (a quick copy that failed selects the field).
+      const before = document.activeElement;
       await new Promise((resolve) => requestAnimationFrame(resolve));
-      copyButton.current?.querySelector("button")?.focus();
+      if (document.activeElement === before) copyButton.current?.querySelector("button")?.focus();
     },
   });
   const { mutate } = create;

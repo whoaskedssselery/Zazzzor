@@ -1,9 +1,9 @@
 import { Pencil, Users } from "lucide-react";
 import { useState } from "react";
 import { dmPeer, privateName, useConnectionStatus, useGuilds } from "@/entities/guild";
+import { NotifyButton } from "@/features/notify";
 import { AddPeopleButton, RenameGroupDialog } from "@/features/private-groups";
 import { Avatar } from "@/shared/ui";
-import { NotifyButton } from "@/features/notify";
 import { MembersButton, NavButton, ShellHeader } from "@/widgets/app-shell";
 import { PrivateChatView } from "@/widgets/chat";
 

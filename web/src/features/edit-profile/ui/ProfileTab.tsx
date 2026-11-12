@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type ChangeEvent, useEffect, useRef, useState } from "react";
-import { setSignedIn, type User } from "@/entities/session";
+import { type User, updateSignedIn } from "@/entities/session";
 import { ApiError, api, errorText, fieldErrorText, unwrap } from "@/shared/api";
 import { fileForm, IMAGE_ACCEPT, imageProblem, runeLength, trimContent, useObjectUrl } from "@/shared/lib";
 import { Avatar, Button, Field, FormAlert, Input, SaveBar, useToast } from "@/shared/ui";
@@ -47,10 +47,10 @@ export const ProfileTab = ({ user, onDirtyChange }: { user: User; onDirtyChange:
     mutationFn: async (sent: AvatarChange) => {
       const value = trimContent(name);
       if (value !== user.display_name) {
-        setSignedIn(queryClient, unwrap(await api.PATCH("/users/@me", { body: { display_name: value } })));
+        updateSignedIn(queryClient, unwrap(await api.PATCH("/users/@me", { body: { display_name: value } })));
       }
-      if (sent === "remove") setSignedIn(queryClient, unwrap(await api.DELETE("/users/@me/avatar")));
-      else if (sent !== null) setSignedIn(queryClient, await uploadAvatar(sent));
+      if (sent === "remove") updateSignedIn(queryClient, unwrap(await api.DELETE("/users/@me/avatar")));
+      else if (sent !== null) updateSignedIn(queryClient, await uploadAvatar(sent));
     },
     onSuccess: (_, sent) => {
       setAvatar((current) => (current === sent ? null : current));

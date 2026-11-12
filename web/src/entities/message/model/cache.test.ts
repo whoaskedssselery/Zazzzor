@@ -180,7 +180,11 @@ describe("catchUpMessages", () => {
         const after = Number(url.searchParams.get("after"));
         afters.push(String(after));
         const limit = Number(url.searchParams.get("limit"));
-        return HttpResponse.json(all().filter((m) => Number(m.id) > after).slice(0, limit));
+        return HttpResponse.json(
+          all()
+            .filter((m) => Number(m.id) > after)
+            .slice(0, limit),
+        );
       }),
     );
     return afters;
@@ -271,7 +275,10 @@ describe("the end of the history", () => {
   });
 
   it("lets an older message in only when nothing older is left to load", () => {
-    const shrunk: MessagePages = { pages: [Array.from({ length: 49 }, (_, i) => msg(100 - i))], pageParams: [undefined] };
+    const shrunk: MessagePages = {
+      pages: [Array.from({ length: 49 }, (_, i) => msg(100 - i))],
+      pageParams: [undefined],
+    };
     expect(order(upsertMessage(shrunk, msg(10), false))).not.toContain(10);
     expect(order(upsertMessage(shrunk, msg(10), true))).toContain(10);
   });

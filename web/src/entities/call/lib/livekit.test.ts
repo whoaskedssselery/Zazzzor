@@ -135,6 +135,37 @@ describe("LiveKit transport", () => {
     expect(video.stop).toHaveBeenCalled();
   });
 
+  it("I6: a stop while the screen is being published ends the share instead of reporting it started", async () => {
+    const t = await connected();
+    const ended = vi.fn();
+    t.on("screenEnded", ended);
+    const { video, stream } = capture();
+    pickScreen(Promise.resolve(stream));
+    const lp = room().localParticipant;
+    let published: () => void = () => {};
+    const inFlight = new Promise<void>((resolve) => {
+      published = resolve;
+    });
+    // The track is on the room already; LiveKit has not answered yet.
+    room().publications.set(Track.Source.ScreenShare, { source: Track.Source.ScreenShare, track: video });
+    lp.publishTrack.mockReturnValueOnce(inFlight);
+    const sharing = t.startScreenShare();
+    await vi.waitFor(() => {
+      expect(video.addEventListener).toHaveBeenCalled();
+    });
+    // The browser's own «Stop sharing», while the publish is still in flight.
+    const onEnded = video.addEventListener.mock.calls.find(([type]) => type === "ended")?.[1] as () => void;
+    onEnded();
+    expect(video.stop).toHaveBeenCalled();
+    published();
+    expect(await sharing).toEqual({ ok: false, reason: "cancelled" });
+    const unpublish = (lp as unknown as { unpublishTrack: Mock }).unpublishTrack;
+    expect(unpublish).toHaveBeenCalledWith(video);
+    await vi.waitFor(() => {
+      expect(ended).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("I4: keeps sharing through a reconnect that republishes the screen", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const t = await connected();
@@ -177,6 +208,22 @@ describe("the microphone's noise suppression", () => {
         processor = p;
         return Promise.resolve();
       }),
+      stopProcessor: vi.fn(() => {
+        processor = undefined;
+        return Promise.resolve();
+      }),
+    });
+    let settings = { noiseSuppression: false };
+    // A getter on LocalTrack: defined, not assigned.
+    Object.defineProperty(track, "mediaStreamTrack", {
+      value: {
+        getConstraints: () => ({}),
+        getSettings: () => settings,
+        applyConstraints: vi.fn((c: { noiseSuppression: boolean }) => {
+          settings = { noiseSuppression: c.noiseSuppression };
+          return Promise.resolve();
+        }),
+      },
     });
     return track;
   };
@@ -198,6 +245,32 @@ describe("the microphone's noise suppression", () => {
     publish(track);
     await Promise.resolve();
     expect(setProcessorOf(track)).toHaveBeenCalledTimes(1);
+  });
+
+  it("switches the published microphone when the setting changes mid-call", async () => {
+    let noise: "enhanced" | "standard" | "off" = "enhanced";
+    const t = createLiveKitTransport(() => ({ inputId: null, noise }));
+    const said = vi.fn();
+    t.on("noise", said);
+    await t.connect("ws://localhost", "token");
+    const track = micTrack();
+    room().publications.set(Track.Source.Microphone, { source: Track.Source.Microphone, track });
+    publish(track);
+    await vi.waitFor(() => {
+      expect(setProcessorOf(track)).toHaveBeenCalledTimes(1);
+    });
+    noise = "standard";
+    await t.setMicrophone(true);
+    expect((track as unknown as { stopProcessor: Mock }).stopProcessor).toHaveBeenCalledTimes(1);
+    expect(track.mediaStreamTrack.getSettings().noiseSuppression).toBe(true);
+    expect(said).toHaveBeenLastCalledWith({ running: "standard" });
+    // Push-to-talk switches the microphone often: an unchanged setting touches nothing.
+    await t.setMicrophone(false);
+    expect((track.mediaStreamTrack as unknown as { applyConstraints: Mock }).applyConstraints).toHaveBeenCalledTimes(1);
+    noise = "enhanced";
+    await t.setMicrophone(true);
+    expect(setProcessorOf(track)).toHaveBeenCalledTimes(2);
+    expect(track.mediaStreamTrack.getSettings().noiseSuppression).toBe(false);
   });
 
   it("says the browser's mode runs when enhanced is not chosen", async () => {

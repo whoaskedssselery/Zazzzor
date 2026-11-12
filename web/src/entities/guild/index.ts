@@ -1,3 +1,4 @@
+export { type NotifyPatch, updateNotify, useUpdateNotify } from "./api/notify";
 export {
   createGroup,
   openDirect,
@@ -8,20 +9,6 @@ export {
   useRemoveRecipient,
   useRenameGroup,
 } from "./api/privates";
-export { type NotifyPatch, updateNotify, useUpdateNotify } from "./api/notify";
-export {
-  alertLevel,
-  channelLevel,
-  defaultNotify,
-  isChannelMuted,
-  isChannelOwnMuted,
-  isScopeMuted,
-  muteHolds,
-  NOTIFY_LEVEL,
-  type NotifyLevel,
-  notifyOf,
-  overrideOf,
-} from "./model/notify";
 export {
   NO_SUCH_USER,
   requestErrorText,
@@ -38,6 +25,19 @@ export {
 } from "./lib/permissionText";
 export { byRank, memberColor, rolesOf, type UserDisplay, userDisplay } from "./model/display";
 export {
+  alertLevel,
+  channelLevel,
+  defaultNotify,
+  isChannelMuted,
+  isChannelOwnMuted,
+  isScopeMuted,
+  muteHolds,
+  NOTIFY_LEVEL,
+  type NotifyLevel,
+  notifyOf,
+  overrideOf,
+} from "./model/notify";
+export {
   ALL,
   canActOn,
   canGrant,
@@ -52,6 +52,15 @@ export {
   parseMask,
 } from "./model/permissions";
 export {
+  dmPeer,
+  homeUnreadCount,
+  isPrivateUnread,
+  privateBadgeCount,
+  privateList,
+  privateName,
+  privateUnreadCount,
+} from "./model/private";
+export {
   applyEvent,
   applyReady,
   type Channel,
@@ -64,10 +73,10 @@ export {
   type Member,
   mentionsMe,
   type NotifySettings,
-  PRIVATE_SCOPE,
   newer,
-  type PresenceStatus,
+  PRIVATE_SCOPE,
   PRIVATE_TYPE,
+  type PresenceStatus,
   type PrivateEntry,
   RELATIONSHIP,
   type ReadMark,
@@ -76,15 +85,6 @@ export {
   type User,
   type VoiceState,
 } from "./model/reducer";
-export {
-  dmPeer,
-  homeUnreadCount,
-  isPrivateUnread,
-  privateBadgeCount,
-  privateList,
-  privateName,
-  privateUnreadCount,
-} from "./model/private";
 export { type FriendLists, friendLists, incomingCount } from "./model/relationships";
 export {
   CHANNEL_SETTINGS_TABS,

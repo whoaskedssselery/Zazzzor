@@ -127,6 +127,9 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # New advisories show up here even when no dependency changed.
+      - name: Known vulnerabilities in dependencies (pnpm audit)
+        run: pnpm audit --audit-level moderate
       - name: Generated API types match api/openapi.yaml
         run: |
           pnpm gen:api

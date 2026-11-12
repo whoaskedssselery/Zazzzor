@@ -9,3 +9,9 @@ packages:
 allowBuilds:
   protobufjs: false
   unrs-resolver: false
+# Security fixes the lint plugins pin below (pnpm audit): handlebars via
+# eslint-plugin-boundaries, minimatch via typescript-eslint. Drop them once
+# the parents ship the fixed versions.
+overrides:
+  handlebars: 4.7.10
+  "minimatch@>=7.0.0 <11.0.1": 11.0.1
