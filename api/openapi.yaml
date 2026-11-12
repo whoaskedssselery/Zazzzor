@@ -4357,8 +4357,15 @@ components:
     UserGuildSettings:
       type: object
       additionalProperties: false
-      required: [guild_id, muted, mute_until, message_notifications, suppress_everyone, channel_overrides]
+      required: [guild_id, version, muted, mute_until, message_notifications, suppress_everyone, channel_overrides]
       properties:
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+          description: |
+            Monotonic per-user revision, initially zero. For each scope,
+            discard snapshots older than the newest version held for that scope.
         guild_id:
           description: The server ID, or null for private channels.
           oneOf:
