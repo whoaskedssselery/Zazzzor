@@ -8,10 +8,15 @@ export interface MentionTarget {
   color?: number;
 }
 
-/** Looks up the names of mentions; null for one that is not here (a former member, a deleted role). */
+/**
+ * Looks up the names of mentions; null for one that is not here (a former
+ * member, a deleted role). `emoji` finds a custom emoji of this server:
+ * one of another server, or deleted, shows as its `:name:`.
+ */
 export interface MentionNames {
   user: (id: string) => MentionTarget | null;
   role: (id: string) => MentionTarget | null;
+  emoji?: (id: string) => { url: string } | null;
 }
 
 const NO_NAMES: MentionNames = { user: () => null, role: () => null };
@@ -79,6 +84,40 @@ const Spoiler = ({ children }: { children: ReactNode }) => {
   );
 };
 
+/** A message of only custom emoji (and spaces) shows them large, as Discord does, up to this many. */
+const JUMBO_MAX = 30;
+
+/** Whether `nodes` are only custom emoji and spaces, few enough to show large. */
+export const isJumbo = (nodes: MdNode[]): boolean => {
+  let count = 0;
+  for (const n of nodes) {
+    if (n.type === "emoji") count++;
+    else if (n.type !== "text" || n.value.trim() !== "") return false;
+  }
+  return count > 0 && count <= JUMBO_MAX;
+};
+
+const JumboContext = createContext(false);
+
+/** A custom emoji of this server as its picture; any other as its `:name:`. */
+const CustomEmoji = ({ name, id }: { name: string; id: string }) => {
+  const names = use(MentionContext);
+  const jumbo = use(JumboContext);
+  const found = names.emoji?.(id) ?? null;
+  if (found === null) return `:${name}:`;
+  return (
+    <img
+      src={found.url}
+      alt={`:${name}:`}
+      title={`:${name}:`}
+      draggable={false}
+      loading="lazy"
+      data-emoji={id}
+      className={`inline-block object-contain ${jumbo ? "my-0.5 size-12" : "-mt-1 size-[1.375em] align-middle"}`}
+    />
+  );
+};
+
 const renderNodes = (nodes: MdNode[]): ReactNode[] => nodes.map((n, i) => renderNode(n, i));
 
 const renderNode = (node: MdNode, key: number): ReactNode => {
@@ -118,6 +157,8 @@ const renderNode = (node: MdNode, key: number): ReactNode => {
       );
     case "mention":
       return <Mention key={key} kind={node.kind} id={node.id} />;
+    case "emoji":
+      return <CustomEmoji key={key} name={node.name} id={node.id} />;
     case "link":
       return (
         <a
@@ -151,9 +192,16 @@ export const Markdown = ({
   after?: ReactNode;
   /** Names for the mentions in the text. */
   mentions?: MentionNames;
-}) => (
-  <div className="break-words whitespace-pre-wrap [overflow-wrap:anywhere]">
-    <MentionContext value={mentions}>{renderMarkdown(parseMarkdown(source))}</MentionContext>
-    {after}
-  </div>
-);
+}) => <MarkdownBody source={source} after={after} mentions={mentions} />;
+
+const MarkdownBody = ({ source, after, mentions }: { source: string; after: ReactNode; mentions: MentionNames }) => {
+  const nodes = parseMarkdown(source);
+  return (
+    <div className="break-words whitespace-pre-wrap [overflow-wrap:anywhere]">
+      <MentionContext value={mentions}>
+        <JumboContext value={isJumbo(nodes)}>{renderMarkdown(nodes)}</JumboContext>
+      </MentionContext>
+      {after}
+    </div>
+  );
+};

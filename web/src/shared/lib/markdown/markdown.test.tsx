@@ -212,3 +212,35 @@ describe("mentions", () => {
     expect(screen.getByText("@here")).toBeTruthy();
   });
 });
+
+describe("custom emoji", () => {
+  const emoji = (name: string, id: string, animated = false): MdNode => ({ type: "emoji", name, id, animated });
+  const here = { user: () => null, role: () => null, emoji: (id: string) => (id === "77" ? { url: "/e/77" } : null) };
+
+  it("reads <:name:id> and <a:name:id>", () => {
+    expect(parseMarkdown("вот <:vasya:77> и <a:dance_2:78>")).toEqual([
+      text("вот "),
+      emoji("vasya", "77"),
+      text(" и "),
+      emoji("dance_2", "78", true),
+    ]);
+  });
+
+  it("leaves malformed ones and those in code as text", () => {
+    for (const src of ["<:a:77>", "<:имя:77>", "<:name:>", "<:name:7a>", "<b:name:77>", "`<:vasya:77>`"])
+      expect(parseMarkdown(src).every((n) => n.type !== "emoji")).toBe(true);
+  });
+
+  it("shows this server's emoji as a picture and any other as :name:", () => {
+    renderUi(<Markdown source="<:vasya:77> привет <:gone:99>" mentions={here} />);
+    const img = screen.getByRole("img", { name: ":vasya:" });
+    expect(img.getAttribute("src")).toBe("/e/77");
+    expect(img.className).not.toContain("size-12");
+    expect(img.parentElement?.textContent).toBe(" привет :gone:");
+  });
+
+  it("shows a message of only emoji large", () => {
+    renderUi(<Markdown source="<:vasya:77> <:vasya:77>" mentions={here} />);
+    for (const img of screen.getAllByRole("img", { name: ":vasya:" })) expect(img.className).toContain("size-12");
+  });
+});

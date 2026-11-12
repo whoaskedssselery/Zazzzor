@@ -14,7 +14,8 @@ export type MdNode =
   | { type: "codeBlock"; lang: string | null; value: string }
   | { type: "quote"; children: MdNode[] }
   | { type: "link"; href: string; children: MdNode[] }
-  | { type: "mention"; kind: MentionKind; id: string | null };
+  | { type: "mention"; kind: MentionKind; id: string | null }
+  | { type: "emoji"; name: string; id: string; animated: boolean };
 
 /** What a mention points at: `<@id>` a user, `<@&id>` a role, `@everyone`, `@here`. */
 export type MentionKind = "user" | "role" | "everyone" | "here";
@@ -92,6 +93,26 @@ const idMention = (s: string, i: number): Match | null => {
   while (k < s.length && k - from < MAX_ID && DIGIT.test(s.charAt(k))) k++;
   if (k === from || s[k] !== ">") return null;
   return { node: { type: "mention", kind: role ? "role" : "user", id: s.slice(from, k) }, end: k + 1 };
+};
+
+const EMOJI_NAME = /[A-Za-z0-9_]/;
+/** Custom emoji names: 2 to 32 characters (C11). */
+const MAX_EMOJI_NAME = 32;
+
+/** A custom emoji `<:name:id>` or `<a:name:id>` (animated) at `i`, Discord's syntax. */
+const customEmoji = (s: string, i: number): Match | null => {
+  const animated = s.startsWith("<a:", i);
+  if (!animated && !s.startsWith("<:", i)) return null;
+  const from = i + (animated ? 3 : 2);
+  let k = from;
+  while (k < s.length && k - from <= MAX_EMOJI_NAME && EMOJI_NAME.test(s.charAt(k))) k++;
+  if (k - from < 2 || k - from > MAX_EMOJI_NAME || s[k] !== ":") return null;
+  const name = s.slice(from, k);
+  const idFrom = k + 1;
+  k = idFrom;
+  while (k < s.length && k - idFrom < MAX_ID && DIGIT.test(s.charAt(k))) k++;
+  if (k === idFrom || s[k] !== ">") return null;
+  return { node: { type: "emoji", name, id: s.slice(idFrom, k), animated }, end: k + 1 };
 };
 
 /** `@everyone` or `@here` at `i`, as whole words. */
@@ -193,7 +214,7 @@ function parseInline(s: string, depth: number, links: boolean): MdNode[] {
     }
     let match: Match | null = null;
     if (c === "`") match = inlineCode(s, i);
-    else if (c === "<") match = idMention(s, i);
+    else if (c === "<") match = idMention(s, i) ?? customEmoji(s, i);
     else if (c === "@") match = groupMention(s, i);
     else if (c === "[" && links) match = maskedLink(s, i, depth);
     else if ((c === "h" || c === "H") && links) match = autolink(s, i);
@@ -268,6 +289,7 @@ const codeBlock = (body: string): MdNode | null => {
  * - `> quote` lines and `>>> ` quoting the rest;
  * - bare http(s) addresses and masked links `[text](https://…)`;
  * - mentions: `<@user_id>`, `<@&role_id>`, `@everyone`, `@here` (never in code);
+ * - custom emoji: `<:name:id>` and `<a:name:id>`;
  * - backslash escapes. Line breaks stay in the text.
  * Anything else, HTML included, is text.
  */

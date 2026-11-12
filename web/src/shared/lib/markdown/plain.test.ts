@@ -9,6 +9,10 @@ describe("markdownText", () => {
     expect(markdownText("[тут](https://example.com) <script>x</script>")).toBe("тут <script>x</script>");
   });
 
+  it("writes custom emoji as :name:", () => {
+    expect(markdownText("ну <:vasya:77>!")).toBe("ну :vasya:!");
+  });
+
   it("hides spoilers", () => {
     expect(markdownText("конец: ||он выжил||")).toBe(`конец: ${SPOILER_TEXT}`);
   });

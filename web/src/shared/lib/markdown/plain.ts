@@ -22,6 +22,8 @@ const text = (nodes: MdNode[], names: MentionNames): string =>
           return SPOILER_TEXT;
         case "mention":
           return mentionText(names, n.kind, n.id);
+        case "emoji":
+          return `:${n.name}:`;
         default:
           return text(n.children, names);
       }
