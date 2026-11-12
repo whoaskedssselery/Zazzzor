@@ -31,6 +31,7 @@ const (
 //	GET /guilds/{guild_id}/bans; GET, PUT, DELETE /guilds/{guild_id}/bans/{user_id}
 //	GET, POST, PATCH /guilds/{guild_id}/roles; PATCH, DELETE /guilds/{guild_id}/roles/{role_id}
 func Mount(r chi.Router, s *Service) {
+	r.Get("/emojis/{emoji_id}", httpx.Wrap(s.handleEmojiImage))
 	r.Group(func(r chi.Router) {
 		r.Use(auth.Require, httpx.NoStore)
 		writes := r.With(auth.LimitPerUser(s.writeLimiter))
@@ -43,6 +44,11 @@ func Mount(r chi.Router, s *Service) {
 		writes.Patch("/guilds/{guild_id}", httpx.Wrap(s.handlePatch))
 		writes.Delete("/guilds/{guild_id}", httpx.Wrap(s.handleDelete))
 		writes.With(upload.Limit(auth.UserKey)).Put("/guilds/{guild_id}/icon", httpx.Wrap(s.handlePutIcon))
+
+		r.Get("/guilds/{guild_id}/emojis", httpx.Wrap(s.handleListEmojis))
+		writes.With(upload.Limit(auth.UserKey)).Post("/guilds/{guild_id}/emojis", httpx.Wrap(s.handleCreateEmoji))
+		writes.Patch("/guilds/{guild_id}/emojis/{emoji_id}", httpx.Wrap(s.handleRenameEmoji))
+		writes.Delete("/guilds/{guild_id}/emojis/{emoji_id}", httpx.Wrap(s.handleDeleteEmoji))
 
 		r.Get("/guilds/{guild_id}/members", httpx.Wrap(s.handleMembers))
 		writes.Patch("/guilds/{guild_id}/members/{user_id}", httpx.Wrap(s.handlePatchMember))

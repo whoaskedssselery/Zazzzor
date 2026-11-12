@@ -132,6 +132,7 @@ function entryOf(subjects: Subject[], overwrites: Overwrite[] = []): GuildEntry 
     myMember,
     voice: {},
     reads: {},
+    emojis: {},
   };
 }
 
@@ -474,6 +475,7 @@ describe("permission bits (TestPermissionBits)", () => {
     CHANGE_NICKNAME: 1n << 26n,
     MANAGE_NICKNAMES: 1n << 27n,
     MANAGE_ROLES: 1n << 28n,
+    MANAGE_EXPRESSIONS: 1n << 30n,
   };
 
   it("has the bits of 1.2a", () => {

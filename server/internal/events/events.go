@@ -15,6 +15,7 @@ import (
 const (
 	GuildCreate           = "GUILD_CREATE"
 	GuildUpdate           = "GUILD_UPDATE"
+	GuildEmojisUpdate     = "GUILD_EMOJIS_UPDATE"
 	GuildDelete           = "GUILD_DELETE"
 	GuildSync             = "GUILD_SYNC"
 	GuildMemberAdd        = "GUILD_MEMBER_ADD"

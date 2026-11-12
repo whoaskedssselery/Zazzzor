@@ -174,7 +174,18 @@ const readStateSchema: z.ZodMiniType<S["ReadState"]> = z.object({
   mention_count: z.int().check(z.nonnegative()),
 });
 
+const guildEmojiSchema: z.ZodMiniType<S["GuildEmoji"]> = z.object({
+  id: snowflake,
+  guild_id: snowflake,
+  name: z.string(),
+  animated: z.boolean(),
+  url: z.string(),
+  creator_id: z.nullable(snowflake),
+  created_at: z.string(),
+});
+
 const guildStateSchema: z.ZodMiniType<S["GuildState"]> = z.object({
+  emojis: z.array(guildEmojiSchema),
   guild: guildSchema,
   roles: z.array(roleSchema),
   channels: z.array(channelSchema),
@@ -192,6 +203,7 @@ export interface GatewayEvents {
   GUILD_SYNC: S["GuildState"];
   GUILD_UPDATE: S["Guild"];
   GUILD_DELETE: S["GuildDeleteEvent"];
+  GUILD_EMOJIS_UPDATE: S["GuildEmojisUpdate"];
   GUILD_MEMBER_ADD: S["MemberEvent"];
   GUILD_MEMBER_UPDATE: S["MemberEvent"];
   GUILD_MEMBER_REMOVE: S["MemberRemoveEvent"];
@@ -221,6 +233,7 @@ const eventSchemas: { [K in keyof GatewayEvents]: z.ZodMiniType<GatewayEvents[K]
   GUILD_SYNC: guildStateSchema,
   GUILD_UPDATE: guildSchema,
   GUILD_DELETE: z.object({ id: snowflake }),
+  GUILD_EMOJIS_UPDATE: z.object({ guild_id: snowflake, emojis: z.array(guildEmojiSchema) }),
   GUILD_MEMBER_ADD: memberEventSchema,
   GUILD_MEMBER_UPDATE: memberEventSchema,
   GUILD_MEMBER_REMOVE: z.object({ guild_id: snowflake, user: userSchema }),

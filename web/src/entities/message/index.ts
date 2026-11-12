@@ -35,7 +35,15 @@ export {
   updatePending,
   usePendingMessages,
 } from "./model/pending";
-export { type Reaction, reactionsOf, withReaction } from "./model/reactions";
+export {
+  emojiKey,
+  emojiOfKey,
+  type Reaction,
+  type ReactionEmoji,
+  reactionsOf,
+  sameEmoji,
+  withReaction,
+} from "./model/reactions";
 export { Attachments } from "./ui/Attachments";
 export { type Embed, Embeds } from "./ui/Embeds";
 export { type AuthorView, DELETED_USER, MessageItem, type MessageItemProps, REPLY_DELETED } from "./ui/MessageItem";

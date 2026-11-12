@@ -2,6 +2,7 @@ export { MAX_DEPTH, type MdNode, type MdStyle, type MentionKind, parseMarkdown, 
 export { markdownText, SPOILER_TEXT } from "./plain";
 export {
   DELETED_ROLE,
+  isJumbo,
   Markdown,
   type MentionNames,
   type MentionTarget,

@@ -347,6 +347,7 @@ func (s *Service) DeleteGuild(ctx context.Context, guildID, actorID snowflake.ID
 	var (
 		memberIDs []snowflake.ID
 		deleted   store.Guild
+		emojis    []Emoji
 	)
 	err := db.InTx(ctx, s.pool, func(tx pgx.Tx) error {
 		if err := s.lockGuild(ctx, tx, guildID); err != nil {
@@ -362,6 +363,9 @@ func (s *Service) DeleteGuild(ctx context.Context, guildID, actorID snowflake.ID
 		if memberIDs, err = s.q.MemberIDs(ctx, tx, guildID); err != nil {
 			return fmt.Errorf("guilds: list members: %w", err)
 		}
+		if emojis, err = s.emojiList(ctx, tx, guildID); err != nil {
+			return err
+		}
 		if deleted, err = s.q.DeleteGuild(ctx, tx, guildID); err != nil {
 			return fmt.Errorf("guilds: delete guild: %w", err)
 		}
@@ -371,6 +375,9 @@ func (s *Service) DeleteGuild(ctx context.Context, guildID, actorID snowflake.ID
 		return err
 	}
 	s.dropIcon(ctx, guildID, deleted.IconHash)
+	for _, emoji := range emojis {
+		s.dropEmoji(ctx, emoji.ID)
+	}
 	s.publish(ctx, events.Event{Type: events.GuildDelete,
 		Audience: events.Audience{Kind: events.AudienceUsers, UserIDs: memberIDs},
 		Payload:  GuildDeletePayload{ID: guildID}})

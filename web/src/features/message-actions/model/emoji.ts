@@ -9,7 +9,10 @@
  */
 
 export interface PickerEmoji {
+  /** Its key: the Unicode emoji, or `name:id` for a custom one. */
   emoji: string;
+  /** A custom emoji's picture. */
+  url?: string;
   label: string;
   /** The label and keywords, lower-cased, for search. */
   terms: string;
@@ -81,10 +84,18 @@ export const groupEmoji = (raw: readonly Raw[]): EmojiGroup[] => {
 
 /** Emoji whose name or keywords hold every word of `query`. */
 export const searchEmoji = (groups: readonly EmojiGroup[], query: string): PickerEmoji[] => {
-  const words = query.toLocaleLowerCase("ru").split(/\s+/).filter(Boolean);
+  const words = query.toLocaleLowerCase("ru").replaceAll(":", " ").split(/\s+/).filter(Boolean);
   if (words.length === 0) return [];
   return groups.flatMap((g) => g.emoji).filter((e) => words.every((w) => e.terms.includes(w)));
 };
+
+/** A server's custom emoji as the picker offers them. */
+export const customPickerEmoji = (e: { id: string; name: string; url: string }): PickerEmoji => ({
+  emoji: `${e.name}:${e.id}`,
+  label: `:${e.name}:`,
+  terms: e.name.toLowerCase(),
+  url: e.url,
+});
 
 const RECENT_KEY = "zazzzor.recentEmoji";
 const MAX_RECENT = 16;

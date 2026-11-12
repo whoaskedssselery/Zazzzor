@@ -340,3 +340,24 @@ describe("Composer mentions", () => {
     expect(counts.sends).toEqual([]);
   });
 });
+
+describe("Composer emoji", () => {
+  const emojis = () => [
+    { id: "77", name: "vasya", animated: false, url: "/e/77" },
+    { id: "78", name: "vasya_dance", animated: true, url: "/e/78" },
+  ];
+
+  it("suggests the server's emoji on :name, puts :name: in the field and sends the emoji", async () => {
+    const counts = serverCounts();
+    const { user, field } = renderComposer({ emojis });
+    await user.type(field(), "ну :vas");
+    expect(screen.getByRole("listbox", { name: "Эмодзи" })).toBeTruthy();
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([":vasya:", ":vasya_dance:"]);
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(field().value).toBe("ну :vasya_dance: ");
+    await user.type(field(), "и :vasya:{Enter}");
+    await waitFor(() => {
+      expect(counts.sends).toEqual(["ну <a:vasya_dance:78> и <:vasya:77>"]);
+    });
+  });
+});

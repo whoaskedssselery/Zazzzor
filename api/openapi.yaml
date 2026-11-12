@@ -825,6 +825,148 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
+  /guilds/{guild_id}/emojis:
+    parameters:
+      - $ref: "#/components/parameters/GuildID"
+    get:
+      tags: [guilds]
+      operationId: listGuildEmojis
+      summary: List the server's custom emoji
+      responses:
+        "200":
+          description: The full emoji list for a signed-in member.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuildEmojiList"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+    post:
+      tags: [guilds]
+      operationId: createGuildEmoji
+      summary: Upload a custom emoji
+      description: |
+        Requires MANAGE_EXPRESSIONS. Accepts PNG, JPEG, GIF and WebP up to
+        256 KiB. Static images fit within 128 by 128 pixels. Animated GIFs
+        must already fit within those dimensions and retain their animation.
+        Each server can have 50 static and 50 animated emoji. Uploads count
+        against the same write and concurrency limits as server icons.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [name, file]
+              properties:
+                name:
+                  $ref: "#/components/schemas/GuildEmojiName"
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: The uploaded emoji.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuildEmoji"
+        "400":
+          description: Invalid name or image, name already taken, or the static or animated limit reached.
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "413":
+          $ref: "#/components/responses/Problem"
+        "415":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/Problem"
+  /guilds/{guild_id}/emojis/{emoji_id}:
+    parameters:
+      - $ref: "#/components/parameters/GuildID"
+      - $ref: "#/components/parameters/GuildEmojiID"
+    patch:
+      tags: [guilds]
+      operationId: renameGuildEmoji
+      summary: Rename a custom emoji
+      description: Requires MANAGE_EXPRESSIONS.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name:
+                  $ref: "#/components/schemas/GuildEmojiName"
+      responses:
+        "200":
+          description: The emoji with its current name.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuildEmoji"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+    delete:
+      tags: [guilds]
+      operationId: deleteGuildEmoji
+      summary: Delete a custom emoji
+      description: Requires MANAGE_EXPRESSIONS. Existing reactions retain the emoji ID and last name.
+      responses:
+        "204":
+          description: The emoji was deleted.
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /emojis/{emoji_id}:
+    get:
+      tags: [guilds]
+      operationId: getGuildEmojiImage
+      summary: Read a custom emoji image
+      description: Only signed-in members of the emoji's server can read it.
+      parameters:
+        - $ref: "#/components/parameters/GuildEmojiID"
+      responses:
+        "200":
+          description: Raster image with private caching for 24 hours and nosniff.
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/gif:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Unknown, deleted or inaccessible emoji.
+          $ref: "#/components/responses/Problem"
+
   /guilds/{guild_id}/icon:
     put:
       tags: [guilds]
@@ -2890,12 +3032,21 @@ components:
       required: true
       schema:
         $ref: "#/components/schemas/Snowflake"
+    GuildEmojiID:
+      name: emoji_id
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Snowflake"
     ReactionEmoji:
       name: emoji
       in: path
       required: true
       description: |
-        URL-encoded Unicode emoji. Send its exact UTF-8 bytes, with no normalization.
+        URL-encoded Unicode emoji or a custom emoji in name:id form. The ID selects
+          an emoji in this server regardless of renames. Adding requires an active
+          emoji. Existing reactions can still be read or removed after deletion.
+          Send Unicode as its exact UTF-8 bytes, with no normalization.
         A single grapheme of up to 32 bytes containing an Extended_Pictographic
         code point or a regional indicator pair, without whitespace or controls.
       schema:
@@ -3157,7 +3308,8 @@ components:
         Permission bit mask as a decimal string; the bits are numbered as in
         Discord (e.g. `ADMINISTRATOR` = 8, `MANAGE_ROLES` = 268435456).
         `ADD_REACTIONS` is bit 6 (64) and is granted to `@everyone` by default.
-        Bits the server does not define are refused when set.
+        MANAGE_EXPRESSIONS is bit 30 (1073741824) and is not granted by default.
+          Bits the server does not define are refused when set.
       examples: ["268435456"]
     Guild:
       type: object
@@ -3530,19 +3682,61 @@ components:
         pending:
           type: boolean
           description: True until the upload is bound to a message.
+    GuildEmojiName:
+      type: string
+      pattern: '^[A-Za-z0-9_]{2,32}$'
+      description: Unique within the server, ignoring ASCII case.
+    GuildEmoji:
+      type: object
+      additionalProperties: false
+      required: [id, guild_id, name, animated, url, creator_id, created_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        guild_id:
+          $ref: "#/components/schemas/Snowflake"
+        name:
+          $ref: "#/components/schemas/GuildEmojiName"
+        animated:
+          type: boolean
+        url:
+          type: string
+          pattern: '^/api/v1/emojis/[0-9]{1,19}$'
+        creator_id:
+          description: Null when the creator's account no longer exists.
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
+        created_at:
+          type: string
+          format: date-time
+    GuildEmojiList:
+      type: array
+      maxItems: 100
+      items:
+        $ref: "#/components/schemas/GuildEmoji"
+    GuildEmojisUpdate:
+      type: object
+      additionalProperties: false
+      required: [guild_id, emojis]
+      properties:
+        guild_id:
+          $ref: "#/components/schemas/Snowflake"
+        emojis:
+          $ref: "#/components/schemas/GuildEmojiList"
     Emoji:
       type: object
       additionalProperties: false
       required: [id, name]
       properties:
         id:
-          description: Always null for Unicode emoji.
+          description: Null for Unicode emoji, otherwise the custom emoji ID.
           oneOf:
             - $ref: "#/components/schemas/Snowflake"
             - type: "null"
         name:
           type: string
-          description: The Unicode emoji.
+          description: The Unicode emoji or the custom emoji name, retained at deletion.
     Reaction:
       type: object
       additionalProperties: false
@@ -3752,6 +3946,7 @@ components:
             - $ref: "#/components/schemas/GatewayHello"
             - $ref: "#/components/schemas/GatewayReady"
             - $ref: "#/components/schemas/GuildState"
+            - $ref: "#/components/schemas/GuildEmojisUpdate"
             - $ref: "#/components/schemas/Guild"
             - $ref: "#/components/schemas/GuildDeleteEvent"
             - $ref: "#/components/schemas/MemberEvent"
@@ -3801,9 +3996,11 @@ components:
     GuildState:
       type: object
       additionalProperties: false
-      required: [guild, roles, channels, members, my_member, presences, voice_states, read_states]
+      required: [guild, roles, channels, members, my_member, presences, voice_states, read_states, emojis]
       description: A server as the receiving member sees it.
       properties:
+        emojis:
+          $ref: "#/components/schemas/GuildEmojiList"
         guild:
           $ref: "#/components/schemas/Guild"
         roles:
@@ -4157,6 +4354,9 @@ x-gateway:
       $ref: "#/components/schemas/GatewayReady"
     GUILD_CREATE:
       $ref: "#/components/schemas/GuildState"
+    GUILD_EMOJIS_UPDATE:
+      description: The full emoji list after a change, sent to server members.
+      $ref: "#/components/schemas/GuildEmojisUpdate"
     GUILD_UPDATE:
       $ref: "#/components/schemas/Guild"
     GUILD_DELETE:

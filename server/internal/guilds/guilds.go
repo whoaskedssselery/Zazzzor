@@ -207,6 +207,7 @@ type GuildSnapshot struct {
 	Guild   Guild
 	Roles   []Role   // by position
 	Members []Member // by user ID
+	Emojis  []Emoji  // active, by ID
 }
 
 // PublicSnapshot is the JSON form of a GuildSnapshot.
@@ -364,6 +365,7 @@ type Service struct {
 	ids           *snowflake.Generator
 	users         Users
 	files         files.Store
+	emojiFiles    *files.Disk
 	pub           events.Publisher
 	channels      ChannelsBootstrapper
 	overwrites    OverwriteCleaner
@@ -386,6 +388,7 @@ func NewService(o Options) *Service {
 	if s.overwrites == nil {
 		s.overwrites = noCleaner{}
 	}
+	s.emojiFiles, _ = o.Files.(*files.Disk)
 	if s.now == nil {
 		s.now = time.Now
 	}
@@ -567,6 +570,9 @@ func (s *Service) Snapshot(ctx context.Context, guildID snowflake.ID) (GuildSnap
 			}
 			snap.Guild = toGuild(g)
 			if snap.Roles, err = s.roles(ctx, tx, guildID); err != nil {
+				return err
+			}
+			if snap.Emojis, err = s.emojiList(ctx, tx, guildID); err != nil {
 				return err
 			}
 			rows, err := s.q.AllMembers(ctx, tx, guildID)

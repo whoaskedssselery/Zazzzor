@@ -176,8 +176,8 @@ func render(ctx context.Context, raw []byte, info imageInfo) (out []byte, hash s
 	if err != nil {
 		return nil, "", unsupported("%v", err)
 	}
-	if err := ctx.Err(); err != nil {
-		return nil, "", err
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, "", ctxErr
 	}
 
 	b := src.Bounds()
@@ -189,54 +189,67 @@ func render(ctx context.Context, raw []byte, info imageInfo) (out []byte, hash s
 	y0 := b.Min.Y + (b.Dy()-side)/2
 	crop := image.Rect(x0, y0, x0+side, y0+side)
 
-	dst := image.NewRGBA(image.Rect(0, 0, OutputSize, OutputSize))
-	draw.CatmullRom.Scale(dst, dst.Bounds(), src, crop, draw.Src, nil)
-	if err := ctx.Err(); err != nil {
+	out, err = scalePNG(ctx, src, crop, image.Rect(0, 0, OutputSize, OutputSize), info.jpeg.orientation)
+	if err != nil {
 		return nil, "", err
 	}
-	if info.format == "image/jpeg" {
-		dst = orient(dst, info.jpeg.orientation)
-	}
-
-	var buf bytes.Buffer
-	if err := png.Encode(&buf, dst); err != nil {
-		return nil, "", fmt.Errorf("files: encode png: %w", err)
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, "", err
-	}
-	sum := sha256.Sum256(buf.Bytes())
-	return buf.Bytes(), hex.EncodeToString(sum[:])[:16], nil
+	sum := sha256.Sum256(out)
+	return out, hex.EncodeToString(sum[:])[:16], nil
 }
 
-// orient returns the square img as displayed for an EXIF orientation:
+// scalePNG resamples the selected rectangle, applies orientation and drops
+// metadata by encoding a new PNG.
+func scalePNG(ctx context.Context, src image.Image, crop, output image.Rectangle, orientation int) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("files: resize image: %w", err)
+	}
+	dst := image.NewRGBA(output)
+	draw.CatmullRom.Scale(dst, dst.Bounds(), src, crop, draw.Src, nil)
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("files: resize image: %w", err)
+	}
+	dst = orient(dst, orientation)
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, dst); err != nil {
+		return nil, fmt.Errorf("files: encode png: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("files: encode png: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
+// orient returns img as displayed for an EXIF orientation:
 // 2 mirror, 3 rotate 180°, 4 flip, 5 transpose, 6 rotate 90° clockwise,
 // 7 transverse, 8 rotate 90° counter-clockwise; 1 and anything else as is.
 func orient(img *image.RGBA, orientation int) *image.RGBA {
 	if orientation <= 1 || orientation > 8 {
 		return img
 	}
-	n := img.Bounds().Dx()
-	out := image.NewRGBA(img.Bounds())
-	m := n - 1
-	for y := range n {
-		for x := range n {
+	w, h := img.Bounds().Dx(), img.Bounds().Dy()
+	ow, oh := w, h
+	if orientation >= 5 {
+		ow, oh = h, w
+	}
+	out := image.NewRGBA(image.Rect(0, 0, ow, oh))
+	for y := range oh {
+		for x := range ow {
 			var sx, sy int
 			switch orientation {
 			case 2:
-				sx, sy = m-x, y
+				sx, sy = w-1-x, y
 			case 3:
-				sx, sy = m-x, m-y
+				sx, sy = w-1-x, h-1-y
 			case 4:
-				sx, sy = x, m-y
+				sx, sy = x, h-1-y
 			case 5:
 				sx, sy = y, x
 			case 6:
-				sx, sy = y, m-x
+				sx, sy = y, h-1-x
 			case 7:
-				sx, sy = m-y, m-x
+				sx, sy = w-1-y, h-1-x
 			case 8:
-				sx, sy = m-y, x
+				sx, sy = w-1-y, x
 			}
 			si, di := img.PixOffset(sx, sy), out.PixOffset(x, y)
 			copy(out.Pix[di:di+4], img.Pix[si:si+4])

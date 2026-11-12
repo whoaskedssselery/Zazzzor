@@ -15,11 +15,13 @@ import {
 import {
   type AuthorView,
   attachmentsOf,
+  emojiOfKey,
   inOrder,
   type Message,
   MessageItem,
   type PendingMessage,
   reactionsOf,
+  sameEmoji,
   useMessages,
   usePendingMessages,
 } from "@/entities/message";
@@ -206,6 +208,7 @@ const mentionNames = (entry: GuildEntry): MentionNames => ({
     const role = entry.roles[id];
     return role ? { name: role.name, color: role.color } : null;
   },
+  emoji: (id) => entry.emojis[id] ?? null,
 });
 
 /**
@@ -336,10 +339,12 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
       onReact: canAddReactions
         ? (emoji: string) => {
             // Picking one already the user's leaves it, as in Discord.
-            if (!reactionsOf(m).some((r) => r.emoji.name === emoji && r.me))
+            const picked = emojiOfKey(emoji);
+            if (!reactionsOf(m).some((r) => sameEmoji(r.emoji, picked) && r.me))
               react.mutate({ message: m, emoji, add: true });
           }
         : undefined,
+      emojis: entry.emojis,
     };
     const original = m.referenced_message;
     return (
@@ -358,6 +363,7 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
                   react.mutate({ message: m, emoji, add });
                 }}
                 nameOf={(u) => userDisplay(entry, u).name}
+                emojis={entry.emojis}
               />
             }
             author={authorOf(entry, m.author)}
@@ -513,6 +519,7 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
         }}
         onEditLast={onEditLast}
         mentionables={() => mentionSuggestions(entry, channel.id, meId, canMentionEveryone)}
+        emojis={() => Object.values(entry.emojis)}
       />
       <TypingIndicator
         channelId={channel.id}

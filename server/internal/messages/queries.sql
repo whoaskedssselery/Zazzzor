@@ -86,12 +86,14 @@ DELETE FROM message_attachments WHERE message_id IS NULL AND created_at <= sqlc.
 
 -- name: AttachmentReferences :many
 SELECT id, channel_id FROM message_attachments
-UNION ALL SELECT id, 1::bigint AS channel_id FROM embed_images;
+UNION ALL SELECT id, 1::bigint AS channel_id FROM embed_images
+UNION ALL SELECT id, 2::bigint AS channel_id FROM guild_emojis WHERE deleted_at IS NULL;
 
 -- name: AttachmentReferenced :one
 SELECT EXISTS (
     SELECT 1 FROM message_attachments AS a WHERE a.id = @id AND a.channel_id = @channel_id
     UNION ALL SELECT 1 FROM embed_images AS i WHERE i.id = @id AND @channel_id = 1
+    UNION ALL SELECT 1 FROM guild_emojis AS e WHERE e.id = @id AND @channel_id = 2 AND e.deleted_at IS NULL
 );
 
 -- name: QueuedAttachmentTrash :many
@@ -155,22 +157,28 @@ GROUP BY emoji
 ORDER BY first_added_at;
 
 -- name: AddMessageReaction :execrows
-INSERT INTO message_reactions (message_id, emoji, user_id, first_added_at)
+INSERT INTO message_reactions (message_id, emoji, user_id, first_added_at, emoji_id)
 VALUES ($1, $2, $3, COALESCE(sqlc.narg(first_added_at)::timestamptz, (
     SELECT GREATEST(clock_timestamp(), max(mr.first_added_at) + interval '1 microsecond')
     FROM message_reactions AS mr WHERE mr.message_id = $1
-)))
+)), sqlc.narg(emoji_id))
 ON CONFLICT (message_id, emoji, user_id) DO NOTHING;
 
 -- name: RemoveMessageReaction :execrows
 DELETE FROM message_reactions WHERE message_id = $1 AND emoji = $2 AND user_id = $3;
 
 -- name: ReactionSummaries :many
-SELECT message_id, emoji, count(*) AS count, bool_or(user_id = sqlc.arg(caller_id)::bigint)::bool AS me
-FROM message_reactions
-WHERE message_id = ANY(sqlc.arg(message_ids)::bigint[])
-GROUP BY message_id, emoji
-ORDER BY message_id, min(first_added_at), emoji;
+SELECT r.message_id, r.emoji_id, COALESCE(e.name, r.emoji)::text AS emoji_name,
+    count(*) AS count, bool_or(r.user_id = sqlc.arg(caller_id)::bigint)::bool AS me
+FROM message_reactions AS r
+LEFT JOIN guild_emojis AS e ON e.id = r.emoji_id
+WHERE r.message_id = ANY(sqlc.arg(message_ids)::bigint[])
+GROUP BY r.message_id, r.emoji, r.emoji_id, e.name
+ORDER BY r.message_id, min(r.first_added_at), r.emoji;
+
+-- name: CustomReactionEmoji :one
+SELECT name FROM guild_emojis WHERE id = @id AND guild_id = @guild_id
+  AND (deleted_at IS NULL OR @include_deleted::boolean);
 
 -- name: ReactionUserIDs :many
 SELECT user_id FROM message_reactions

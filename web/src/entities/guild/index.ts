@@ -26,6 +26,7 @@ export {
   type Channel,
   EMPTY_GUILDS,
   type Guild,
+  type GuildEmoji,
   type GuildEntry,
   type GuildsState,
   type Member,

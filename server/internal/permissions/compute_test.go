@@ -374,6 +374,7 @@ func TestPermissionBits(t *testing.T) {
 		"DEAFEN_MEMBERS": {permissions.DeafenMembers, 1 << 23}, "MOVE_MEMBERS": {permissions.MoveMembers, 1 << 24},
 		"USE_VOICE_ACTIVITY": {permissions.UseVoiceActivity, 1 << 25}, "CHANGE_NICKNAME": {permissions.ChangeNickname, 1 << 26},
 		"MANAGE_NICKNAMES": {permissions.ManageNicknames, 1 << 27}, "MANAGE_ROLES": {permissions.ManageRoles, 1 << 28},
+		"MANAGE_EXPRESSIONS": {permissions.ManageExpressions, 1 << 30},
 	}
 	var or uint64
 	for name, b := range bits {

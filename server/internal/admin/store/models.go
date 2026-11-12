@@ -52,6 +52,16 @@ type GuildBan struct {
 	CreatedAt time.Time
 }
 
+type GuildEmoji struct {
+	ID        int64
+	GuildID   int64
+	Name      string
+	Animated  bool
+	CreatorID pgtype.Int8
+	CreatedAt time.Time
+	DeletedAt *time.Time
+}
+
 type Instance struct {
 	ID               bool
 	RegistrationOpen bool
@@ -137,6 +147,7 @@ type MessageReaction struct {
 	UserID       int64
 	CreatedAt    time.Time
 	FirstAddedAt time.Time
+	EmojiID      pgtype.Int8
 }
 
 type Overwrite struct {

@@ -55,12 +55,10 @@ func size(n int) string {
 // *httpx.Problem: 415 for a body that is not multipart/form-data, 400
 // invalid_body for a malformed one, 400 validation_failed without the part.
 func ReadFile(w http.ResponseWriter, r *http.Request, field string, maxBytes int) ([]byte, error) {
-	mt, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || mt != "multipart/form-data" || params["boundary"] == "" {
-		return nil, httpx.UnsupportedMediaType("Content-Type must be multipart/form-data")
+	mr, err := multipartReader(w, r, maxBytes)
+	if err != nil {
+		return nil, err
 	}
-	body := http.MaxBytesReader(w, r.Body, int64(maxBytes)+multipartOverhead)
-	mr := multipart.NewReader(body, params["boundary"])
 	for {
 		part, err := mr.NextPart()
 		if errors.Is(err, io.EOF) {
@@ -82,6 +80,69 @@ func ReadFile(w http.ResponseWriter, r *http.Request, field string, maxBytes int
 		}
 		return data, nil
 	}
+}
+
+// multipartReader limits the total wire body for file uploads.
+func multipartReader(w http.ResponseWriter, r *http.Request, maxBytes int) (*multipart.Reader, error) {
+	mt, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mt != "multipart/form-data" || params["boundary"] == "" {
+		return nil, httpx.UnsupportedMediaType("Content-Type must be multipart/form-data")
+	}
+	body := http.MaxBytesReader(w, r.Body, int64(maxBytes)+multipartOverhead)
+	return multipart.NewReader(body, params["boundary"]), nil
+}
+
+// ReadNamedFile reads the name and file parts of one bounded form in either order.
+func ReadNamedFile(w http.ResponseWriter, r *http.Request, maxBytes, maxName int) (string, []byte, error) {
+	mr, err := multipartReader(w, r, maxBytes)
+	if err != nil {
+		return "", nil, err
+	}
+	var name *string
+	var file []byte
+	for name == nil || file == nil {
+		part, nextErr := mr.NextPart()
+		if errors.Is(nextErr, io.EOF) {
+			field := "file"
+			if name == nil {
+				field = "name"
+			}
+			return "", nil, httpx.BadRequest("validation_failed", "some fields are invalid",
+				httpx.FieldError{Field: field, Message: "is required"})
+		}
+		if nextErr != nil {
+			return "", nil, readError(nextErr, maxBytes)
+		}
+		switch part.FormName() {
+		case "name":
+			if name != nil {
+				continue
+			}
+			value, readErr := io.ReadAll(io.LimitReader(part, int64(maxName)+1))
+			if readErr != nil {
+				return "", nil, readError(readErr, maxBytes)
+			}
+			if len(value) > maxName {
+				return "", nil, httpx.BadRequest("validation_failed", "some fields are invalid",
+					httpx.FieldError{Field: "name", Message: fmt.Sprintf("must be at most %d bytes", maxName)})
+			}
+			text := string(value)
+			name = &text
+		case "file":
+			if file != nil {
+				continue
+			}
+			data, readErr := io.ReadAll(io.LimitReader(part, int64(maxBytes)+1))
+			if readErr != nil {
+				return "", nil, readError(readErr, maxBytes)
+			}
+			if len(data) > maxBytes {
+				return "", nil, TooLarge(maxBytes)
+			}
+			file = data
+		}
+	}
+	return *name, file, nil
 }
 
 func readError(err error, maxBytes int) error {

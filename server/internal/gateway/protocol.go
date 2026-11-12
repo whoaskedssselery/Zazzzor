@@ -114,6 +114,7 @@ type Presence struct {
 // may view, and so are the voice and read states. The member list is capped
 // at MaxMembers. Presences include every online member.
 type GuildState struct {
+	Emojis   []guilds.Emoji           `json:"emojis"`
 	Guild    guilds.PublicGuild       `json:"guild"`
 	Roles    []guilds.PublicRole      `json:"roles"`
 	Channels []channels.PublicChannel `json:"channels"`

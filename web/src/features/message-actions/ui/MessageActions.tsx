@@ -1,5 +1,6 @@
 import { Copy, Ellipsis, Hash, Pencil, Reply, SmilePlus, Trash2 } from "lucide-react";
 import { type MouseEvent, type ReactNode, useRef, useState } from "react";
+import type { GuildEmoji } from "@/entities/guild";
 import type { Message } from "@/entities/message";
 import { useMediaQuery } from "@/shared/lib";
 import {
@@ -21,6 +22,7 @@ import {
   useToast,
 } from "@/shared/ui";
 import { recentEmoji, rememberEmoji } from "../model/emoji";
+import { EmojiGlyph, emojiLabel, usable } from "./EmojiGlyph";
 import { EmojiPicker } from "./EmojiPicker";
 
 /** What the user may do with one message, and what the chat does when they do. */
@@ -36,8 +38,10 @@ export interface MessageActionHandlers {
   onEdit: () => void;
   /** `skipConfirm` when Shift was held, as Discord does. */
   onDelete: (skipConfirm: boolean) => void;
-  /** Puts the user's reaction; absent without ADD_REACTIONS. */
+  /** Puts the user's reaction (its key: `👍` or `name:id`); absent without ADD_REACTIONS. */
   onReact?: ((emoji: string) => void) | undefined;
+  /** The server's custom emoji, for the picker and the quick reactions. */
+  emojis?: Readonly<Record<string, GuildEmoji>> | undefined;
 }
 
 /** Copies text and says so; a browser that refuses says that instead. */
@@ -119,7 +123,7 @@ export const MessageToolbar = (props: MessageActionHandlers) => {
   return (
     <div className="absolute -top-4 right-4 z-10 hidden items-center rounded-md bg-overlay p-0.5 shadow-float group-focus-within:flex group-hover:flex has-[[data-state=open]]:flex">
       {props.onReact && (
-        <EmojiPicker onPick={props.onReact}>
+        <EmojiPicker onPick={props.onReact} emojis={props.emojis}>
           <IconButton size="sm" label="Добавить реакцию" icon={SmilePlus} />
         </EmojiPicker>
       )}
@@ -173,6 +177,12 @@ const MenuRow = ({ item, kind }: { item: Item; kind: "dropdown" | "context" }) =
 /** Reactions at the top of the message's menu: the user's recent ones. */
 const QUICK_REACTIONS = 6;
 
+/** The user's recent emoji that can be used here, for the top of the menu. */
+const quickReactions = (emojis: Readonly<Record<string, GuildEmoji>> | undefined): string[] =>
+  recentEmoji()
+    .filter((e) => usable(e, emojis))
+    .slice(0, QUICK_REACTIONS);
+
 /** A touch screen: there a long press opens the actions as a sheet from the bottom. */
 const TOUCH = "(pointer: coarse)";
 
@@ -187,6 +197,7 @@ const ActionSheet = ({
   onReact,
   onMore,
   onCloseAutoFocus,
+  emojis,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -194,6 +205,7 @@ const ActionSheet = ({
   onReact: ((emoji: string) => void) | undefined;
   onMore: () => void;
   onCloseAutoFocus: (e: Event) => void;
+  emojis: Readonly<Record<string, GuildEmoji>> | undefined;
 }) => {
   const close = () => {
     onOpenChange(false);
@@ -210,23 +222,21 @@ const ActionSheet = ({
         <div className="overflow-y-auto px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           {onReact && (
             <div className="mb-3 flex justify-between gap-1">
-              {recentEmoji()
-                .slice(0, QUICK_REACTIONS)
-                .map((emoji) => (
-                  <button
-                    key={emoji}
-                    type="button"
-                    aria-label={`Реакция ${emoji}`}
-                    className="flex size-12 cursor-pointer items-center justify-center rounded-full bg-control text-2xl leading-none"
-                    onClick={() => {
-                      rememberEmoji(emoji);
-                      onReact(emoji);
-                      close();
-                    }}
-                  >
-                    {emoji}
-                  </button>
-                ))}
+              {quickReactions(emojis).map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  aria-label={`Реакция ${emojiLabel(emoji, emojis)}`}
+                  className="flex size-12 cursor-pointer items-center justify-center rounded-full bg-control text-2xl leading-none"
+                  onClick={() => {
+                    rememberEmoji(emoji);
+                    onReact(emoji);
+                    close();
+                  }}
+                >
+                  <EmojiGlyph emojiKey={emoji} emojis={emojis} />
+                </button>
+              ))}
               <button
                 type="button"
                 aria-label="Ещё реакции"
@@ -295,7 +305,7 @@ export const MessageContextMenu = ({ children, ...props }: MessageActionHandlers
     react?.(emoji);
   };
   const picker = react && (
-    <EmojiPicker open={picking} onOpenChange={setPicking} onPick={react}>
+    <EmojiPicker open={picking} onOpenChange={setPicking} onPick={react} emojis={props.emojis}>
       {/* Where the picker opens from the menu: the message's top right, as its toolbar's button. */}
       <span aria-hidden tabIndex={-1} className="pointer-events-none absolute top-0 right-16 size-px" />
     </EmojiPicker>
@@ -325,6 +335,7 @@ export const MessageContextMenu = ({ children, ...props }: MessageActionHandlers
             setSheet(false);
           }}
           onCloseAutoFocus={afterClose}
+          emojis={props.emojis}
         />
         {picker}
       </div>
@@ -343,20 +354,18 @@ export const MessageContextMenu = ({ children, ...props }: MessageActionHandlers
           {react && (
             <>
               <ContextMenuGroup aria-label="Быстрые реакции" className="flex gap-0.5 pb-1">
-                {recentEmoji()
-                  .slice(0, QUICK_REACTIONS)
-                  .map((emoji) => (
-                    <ContextMenuItem
-                      key={emoji}
-                      aria-label={`Реакция ${emoji}`}
-                      className="size-9 justify-center px-0 text-xl leading-none"
-                      onSelect={() => {
-                        pick(emoji);
-                      }}
-                    >
-                      {emoji}
-                    </ContextMenuItem>
-                  ))}
+                {quickReactions(props.emojis).map((emoji) => (
+                  <ContextMenuItem
+                    key={emoji}
+                    aria-label={`Реакция ${emojiLabel(emoji, props.emojis)}`}
+                    className="size-9 justify-center px-0 text-xl leading-none"
+                    onSelect={() => {
+                      pick(emoji);
+                    }}
+                  >
+                    <EmojiGlyph emojiKey={emoji} emojis={props.emojis} />
+                  </ContextMenuItem>
+                ))}
               </ContextMenuGroup>
               <ContextMenuItem
                 onSelect={() => {
