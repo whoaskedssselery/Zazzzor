@@ -1,4 +1,4 @@
-import { makeEveryone, makeGuildState, makeMember, makeRole, makeUser } from "@/shared/test";
+import { asMe, makeEveryone, makeGuildState, makeMember, makeRole, makeUser } from "@/shared/test";
 import { formatMask, PERM } from "./permissions";
 import { applyReady } from "./reducer";
 import { guildSettingsTabs } from "./settings";
@@ -18,7 +18,7 @@ const entryWith = (perms: bigint, userId = me.id) => {
     my_member: mine,
   });
   const entry = applyReady({
-    user: me,
+    user: asMe(me),
     guilds: [state],
     presences: [],
     read_states: [],

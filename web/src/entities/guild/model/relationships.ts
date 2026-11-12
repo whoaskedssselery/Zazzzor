@@ -19,7 +19,7 @@ export function friendLists(s: Pick<GuildsState, "relationships" | "presences">)
   const list = Object.values(s.relationships).sort(byName);
   const all = list.filter((r) => r.type === RELATIONSHIP.FRIEND);
   return {
-    online: all.filter((r) => s.presences[r.id] === "online"),
+    online: all.filter((r) => (s.presences[r.id] ?? "offline") !== "offline"),
     all,
     pending: [
       ...list.filter((r) => r.type === RELATIONSHIP.INCOMING),

@@ -30,7 +30,7 @@ const signedIn = (relationships = [makeRelationship(anya, 1), makeRelationship(b
       {
         ...makeReady(testUser),
         relationships,
-        presences: online.map((id) => ({ user_id: id, status: "online" as const })),
+        presences: online.map((id) => ({ user_id: id, status: "online" as const, custom_status: null })),
       },
       (c) => {
         client = c;

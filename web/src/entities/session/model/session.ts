@@ -3,7 +3,8 @@ import type { RegisteredRouter } from "@tanstack/react-router";
 import type { Middleware } from "openapi-fetch";
 import { ApiError, api, type components, unwrap } from "@/shared/api";
 
-export type User = components["schemas"]["User"];
+/** The signed-in user's own account, with the fields only they see. */
+export type User = components["schemas"]["CurrentUser"];
 
 /** Where a signed-in user lands when there is no (valid) `next`. */
 export const HOME_PATH = "/channels/@me";

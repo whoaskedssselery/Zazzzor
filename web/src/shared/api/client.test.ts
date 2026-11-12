@@ -4,7 +4,7 @@ import { ApiError, api, errorText, unwrap } from "./client";
 import { tooManyAttemptsText } from "./errors";
 import type { components } from "./schema.gen";
 
-type User = components["schemas"]["User"];
+type User = components["schemas"]["CurrentUser"];
 
 const user: User = {
   id: "1234567890123456789",
@@ -12,6 +12,9 @@ const user: User = {
   display_name: "Вася",
   avatar_url: null,
   created_at: "2026-10-21T12:00:00.000Z",
+  bio: "",
+  status: "online",
+  custom_status: null,
 };
 
 /** The error `fn` throws, or a failure when it does not throw. */

@@ -44,6 +44,8 @@ export const THEME_COLORS = [
   "badge-count",
   "online",
   "offline",
+  "idle",
+  "dnd",
   "border",
   "border-strong",
   "border-control",

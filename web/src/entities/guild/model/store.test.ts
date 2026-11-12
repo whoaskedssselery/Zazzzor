@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import { makeGuildState, makeReady, makeUser } from "@/shared/test";
+import { asMe, makeGuildState, makeReady, makeUser } from "@/shared/test";
 import { EMPTY_GUILDS } from "./reducer";
 import {
   applyGatewayDispatch,
@@ -28,7 +28,7 @@ describe("guild store", () => {
       applyGatewayDispatch("GUILD_CREATE", makeGuildState("20", me));
     });
     expect(result.current).toEqual(["10", "20"]);
-    expect(getGuildsState().me).toEqual(me);
+    expect(getGuildsState().me).toEqual(asMe(me));
   });
 
   it("a later READY replaces the store wholesale", () => {

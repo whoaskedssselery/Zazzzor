@@ -35,6 +35,9 @@ describe("apiHandler", () => {
             display_name: body.display_name ?? body.username,
             avatar_url: null,
             created_at: "2026-10-26T00:00:00.000Z",
+            bio: "",
+            status: "online",
+            custom_status: null,
           },
           { status: 201 },
         );

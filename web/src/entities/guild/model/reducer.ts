@@ -2,6 +2,7 @@ import { type ChatEvents, type components, type GatewayEvents, parseChatEvent, p
 
 type S = components["schemas"];
 export type User = S["User"];
+export type CurrentUser = S["CurrentUser"];
 export type Guild = S["Guild"];
 export type Role = S["Role"];
 export type Channel = S["Channel"];
@@ -10,7 +11,8 @@ export type GuildState = S["GuildState"];
 /** A custom emoji of a server. */
 export type GuildEmoji = S["GuildEmoji"];
 export type ReadyPayload = S["GatewayReady"];
-export type PresenceStatus = S["Presence"]["status"];
+export type Presence = S["Presence"];
+export type PresenceStatus = Presence["status"];
 /**
  * The user's tie to someone else: a friend, someone they blocked, or a
  * friend request either way (`RELATIONSHIP`).
@@ -80,12 +82,14 @@ export interface GuildEntry {
 
 /** Everything the gateway tells about the user's servers. */
 export interface GuildsState {
-  me: User | null;
+  me: CurrentUser | null;
   guilds: Record<string, GuildEntry>;
   /** Server IDs in the order of READY, then of joining. */
   order: string[];
   /** Users seen online or offline; anyone missing is offline. */
   presences: Record<string, PresenceStatus>;
+  /** Status lines of the users who show as online and have one. */
+  statusLines: Record<string, string>;
   /** The user's friends, blocks and requests, by the other user's ID. */
   relationships: Record<string, Relationship>;
   /** The user's open direct messages and their groups, by channel ID. */
@@ -101,6 +105,7 @@ export const EMPTY_GUILDS: GuildsState = {
   guilds: {},
   order: [],
   presences: {},
+  statusLines: {},
   relationships: {},
   privates: {},
   notify: {},
@@ -131,29 +136,57 @@ function entryOf(g: GuildState): GuildEntry {
   };
 }
 
+type Presences = Pick<GuildsState, "presences" | "statusLines">;
+
 /**
- * The presences a GuildState tells: its `presences` lists every online
- * member of the server, so a member it holds who is not listed is offline.
+ * Takes presences in: each sets the user's status and status line (an
+ * offline user has none). `offline` are users to mark offline first: the
+ * members a GuildState holds, since its `presences` lists only those who
+ * show as online.
  */
-function presencesOf(g: GuildState, into: Record<string, PresenceStatus>): Record<string, PresenceStatus> {
-  const online = new Set(g.presences.filter((p) => p.status === "online").map((p) => p.user_id));
-  const next = { ...into };
-  for (const m of [...g.members, g.my_member]) next[m.user.id] = online.has(m.user.id) ? "online" : "offline";
-  for (const p of g.presences) next[p.user_id] = p.status;
-  return next;
+function withPresences(into: Presences, list: readonly Presence[], offline: readonly string[] = []): Presences {
+  const presences = { ...into.presences };
+  const statusLines = { ...into.statusLines };
+  for (const id of offline) {
+    presences[id] = "offline";
+    delete statusLines[id];
+  }
+  for (const p of list) {
+    presences[p.user_id] = p.status;
+    if (p.status !== "offline" && p.custom_status !== null) statusLines[p.user_id] = p.custom_status;
+    else delete statusLines[p.user_id];
+  }
+  return { presences, statusLines };
 }
+
+/** The presences a GuildState tells: a member it holds who is not listed is offline. */
+const presencesOf = (g: GuildState, into: Presences): Presences =>
+  withPresences(
+    into,
+    g.presences,
+    [...g.members, g.my_member].map((m) => m.user.id),
+  );
+
+/** The public part of a user: the fields everyone sees. */
+const publicUser = ({ id, username, display_name, avatar_url, created_at }: User): User => ({
+  id,
+  username,
+  display_name,
+  avatar_url,
+  created_at,
+});
 
 /** The store as READY describes it, replacing anything held before. */
 export function applyReady(d: ReadyPayload): GuildsState {
   const guilds: Record<string, GuildEntry> = {};
   const order: string[] = [];
-  let presences: Record<string, PresenceStatus> = {};
+  let seen: Presences = { presences: {}, statusLines: {} };
   for (const g of d.guilds) {
     if (!(g.guild.id in guilds)) order.push(g.guild.id);
     guilds[g.guild.id] = entryOf(g);
-    presences = presencesOf(g, presences);
+    seen = presencesOf(g, seen);
   }
-  for (const p of d.presences) presences[p.user_id] = p.status;
+  seen = withPresences(seen, d.presences);
   // READY's own read_states hold the marks of the private channels too.
   const marks = new Map(d.read_states.map((r) => [r.channel_id, r]));
   const privates: Record<string, PrivateEntry> = {};
@@ -171,7 +204,7 @@ export function applyReady(d: ReadyPayload): GuildsState {
   }
   const calls = Object.fromEntries(d.calls.map((c) => [c.channel_id, { ringing: c.ringing }]));
   const notify = Object.fromEntries(d.user_guild_settings.map((n) => [scopeOf(n), n]));
-  return { me: d.user, guilds, order, presences, relationships: byId(d.relationships), privates, notify, calls };
+  return { me: d.user, guilds, order, ...seen, relationships: byId(d.relationships), privates, notify, calls };
 }
 
 /** Changes private channel `id` with `fn`; one not held is left alone. */
@@ -198,7 +231,7 @@ function upsertGuild(s: GuildsState, g: GuildState): GuildsState {
     ...s,
     guilds: { ...s.guilds, [id]: entryOf(g) },
     order: s.order.includes(id) ? s.order : [...s.order, id],
-    presences: presencesOf(g, s.presences),
+    ...presencesOf(g, s),
   };
 }
 
@@ -374,12 +407,15 @@ const handlers: Handlers = {
       voice: Object.fromEntries(Object.entries(e.voice).filter(([, v]) => v.channel_id !== c.id)),
     })),
   MESSAGE_ACK: (s, r) => advanceRead(s, r.channel_id, { lastReadId: r.last_read_id, mentions: r.mention_count }),
-  PRESENCE_UPDATE: (s, p) => ({ ...s, presences: { ...s.presences, [p.user_id]: p.status } }),
-  USER_UPDATE: (s, user) => {
+  PRESENCE_UPDATE: (s, p) => ({ ...s, ...withPresences(s, [p]) }),
+  USER_UPDATE: (s, sent) => {
+    const user = publicUser(sent);
     const held = s.relationships[user.id];
+    // The user's own account comes whole (CurrentUser); anyone else's only in part.
+    const mine = s.me?.id === user.id ? ("status" in sent ? sent : { ...s.me, ...user }) : s.me;
     return {
       ...s,
-      me: s.me?.id === user.id ? user : s.me,
+      me: mine,
       guilds: Object.fromEntries(Object.entries(s.guilds).map(([id, e]) => [id, renameUser(e, user)])),
       relationships: held ? { ...s.relationships, [user.id]: { ...held, user } } : s.relationships,
       privates: Object.fromEntries(

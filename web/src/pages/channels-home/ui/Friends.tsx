@@ -4,11 +4,14 @@ import { type ReactNode, type SyntheticEvent, useMemo, useState } from "react";
 import {
   friendLists,
   incomingCount,
+  PRESENCE_LABEL,
+  type PresenceStatus,
   RELATIONSHIP,
   type Relationship,
   requestErrorText,
   useGuilds,
   useOpenDirect,
+  usePresence,
   useRemoveRelationship,
   useRequestFriend,
   useSetRelationship,
@@ -36,7 +39,7 @@ import { NavButton, ShellHeader } from "@/widgets/app-shell";
 export type FriendsTab = "online" | "all" | "pending" | "blocked" | "add";
 
 /** What a row says under the name. */
-const statusText = (r: Relationship, online: boolean): string => {
+const statusText = (r: Relationship, status: PresenceStatus, line: string | null): string => {
   switch (r.type) {
     case RELATIONSHIP.INCOMING:
       return "Входящая заявка";
@@ -45,7 +48,7 @@ const statusText = (r: Relationship, online: boolean): string => {
     case RELATIONSHIP.BLOCKED:
       return "Заблокирован";
     default:
-      return online ? "В сети" : "Не в сети";
+      return status !== "offline" && line !== null ? line : PRESENCE_LABEL[status];
   }
 };
 
@@ -53,7 +56,8 @@ const statusText = (r: Relationship, online: boolean): string => {
 type Ask = { kind: "remove" | "block"; r: Relationship };
 
 /** One person on the friends screen with what can be done about them. */
-const Row = ({ r, online, onAsk }: { r: Relationship; online: boolean; onAsk: (a: Ask) => void }) => {
+const Row = ({ r, onAsk }: { r: Relationship; onAsk: (a: Ask) => void }) => {
+  const { status, line } = usePresence(r.id);
   const set = useSetRelationship();
   const remove = useRemoveRelationship();
   const open = useOpenDirect();
@@ -156,18 +160,13 @@ const Row = ({ r, online, onAsk }: { r: Relationship; online: boolean; onAsk: (a
   }
   return (
     <li className="flex items-center gap-3 border-t border-border py-2.5 first:border-t-0">
-      <Avatar
-        name={name}
-        src={r.user.avatar_url}
-        size={32}
-        {...(r.type === RELATIONSHIP.FRIEND ? { status: online ? "online" : "offline" } : {})}
-      />
+      <Avatar name={name} src={r.user.avatar_url} size={32} {...(r.type === RELATIONSHIP.FRIEND ? { status } : {})} />
       <div className="min-w-0 flex-1">
         <p className="flex min-w-0 items-baseline gap-1.5">
           <bdi className="truncate text-base font-semibold">{name}</bdi>
           <span className="truncate text-sm text-fg-faint">{r.user.username}</span>
         </p>
-        <p className="truncate text-sm text-fg-muted">{statusText(r, online)}</p>
+        <p className="truncate text-sm text-fg-muted">{statusText(r, status, line)}</p>
       </div>
       <div className="flex shrink-0 items-center gap-2">{actions}</div>
     </li>
@@ -178,13 +177,11 @@ const Row = ({ r, online, onAsk }: { r: Relationship; online: boolean; onAsk: (a
 const List = ({
   title,
   people,
-  presences,
   empty,
   onAsk,
 }: {
   title: string;
   people: Relationship[];
-  presences: Record<string, "online" | "offline">;
   empty: ReactNode;
   onAsk: (a: Ask) => void;
 }) =>
@@ -197,7 +194,7 @@ const List = ({
       <h2 className="pb-2 text-xs font-semibold text-fg-faint uppercase">{`${title} — ${String(people.length)}`}</h2>
       <ul>
         {people.map((r) => (
-          <Row key={r.id} r={r} online={presences[r.id] === "online"} onAsk={onAsk} />
+          <Row key={r.id} r={r} onAsk={onAsk} />
         ))}
       </ul>
     </section>
@@ -334,7 +331,6 @@ export const FriendsView = () => {
           <List
             title="В сети"
             people={lists.online}
-            presences={presences}
             onAsk={setAsk}
             empty={
               <>
@@ -348,7 +344,6 @@ export const FriendsView = () => {
           <List
             title="Все друзья"
             people={lists.all}
-            presences={presences}
             onAsk={setAsk}
             empty={
               <>
@@ -359,19 +354,12 @@ export const FriendsView = () => {
           />
         </TabsContent>
         <TabsContent value="pending" className="flex flex-1 flex-col">
-          <List
-            title="Ожидание"
-            people={lists.pending}
-            presences={presences}
-            onAsk={setAsk}
-            empty={<p>Заявок нет.</p>}
-          />
+          <List title="Ожидание" people={lists.pending} onAsk={setAsk} empty={<p>Заявок нет.</p>} />
         </TabsContent>
         <TabsContent value="blocked" className="flex flex-1 flex-col">
           <List
             title="Заблокированные"
             people={lists.blocked}
-            presences={presences}
             onAsk={setAsk}
             empty={<p>Вы никого не заблокировали.</p>}
           />

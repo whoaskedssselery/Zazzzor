@@ -36,7 +36,7 @@ type Leave = { channel: DMChannel } | null;
 const Row = ({ entry, active, onLeave }: { entry: PrivateEntry; active: boolean; onLeave: (c: DMChannel) => void }) => {
   const { channel } = entry;
   const peer = dmPeer(channel);
-  const online = useGuilds((s) => (peer ? s.presences[peer.id] === "online" : false));
+  const status = useGuilds((s) => (peer ? s.presences[peer.id] : undefined)) ?? "offline";
   const close = useClosePrivate();
   const navigate = useNavigate();
   const name = privateName(channel);
@@ -64,7 +64,7 @@ const Row = ({ entry, active, onLeave }: { entry: PrivateEntry; active: boolean;
         )}
       >
         {peer ? (
-          <Avatar name={peer.display_name} src={peer.avatar_url} size={32} status={online ? "online" : "offline"} />
+          <Avatar name={peer.display_name} src={peer.avatar_url} size={32} status={status} />
         ) : (
           <GroupPicture size={32} />
         )}
@@ -190,10 +190,11 @@ export const PrivateMembers = ({ channelId }: { channelId: string }) => {
       <ul className="flex flex-col gap-0.5">
         {people.map((u) => {
           const owner = channel.owner_id === u.id;
-          const online = presences[u.id] === "online";
+          const status = presences[u.id] ?? "offline";
+          const online = status !== "offline";
           return (
             <li key={u.id} className="group/member flex h-11 items-center gap-3 rounded-md px-2 hover:bg-hover">
-              <Avatar name={u.display_name} src={u.avatar_url} size={32} status={online ? "online" : "offline"} />
+              <Avatar name={u.display_name} src={u.avatar_url} size={32} status={status} />
               <span className={cn("min-w-0 flex-1 truncate text-base font-medium", !online && "text-fg-muted")}>
                 {u.display_name}
               </span>
