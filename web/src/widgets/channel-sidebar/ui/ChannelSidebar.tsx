@@ -269,7 +269,7 @@ const VoiceMember = ({ entry, state, speaking }: { entry: GuildEntry; state: Voi
   const user = entry.members[state.user_id]?.user;
   const view = user ? userDisplay(entry, user) : { name: "Участник", avatarUrl: null };
   return (
-    <MemberMenu guildId={state.guild_id} userId={state.user_id}>
+    <MemberMenu guildId={entry.guild.id} userId={state.user_id}>
       <li className="flex min-w-0 animate-fade-in items-center gap-2 rounded-md px-2 py-1 text-sm text-fg-muted transition-colors duration-(--duration-fast) hover:bg-hover">
         <span
           data-speaking={speaking || undefined}

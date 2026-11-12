@@ -156,7 +156,7 @@ const presenceSchema: z.ZodMiniType<S["Presence"]> = z.object({
 });
 
 const voiceStateSchema: z.ZodMiniType<S["VoiceState"]> = z.object({
-  guild_id: snowflake,
+  guild_id: z.nullable(snowflake),
   channel_id: snowflake,
   user_id: snowflake,
   self_mute: z.boolean(),
@@ -234,6 +234,9 @@ const userGuildSettingsSchema: z.ZodMiniType<S["UserGuildSettings"]> = z.object(
   channel_overrides: z.array(channelOverrideSchema),
 });
 
+/** A call going on in a DM or a group DM, and whom it rings. */
+const callSchema: z.ZodMiniType<S["Call"]> = z.object({ channel_id: snowflake, ringing: z.array(snowflake) });
+
 /** The payload type of each event the guild store applies (`x-gateway.events`). */
 export interface GatewayEvents {
   READY: S["GatewayReady"];
@@ -259,6 +262,9 @@ export interface GatewayEvents {
   DM_CHANNEL_UPDATE: S["DMChannel"];
   DM_CHANNEL_DELETE: S["DMChannelDeleteEvent"];
   USER_GUILD_SETTINGS_UPDATE: S["UserGuildSettings"];
+  CALL_CREATE: S["Call"];
+  CALL_UPDATE: S["Call"];
+  CALL_DELETE: S["CallDeleteEvent"];
   VOICE_STATE_UPDATE: S["VoiceState"];
   MESSAGE_ACK: S["ReadState"];
 }
@@ -275,6 +281,8 @@ const eventSchemas: { [K in keyof GatewayEvents]: z.ZodMiniType<GatewayEvents[K]
     relationships: z.array(relationshipSchema),
     private_channels: z.array(dmChannelSchema),
     user_guild_settings: z.array(userGuildSettingsSchema),
+    private_voice_states: z.array(voiceStateSchema),
+    calls: z.array(callSchema),
   }),
   GUILD_CREATE: guildStateSchema,
   GUILD_SYNC: guildStateSchema,
@@ -298,6 +306,9 @@ const eventSchemas: { [K in keyof GatewayEvents]: z.ZodMiniType<GatewayEvents[K]
   DM_CHANNEL_UPDATE: dmChannelSchema,
   DM_CHANNEL_DELETE: z.object({ id: snowflake }),
   USER_GUILD_SETTINGS_UPDATE: userGuildSettingsSchema,
+  CALL_CREATE: callSchema,
+  CALL_UPDATE: callSchema,
+  CALL_DELETE: z.object({ channel_id: snowflake }),
   VOICE_STATE_UPDATE: voiceStateSchema,
   MESSAGE_ACK: readStateSchema,
 };

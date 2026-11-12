@@ -93,6 +93,8 @@ export function makeReady(me: User, guilds: GuildState[] = []): GatewayReady {
     relationships: [],
     private_channels: [],
     user_guild_settings: [],
+    private_voice_states: [],
+    calls: [],
   };
 }
 

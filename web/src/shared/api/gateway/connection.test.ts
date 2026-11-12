@@ -56,6 +56,8 @@ const readyFrame = (s = 1) => ({
     relationships: [],
     private_channels: [],
     user_guild_settings: [],
+    private_voice_states: [],
+    calls: [],
   },
 });
 

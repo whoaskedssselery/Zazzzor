@@ -1489,8 +1489,18 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Get a token to join a voice channel
-         * @description Needs `VIEW_CHANNEL` and `CONNECT` in a voice channel. Returns a
+         * Get a token to join a voice channel or a call
+         * @description Needs `VIEW_CHANNEL` and `CONNECT` in a voice channel. A DM or a
+         *     group DM is a call: every recipient may connect, speak, share the
+         *     screen and turn the camera on; a 1:1 DM refuses the call on the same
+         *     terms as a message (`403 cannot_message_user`: a block either way, no
+         *     shared server and not friends). The first token for a call with nobody
+         *     in it starts the call: `CALL_CREATE` rings the other recipients
+         *     (reopening a closed 1:1 DM for them first, as a message does). A
+         *     token for a call that rings the caller stops ringing them
+         *     (`CALL_UPDATE`). Server mute, deafen and moves do not apply to calls.
+         *
+         *     Returns a
          *     LiveKit access token for the room named by the channel ID, valid for
          *     10 minutes, with the caller's user ID as identity and display name as
          *     name. It may subscribe unless server-deafened; it may publish the
@@ -1528,6 +1538,30 @@ export interface paths {
          *     share a limit of 2 per second (bursts of 10) per user.
          */
         post: operations["joinVoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/channels/{channel_id}/call/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop a call ringing the caller
+         * @description Takes the caller off the ringing list of the call in this DM or group
+         *     DM (`CALL_UPDATE` to the recipients). A call nobody is in and that
+         *     rings nobody any more ends (`CALL_DELETE`). Declining a call that
+         *     does not ring the caller, or no call, changes nothing. Shares the
+         *     per-user voice write limit.
+         */
+        post: operations["declineCall"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1924,6 +1958,18 @@ export interface components {
         UpdateDMChannelRequest: {
             name: string | null;
         };
+        /** @description A call going on in a DM or a group DM, and whom it rings. */
+        Call: {
+            channel_id: components["schemas"]["Snowflake"];
+            /**
+             * @description Recipients the call rings: everyone but the caller when it starts,
+             *     until they join, decline, or 60 seconds pass.
+             */
+            ringing: components["schemas"]["Snowflake"][];
+        };
+        CallDeleteEvent: {
+            channel_id: components["schemas"]["Snowflake"];
+        };
         DMChannelDeleteEvent: {
             id: components["schemas"]["Snowflake"];
         };
@@ -2235,13 +2281,17 @@ export interface components {
             t?: string;
             s?: number;
             /** @description The payload; null for HEARTBEAT_ACK. */
-            d: null | components["schemas"]["GatewayHello"] | components["schemas"]["GatewayReady"] | components["schemas"]["GuildState"] | components["schemas"]["GuildEmojisUpdate"] | components["schemas"]["Relationship"] | components["schemas"]["RelationshipRemove"] | components["schemas"]["DMChannel"] | components["schemas"]["DMChannelDeleteEvent"] | components["schemas"]["UserGuildSettings"] | components["schemas"]["Guild"] | components["schemas"]["GuildDeleteEvent"] | components["schemas"]["MemberEvent"] | components["schemas"]["MemberRemoveEvent"] | components["schemas"]["RoleEvent"] | components["schemas"]["RoleDeleteEvent"] | components["schemas"]["Channel"] | components["schemas"]["Message"] | components["schemas"]["MessageDeleteEvent"] | components["schemas"]["MessageReactionEvent"] | components["schemas"]["ReadState"] | components["schemas"]["TypingStartEvent"] | components["schemas"]["Presence"] | components["schemas"]["User"] | components["schemas"]["VoiceState"] | components["schemas"]["VoiceMove"];
+            d: null | components["schemas"]["GatewayHello"] | components["schemas"]["GatewayReady"] | components["schemas"]["GuildState"] | components["schemas"]["GuildEmojisUpdate"] | components["schemas"]["Relationship"] | components["schemas"]["RelationshipRemove"] | components["schemas"]["DMChannel"] | components["schemas"]["DMChannelDeleteEvent"] | components["schemas"]["Call"] | components["schemas"]["CallDeleteEvent"] | components["schemas"]["UserGuildSettings"] | components["schemas"]["Guild"] | components["schemas"]["GuildDeleteEvent"] | components["schemas"]["MemberEvent"] | components["schemas"]["MemberRemoveEvent"] | components["schemas"]["RoleEvent"] | components["schemas"]["RoleDeleteEvent"] | components["schemas"]["Channel"] | components["schemas"]["Message"] | components["schemas"]["MessageDeleteEvent"] | components["schemas"]["MessageReactionEvent"] | components["schemas"]["ReadState"] | components["schemas"]["TypingStartEvent"] | components["schemas"]["Presence"] | components["schemas"]["User"] | components["schemas"]["VoiceState"] | components["schemas"]["VoiceMove"];
         };
         GatewayHello: {
             /** @description Send HEARTBEAT this often (30000); 150 s without one closes the connection with 4009, allowing for throttled timers in hidden browser tabs. */
             heartbeat_interval_ms: number;
         };
         GatewayReady: {
+            /** @description Who is in the calls of the receiver's DMs and group DMs. */
+            private_voice_states: components["schemas"]["VoiceState"][];
+            /** @description The calls going on in the receiver's DMs and group DMs. */
+            calls: components["schemas"]["Call"][];
             /** @description Non-default personal notification settings for the receiving user. */
             user_guild_settings: components["schemas"]["UserGuildSettings"][];
             private_channels: components["schemas"]["DMChannel"][];
@@ -2276,11 +2326,12 @@ export interface components {
             read_states: components["schemas"]["ReadState"][];
         };
         /**
-         * @description A user in a voice channel; a user is in at most one. It is also the
-         *     payload of VOICE_STATE_UPDATE, which adds `left`.
+         * @description A user in a voice channel or a call; a user is in at most one. It is
+         *     also the payload of VOICE_STATE_UPDATE, which adds `left`.
          */
         VoiceState: {
-            guild_id: components["schemas"]["Snowflake"];
+            /** @description The server, or null in a call (a DM or a group DM). */
+            guild_id: components["schemas"]["Snowflake"] | null;
             channel_id: components["schemas"]["Snowflake"];
             user_id: components["schemas"]["Snowflake"];
             /** @description The user muted their microphone (set by the client). */
@@ -5128,17 +5179,46 @@ export interface operations {
                     "application/json": components["schemas"]["VoiceJoin"];
                 };
             };
-            /** @description `not_a_voice_channel`. */
+            /** @description `not_a_voice_channel`: neither a voice channel nor a private channel. */
             400: components["responses"]["Problem"];
             /** @description `unauthenticated`. */
             401: components["responses"]["Problem"];
-            /** @description `origin_not_allowed` or `missing_permission` (no `CONNECT`). */
+            /** @description `origin_not_allowed`, `missing_permission` (no `CONNECT`), or `cannot_message_user` (a 1:1 call refused). */
             403: components["responses"]["Problem"];
             /** @description `not_found`: no such channel, or the caller may not view it. */
             404: components["responses"]["Problem"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["Problem"];
             /** @description `voice_unavailable`: voice is not configured, or LiveKit could not remove the caller from their previous channel. */
+            503: components["responses"]["Problem"];
+        };
+    };
+    declineCall: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The call no longer rings the caller. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `not_a_voice_channel`: not a private channel. */
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            /** @description `not_found`: no such channel, or the caller is not a recipient. */
+            404: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Problem"];
+            /** @description `voice_unavailable`: voice is not configured. */
             503: components["responses"]["Problem"];
         };
     };

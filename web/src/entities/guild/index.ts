@@ -63,6 +63,7 @@ export {
 export {
   applyEvent,
   applyReady,
+  type Call,
   type Channel,
   type DMChannel,
   EMPTY_GUILDS,
@@ -117,4 +118,4 @@ export {
   mentionCount,
   unreadFrom,
 } from "./model/unread";
-export { myVoice, voiceMembers } from "./model/voice";
+export { callMembers, myVoice, ringsMe, voiceMembers } from "./model/voice";
