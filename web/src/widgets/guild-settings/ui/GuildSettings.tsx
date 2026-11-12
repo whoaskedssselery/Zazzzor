@@ -11,6 +11,7 @@ import {
 import { DeleteGuild } from "@/features/delete-guild";
 import { SettingsFrame, settingsNavItemClass, useLeaveGuard } from "@/shared/ui";
 import { BansTab } from "./BansTab";
+import { EmojiTab } from "./EmojiTab";
 import { InvitesTab } from "./InvitesTab";
 import { MembersTab } from "./MembersTab";
 import { OverviewTab } from "./OverviewTab";
@@ -33,6 +34,8 @@ const TabContent = ({
       return <OverviewTab key={entry.guild.id} guild={entry.guild} onDirtyChange={onDirtyChange} />;
     case "roles":
       return <RolesTab entry={entry} meId={meId} onDirtyChange={onDirtyChange} />;
+    case "emoji":
+      return <EmojiTab entry={entry} />;
     case "members":
       return <MembersTab entry={entry} />;
     case "bans":
