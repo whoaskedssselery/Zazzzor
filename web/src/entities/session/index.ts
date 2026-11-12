@@ -1,9 +1,4 @@
-export {
-  ADMIN_SETTINGS_KEY,
-  adminSettingsQuery,
-  type InstanceSettings,
-  useIsAdmin,
-} from "./model/admin";
+export { ADMIN_SETTINGS_KEY, adminSettingsQuery, type InstanceSettings, useIsAdmin } from "./model/admin";
 export {
   HOME_PATH,
   initSession,
@@ -16,6 +11,7 @@ export {
   safeNext,
   sessionQuery,
   setSignedIn,
+  updateSignedIn,
   type User,
   useSession,
 } from "./model/session";

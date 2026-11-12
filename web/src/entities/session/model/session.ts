@@ -123,6 +123,16 @@ export function setSignedIn(queryClient: QueryClient, user: User): void {
   queryClient.setQueryData(ME_KEY, user);
 }
 
+/**
+ * Takes a newer copy of the signed-in user (a profile save, an event) only
+ * while that same user is still signed in: an answer that arrives after a
+ * sign-out, or after signing in as someone else, is dropped.
+ */
+export function updateSignedIn(queryClient: QueryClient, user: User): void {
+  const now = queryClient.getQueryData<User | null>(ME_KEY);
+  if (now?.id === user.id) queryClient.setQueryData(ME_KEY, user);
+}
+
 const sessionEndListeners = new Set<() => void>();
 
 /**
