@@ -4,6 +4,7 @@ import type { MessageStub } from "@/entities/message";
 import { runeLength, trimContent } from "@/shared/lib";
 import { cn, IconButton, useToast } from "@/shared/ui";
 import { getDraft, setDraft, useDraft } from "../model/drafts";
+import { type ComposerEmoji, emojiQuery, encodeEmoji, rankEmoji } from "../model/emoji";
 import {
   encodeMentions,
   type MentionSuggestion,
@@ -14,6 +15,7 @@ import {
 import { addFiles, isUploading, NO_ATTACH_PERMISSION, takeUploads, useUploads } from "../model/uploads";
 import { useSendMessage } from "../model/useSendMessage";
 import { useTyping } from "../model/useTyping";
+import { EmojiList } from "./EmojiList";
 import { MENTION_LIST_ID, MentionList, optionId } from "./MentionList";
 import { ReplyBar } from "./ReplyBar";
 import { UploadTray } from "./UploadTray";
@@ -46,7 +48,22 @@ export interface ComposerProps {
   onEditLast: () => boolean;
   /** Who `@` can mention here, asked for when the user types one; none by default. */
   mentionables?: () => readonly MentionSuggestion[];
+  /** The server's custom emoji, for `:name` and for sending `:name:`; none by default. */
+  emojis?: () => readonly ComposerEmoji[];
 }
+
+/** An `@query` or `:query` being typed: its trigger, where it starts and what follows. */
+type Query = { kind: "@" | ":"; start: number; query: string };
+
+/** The query at the caret of `el`, when nothing is selected. */
+const queryAt = (el: HTMLTextAreaElement): Query | null => {
+  const caret = el.selectionStart;
+  if (caret !== el.selectionEnd) return null;
+  const at = mentionQuery(el.value, caret);
+  if (at) return { kind: "@", ...at };
+  const colon = emojiQuery(el.value, caret);
+  return colon ? { kind: ":", ...colon } : null;
+};
 
 /** Says why files were left out, if any were. */
 export const useAddFiles = (channelId: string, canAttach: boolean) => {
@@ -77,6 +94,7 @@ export const Composer = ({
   onCancelReply,
   onEditLast,
   mentionables,
+  emojis,
 }: ComposerProps) => {
   const text = useDraft(channelId);
   const uploads = useUploads(channelId);
@@ -85,37 +103,53 @@ export const Composer = ({
   const { send } = useSendMessage(channelId);
   const typing = useTyping(channelId);
   const field = useRef<HTMLTextAreaElement>(null);
-  // The @query at the caret and the highlighted suggestion; closed (null) by Esc until the caret moves on.
-  const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
+  // The @query or :query at the caret and the highlighted suggestion; closed (null) by Esc until the caret moves on.
+  const [mention, setMention] = useState<Query | null>(null);
   const [active, setActive] = useState(0);
   const suggestions = useMemo(
-    () => (mention && mentionables ? rankSuggestions(mentionables(), mention.query) : []),
+    () => (mention?.kind === "@" && mentionables ? rankSuggestions(mentionables(), mention.query) : []),
     [mention, mentionables],
   );
-  const listOpen = suggestions.length > 0;
+  const emojiSuggestions = useMemo(
+    () => (mention?.kind === ":" && emojis ? rankEmoji(emojis(), mention.query) : []),
+    [mention, emojis],
+  );
+  const count = suggestions.length + emojiSuggestions.length;
+  const listOpen = count > 0;
 
-  /** Looks for an @query at the caret after the text or the caret changed. */
+  /** Looks for an @query or :query at the caret after the text or the caret changed. */
   const track = (el: HTMLTextAreaElement) => {
-    const next = el.selectionStart === el.selectionEnd ? mentionQuery(el.value, el.selectionStart) : null;
-    setMention((prev) => (prev?.start === next?.start && prev?.query === next?.query ? prev : next));
+    const next = queryAt(el);
+    setMention((prev) =>
+      prev?.kind === next?.kind && prev?.start === next?.start && prev?.query === next?.query ? prev : next,
+    );
     if (next?.query !== mention?.query) setActive(0);
   };
 
-  /** Puts `@Name ` in place of the @query, keeps the caret after it, and remembers what it means. */
-  const pick = (s: MentionSuggestion) => {
+  /** Puts `insert` in place of the query at the caret and keeps the caret after it. */
+  const replaceQuery = (insert: string) => {
     const el = field.current;
     if (!el || !mention) return;
-    const insert = `@${s.name} `;
     const value = el.value;
     const caret = el.selectionStart;
     setDraft(channelId, value.slice(0, mention.start) + insert + value.slice(caret));
-    rememberMention(channelId, s);
     setMention(null);
     const at = mention.start + insert.length;
     requestAnimationFrame(() => {
       el.focus();
       el.setSelectionRange(at, at);
     });
+  };
+
+  /** Puts `@Name ` in place of the @query and remembers what it means. */
+  const pick = (s: MentionSuggestion) => {
+    replaceQuery(`@${s.name} `);
+    rememberMention(channelId, s);
+  };
+
+  /** Puts `:name: ` in place of the :query; it becomes the emoji when sent. */
+  const pickEmoji = (e: ComposerEmoji) => {
+    replaceQuery(`:${e.name}: `);
   };
 
   // Grows with its text, then scrolls.
@@ -145,7 +179,7 @@ export const Composer = ({
 
   const submit = () => {
     if (uploading) return;
-    const content = encodeMentions(channelId, trimContent(getDraft(channelId)));
+    const content = encodeEmoji(encodeMentions(channelId, trimContent(getDraft(channelId))), emojis?.() ?? []);
     if (runeLength(content) > MAX_LENGTH) return;
     const files = takeUploads(channelId);
     if (content === "" && files.length === 0) return;
@@ -165,7 +199,7 @@ export const Composer = ({
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (listOpen) {
-      const n = suggestions.length;
+      const n = count;
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
         setActive((i) => (i + (e.key === "ArrowDown" ? 1 : n - 1)) % n);
@@ -174,7 +208,9 @@ export const Composer = ({
       if ((e.key === "Enter" || e.key === "Tab") && !e.shiftKey && !e.nativeEvent.isComposing) {
         e.preventDefault();
         const s = suggestions[active];
+        const emoji = emojiSuggestions[active];
         if (s) pick(s);
+        else if (emoji) pickEmoji(emoji);
         return;
       }
       if (e.key === "Escape") {
@@ -198,7 +234,17 @@ export const Composer = ({
     <div className="relative shrink-0 px-4 pb-6">
       {listOpen && (
         <div className="relative">
-          <MentionList suggestions={suggestions} active={active} onPick={pick} onHover={setActive} />
+          {suggestions.length > 0 ? (
+            <MentionList suggestions={suggestions} active={active} onPick={pick} onHover={setActive} />
+          ) : (
+            <EmojiList
+              query={mention?.query ?? ""}
+              suggestions={emojiSuggestions}
+              active={active}
+              onPick={pickEmoji}
+              onHover={setActive}
+            />
+          )}
         </div>
       )}
       {replyTo && <ReplyBar name={replyTo.name} onCancel={onCancelReply} />}

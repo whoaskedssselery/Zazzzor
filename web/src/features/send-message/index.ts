@@ -1,4 +1,5 @@
 export { getDraft, resetDrafts, setDraft, useDraft } from "./model/drafts";
+export type { ComposerEmoji } from "./model/emoji";
 export { type MentionSuggestion, resetMentions } from "./model/mentions";
 export {
   addFiles,
