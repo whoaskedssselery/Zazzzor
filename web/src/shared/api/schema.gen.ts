@@ -148,6 +148,30 @@ export interface paths {
         patch: operations["updateCurrentUser"];
         trace?: never;
     };
+    "/users/@me/channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the caller's open DMs and groups */
+        get: operations["listPrivateChannels"];
+        put?: never;
+        /**
+         * Open a 1:1 DM or create a group DM
+         * @description 1:1 DMs require friendship or a shared server, with no block in either
+         *     direction. Groups require each invited user to be the caller's friend.
+         *     Limits are 30 opens per minute, 10 group creations per hour, and
+         *     membership in at most 100 groups.
+         */
+        post: operations["openPrivateChannel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users/@me/relationships": {
         parameters: {
             query?: never;
@@ -916,7 +940,8 @@ export interface paths {
         post?: never;
         /**
          * Delete a channel or category
-         * @description Needs `MANAGE_CHANNELS` in the channel. The channels of a deleted
+         * @description Closes a 1:1 DM for the caller or leaves a group DM.
+         *     In a guild it needs `MANAGE_CHANNELS`. The channels of a deleted
          *     category move to the end of the top level, keeping its overwrites
          *     as their own if they were synced. Its invites are deleted with it.
          *     Announced as `CHANNEL_DELETE` to the members who could view it, and
@@ -928,7 +953,8 @@ export interface paths {
         head?: never;
         /**
          * Change a channel
-         * @description Changes the fields that are present. Needs `MANAGE_CHANNELS` in the
+         * @description For group DMs, any recipient can update only the name. A 1:1 DM cannot be renamed.
+         *     In a guild this changes the fields that are present. Needs `MANAGE_CHANNELS` in the
          *     channel; `sync_permissions` also needs `MANAGE_ROLES` there.
          *     `name` and `topic` follow the rules of creation (`topic: null`
          *     clears it). `parent_id` moves the channel to the end of that
@@ -944,6 +970,34 @@ export interface paths {
          *     changed, `GUILD_SYNC`. Counts against the channel write limit.
          */
         patch: operations["updateChannel"];
+        trace?: never;
+    };
+    "/channels/{channel_id}/recipients/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+                user_id: components["parameters"]["UserID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Add a friend to a group DM
+         * @description Any recipient can add a friend, up to 10 members. Repeated adds are idempotent.
+         */
+        put: operations["addDMRecipient"];
+        post?: never;
+        /**
+         * Leave a group DM or remove a recipient
+         * @description Only the owner can remove another recipient. The earliest joined
+         *     remaining recipient becomes owner if the owner leaves.
+         */
+        delete: operations["removeDMRecipient"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/channels/{channel_id}/permissions/{target_id}": {
@@ -1817,6 +1871,30 @@ export interface components {
             allow: components["schemas"]["Permission"];
             deny: components["schemas"]["Permission"];
         };
+        DMChannel: {
+            id: components["schemas"]["Snowflake"];
+            /**
+             * @description 1 for a 1:1 DM and 3 for a group DM.
+             * @enum {integer}
+             */
+            type: 1 | 3;
+            name: string | null;
+            owner_id: components["schemas"]["Snowflake"] | null;
+            /** @description All channel recipients except the caller. */
+            recipients: components["schemas"]["User"][];
+            last_message_id: components["schemas"]["Snowflake"] | null;
+        };
+        OpenDMChannelRequest: {
+            recipient_id: components["schemas"]["Snowflake"];
+        } | {
+            recipient_ids: components["schemas"]["Snowflake"][];
+        };
+        UpdateDMChannelRequest: {
+            name: string | null;
+        };
+        DMChannelDeleteEvent: {
+            id: components["schemas"]["Snowflake"];
+        };
         Channel: {
             id: components["schemas"]["Snowflake"];
             guild_id: components["schemas"]["Snowflake"];
@@ -1950,7 +2028,8 @@ export interface components {
         };
         MessageReactionEvent: {
             channel_id: components["schemas"]["Snowflake"];
-            guild_id: components["schemas"]["Snowflake"];
+            /** @description Null in a private channel. */
+            guild_id: components["schemas"]["Snowflake"] | null;
             message_id: components["schemas"]["Snowflake"];
             user_id: components["schemas"]["Snowflake"];
             emoji: components["schemas"]["Emoji"];
@@ -1976,7 +2055,8 @@ export interface components {
         Message: {
             id: components["schemas"]["Snowflake"];
             channel_id: components["schemas"]["Snowflake"];
-            guild_id: components["schemas"]["Snowflake"];
+            /** @description Null in a private channel. */
+            guild_id: components["schemas"]["Snowflake"] | null;
             /** @description Null when the account of the author no longer exists. */
             author: components["schemas"]["User"] | null;
             /** @description Up to 4000 characters (Unicode code points), trimmed. */
@@ -2058,13 +2138,14 @@ export interface components {
             t?: string;
             s?: number;
             /** @description The payload; null for HEARTBEAT_ACK. */
-            d: null | components["schemas"]["GatewayHello"] | components["schemas"]["GatewayReady"] | components["schemas"]["GuildState"] | components["schemas"]["GuildEmojisUpdate"] | components["schemas"]["Relationship"] | components["schemas"]["RelationshipRemove"] | components["schemas"]["Guild"] | components["schemas"]["GuildDeleteEvent"] | components["schemas"]["MemberEvent"] | components["schemas"]["MemberRemoveEvent"] | components["schemas"]["RoleEvent"] | components["schemas"]["RoleDeleteEvent"] | components["schemas"]["Channel"] | components["schemas"]["Message"] | components["schemas"]["MessageDeleteEvent"] | components["schemas"]["MessageReactionEvent"] | components["schemas"]["ReadState"] | components["schemas"]["TypingStartEvent"] | components["schemas"]["Presence"] | components["schemas"]["User"] | components["schemas"]["VoiceState"] | components["schemas"]["VoiceMove"];
+            d: null | components["schemas"]["GatewayHello"] | components["schemas"]["GatewayReady"] | components["schemas"]["GuildState"] | components["schemas"]["GuildEmojisUpdate"] | components["schemas"]["Relationship"] | components["schemas"]["RelationshipRemove"] | components["schemas"]["DMChannel"] | components["schemas"]["DMChannelDeleteEvent"] | components["schemas"]["Guild"] | components["schemas"]["GuildDeleteEvent"] | components["schemas"]["MemberEvent"] | components["schemas"]["MemberRemoveEvent"] | components["schemas"]["RoleEvent"] | components["schemas"]["RoleDeleteEvent"] | components["schemas"]["Channel"] | components["schemas"]["Message"] | components["schemas"]["MessageDeleteEvent"] | components["schemas"]["MessageReactionEvent"] | components["schemas"]["ReadState"] | components["schemas"]["TypingStartEvent"] | components["schemas"]["Presence"] | components["schemas"]["User"] | components["schemas"]["VoiceState"] | components["schemas"]["VoiceMove"];
         };
         GatewayHello: {
             /** @description Send HEARTBEAT this often (30000); 150 s without one closes the connection with 4009, allowing for throttled timers in hidden browser tabs. */
             heartbeat_interval_ms: number;
         };
         GatewayReady: {
+            private_channels: components["schemas"]["DMChannel"][];
             /** @description Relationships visible to the receiving user. */
             relationships: components["schemas"]["Relationship"][];
             user: components["schemas"]["User"];
@@ -2182,7 +2263,8 @@ export interface components {
         MessageDeleteEvent: {
             id: components["schemas"]["Snowflake"];
             channel_id: components["schemas"]["Snowflake"];
-            guild_id: components["schemas"]["Snowflake"];
+            /** @description Null in a private channel. */
+            guild_id: components["schemas"]["Snowflake"] | null;
             /** @description The newest existing message of the channel, or null if empty. */
             last_message_id: components["schemas"]["Snowflake"] | null;
         };
@@ -2190,12 +2272,13 @@ export interface components {
             channel_id: components["schemas"]["Snowflake"];
             /** @description Greatest acknowledged message ID, or "0" before the first message. */
             last_read_id: components["schemas"]["Snowflake"];
-            /** @description Number of unread messages that mentioned this user at the last update. */
+            /** @description Unread mentions in a guild or unread messages by other recipients in a DM. */
             mention_count: number;
         };
         TypingStartEvent: {
             channel_id: components["schemas"]["Snowflake"];
-            guild_id: components["schemas"]["Snowflake"];
+            /** @description Null in a private channel. */
+            guild_id: components["schemas"]["Snowflake"] | null;
             user_id: components["schemas"]["Snowflake"];
             /** Format: date-time */
             timestamp: string;
@@ -2512,6 +2595,70 @@ export interface operations {
             /** @description `origin_not_allowed`. */
             403: components["responses"]["Problem"];
             /** @description `unsupported_media_type`. */
+            415: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    listPrivateChannels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Private channels, with recipients relative to the caller. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DMChannel"][];
+                };
+            };
+            401: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    openPrivateChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpenDMChannelRequest"];
+            };
+        };
+        responses: {
+            /** @description The existing 1:1 channel, reopened for the caller if closed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DMChannel"];
+                };
+            };
+            /** @description The newly created private channel. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DMChannel"];
+                };
+            };
+            /** @description Invalid body, not_a_friend, or too_many_groups. */
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            /** @description cannot_message_user for a denied 1:1 open, including self and unknown users. */
+            403: components["responses"]["Problem"];
             415: components["responses"]["Problem"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["Problem"];
@@ -3884,7 +4031,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Channel"];
+                    "application/json": components["schemas"]["Channel"] | components["schemas"]["DMChannel"];
                 };
             };
             /** @description `unauthenticated`. */
@@ -3934,7 +4081,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UpdateChannelRequest"];
+                "application/json": components["schemas"]["UpdateChannelRequest"] | components["schemas"]["UpdateDMChannelRequest"];
             };
         };
         responses: {
@@ -3944,7 +4091,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Channel"];
+                    "application/json": components["schemas"]["Channel"] | components["schemas"]["DMChannel"];
                 };
             };
             /** @description `invalid_body`, `body_too_large` or `validation_failed` (with `errors`). */
@@ -3957,6 +4104,61 @@ export interface operations {
             404: components["responses"]["Problem"];
             /** @description `unsupported_media_type`. */
             415: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    addDMRecipient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+                user_id: components["parameters"]["UserID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The user is in the group. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description not_a_friend, group_full, or too_many_groups. */
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    removeDMRecipient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+                user_id: components["parameters"]["UserID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The user is no longer in the group. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["Problem"];
         };
