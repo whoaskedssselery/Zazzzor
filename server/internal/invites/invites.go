@@ -36,6 +36,8 @@ const (
 	MaxMaxAge = 30 * 24 * time.Hour
 	// MaxMaxUses is the highest use limit; 0 means unlimited.
 	MaxMaxUses = 100
+	// DefaultListed is the invite page size when the caller omits limit.
+	DefaultListed = 100
 	// MaxListed is how many invites GET /guilds/{id}/invites returns at most.
 	MaxListed = 1000
 	// codeAttempts is how many fresh codes creation tries on a collision.
@@ -419,9 +421,9 @@ func (s *Service) whyUnusable(ctx context.Context, tx pgx.Tx, code string) error
 	}
 }
 
-// List returns the invites of the guild (newest first, at most MaxListed)
-// to channels the actor can see; the actor needs MANAGE_GUILD.
-func (s *Service) List(ctx context.Context, guildID, actorID snowflake.ID) ([]Invite, error) {
+// List returns a page of visible invites newest first, excluding the
+// before cursor. The actor needs MANAGE_GUILD.
+func (s *Service) List(ctx context.Context, guildID, actorID snowflake.ID, before string, limit int) ([]Invite, error) {
 	sub, err := s.guilds.Subject(ctx, guildID, actorID)
 	if err != nil {
 		return nil, err
@@ -434,14 +436,18 @@ func (s *Service) List(ctx context.Context, guildID, actorID snowflake.ID) ([]In
 		return nil, err
 	}
 	byID := make(map[snowflake.ID]channels.Channel, len(visible))
+	channelIDs := make([]int64, 0, len(visible))
 	for _, c := range visible {
 		byID[c.ID] = c
+		channelIDs = append(channelIDs, int64(c.ID))
 	}
 	g, err := s.guilds.Lookup(ctx, guildID)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.q.GuildInvites(ctx, s.pool, store.GuildInvitesParams{GuildID: guildID, Lim: MaxListed})
+	rows, err := s.q.GuildInvites(ctx, s.pool, store.GuildInvitesParams{
+		GuildID: guildID, ChannelIds: channelIDs, BeforeCode: before, Lim: int64(limit),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("invites: list invites: %w", err)
 	}
@@ -459,12 +465,11 @@ func (s *Service) List(ctx context.Context, guildID, actorID snowflake.ID) ([]In
 	}
 	out := []Invite{}
 	for _, r := range rows {
-		c, seen := byID[r.ChannelID]
 		u, known := userByID[r.InviterID]
-		if !seen || !known {
+		if !known {
 			continue
 		}
-		out = append(out, Invite{Code: r.Code, Guild: g, Channel: c, Inviter: u, Uses: int(r.Uses),
+		out = append(out, Invite{Code: r.Code, Guild: g, Channel: byID[r.ChannelID], Inviter: u, Uses: int(r.Uses),
 			MaxUses: int(r.MaxUses), ExpiresAt: r.ExpiresAt})
 	}
 	return out, nil

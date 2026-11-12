@@ -256,6 +256,59 @@ func TestDeleteAndListInvites(t *testing.T) {
 	problemOf(t, owner.Do(http.MethodGet, "/api/v1/invites/"+last.Code, nil), http.StatusNotFound, "not_found")
 }
 
+func TestInvitePagesSkipHiddenChannelsAndReachPermanentInvite(t *testing.T) {
+	e := newEnv(t)
+	owner, u := e.user("alice")
+	manager, _ := e.user("bob")
+	g, visible := newGuild(t, owner, "home")
+	permanent := createInvite(t, owner, visible.ID, map[string]any{"max_age_seconds": 0})
+	expect(t, join(manager, permanent.Code), http.StatusOK)
+	path := "/api/v1/guilds/" + g.ID
+	resp := owner.Do(http.MethodPost, path+"/channels", map[string]any{"name": "hidden", "type": 0})
+	expect(t, resp, http.StatusCreated)
+	var hidden channelBody
+	resp.JSON(&hidden)
+	resp = owner.Do(http.MethodPut, "/api/v1/channels/"+hidden.ID+"/permissions/"+g.ID,
+		map[string]any{"type": 0, "allow": "0", "deny": strconv.FormatUint(uint64(permissions.ViewChannel), 10)})
+	expect(t, resp, http.StatusOK)
+	guildID, err := snowflake.Parse(g.ID)
+	if err != nil {
+		t.Fatalf("parse guild ID: %v", err)
+	}
+	hiddenID, err := snowflake.Parse(hidden.ID)
+	if err != nil {
+		t.Fatalf("parse hidden channel ID: %v", err)
+	}
+	if _, err := e.pool.Exec(t.Context(), "UPDATE roles SET permissions = permissions | $1 WHERE id = $2",
+		int64(permissions.ManageGuild), guildID); err != nil {
+		t.Fatalf("grant Manage Guild: %v", err)
+	}
+	if _, err := e.pool.Exec(t.Context(), `
+		INSERT INTO invites (code, guild_id, channel_id, inviter_id, max_uses, created_at)
+		SELECT lpad(n::text, 8, '0'), $1, $2, $3, 0, now() + interval '1 day'
+		FROM generate_series(1, 1001) AS n`, guildID, hiddenID, u.id(t)); err != nil {
+		t.Fatalf("seed hidden invites: %v", err)
+	}
+	createInvite(t, owner, visible.ID, nil)
+	createInvite(t, owner, visible.ID, nil)
+	page := func(query string) []inviteBody {
+		t.Helper()
+		r := manager.Do(http.MethodGet, path+"/invites"+query, nil)
+		expect(t, r, http.StatusOK)
+		var out []inviteBody
+		r.JSON(&out)
+		return out
+	}
+	first := page("?limit=2")
+	if len(first) != 2 {
+		t.Fatalf("first page length = %d, want 2", len(first))
+	}
+	second := page("?limit=2&before=" + first[1].Code)
+	if len(second) != 1 || second[0].Code != permanent.Code || second[0].ExpiresAt != nil {
+		t.Errorf("second page = %+v, want only permanent invite %s", second, permanent.Code)
+	}
+}
+
 func TestInviteLookupRateLimited(t *testing.T) {
 	e := newEnv(t, func(o *invites.Options) {
 		o.LookupLimiter = ratelimit.New(rate.Every(time.Hour), 3, 2*time.Hour)

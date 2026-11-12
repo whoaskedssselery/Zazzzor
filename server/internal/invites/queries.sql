@@ -23,7 +23,14 @@ WHERE code = @code
 RETURNING *;
 
 -- name: GuildInvites :many
-SELECT * FROM invites WHERE guild_id = @guild_id ORDER BY created_at DESC, code LIMIT @lim;
+SELECT i.* FROM invites AS i
+LEFT JOIN invites AS cursor ON cursor.code = @before_code::text
+    AND cursor.guild_id = @guild_id AND cursor.channel_id = ANY(@channel_ids::bigint[])
+WHERE i.guild_id = @guild_id AND i.channel_id = ANY(@channel_ids::bigint[])
+  AND (@before_code = '' OR i.created_at < cursor.created_at
+       OR (i.created_at = cursor.created_at AND i.code > cursor.code))
+ORDER BY i.created_at DESC, i.code
+LIMIT @lim::bigint;
 
 -- name: DeleteInvite :execrows
 DELETE FROM invites WHERE code = @code;

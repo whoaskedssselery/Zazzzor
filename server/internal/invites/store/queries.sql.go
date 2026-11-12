@@ -67,16 +67,30 @@ func (q *Queries) DeleteInvite(ctx context.Context, db DBTX, code string) (int64
 }
 
 const guildInvites = `-- name: GuildInvites :many
-SELECT code, guild_id, channel_id, inviter_id, max_uses, uses, expires_at, created_at FROM invites WHERE guild_id = $1 ORDER BY created_at DESC, code LIMIT $2
+SELECT i.code, i.guild_id, i.channel_id, i.inviter_id, i.max_uses, i.uses, i.expires_at, i.created_at FROM invites AS i
+LEFT JOIN invites AS cursor ON cursor.code = $1::text
+    AND cursor.guild_id = $2 AND cursor.channel_id = ANY($3::bigint[])
+WHERE i.guild_id = $2 AND i.channel_id = ANY($3::bigint[])
+  AND ($1 = '' OR i.created_at < cursor.created_at
+       OR (i.created_at = cursor.created_at AND i.code > cursor.code))
+ORDER BY i.created_at DESC, i.code
+LIMIT $4::bigint
 `
 
 type GuildInvitesParams struct {
-	GuildID snowflake.ID
-	Lim     int32
+	BeforeCode string
+	GuildID    snowflake.ID
+	ChannelIds []int64
+	Lim        int64
 }
 
 func (q *Queries) GuildInvites(ctx context.Context, db DBTX, arg GuildInvitesParams) ([]Invite, error) {
-	rows, err := db.Query(ctx, guildInvites, arg.GuildID, arg.Lim)
+	rows, err := db.Query(ctx, guildInvites,
+		arg.BeforeCode,
+		arg.GuildID,
+		arg.ChannelIds,
+		arg.Lim,
+	)
 	if err != nil {
 		return nil, err
 	}
