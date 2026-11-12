@@ -47,6 +47,11 @@ func WithMaxKeys(n int) Option {
 	return func(l *Limiter) { l.maxKeys = max(n, 1) }
 }
 
+// WithClock reads the time from now instead of time.Now.
+func WithClock(now func() time.Time) Option {
+	return func(l *Limiter) { l.now = now }
+}
+
 // New returns a limiter allowing burst events at once per key, refilled at r.
 func New(r rate.Limit, burst int, ttl time.Duration, opts ...Option) *Limiter {
 	l := &Limiter{rate: r, burst: burst, ttl: ttl, maxKeys: DefaultMaxKeys, now: time.Now,

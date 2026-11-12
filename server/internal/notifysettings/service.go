@@ -89,7 +89,7 @@ func NewService(o Options) *Service {
 		o.Now = time.Now
 	}
 	return &Service{pool: o.Pool, q: store.New(), channels: o.Channels, pub: o.Publisher, now: o.Now,
-		limiter: ratelimit.New(rate.Every(2*time.Second), 30, time.Hour)}
+		limiter: ratelimit.New(rate.Every(2*time.Second), 30, time.Hour, ratelimit.WithClock(o.Now))}
 }
 
 // defaults are the settings of a scope nobody changed: only mentions in a

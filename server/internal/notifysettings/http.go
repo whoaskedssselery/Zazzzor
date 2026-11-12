@@ -84,8 +84,7 @@ func (s *Service) handlePatch(w http.ResponseWriter, r *http.Request) error {
 			if convErr != nil || n <= 0 {
 				return invalid("channel_overrides", "keys must be channel IDs")
 			}
-			p.ChannelOverrides[snowflake.ID(n)] = OverridePatch{Muted: o.Muted, MuteUntil: o.MuteUntil,
-				MessageNotifications: o.MessageNotifications}
+			p.ChannelOverrides[snowflake.ID(n)] = OverridePatch(o)
 		}
 	}
 	out, err := s.Update(r.Context(), auth.CurrentUser(r).ID, guildID, p)
