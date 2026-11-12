@@ -20,6 +20,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
 	"github.com/whoaskedssselery/zazzzor/server/internal/messages"
+	"github.com/whoaskedssselery/zazzzor/server/internal/notifysettings"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/ratelimit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
@@ -58,6 +59,11 @@ type RelationshipReader interface {
 	List(context.Context, snowflake.ID) ([]relationships.Relationship, error)
 }
 
+// NotifySettingsReader lists the user's non-default notification settings for READY.
+type NotifySettingsReader interface {
+	List(context.Context, snowflake.ID) ([]notifysettings.Settings, error)
+}
+
 // PrivateChannelReader lists the user's open private channels for READY.
 type PrivateChannelReader interface {
 	PrivateChannels(context.Context, snowflake.ID) ([]channels.DMChannel, error)
@@ -78,6 +84,8 @@ type Options struct {
 	// Relationships fills READY relationships. Nil leaves the list empty.
 	Relationships   RelationshipReader
 	PrivateChannels PrivateChannelReader
+	// NotifySettings fills READY user_guild_settings. Nil leaves the list empty.
+	NotifySettings NotifySettingsReader
 	// AllowedOrigins are the only Origin values accepted for the upgrade.
 	AllowedOrigins []string
 	// Logger is for failures; nil discards.

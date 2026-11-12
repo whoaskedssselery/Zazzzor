@@ -4,11 +4,12 @@ import { useMemo, useState } from "react";
 import {
   type DMChannel,
   dmPeer,
+  isChannelMuted,
   isPrivateUnread,
   type PrivateEntry,
   privateList,
+  privateBadgeCount,
   privateName,
-  privateUnreadCount,
   useClosePrivate,
   useGuilds,
   useRemoveRecipient,
@@ -39,10 +40,13 @@ const Row = ({ entry, active, onLeave }: { entry: PrivateEntry; active: boolean;
   const close = useClosePrivate();
   const navigate = useNavigate();
   const name = privateName(channel);
-  const unread = isPrivateUnread(entry);
-  const count = privateUnreadCount(entry);
+  // A muted one stays quiet: no bold, no count, faded.
+  const muted = useGuilds((s) => isChannelMuted(s, null, channel.id));
+  const unread = !muted && isPrivateUnread(entry);
+  const count = useGuilds((s) => privateBadgeCount(s, entry));
   let label = name;
   if (count > 0) label += `, непрочитанных: ${String(count)}`;
+  if (muted) label += ", заглушено";
   return (
     <li className="group/row relative">
       <Link
@@ -54,6 +58,7 @@ const Row = ({ entry, active, onLeave }: { entry: PrivateEntry; active: boolean;
           "flex h-11 items-center gap-3 rounded-md px-2 pr-9 text-fg-muted transition-colors duration-(--duration-fast) hover:bg-hover hover:text-fg",
           active && "bg-selected text-fg",
           unread && "text-fg",
+          muted && !active && "opacity-60",
         )}
       >
         {peer ? (

@@ -24,6 +24,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/invites"
 	"github.com/whoaskedssselery/zazzzor/server/internal/linkpreview"
 	"github.com/whoaskedssselery/zazzzor/server/internal/messages"
+	"github.com/whoaskedssselery/zazzzor/server/internal/notifysettings"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/ratelimit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
@@ -45,12 +46,14 @@ type Modules struct {
 	Auth          *auth.Service
 	Users         *users.Service
 	Relationships *relationships.Service
-	Guilds        *guilds.Service
-	Channels      *channels.Service
-	Invites       *invites.Service
-	Messages      *messages.Service
-	Admin         *admin.Service
-	Files         *files.Disk
+	// NotifySettings is the users' mute and alert settings.
+	NotifySettings *notifysettings.Service
+	Guilds         *guilds.Service
+	Channels       *channels.Service
+	Invites        *invites.Service
+	Messages       *messages.Service
+	Admin          *admin.Service
+	Files          *files.Disk
 	// Voice is unavailable (every operation 503) without LiveKit
 	// credentials; its Run must be started by the caller.
 	Voice *voice.Service
@@ -109,12 +112,14 @@ func NewModules(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator,
 		Relationships: relationships.NewService(relationships.Options{Pool: pool, Publisher: pub}),
 		Guilds:        guildSvc,
 		Channels:      channelSvc,
-		Invites:       invites.NewService(invites.Options{Pool: pool, Channels: channelSvc, Guilds: guildSvc, Users: authSvc}),
-		Messages:      messageSvc,
-		Admin:         admin.NewService(admin.Options{Settings: settings, Accounts: authSvc}),
-		Files:         disk,
-		Voice:         cleanup.voice,
-		ReadLimiter:   ratelimit.New(readRate, readBurst, readTTL),
+		NotifySettings: notifysettings.NewService(notifysettings.Options{Pool: pool, Channels: channelSvc,
+			Publisher: pub}),
+		Invites:     invites.NewService(invites.Options{Pool: pool, Channels: channelSvc, Guilds: guildSvc, Users: authSvc}),
+		Messages:    messageSvc,
+		Admin:       admin.NewService(admin.Options{Settings: settings, Accounts: authSvc}),
+		Files:       disk,
+		Voice:       cleanup.voice,
+		ReadLimiter: ratelimit.New(readRate, readBurst, readTTL),
 	}, nil
 }
 
@@ -140,6 +145,7 @@ func (m *Modules) NewGateway(bus *events.Bus, cfg config.Config, logger *slog.Lo
 	opts.ReadStates = m.Messages
 	opts.PrivateChannels = m.Channels
 	opts.Relationships = m.Relationships
+	opts.NotifySettings = m.NotifySettings
 	gw := gateway.New(opts)
 	if m.presence != nil {
 		m.presence.Store(gw)
@@ -163,6 +169,7 @@ func (m *Modules) Routes(r chi.Router, gw *gateway.Gateway) {
 		auth.Mount(r, m.Auth)
 		users.Mount(r, m.Users)
 		relationships.Mount(r, m.Relationships)
+		notifysettings.Mount(r, m.NotifySettings)
 		admin.Mount(r, m.Admin)
 		guilds.Mount(r, m.Guilds)
 		channels.Mount(r, m.Channels)

@@ -215,6 +215,23 @@ const dmChannelSchema: z.ZodMiniType<S["DMChannel"]> = z.object({
   last_message_id: z.nullable(snowflake),
 });
 
+const channelOverrideSchema: z.ZodMiniType<S["ChannelOverride"]> = z.object({
+  channel_id: snowflake,
+  muted: z.boolean(),
+  mute_until: nullableString,
+  message_notifications: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]),
+});
+
+/** The user's notification settings of a server, or of the private channels (guild_id null). */
+const userGuildSettingsSchema: z.ZodMiniType<S["UserGuildSettings"]> = z.object({
+  guild_id: z.nullable(snowflake),
+  muted: z.boolean(),
+  mute_until: nullableString,
+  message_notifications: z.union([z.literal(0), z.literal(1), z.literal(2)]),
+  suppress_everyone: z.boolean(),
+  channel_overrides: z.array(channelOverrideSchema),
+});
+
 /** The payload type of each event the guild store applies (`x-gateway.events`). */
 export interface GatewayEvents {
   READY: S["GatewayReady"];
@@ -239,6 +256,7 @@ export interface GatewayEvents {
   DM_CHANNEL_CREATE: S["DMChannel"];
   DM_CHANNEL_UPDATE: S["DMChannel"];
   DM_CHANNEL_DELETE: S["DMChannelDeleteEvent"];
+  USER_GUILD_SETTINGS_UPDATE: S["UserGuildSettings"];
   VOICE_STATE_UPDATE: S["VoiceState"];
   MESSAGE_ACK: S["ReadState"];
 }
@@ -254,6 +272,7 @@ const eventSchemas: { [K in keyof GatewayEvents]: z.ZodMiniType<GatewayEvents[K]
     read_states: z.array(readStateSchema),
     relationships: z.array(relationshipSchema),
     private_channels: z.array(dmChannelSchema),
+    user_guild_settings: z.array(userGuildSettingsSchema),
   }),
   GUILD_CREATE: guildStateSchema,
   GUILD_SYNC: guildStateSchema,
@@ -276,6 +295,7 @@ const eventSchemas: { [K in keyof GatewayEvents]: z.ZodMiniType<GatewayEvents[K]
   DM_CHANNEL_CREATE: dmChannelSchema,
   DM_CHANNEL_UPDATE: dmChannelSchema,
   DM_CHANNEL_DELETE: z.object({ id: snowflake }),
+  USER_GUILD_SETTINGS_UPDATE: userGuildSettingsSchema,
   VOICE_STATE_UPDATE: voiceStateSchema,
   MESSAGE_ACK: readStateSchema,
 };

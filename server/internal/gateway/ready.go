@@ -10,6 +10,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/channels"
 	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
 	"github.com/whoaskedssselery/zazzzor/server/internal/messages"
+	"github.com/whoaskedssselery/zazzzor/server/internal/notifysettings"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 	"github.com/whoaskedssselery/zazzzor/server/internal/relationships"
 	"github.com/whoaskedssselery/zazzzor/server/internal/voice"
@@ -102,7 +103,17 @@ func (g *Gateway) ready(ctx context.Context, user auth.User) (Ready, error) {
 		return Ready{}, err
 	}
 	r := Ready{User: user.Public(), Guilds: make([]GuildState, 0, len(ids)), Presences: []Presence{},
-		ReadStates: []messages.ReadState{}, Relationships: []relationships.Relationship{}}
+		ReadStates: []messages.ReadState{}, Relationships: []relationships.Relationship{},
+		UserGuildSettings: []notifysettings.Settings{}}
+	if g.opts.NotifySettings != nil {
+		list, listErr := g.opts.NotifySettings.List(ctx, user.ID)
+		if listErr != nil {
+			return Ready{}, fmt.Errorf("gateway: read notification settings: %w", listErr)
+		}
+		if list != nil {
+			r.UserGuildSettings = list
+		}
+	}
 	if g.opts.Relationships != nil {
 		list, listErr := g.opts.Relationships.List(ctx, user.ID)
 		if listErr != nil {

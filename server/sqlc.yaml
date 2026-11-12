@@ -190,3 +190,14 @@ sql:
         sql_package: pgx/v5
         emit_methods_with_db_argument: true
         omit_unused_structs: true
+
+  - engine: postgresql
+    schema: internal/platform/db/migrations
+    queries: internal/notifysettings/queries.sql
+    gen:
+      go:
+        package: store
+        out: internal/notifysettings/store
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: true
+        omit_unused_structs: true

@@ -19,6 +19,12 @@ export type Relationship = S["Relationship"];
 
 /** A direct message (type 1) or group DM (type 3) as the user sees it; `recipients` are everyone else. */
 export type DMChannel = S["DMChannel"];
+/** The user's notification settings of a server, or of the private channels (guild_id null). */
+export type NotifySettings = S["UserGuildSettings"];
+export type ChannelOverride = S["ChannelOverride"];
+
+/** The key of the private channels' settings in GuildsState.notify. */
+export const PRIVATE_SCOPE = "@me";
 
 /** Private channel types, as Discord numbers them. */
 export const PRIVATE_TYPE = { DM: 1, GROUP: 3 } as const;
@@ -77,6 +83,8 @@ export interface GuildsState {
   relationships: Record<string, Relationship>;
   /** The user's open direct messages and their groups, by channel ID. */
   privates: Record<string, PrivateEntry>;
+  /** The user's notification settings that differ from the defaults, by server ID or PRIVATE_SCOPE. */
+  notify: Record<string, NotifySettings>;
 }
 
 export const EMPTY_GUILDS: GuildsState = {
@@ -86,7 +94,10 @@ export const EMPTY_GUILDS: GuildsState = {
   presences: {},
   relationships: {},
   privates: {},
+  notify: {},
 };
+
+const scopeOf = (n: NotifySettings): string => n.guild_id ?? PRIVATE_SCOPE;
 
 const byId = <T extends { id: string }>(items: T[]): Record<string, T> =>
   Object.fromEntries(items.map((item) => [item.id, item]));
@@ -140,7 +151,8 @@ export function applyReady(d: ReadyPayload): GuildsState {
     const r = marks.get(channel.id);
     privates[channel.id] = { channel, read: r ? { lastReadId: r.last_read_id, mentions: r.mention_count } : null };
   }
-  return { me: d.user, guilds, order, presences, relationships: byId(d.relationships), privates };
+  const notify = Object.fromEntries(d.user_guild_settings.map((n) => [scopeOf(n), n]));
+  return { me: d.user, guilds, order, presences, relationships: byId(d.relationships), privates, notify };
 }
 
 /** Changes private channel `id` with `fn`; one not held is left alone. */
@@ -360,6 +372,7 @@ const handlers: Handlers = {
       ),
     };
   },
+  USER_GUILD_SETTINGS_UPDATE: (s, n) => ({ ...s, notify: { ...s.notify, [scopeOf(n)]: n } }),
   DM_CHANNEL_CREATE: upsertPrivate,
   DM_CHANNEL_UPDATE: upsertPrivate,
   DM_CHANNEL_DELETE: (s, d) => (d.id in s.privates ? { ...s, privates: without(s.privates, d.id) } : s),

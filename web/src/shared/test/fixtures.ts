@@ -92,6 +92,7 @@ export function makeReady(me: User, guilds: GuildState[] = []): GatewayReady {
     read_states: guilds.flatMap((g) => g.read_states),
     relationships: [],
     private_channels: [],
+    user_guild_settings: [],
   };
 }
 

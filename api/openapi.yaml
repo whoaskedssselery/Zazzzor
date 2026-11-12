@@ -878,6 +878,56 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
+  /users/@me/guilds/{guild_id}/settings:
+    patch:
+      tags: [users]
+      operationId: updateUserGuildSettings
+      summary: Update personal notification settings for a server or DMs
+      description: |
+        Changes only supplied fields. A channel override merges into the
+        existing values for that channel. The response contains the full
+        effective settings and the user's own sessions get
+        USER_GUILD_SETTINGS_UPDATE. This operation allows 30 writes per minute
+        per user. Settings do not change read markers or mention counters.
+      parameters:
+        - name: guild_id
+          in: path
+          required: true
+          description: A server ID or @me for the user's private channels.
+          schema:
+            oneOf:
+              - $ref: "#/components/schemas/Snowflake"
+              - type: string
+                const: "@me"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserGuildSettingsRequest"
+      responses:
+        "200":
+          description: The resulting notification settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserGuildSettings"
+        "400":
+          description: Invalid settings, inaccessible or out-of-scope channel, or too many overrides.
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: Unknown server or the user is not a member.
+          $ref: "#/components/responses/Problem"
+        "415":
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
   /users/@me/guilds/{guild_id}:
     delete:
       tags: [guilds]
@@ -4252,6 +4302,88 @@ components:
           $ref: "#/components/schemas/Snowflake"
         type:
           $ref: "#/components/schemas/RelationshipType"
+    NotificationLevel:
+      type: integer
+      enum: [0, 1, 2]
+      description: All messages, mentions only, or no notifications.
+    ChannelNotificationLevel:
+      type: integer
+      enum: [0, 1, 2, 3]
+      description: All messages, mentions only, no notifications, or inherit the scope settings.
+    ChannelOverride:
+      type: object
+      additionalProperties: false
+      required: [channel_id, muted, mute_until, message_notifications]
+      properties:
+        channel_id:
+          $ref: "#/components/schemas/Snowflake"
+        muted:
+          type: boolean
+        mute_until:
+          type: [string, "null"]
+          format: date-time
+          description: When the mute expires, or null for an indefinite mute or an unmuted channel.
+        message_notifications:
+          $ref: "#/components/schemas/ChannelNotificationLevel"
+    UserGuildSettings:
+      type: object
+      additionalProperties: false
+      required: [guild_id, muted, mute_until, message_notifications, suppress_everyone, channel_overrides]
+      properties:
+        guild_id:
+          description: The server ID, or null for private channels.
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
+        muted:
+          type: boolean
+        mute_until:
+          type: [string, "null"]
+          format: date-time
+          description: When the mute expires, or null for an indefinite mute or an unmuted scope.
+        message_notifications:
+          $ref: "#/components/schemas/NotificationLevel"
+        suppress_everyone:
+          type: boolean
+        channel_overrides:
+          type: array
+          maxItems: 500
+          items:
+            $ref: "#/components/schemas/ChannelOverride"
+    UpdateChannelOverrideRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        muted:
+          type: boolean
+        mute_until:
+          type: [string, "null"]
+          format: date-time
+          description: A future expiration at most 30 days away. Null clears the expiration.
+        message_notifications:
+          $ref: "#/components/schemas/ChannelNotificationLevel"
+    UpdateUserGuildSettingsRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        muted:
+          type: boolean
+        mute_until:
+          type: [string, "null"]
+          format: date-time
+          description: A future expiration at most 30 days away. Null clears the expiration.
+        message_notifications:
+          $ref: "#/components/schemas/NotificationLevel"
+        suppress_everyone:
+          type: boolean
+          description: Suppress @everyone and @here alerts. Applies only to a server.
+        channel_overrides:
+          type: object
+          maxProperties: 500
+          propertyNames:
+            pattern: '^[0-9]{1,19}$'
+          additionalProperties:
+            $ref: "#/components/schemas/UpdateChannelOverrideRequest"
     GatewayFrame:
       type: object
       additionalProperties: false
@@ -4282,6 +4414,7 @@ components:
             - $ref: "#/components/schemas/RelationshipRemove"
             - $ref: "#/components/schemas/DMChannel"
             - $ref: "#/components/schemas/DMChannelDeleteEvent"
+            - $ref: "#/components/schemas/UserGuildSettings"
             - $ref: "#/components/schemas/Guild"
             - $ref: "#/components/schemas/GuildDeleteEvent"
             - $ref: "#/components/schemas/MemberEvent"
@@ -4310,8 +4443,13 @@ components:
     GatewayReady:
       type: object
       additionalProperties: false
-      required: [user, guilds, presences, read_states, relationships, private_channels]
+      required: [user, guilds, presences, read_states, relationships, private_channels, user_guild_settings]
       properties:
+        user_guild_settings:
+          type: array
+          description: Non-default personal notification settings for the receiving user.
+          items:
+            $ref: "#/components/schemas/UserGuildSettings"
         private_channels:
           type: array
           items:
@@ -4771,6 +4909,9 @@ x-gateway:
     RELATIONSHIP_REMOVE:
       description: Removal of the relationship as seen by this user only.
       $ref: "#/components/schemas/RelationshipRemove"
+    USER_GUILD_SETTINGS_UPDATE:
+      description: Full personal settings after a PATCH, sent only to that user.
+      $ref: "#/components/schemas/UserGuildSettings"
     USER_UPDATE:
       $ref: "#/components/schemas/User"
     VOICE_STATE_UPDATE:

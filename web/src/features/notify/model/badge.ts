@@ -26,7 +26,7 @@ export const faviconFor = (state: "none" | "unread" | "mentions"): string => {
 /** The tab's title and favicon follow unread mentions and messages across all servers. */
 export const useUnreadBadge = (): void => {
   const mentions = useGuilds((s) => Object.values(s.guilds).reduce((n, e) => n + guildMentionCount(e), 0));
-  const unread = useGuilds((s) => Object.values(s.guilds).some(isGuildUnread));
+  const unread = useGuilds((s) => Object.values(s.guilds).some((e) => isGuildUnread(e, s)));
   useEffect(() => {
     document.title = titleFor(mentions);
     const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
