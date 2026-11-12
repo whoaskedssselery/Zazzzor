@@ -24,6 +24,9 @@ func (s *Service) channelIn(ctx context.Context, db store.DBTX, channelID snowfl
 		return Channel{}, fmt.Errorf("channels: load channel: %w", err)
 	}
 	c := toChannel(row)
+	if c.Type.Private() {
+		return c, nil
+	}
 	from := c.ID
 	if c.PermissionSynced && c.ParentID != nil {
 		from = *c.ParentID
@@ -51,6 +54,16 @@ func (s *Service) viewable(ctx context.Context, db store.DBTX, userID, channelID
 	c, err := s.channelIn(ctx, db, channelID)
 	if err != nil {
 		return Channel{}, 0, err
+	}
+	if c.Type.Private() {
+		member, memberErr := s.q.IsPrivateRecipient(ctx, db, store.IsPrivateRecipientParams{ChannelID: int64(channelID), UserID: int64(userID)})
+		if memberErr != nil {
+			return Channel{}, 0, fmt.Errorf("channels: check private recipient: %w", memberErr)
+		}
+		if !member {
+			return Channel{}, 0, ErrNotFound
+		}
+		return c, privatePermissions, nil
 	}
 	sub, err := s.guilds.SubjectIn(ctx, db, c.GuildID, userID)
 	if errors.Is(err, guilds.ErrNotMember) {
@@ -151,7 +164,15 @@ func (l *layout) visibleTo(sub permissions.Subject) []Channel {
 func (s *Service) Viewers(ctx context.Context, channelID snowflake.ID) ([]snowflake.ID, error) {
 	var out []snowflake.ID
 	err := s.read(ctx, func(tx pgx.Tx) error {
-		a, overwrites, err := s.MentionAccessIn(ctx, tx, channelID)
+		c, err := s.channelIn(ctx, tx, channelID)
+		if err != nil {
+			return err
+		}
+		if c.Type.Private() {
+			out, err = s.PrivateRecipientsIn(ctx, tx, channelID)
+			return err
+		}
+		a, overwrites, err := s.mentionAccessFor(ctx, tx, c)
 		if err != nil {
 			return err
 		}
@@ -170,6 +191,13 @@ func (s *Service) MentionAccessIn(ctx context.Context, tx pgx.Tx, channelID snow
 	c, err := s.channelIn(ctx, tx, channelID)
 	if err != nil {
 		return guilds.Access{}, nil, err
+	}
+	return s.mentionAccessFor(ctx, tx, c)
+}
+
+func (s *Service) mentionAccessFor(ctx context.Context, tx pgx.Tx, c Channel) (guilds.Access, []permissions.Overwrite, error) {
+	if c.Type.Private() {
+		return guilds.Access{}, nil, ErrNotFound
 	}
 	a, err := s.guilds.AccessIn(ctx, tx, c.GuildID)
 	if errors.Is(err, guilds.ErrNotFound) {

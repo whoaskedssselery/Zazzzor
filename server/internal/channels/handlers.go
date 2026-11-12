@@ -24,6 +24,9 @@ func Mount(r chi.Router, s *Service) {
 		r.Use(auth.Require, httpx.NoStore)
 		writes := r.With(auth.LimitPerUser(s.writeLimiter))
 
+		r.Get("/users/@me/channels", httpx.Wrap(s.handleListPrivate))
+		r.Post("/users/@me/channels", httpx.Wrap(s.handleOpenPrivate))
+
 		r.Get("/guilds/{guild_id}/channels", httpx.Wrap(s.handleList))
 		writes.Post("/guilds/{guild_id}/channels", httpx.Wrap(s.handleCreate))
 		writes.Patch("/guilds/{guild_id}/channels", httpx.Wrap(s.handleReorder))
@@ -154,6 +157,14 @@ func (s *Service) handleGet(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return fail(err)
 	}
+	if c.Type.Private() {
+		dm, dmErr := s.PrivateChannel(r.Context(), auth.CurrentUser(r).ID, id)
+		if dmErr != nil {
+			return fail(dmErr)
+		}
+		httpx.JSON(w, http.StatusOK, dm)
+		return nil
+	}
 	httpx.JSON(w, http.StatusOK, c.Public())
 	return nil
 }
@@ -202,6 +213,17 @@ func (s *Service) handleDelete(w http.ResponseWriter, r *http.Request) error {
 	id, err := httpx.PathID(r, "channel_id")
 	if err != nil {
 		return err
+	}
+	row, lookupErr := s.Lookup(r.Context(), id)
+	if lookupErr != nil {
+		return fail(lookupErr)
+	}
+	if row.Type.Private() {
+		if err = s.CloseDirect(r.Context(), id, auth.CurrentUser(r).ID); err != nil {
+			return fail(err)
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return nil
 	}
 	if err = s.DeleteChannel(r.Context(), id, auth.CurrentUser(r).ID); err != nil {
 		return fail(err)

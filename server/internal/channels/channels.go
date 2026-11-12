@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -48,9 +49,17 @@ type Type int16
 // Channel types, numbered as in Discord.
 const (
 	TypeText     Type = 0
+	TypeDM       Type = 1
+	TypeGroupDM  Type = 3
 	TypeVoice    Type = 2
 	TypeCategory Type = 4
 )
+
+// Private reports whether this type is outside a guild.
+func (t Type) Private() bool { return t == TypeDM || t == TypeGroupDM }
+
+// Messages reports whether this type supports text messages.
+func (t Type) Messages() bool { return t == TypeText || t.Private() }
 
 func (t Type) valid() bool { return t == TypeText || t == TypeVoice || t == TypeCategory }
 
@@ -186,19 +195,23 @@ type Options struct {
 
 // Service implements channels, categories and overwrites.
 type Service struct {
-	pool         *pgxpool.Pool
-	q            *store.Queries
-	ids          *snowflake.Generator
-	guilds       Guilds
-	pub          events.Publisher
-	now          func() time.Time
-	writeLimiter *ratelimit.Limiter
+	pool          *pgxpool.Pool
+	q             *store.Queries
+	ids           *snowflake.Generator
+	guilds        Guilds
+	pub           events.Publisher
+	now           func() time.Time
+	writeLimiter  *ratelimit.Limiter
+	directLimiter *ratelimit.Limiter
+	privateLocks  [64]sync.Mutex
+	directLocks   [64]sync.Mutex
 }
 
 // NewService builds a Service from o.
 func NewService(o Options) *Service {
 	s := &Service{pool: o.Pool, q: store.New(), ids: o.IDs, guilds: o.Guilds, pub: o.Publisher,
-		now: o.Now, writeLimiter: o.WriteLimiter}
+		now: o.Now, writeLimiter: o.WriteLimiter,
+		directLimiter: ratelimit.New(rate.Every(2*time.Second), 30, 2*time.Minute)}
 	if s.now == nil {
 		s.now = time.Now
 	}
@@ -247,12 +260,12 @@ func (b *Bootstrapper) CreateDefaultChannels(ctx context.Context, tx pgx.Tx, gui
 		{DefaultTextCategory, DefaultTextChannel, TypeText},
 		{DefaultVoiceCategory, DefaultVoiceChannel, TypeVoice},
 	} {
-		cat, err := b.q.CreateChannel(ctx, tx, store.CreateChannelParams{ID: b.ids.Next(), GuildID: guildID,
+		cat, err := b.q.CreateChannel(ctx, tx, store.CreateChannelParams{ID: b.ids.Next(), GuildID: int64(guildID),
 			Type: int16(TypeCategory), Name: d.category, Position: int32(i), CreatedAt: now}) //nolint:gosec // G115: 0 or 1
 		if err != nil {
 			return fmt.Errorf("channels: create category: %w", err)
 		}
-		if _, err = b.q.CreateChannel(ctx, tx, store.CreateChannelParams{ID: b.ids.Next(), GuildID: guildID,
+		if _, err = b.q.CreateChannel(ctx, tx, store.CreateChannelParams{ID: b.ids.Next(), GuildID: int64(guildID),
 			Type: int16(d.typ), Name: d.channel, ParentID: &cat.ID, PermissionSynced: true, CreatedAt: now}); err != nil {
 			return fmt.Errorf("channels: create channel: %w", err)
 		}
@@ -289,7 +302,15 @@ func (s *Service) read(ctx context.Context, fn func(pgx.Tx) error) error {
 // --- conversions ---
 
 func toChannel(c store.Channel) Channel {
-	return Channel{ID: c.ID, GuildID: c.GuildID, Type: Type(c.Type), Name: c.Name, Topic: c.Topic,
+	var guildID snowflake.ID
+	var name string
+	if c.GuildID != nil {
+		guildID = *c.GuildID
+	}
+	if c.Name != nil {
+		name = *c.Name
+	}
+	return Channel{ID: c.ID, GuildID: guildID, Type: Type(c.Type), Name: name, Topic: c.Topic,
 		LastMessageID: c.LastMessageID, ParentID: c.ParentID, Position: int(c.Position), PermissionSynced: c.PermissionSynced}
 }
 
@@ -383,11 +404,11 @@ type layout struct {
 
 // loadLayout reads the channels and overwrites of guildID in two queries.
 func loadLayout(ctx context.Context, q *store.Queries, db store.DBTX, guildID snowflake.ID) (*layout, error) {
-	rows, err := q.GuildChannels(ctx, db, guildID)
+	rows, err := q.GuildChannels(ctx, db, &guildID)
 	if err != nil {
 		return nil, fmt.Errorf("channels: list channels: %w", err)
 	}
-	ows, err := q.GuildOverwrites(ctx, db, guildID)
+	ows, err := q.GuildOverwrites(ctx, db, &guildID)
 	if err != nil {
 		return nil, fmt.Errorf("channels: list overwrites: %w", err)
 	}
@@ -495,7 +516,7 @@ func (l *layout) sorted() []*node {
 // returns the channels that changed, in display order.
 func (s *Service) save(ctx context.Context, tx pgx.Tx, l *layout) ([]Channel, error) {
 	var p store.SetChannelLayoutParams
-	p.GuildID = l.guildID
+	p.GuildID = &l.guildID
 	var changed []Channel
 	for _, n := range l.sorted() {
 		if n.owDirty {

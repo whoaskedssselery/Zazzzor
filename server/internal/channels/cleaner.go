@@ -84,7 +84,7 @@ func (l *layout) pruneReadStates(ctx context.Context, q *store.Queries, tx pgx.T
 }
 
 func (c *Cleaner) drop(ctx context.Context, tx pgx.Tx, guildID, targetID snowflake.ID) error {
-	if err := c.q.DeleteTargetOverwrites(ctx, tx, store.DeleteTargetOverwritesParams{GuildID: guildID, TargetID: targetID}); err != nil {
+	if err := c.q.DeleteTargetOverwrites(ctx, tx, store.DeleteTargetOverwritesParams{GuildID: &guildID, TargetID: targetID}); err != nil {
 		return fmt.Errorf("channels: drop overwrites: %w", err)
 	}
 	return nil

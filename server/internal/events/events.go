@@ -27,6 +27,9 @@ const (
 	GuildRoleUpdate       = "GUILD_ROLE_UPDATE"
 	GuildRoleDelete       = "GUILD_ROLE_DELETE"
 	ChannelCreate         = "CHANNEL_CREATE"
+	DMChannelCreate       = "DM_CHANNEL_CREATE"
+	DMChannelUpdate       = "DM_CHANNEL_UPDATE"
+	DMChannelDelete       = "DM_CHANNEL_DELETE"
 	ChannelUpdate         = "CHANNEL_UPDATE"
 	ChannelDelete         = "CHANNEL_DELETE"
 	MessageCreate         = "MESSAGE_CREATE"
@@ -70,6 +73,8 @@ const (
 	// moderators for bans); the gateway resolves it through
 	// guilds.Directory.
 	AudienceGuildPermission
+	// AudiencePrivateChannel is the selected users who are still recipients.
+	AudiencePrivateChannel
 )
 
 // Audience selects the recipients of an event.
