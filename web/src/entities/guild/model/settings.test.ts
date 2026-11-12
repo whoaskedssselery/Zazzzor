@@ -24,6 +24,7 @@ const entryWith = (perms: bigint, userId = me.id) => {
     read_states: [],
     relationships: [],
     private_channels: [],
+    user_guild_settings: [],
   }).guilds[G];
   if (!entry) throw new Error("no entry");
   return { entry, userId };

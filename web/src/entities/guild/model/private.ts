@@ -1,3 +1,4 @@
+import { isChannelMuted } from "./notify";
 import { type DMChannel, type GuildsState, newer, PRIVATE_TYPE, type PrivateEntry } from "./reducer";
 
 /**
@@ -36,6 +37,10 @@ export const isPrivateUnread = (p: PrivateEntry): boolean => {
 /** Unread messages from others in the private channel (each one counts, as Discord's DM badges). */
 export const privateUnreadCount = (p: PrivateEntry): number => (isPrivateUnread(p) ? (p.read?.mentions ?? 0) : 0);
 
-/** Unread messages across all of the user's DMs and groups: the badge on «Главная». */
-export const homeUnreadCount = (s: Pick<GuildsState, "privates">): number =>
-  Object.values(s.privates).reduce((sum, p) => sum + privateUnreadCount(p), 0);
+/** Unread messages of a DM or group to show on it: none while it is muted. */
+export const privateBadgeCount = (s: Pick<GuildsState, "notify">, p: PrivateEntry): number =>
+  isChannelMuted(s, null, p.channel.id) ? 0 : privateUnreadCount(p);
+
+/** Unread messages across the user's DMs and groups that are not muted: the badge on «Главная». */
+export const homeUnreadCount = (s: Pick<GuildsState, "privates" | "notify">): number =>
+  Object.values(s.privates).reduce((sum, p) => sum + privateBadgeCount(s, p), 0);

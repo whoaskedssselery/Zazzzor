@@ -1,6 +1,9 @@
+import { isChannelMuted, isScopeMuted } from "./notify";
 import { computeChannel, has, PERM } from "./permissions";
 import { isPrivateUnread } from "./private";
 import { type GuildEntry, type GuildsState, newer } from "./reducer";
+
+const NO_SETTINGS: Pick<GuildsState, "notify"> = { notify: {} };
 
 /** Text channels (type 0) are the ones with messages. */
 const TEXT = 0;
@@ -22,8 +25,15 @@ export const isUnread = (e: GuildEntry, channelId: string): boolean => {
 export const mentionCount = (e: GuildEntry, channelId: string): number =>
   e.channels[channelId] === undefined ? 0 : (e.reads[channelId]?.mentions ?? 0);
 
-/** Whether any channel of the server has unread messages. */
-export const isGuildUnread = (e: GuildEntry): boolean => Object.keys(e.channels).some((id) => isUnread(e, id));
+/**
+ * Whether any channel of the server has unread messages the user wants to
+ * see: a muted server, or a muted channel, never lights up (as in Discord).
+ */
+export const isGuildUnread = (e: GuildEntry, s: Pick<GuildsState, "notify"> = NO_SETTINGS): boolean => {
+  const id = e.guild.id;
+  if (isScopeMuted(s, id)) return false;
+  return Object.keys(e.channels).some((c) => isUnread(e, c) && !isChannelMuted(s, id, c));
+};
 
 /** Unread mentions across the server's channels. */
 export const guildMentionCount = (e: GuildEntry): number =>

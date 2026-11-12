@@ -55,6 +55,7 @@ const readyFrame = (s = 1) => ({
     read_states: [],
     relationships: [],
     private_channels: [],
+    user_guild_settings: [],
   },
 });
 

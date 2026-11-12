@@ -487,6 +487,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/@me/guilds/{guild_id}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update personal notification settings for a server or DMs
+         * @description Changes only supplied fields. A channel override merges into the
+         *     existing values for that channel. The response contains the full
+         *     effective settings and the user's own sessions get
+         *     USER_GUILD_SETTINGS_UPDATE. This operation allows 30 writes per minute
+         *     per user. Settings do not change read markers or mention counters.
+         */
+        patch: operations["updateUserGuildSettings"];
+        trace?: never;
+    };
     "/users/@me/guilds/{guild_id}": {
         parameters: {
             query?: never;
@@ -2125,6 +2149,62 @@ export interface components {
             type: components["schemas"]["RelationshipType"];
         };
         /**
+         * @description All messages, mentions only, or no notifications.
+         * @enum {integer}
+         */
+        NotificationLevel: 0 | 1 | 2;
+        /**
+         * @description All messages, mentions only, no notifications, or inherit the scope settings.
+         * @enum {integer}
+         */
+        ChannelNotificationLevel: 0 | 1 | 2 | 3;
+        ChannelOverride: {
+            channel_id: components["schemas"]["Snowflake"];
+            muted: boolean;
+            /**
+             * Format: date-time
+             * @description When the mute expires, or null for an indefinite mute or an unmuted channel.
+             */
+            mute_until: string | null;
+            message_notifications: components["schemas"]["ChannelNotificationLevel"];
+        };
+        UserGuildSettings: {
+            /** @description The server ID, or null for private channels. */
+            guild_id: components["schemas"]["Snowflake"] | null;
+            muted: boolean;
+            /**
+             * Format: date-time
+             * @description When the mute expires, or null for an indefinite mute or an unmuted scope.
+             */
+            mute_until: string | null;
+            message_notifications: components["schemas"]["NotificationLevel"];
+            suppress_everyone: boolean;
+            channel_overrides: components["schemas"]["ChannelOverride"][];
+        };
+        UpdateChannelOverrideRequest: {
+            muted?: boolean;
+            /**
+             * Format: date-time
+             * @description A future expiration at most 30 days away. Null clears the expiration.
+             */
+            mute_until?: string | null;
+            message_notifications?: components["schemas"]["ChannelNotificationLevel"];
+        };
+        UpdateUserGuildSettingsRequest: {
+            muted?: boolean;
+            /**
+             * Format: date-time
+             * @description A future expiration at most 30 days away. Null clears the expiration.
+             */
+            mute_until?: string | null;
+            message_notifications?: components["schemas"]["NotificationLevel"];
+            /** @description Suppress @everyone and @here alerts. Applies only to a server. */
+            suppress_everyone?: boolean;
+            channel_overrides?: {
+                [key: string]: components["schemas"]["UpdateChannelOverrideRequest"];
+            };
+        };
+        /**
          * @description A server frame. `t` and `s` are present exactly on DISPATCH (op 0);
          *     `s` counts the DISPATCH frames of the connection from 1.
          */
@@ -2138,13 +2218,15 @@ export interface components {
             t?: string;
             s?: number;
             /** @description The payload; null for HEARTBEAT_ACK. */
-            d: null | components["schemas"]["GatewayHello"] | components["schemas"]["GatewayReady"] | components["schemas"]["GuildState"] | components["schemas"]["GuildEmojisUpdate"] | components["schemas"]["Relationship"] | components["schemas"]["RelationshipRemove"] | components["schemas"]["DMChannel"] | components["schemas"]["DMChannelDeleteEvent"] | components["schemas"]["Guild"] | components["schemas"]["GuildDeleteEvent"] | components["schemas"]["MemberEvent"] | components["schemas"]["MemberRemoveEvent"] | components["schemas"]["RoleEvent"] | components["schemas"]["RoleDeleteEvent"] | components["schemas"]["Channel"] | components["schemas"]["Message"] | components["schemas"]["MessageDeleteEvent"] | components["schemas"]["MessageReactionEvent"] | components["schemas"]["ReadState"] | components["schemas"]["TypingStartEvent"] | components["schemas"]["Presence"] | components["schemas"]["User"] | components["schemas"]["VoiceState"] | components["schemas"]["VoiceMove"];
+            d: null | components["schemas"]["GatewayHello"] | components["schemas"]["GatewayReady"] | components["schemas"]["GuildState"] | components["schemas"]["GuildEmojisUpdate"] | components["schemas"]["Relationship"] | components["schemas"]["RelationshipRemove"] | components["schemas"]["DMChannel"] | components["schemas"]["DMChannelDeleteEvent"] | components["schemas"]["UserGuildSettings"] | components["schemas"]["Guild"] | components["schemas"]["GuildDeleteEvent"] | components["schemas"]["MemberEvent"] | components["schemas"]["MemberRemoveEvent"] | components["schemas"]["RoleEvent"] | components["schemas"]["RoleDeleteEvent"] | components["schemas"]["Channel"] | components["schemas"]["Message"] | components["schemas"]["MessageDeleteEvent"] | components["schemas"]["MessageReactionEvent"] | components["schemas"]["ReadState"] | components["schemas"]["TypingStartEvent"] | components["schemas"]["Presence"] | components["schemas"]["User"] | components["schemas"]["VoiceState"] | components["schemas"]["VoiceMove"];
         };
         GatewayHello: {
             /** @description Send HEARTBEAT this often (30000); 150 s without one closes the connection with 4009, allowing for throttled timers in hidden browser tabs. */
             heartbeat_interval_ms: number;
         };
         GatewayReady: {
+            /** @description Non-default personal notification settings for the receiving user. */
+            user_guild_settings: components["schemas"]["UserGuildSettings"][];
             private_channels: components["schemas"]["DMChannel"][];
             /** @description Relationships visible to the receiving user. */
             relationships: components["schemas"]["Relationship"][];
@@ -3153,6 +3235,42 @@ export interface operations {
             };
             /** @description `unauthenticated`. */
             401: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    updateUserGuildSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A server ID or @me for the user's private channels. */
+                guild_id: components["schemas"]["Snowflake"] | "@me";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateUserGuildSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description The resulting notification settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserGuildSettings"];
+                };
+            };
+            /** @description Invalid settings, inaccessible or out-of-scope channel, or too many overrides. */
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            /** @description Unknown server or the user is not a member. */
+            404: components["responses"]["Problem"];
+            415: components["responses"]["Problem"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["Problem"];
         };

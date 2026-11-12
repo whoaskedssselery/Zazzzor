@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { type ConnectionStatus, parseEvent } from "@/shared/api";
+import { nextMuteEnd } from "./notify";
 import { advanceRead, applyEvent, applyReady, EMPTY_GUILDS, type GuildsState } from "./reducer";
 
 interface GuildStore {
@@ -41,11 +42,35 @@ export const applyGatewayDispatch = (t: string, d: unknown): void => {
   } else {
     after = applyEvent(before, t, d);
   }
-  if (after !== before) store.setState({ guilds: after });
+  if (after === before) return;
+  store.setState({ guilds: after });
+  if (after.notify !== before.notify) watchMutes();
+};
+
+/** The longest wait setTimeout keeps (about 24.8 days); a longer one looks again then. */
+const MAX_WAIT = 2 ** 31 - 1;
+let muteTimer: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * When the soonest timed mute ends, hands out a new settings object, so
+ * whatever shows mutes looks again and the server or channel lights back up.
+ */
+const watchMutes = (): void => {
+  clearTimeout(muteTimer);
+  const end = nextMuteEnd(store.getState().guilds);
+  if (end === null) return;
+  muteTimer = setTimeout(
+    () => {
+      store.setState((st) => ({ guilds: { ...st.guilds, notify: { ...st.guilds.notify } } }));
+      watchMutes();
+    },
+    Math.min(end - Date.now() + 100, MAX_WAIT),
+  );
 };
 
 /** Forgets every server and starts over at "connecting" (the session ended). */
 export const resetGuilds = (): void => {
+  clearTimeout(muteTimer);
   store.setState(INITIAL, true);
 };
 

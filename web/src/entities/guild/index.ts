@@ -8,6 +8,20 @@ export {
   useRemoveRecipient,
   useRenameGroup,
 } from "./api/privates";
+export { type NotifyPatch, updateNotify, useUpdateNotify } from "./api/notify";
+export {
+  alertLevel,
+  channelLevel,
+  defaultNotify,
+  isChannelMuted,
+  isChannelOwnMuted,
+  isScopeMuted,
+  muteHolds,
+  NOTIFY_LEVEL,
+  type NotifyLevel,
+  notifyOf,
+  overrideOf,
+} from "./model/notify";
 export {
   NO_SUCH_USER,
   requestErrorText,
@@ -49,6 +63,8 @@ export {
   type GuildsState,
   type Member,
   mentionsMe,
+  type NotifySettings,
+  PRIVATE_SCOPE,
   newer,
   type PresenceStatus,
   PRIVATE_TYPE,
@@ -64,6 +80,7 @@ export {
   dmPeer,
   homeUnreadCount,
   isPrivateUnread,
+  privateBadgeCount,
   privateList,
   privateName,
   privateUnreadCount,
