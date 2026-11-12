@@ -1,20 +1,26 @@
 import { Copy, Ellipsis, Hash, Pencil, Reply, SmilePlus, Trash2 } from "lucide-react";
-import type { MouseEvent, ReactNode } from "react";
+import { type MouseEvent, type ReactNode, useRef, useState } from "react";
 import type { Message } from "@/entities/message";
+import { useMediaQuery } from "@/shared/lib";
 import {
   ContextMenu,
   ContextMenuContent,
+  ContextMenuGroup,
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
+  cn,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   IconButton,
+  Sheet,
+  SheetContent,
   useToast,
 } from "@/shared/ui";
+import { recentEmoji, rememberEmoji } from "../model/emoji";
 import { EmojiPicker } from "./EmojiPicker";
 
 /** What the user may do with one message, and what the chat does when they do. */
@@ -164,17 +170,211 @@ const MenuRow = ({ item, kind }: { item: Item; kind: "dropdown" | "context" }) =
   );
 };
 
-/** The same actions on right click (or the context menu key) anywhere on the message. */
+/** Reactions at the top of the message's menu: the user's recent ones. */
+const QUICK_REACTIONS = 6;
+
+/** A touch screen: there a long press opens the actions as a sheet from the bottom. */
+const TOUCH = "(pointer: coarse)";
+
+/**
+ * A phone's actions of a message, as Discord's: a sheet from the bottom with
+ * the quick reactions and every action as a full-width row.
+ */
+const ActionSheet = ({
+  open,
+  onOpenChange,
+  items,
+  onReact,
+  onMore,
+  onCloseAutoFocus,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  items: Item[];
+  onReact: ((emoji: string) => void) | undefined;
+  onMore: () => void;
+  onCloseAutoFocus: (e: Event) => void;
+}) => {
+  const close = () => {
+    onOpenChange(false);
+  };
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="bottom"
+        title="Действия с сообщением"
+        className="flex-col bg-overlay"
+        onCloseAutoFocus={onCloseAutoFocus}
+      >
+        <span aria-hidden className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-border-strong" />
+        <div className="overflow-y-auto px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          {onReact && (
+            <div className="mb-3 flex justify-between gap-1">
+              {recentEmoji()
+                .slice(0, QUICK_REACTIONS)
+                .map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    aria-label={`Реакция ${emoji}`}
+                    className="flex size-12 cursor-pointer items-center justify-center rounded-full bg-control text-2xl leading-none"
+                    onClick={() => {
+                      rememberEmoji(emoji);
+                      onReact(emoji);
+                      close();
+                    }}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              <button
+                type="button"
+                aria-label="Ещё реакции"
+                className="flex size-12 cursor-pointer items-center justify-center rounded-full bg-control text-fg-muted"
+                onClick={onMore}
+              >
+                <SmilePlus aria-hidden className="size-6" />
+              </button>
+            </div>
+          )}
+          <ul className="overflow-hidden rounded-lg bg-control">
+            {items.map((i) => {
+              const Icon = i.icon;
+              return (
+                <li key={i.key} className="border-b border-border last:border-b-0">
+                  <button
+                    type="button"
+                    className={cn(
+                      "flex h-12 w-full cursor-pointer items-center gap-3 px-4 text-left text-base font-medium",
+                      i.danger && "text-fg-danger",
+                    )}
+                    onClick={() => {
+                      close();
+                      i.run({ shiftKey: false });
+                    }}
+                  >
+                    <Icon aria-hidden className="size-5 shrink-0" />
+                    {i.label}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+};
+
+/**
+ * The same actions on right click (or the context menu key) anywhere on the
+ * message. On a touch screen, where the toolbar never shows, a long press
+ * opens them as a sheet from the bottom instead: a menu at the finger would
+ * run off the screen. Both start with quick reactions and «Ещё реакции»,
+ * which opens the picker at the message.
+ */
 export const MessageContextMenu = ({ children, ...props }: MessageActionHandlers & { children: ReactNode }) => {
   const items = useItems(props);
+  const react = props.onReact;
+  const touch = useMediaQuery(TOUCH);
+  const [sheet, setSheet] = useState(false);
+  const [picking, setPicking] = useState(false);
+  // «Ещё реакции» opens the picker once the menu or sheet is gone: opened
+  // while it still closes, the picker would take its leaving for a click away.
+  const toPicker = useRef(false);
+  const afterClose = (e: Event) => {
+    if (!toPicker.current) return;
+    toPicker.current = false;
+    e.preventDefault();
+    requestAnimationFrame(() => {
+      setPicking(true);
+    });
+  };
+  const pick = (emoji: string) => {
+    rememberEmoji(emoji);
+    react?.(emoji);
+  };
+  const picker = react && (
+    <EmojiPicker open={picking} onOpenChange={setPicking} onPick={react}>
+      {/* Where the picker opens from the menu: the message's top right, as its toolbar's button. */}
+      <span aria-hidden tabIndex={-1} className="pointer-events-none absolute top-0 right-16 size-px" />
+    </EmojiPicker>
+  );
+
+  if (touch) {
+    return (
+      // biome-ignore lint/a11y/noStaticElementInteractions: a long press of the message; the same actions are in its toolbar and keyboard menu.
+      // biome-ignore lint/a11y/noNoninteractiveElementInteractions: as above.
+      <div
+        className="relative"
+        // A long press on a phone fires contextmenu; the browser's own menu has nothing for a message.
+        onContextMenu={(e) => {
+          if (e.target instanceof Element && e.target.closest("a, img, video, input, textarea")) return;
+          e.preventDefault();
+          setSheet(true);
+        }}
+      >
+        {children}
+        <ActionSheet
+          open={sheet}
+          onOpenChange={setSheet}
+          items={items}
+          onReact={react}
+          onMore={() => {
+            toPicker.current = true;
+            setSheet(false);
+          }}
+          onCloseAutoFocus={afterClose}
+        />
+        {picker}
+      </div>
+    );
+  }
+
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-      <ContextMenuContent>
-        {items.map((i) => (
-          <MenuRow key={i.key} item={i} kind="context" />
-        ))}
-      </ContextMenuContent>
-    </ContextMenu>
+    <div className="relative">
+      <ContextMenu>
+        <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+        <ContextMenuContent
+          // Its natural width: shrunk at the screen's edge, it would be cut instead of moved in.
+          className="w-max"
+          onCloseAutoFocus={afterClose}
+        >
+          {react && (
+            <>
+              <ContextMenuGroup aria-label="Быстрые реакции" className="flex gap-0.5 pb-1">
+                {recentEmoji()
+                  .slice(0, QUICK_REACTIONS)
+                  .map((emoji) => (
+                    <ContextMenuItem
+                      key={emoji}
+                      aria-label={`Реакция ${emoji}`}
+                      className="size-9 justify-center px-0 text-xl leading-none"
+                      onSelect={() => {
+                        pick(emoji);
+                      }}
+                    >
+                      {emoji}
+                    </ContextMenuItem>
+                  ))}
+              </ContextMenuGroup>
+              <ContextMenuItem
+                onSelect={() => {
+                  toPicker.current = true;
+                }}
+              >
+                Ещё реакции
+                <SmilePlus aria-hidden />
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+            </>
+          )}
+          {items.map((i) => (
+            <MenuRow key={i.key} item={i} kind="context" />
+          ))}
+        </ContextMenuContent>
+      </ContextMenu>
+      {picker}
+    </div>
   );
 };

@@ -4,3 +4,4 @@ export * from "./markdown";
 export * from "./snowflake";
 export * from "./text";
 export * from "./time";
+export * from "./useMediaQuery";

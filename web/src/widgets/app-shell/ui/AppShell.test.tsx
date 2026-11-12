@@ -2,7 +2,7 @@ import { screen, within } from "@testing-library/react";
 import { renderRouted, setViewportWidth } from "@/shared/test";
 import { AppShell, MembersButton, NavButton } from "./AppShell";
 
-const Shell = () => (
+const Shell = ({ channel = false }: { channel?: boolean }) => (
   <AppShell
     rail={
       <nav aria-label="Серверы">
@@ -12,7 +12,15 @@ const Shell = () => (
         </a>
       </nav>
     }
-    sidebar={<nav aria-label="Каналы" />}
+    sidebar={
+      <nav aria-label="Каналы">
+        {channel && (
+          <a href="/channels/10/101" aria-current="page">
+            общий
+          </a>
+        )}
+      </nav>
+    }
     userPanel={<section aria-label="Ваш профиль" />}
     members={<aside aria-label="Участники" />}
   >
@@ -54,5 +62,13 @@ describe("AppShell", () => {
     const sheet = await screen.findByRole("dialog", { name: "Серверы и каналы" });
     expect(screen.getAllByRole("navigation", { name: "Серверы" })).toHaveLength(1);
     expect(document.activeElement).toBe(within(sheet).getByRole("link", { name: "Вечерний сеанс" }));
+  });
+
+  it("on a phone focuses the open channel first, so the server's tooltip does not cover the list", async () => {
+    setViewportWidth(375);
+    const { user } = await renderRouted(<Shell channel />);
+    await user.click(screen.getByRole("button", { name: "Серверы и каналы" }));
+    const sheet = await screen.findByRole("dialog", { name: "Серверы и каналы" });
+    expect(document.activeElement).toBe(within(sheet).getByRole("link", { name: "общий" }));
   });
 });

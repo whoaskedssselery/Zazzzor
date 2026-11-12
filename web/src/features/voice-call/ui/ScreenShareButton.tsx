@@ -1,10 +1,14 @@
 import { Monitor, MonitorOff } from "lucide-react";
-import { useCall } from "@/entities/call";
+import { canShareScreen, useCall } from "@/entities/call";
 import { computeChannel, has, PERM, useGuilds } from "@/entities/guild";
 import { cn, IconButton } from "@/shared/ui";
 import { NO_STREAM, startScreenShare, stopScreenShare } from "../model/session";
 
-/** «Демонстрация экрана» in the call panel; locked without STREAM in the call's channel, but a share in progress can always be stopped. */
+/**
+ * «Демонстрация экрана» in the call panel; locked without STREAM in the
+ * call's channel, absent where the browser cannot share (a phone), but a
+ * share in progress can always be stopped.
+ */
 export const ScreenShareButton = ({ className }: { className?: string }) => {
   const sharing = useCall((s) => s.sharing);
   const guildId = useCall((s) => s.guildId);
@@ -14,6 +18,7 @@ export const ScreenShareButton = ({ className }: { className?: string }) => {
     if (!entry || channelId === null || s.me === null) return false;
     return has(computeChannel(entry, channelId, s.me.id), PERM.STREAM);
   });
+  if (!sharing && !canShareScreen()) return null;
   if (!allowed && !sharing) return <IconButton label={NO_STREAM} icon={Monitor} className={className} disabled />;
   return (
     <IconButton

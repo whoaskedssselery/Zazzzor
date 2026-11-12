@@ -385,6 +385,34 @@ describe("screen sharing", () => {
 
   const panel = () => screen.findByRole("region", { name: "Голосовая связь" });
 
+  /** A browser that can share a screen (jsdom has no mediaDevices); a phone's cannot. */
+  const canShare = (can: boolean) => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getSupportedConstraints: () => ({}),
+        ...(can ? { getDisplayMedia: () => Promise.reject(new Error("fake")) } : {}),
+      },
+    });
+  };
+  beforeEach(() => {
+    canShare(true);
+  });
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, "mediaDevices");
+  });
+
+  it("offers no share where the browser cannot share (a phone)", async () => {
+    canShare(false);
+    withEveryone(DEFAULT_EVERYONE);
+    renderApp(`/channels/${G}/${TEXT}`);
+    await screen.findByRole("textbox", { name: "Сообщение в #общий" });
+    await act(() => joinVoice(G, LOUNGE));
+    const p = await panel();
+    expect(within(p).queryByRole("button", { name: "Демонстрация экрана" })).toBeNull();
+    expect(within(p).getByRole("button", { name: "Отключиться" })).toBeTruthy();
+  });
+
   it("shares a screen and stops it", async () => {
     withEveryone(DEFAULT_EVERYONE);
     const { user } = renderApp(`/channels/${G}/${TEXT}`);
