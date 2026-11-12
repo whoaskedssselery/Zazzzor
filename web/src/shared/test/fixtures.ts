@@ -65,8 +65,23 @@ export function makeGuildState(guildId: string, me: User, over: Partial<GuildSta
     presences: [{ user_id: me.id, status: "online" }],
     voice_states: [],
     read_states: [],
+    emojis: [],
     ...over,
   };
+}
+
+/** Custom emoji `name` of server `guildId`. */
+export function makeGuildEmoji(id: string, guildId: string, name: string, over: Partial<S["GuildEmoji"]> = {}) {
+  return {
+    id,
+    guild_id: guildId,
+    name,
+    animated: false,
+    url: `/api/v1/emojis/${id}`,
+    creator_id: null,
+    created_at: AT,
+    ...over,
+  } satisfies S["GuildEmoji"];
 }
 
 export function makeReady(me: User, guilds: GuildState[] = []): GatewayReady {

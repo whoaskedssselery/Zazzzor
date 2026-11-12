@@ -468,6 +468,80 @@ export interface paths {
         patch: operations["updateGuild"];
         trace?: never;
     };
+    "/guilds/{guild_id}/emojis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                guild_id: components["parameters"]["GuildID"];
+            };
+            cookie?: never;
+        };
+        /** List the server's custom emoji */
+        get: operations["listGuildEmojis"];
+        put?: never;
+        /**
+         * Upload a custom emoji
+         * @description Requires MANAGE_EXPRESSIONS. Accepts PNG, JPEG, GIF and WebP up to
+         *     256 KiB. Static images fit within 128 by 128 pixels. Animated GIFs
+         *     must already fit within those dimensions and retain their animation.
+         *     Each server can have 50 static and 50 animated emoji. Uploads count
+         *     against the same write and concurrency limits as server icons.
+         */
+        post: operations["createGuildEmoji"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/guilds/{guild_id}/emojis/{emoji_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                guild_id: components["parameters"]["GuildID"];
+                emoji_id: components["parameters"]["GuildEmojiID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a custom emoji
+         * @description Requires MANAGE_EXPRESSIONS. Existing reactions retain the emoji ID and last name.
+         */
+        delete: operations["deleteGuildEmoji"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename a custom emoji
+         * @description Requires MANAGE_EXPRESSIONS.
+         */
+        patch: operations["renameGuildEmoji"];
+        trace?: never;
+    };
+    "/emojis/{emoji_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a custom emoji image
+         * @description Only signed-in members of the emoji's server can read it.
+         */
+        get: operations["getGuildEmojiImage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/guilds/{guild_id}/icon": {
         parameters: {
             query?: never;
@@ -1054,7 +1128,10 @@ export interface paths {
                 channel_id: components["parameters"]["ChannelID"];
                 message_id: components["parameters"]["MessageID"];
                 /**
-                 * @description URL-encoded Unicode emoji. Send its exact UTF-8 bytes, with no normalization.
+                 * @description URL-encoded Unicode emoji or a custom emoji in name:id form. The ID selects
+                 *       an emoji in this server regardless of renames. Adding requires an active
+                 *       emoji. Existing reactions can still be read or removed after deletion.
+                 *       Send Unicode as its exact UTF-8 bytes, with no normalization.
                  *     A single grapheme of up to 32 bytes containing an Extended_Pictographic
                  *     code point or a regional indicator pair, without whitespace or controls.
                  * @example %F0%9F%91%8D
@@ -1085,7 +1162,10 @@ export interface paths {
                 channel_id: components["parameters"]["ChannelID"];
                 message_id: components["parameters"]["MessageID"];
                 /**
-                 * @description URL-encoded Unicode emoji. Send its exact UTF-8 bytes, with no normalization.
+                 * @description URL-encoded Unicode emoji or a custom emoji in name:id form. The ID selects
+                 *       an emoji in this server regardless of renames. Adding requires an active
+                 *       emoji. Existing reactions can still be read or removed after deletion.
+                 *       Send Unicode as its exact UTF-8 bytes, with no normalization.
                  *     A single grapheme of up to 32 bytes containing an Extended_Pictographic
                  *     code point or a regional indicator pair, without whitespace or controls.
                  * @example %F0%9F%91%8D
@@ -1123,7 +1203,10 @@ export interface paths {
                 channel_id: components["parameters"]["ChannelID"];
                 message_id: components["parameters"]["MessageID"];
                 /**
-                 * @description URL-encoded Unicode emoji. Send its exact UTF-8 bytes, with no normalization.
+                 * @description URL-encoded Unicode emoji or a custom emoji in name:id form. The ID selects
+                 *       an emoji in this server regardless of renames. Adding requires an active
+                 *       emoji. Existing reactions can still be read or removed after deletion.
+                 *       Send Unicode as its exact UTF-8 bytes, with no normalization.
                  *     A single grapheme of up to 32 bytes containing an Extended_Pictographic
                  *     code point or a regional indicator pair, without whitespace or controls.
                  * @example %F0%9F%91%8D
@@ -1605,7 +1688,8 @@ export interface components {
          * @description Permission bit mask as a decimal string; the bits are numbered as in
          *     Discord (e.g. `ADMINISTRATOR` = 8, `MANAGE_ROLES` = 268435456).
          *     `ADD_REACTIONS` is bit 6 (64) and is granted to `@everyone` by default.
-         *     Bits the server does not define are refused when set.
+         *     MANAGE_EXPRESSIONS is bit 30 (1073741824) and is not granted by default.
+         *       Bits the server does not define are refused when set.
          * @example 268435456
          */
         Permission: string;
@@ -1782,10 +1866,28 @@ export interface components {
             /** @description True until the upload is bound to a message. */
             pending: boolean;
         };
+        /** @description Unique within the server, ignoring ASCII case. */
+        GuildEmojiName: string;
+        GuildEmoji: {
+            id: components["schemas"]["Snowflake"];
+            guild_id: components["schemas"]["Snowflake"];
+            name: components["schemas"]["GuildEmojiName"];
+            animated: boolean;
+            url: string;
+            /** @description Null when the creator's account no longer exists. */
+            creator_id: components["schemas"]["Snowflake"] | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        GuildEmojiList: components["schemas"]["GuildEmoji"][];
+        GuildEmojisUpdate: {
+            guild_id: components["schemas"]["Snowflake"];
+            emojis: components["schemas"]["GuildEmojiList"];
+        };
         Emoji: {
-            /** @description Always null for Unicode emoji. */
+            /** @description Null for Unicode emoji, otherwise the custom emoji ID. */
             id: components["schemas"]["Snowflake"] | null;
-            /** @description The Unicode emoji. */
+            /** @description The Unicode emoji or the custom emoji name, retained at deletion. */
             name: string;
         };
         Reaction: {
@@ -1888,7 +1990,7 @@ export interface components {
             t?: string;
             s?: number;
             /** @description The payload; null for HEARTBEAT_ACK. */
-            d: null | components["schemas"]["GatewayHello"] | components["schemas"]["GatewayReady"] | components["schemas"]["GuildState"] | components["schemas"]["Guild"] | components["schemas"]["GuildDeleteEvent"] | components["schemas"]["MemberEvent"] | components["schemas"]["MemberRemoveEvent"] | components["schemas"]["RoleEvent"] | components["schemas"]["RoleDeleteEvent"] | components["schemas"]["Channel"] | components["schemas"]["Message"] | components["schemas"]["MessageDeleteEvent"] | components["schemas"]["MessageReactionEvent"] | components["schemas"]["ReadState"] | components["schemas"]["TypingStartEvent"] | components["schemas"]["Presence"] | components["schemas"]["User"] | components["schemas"]["VoiceState"] | components["schemas"]["VoiceMove"];
+            d: null | components["schemas"]["GatewayHello"] | components["schemas"]["GatewayReady"] | components["schemas"]["GuildState"] | components["schemas"]["GuildEmojisUpdate"] | components["schemas"]["Guild"] | components["schemas"]["GuildDeleteEvent"] | components["schemas"]["MemberEvent"] | components["schemas"]["MemberRemoveEvent"] | components["schemas"]["RoleEvent"] | components["schemas"]["RoleDeleteEvent"] | components["schemas"]["Channel"] | components["schemas"]["Message"] | components["schemas"]["MessageDeleteEvent"] | components["schemas"]["MessageReactionEvent"] | components["schemas"]["ReadState"] | components["schemas"]["TypingStartEvent"] | components["schemas"]["Presence"] | components["schemas"]["User"] | components["schemas"]["VoiceState"] | components["schemas"]["VoiceMove"];
         };
         GatewayHello: {
             /** @description Send HEARTBEAT this often (30000); 150 s without one closes the connection with 4009, allowing for throttled timers in hidden browser tabs. */
@@ -1904,6 +2006,7 @@ export interface components {
         };
         /** @description A server as the receiving member sees it. */
         GuildState: {
+            emojis: components["schemas"]["GuildEmojiList"];
             guild: components["schemas"]["Guild"];
             /** @description By position. */
             roles: components["schemas"]["Role"][];
@@ -2109,8 +2212,12 @@ export interface components {
         /** @description The role or member the overwrite is for. */
         TargetID: components["schemas"]["Snowflake"];
         MessageID: components["schemas"]["Snowflake"];
+        GuildEmojiID: components["schemas"]["Snowflake"];
         /**
-         * @description URL-encoded Unicode emoji. Send its exact UTF-8 bytes, with no normalization.
+         * @description URL-encoded Unicode emoji or a custom emoji in name:id form. The ID selects
+         *       an emoji in this server regardless of renames. Adding requires an active
+         *       emoji. Existing reactions can still be read or removed after deletion.
+         *       Send Unicode as its exact UTF-8 bytes, with no normalization.
          *     A single grapheme of up to 32 bytes containing an Extended_Pictographic
          *     code point or a regional indicator pair, without whitespace or controls.
          * @example %F0%9F%91%8D
@@ -2839,6 +2946,153 @@ export interface operations {
             415: components["responses"]["Problem"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["Problem"];
+        };
+    };
+    listGuildEmojis: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                guild_id: components["parameters"]["GuildID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The full emoji list for a signed-in member. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuildEmojiList"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+        };
+    };
+    createGuildEmoji: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                guild_id: components["parameters"]["GuildID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    name: components["schemas"]["GuildEmojiName"];
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The uploaded emoji. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuildEmoji"];
+                };
+            };
+            /** @description Invalid name or image, name already taken, or the static or animated limit reached. */
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            413: components["responses"]["Problem"];
+            415: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    deleteGuildEmoji: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                guild_id: components["parameters"]["GuildID"];
+                emoji_id: components["parameters"]["GuildEmojiID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The emoji was deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    renameGuildEmoji: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                guild_id: components["parameters"]["GuildID"];
+                emoji_id: components["parameters"]["GuildEmojiID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: components["schemas"]["GuildEmojiName"];
+                };
+            };
+        };
+        responses: {
+            /** @description The emoji with its current name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuildEmoji"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    getGuildEmojiImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                emoji_id: components["parameters"]["GuildEmojiID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Raster image with private caching for 24 hours and nosniff. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                    "image/gif": string;
+                };
+            };
+            /** @description Unknown, deleted or inaccessible emoji. */
+            404: components["responses"]["Problem"];
         };
     };
     setGuildIcon: {
@@ -3963,7 +4217,10 @@ export interface operations {
                 channel_id: components["parameters"]["ChannelID"];
                 message_id: components["parameters"]["MessageID"];
                 /**
-                 * @description URL-encoded Unicode emoji. Send its exact UTF-8 bytes, with no normalization.
+                 * @description URL-encoded Unicode emoji or a custom emoji in name:id form. The ID selects
+                 *       an emoji in this server regardless of renames. Adding requires an active
+                 *       emoji. Existing reactions can still be read or removed after deletion.
+                 *       Send Unicode as its exact UTF-8 bytes, with no normalization.
                  *     A single grapheme of up to 32 bytes containing an Extended_Pictographic
                  *     code point or a regional indicator pair, without whitespace or controls.
                  * @example %F0%9F%91%8D
@@ -4002,7 +4259,10 @@ export interface operations {
                 channel_id: components["parameters"]["ChannelID"];
                 message_id: components["parameters"]["MessageID"];
                 /**
-                 * @description URL-encoded Unicode emoji. Send its exact UTF-8 bytes, with no normalization.
+                 * @description URL-encoded Unicode emoji or a custom emoji in name:id form. The ID selects
+                 *       an emoji in this server regardless of renames. Adding requires an active
+                 *       emoji. Existing reactions can still be read or removed after deletion.
+                 *       Send Unicode as its exact UTF-8 bytes, with no normalization.
                  *     A single grapheme of up to 32 bytes containing an Extended_Pictographic
                  *     code point or a regional indicator pair, without whitespace or controls.
                  * @example %F0%9F%91%8D
@@ -4040,7 +4300,10 @@ export interface operations {
                 channel_id: components["parameters"]["ChannelID"];
                 message_id: components["parameters"]["MessageID"];
                 /**
-                 * @description URL-encoded Unicode emoji. Send its exact UTF-8 bytes, with no normalization.
+                 * @description URL-encoded Unicode emoji or a custom emoji in name:id form. The ID selects
+                 *       an emoji in this server regardless of renames. Adding requires an active
+                 *       emoji. Existing reactions can still be read or removed after deletion.
+                 *       Send Unicode as its exact UTF-8 bytes, with no normalization.
                  *     A single grapheme of up to 32 bytes containing an Extended_Pictographic
                  *     code point or a regional indicator pair, without whitespace or controls.
                  * @example %F0%9F%91%8D
@@ -4078,7 +4341,10 @@ export interface operations {
                 channel_id: components["parameters"]["ChannelID"];
                 message_id: components["parameters"]["MessageID"];
                 /**
-                 * @description URL-encoded Unicode emoji. Send its exact UTF-8 bytes, with no normalization.
+                 * @description URL-encoded Unicode emoji or a custom emoji in name:id form. The ID selects
+                 *       an emoji in this server regardless of renames. Adding requires an active
+                 *       emoji. Existing reactions can still be read or removed after deletion.
+                 *       Send Unicode as its exact UTF-8 bytes, with no normalization.
                  *     A single grapheme of up to 32 bytes containing an Extended_Pictographic
                  *     code point or a regional indicator pair, without whitespace or controls.
                  * @example %F0%9F%91%8D

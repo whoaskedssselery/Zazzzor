@@ -29,6 +29,7 @@ export const PERM = {
   CHANGE_NICKNAME: 1n << 26n,
   MANAGE_NICKNAMES: 1n << 27n,
   MANAGE_ROLES: 1n << 28n,
+  MANAGE_EXPRESSIONS: 1n << 30n,
 } as const satisfies Record<string, bigint>;
 
 /** Every defined bit. Bits outside it are kept in masks but never granted. */

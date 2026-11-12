@@ -7,6 +7,8 @@ export type Role = S["Role"];
 export type Channel = S["Channel"];
 export type Member = S["Member"];
 export type GuildState = S["GuildState"];
+/** A custom emoji of a server. */
+export type GuildEmoji = S["GuildEmoji"];
 export type ReadyPayload = S["GatewayReady"];
 export type PresenceStatus = S["Presence"]["status"];
 /** Someone in a voice channel; `left` exists only on the event. */
@@ -37,6 +39,8 @@ export interface GuildEntry {
    * created, or became visible, after the user joined).
    */
   reads: Record<string, ReadMark>;
+  /** The server's custom emoji by ID, in the order the server lists them. */
+  emojis: Record<string, GuildEmoji>;
 }
 
 /** Everything the gateway tells about the user's servers. */
@@ -69,6 +73,7 @@ function entryOf(g: GuildState): GuildEntry {
     myMember: g.my_member,
     voice,
     reads,
+    emojis: byId(g.emojis),
   };
 }
 
@@ -218,6 +223,8 @@ const handlers: Handlers = {
   GUILD_SYNC: upsertGuild,
   GUILD_UPDATE: (s, guild) => updateGuild(s, guild.id, (e) => ({ ...e, guild })),
   GUILD_DELETE: (s, d) => removeGuild(s, d.id),
+  // The whole list after any change, as Discord sends it.
+  GUILD_EMOJIS_UPDATE: (s, d) => updateGuild(s, d.guild_id, (e) => ({ ...e, emojis: byId(d.emojis) })),
   GUILD_MEMBER_ADD: (s, d) => updateGuild(s, d.guild_id, (e) => upsertMember(e, d.member)),
   GUILD_MEMBER_UPDATE: (s, d) => updateGuild(s, d.guild_id, (e) => upsertMember(e, d.member)),
   GUILD_MEMBER_REMOVE: (s, d) => {

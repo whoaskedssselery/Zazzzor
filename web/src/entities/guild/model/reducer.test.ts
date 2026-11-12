@@ -2,6 +2,7 @@ import {
   makeChannel,
   makeEveryone,
   makeGuild,
+  makeGuildEmoji,
   makeGuildState,
   makeMember,
   makeReady,
@@ -147,6 +148,16 @@ describe("applyEvent", () => {
     const next = applyTwice(ready(), "GUILD_DELETE", { id: G1 });
     expect(next.guilds[G1]).toBeUndefined();
     expect(next.order).toEqual([G2]);
+  });
+
+  it("GUILD_EMOJIS_UPDATE replaces the server's emoji with the list it carries", () => {
+    const smile = makeGuildEmoji("501", G1, "smile");
+    const cat = makeGuildEmoji("502", G1, "cat", { animated: true });
+    let s = applyTwice(ready(), "GUILD_EMOJIS_UPDATE", { guild_id: G1, emojis: [smile, cat] });
+    expect(Object.values(s.guilds[G1]?.emojis ?? {})).toEqual([smile, cat]);
+    s = applyTwice(s, "GUILD_EMOJIS_UPDATE", { guild_id: G1, emojis: [{ ...cat, name: "kitty" }] });
+    expect(s.guilds[G1]?.emojis).toEqual({ "502": { ...cat, name: "kitty" } });
+    expect(s.guilds[G2]?.emojis).toEqual({});
   });
 
   it("CHANNEL_CREATE and CHANNEL_UPDATE upsert, CHANNEL_DELETE removes", () => {
