@@ -3,6 +3,7 @@ import { useState } from "react";
 import { dmPeer, privateName, useConnectionStatus, useGuilds } from "@/entities/guild";
 import { AddPeopleButton, RenameGroupDialog } from "@/features/private-groups";
 import { Avatar } from "@/shared/ui";
+import { NotifyButton } from "@/features/notify";
 import { MembersButton, NavButton, ShellHeader } from "@/widgets/app-shell";
 import { PrivateChatView } from "@/widgets/chat";
 
@@ -71,6 +72,7 @@ export const DirectMessagePage = ({ channelId }: { channelId: string }) => {
           </>
         )}
         <div className="ml-auto flex shrink-0 items-center">
+          <NotifyButton guildId={null} channelId={channel.id} />
           <AddPeopleButton channel={channel} />
           {!peer && <MembersButton />}
         </div>

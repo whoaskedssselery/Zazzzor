@@ -33,6 +33,7 @@ import {
   type GuildEntry,
   guildSettingsTabs,
   has,
+  isChannelMuted,
   isGuildUnread,
   isUnread,
   mentionCount,
@@ -46,6 +47,7 @@ import { CreateChannelDialog, type NewChannelKind } from "@/features/create-chan
 import { InviteDialog } from "@/features/create-invite";
 import { LeaveGuildDialog } from "@/features/leave-guild";
 import { MemberMenu } from "@/features/manage-member";
+import { NotifyItems } from "@/features/notify";
 import { readGuild } from "@/features/read-channel";
 import { joinVoice, NO_CONNECT } from "@/features/voice-call";
 import { api, errorText, unwrap } from "@/shared/api";
@@ -57,6 +59,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
   formatCount,
   IconButton,
@@ -166,7 +171,9 @@ const ChannelRow = ({ channel, siblings, selected }: { channel: Channel; sibling
   const { row, control } = useArrange(channel, siblings);
   const tab = list.settingsTabOf(channel.id);
   const voice = channel.type === CHANNEL_TYPE.VOICE;
-  const unread = isUnread(list.entry, channel.id);
+  // A muted channel stays quiet (no pill, no bold, faded); its mentions still count, as in Discord.
+  const muted = useGuilds((s) => isChannelMuted(s, list.guildId, channel.id));
+  const unread = !muted && isUnread(list.entry, channel.id);
   const mentions = mentionCount(list.entry, channel.id);
   const Icon = voice ? Volume2 : Hash;
   const look = cn(
@@ -175,11 +182,13 @@ const ChannelRow = ({ channel, siblings, selected }: { channel: Channel; sibling
     selected
       ? "bg-selected text-fg"
       : cn("hover:bg-hover", unread || mentions > 0 ? "text-fg" : "text-fg-faint hover:text-fg-muted"),
+    muted && !selected && "opacity-60",
   );
   // What the pill and the badge show, said in the name.
   let name = channel.name;
   if (mentions > 0) name += `, упоминаний: ${String(mentions)}`;
   else if (unread) name += ", есть непрочитанные";
+  if (muted) name += ", заглушён";
   const label = (
     <>
       <Icon aria-hidden className="size-5 shrink-0 text-fg-faint" strokeWidth={1.75} />
@@ -393,6 +402,7 @@ type Dialog = "invite" | "leave" | NewChannelKind | null;
 export const ChannelSidebar = ({ guildId, channelId }: { guildId: string; channelId: string | null }) => {
   const entry = useGuilds((s) => s.guilds[guildId]);
   const userId = useGuilds((s) => s.me?.id);
+  const notify = useGuilds((s) => s.notify);
   const { categories } = useVisibleChannels(guildId);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [parent, setParent] = useState<Channel | null>(null);
@@ -457,12 +467,18 @@ export const ChannelSidebar = ({ guildId, channelId }: { guildId: string; channe
           />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-(--radix-dropdown-menu-trigger-width) min-w-52">
-          {isGuildUnread(entry) &&
+          {isGuildUnread(entry, { notify }) &&
             menuItem("Отметить как прочитанное", <CheckCheck aria-hidden />, () => {
               void readGuild(guildId).catch((e: unknown) => {
                 toast.show({ text: errorText(e), tone: "error" });
               });
             })}
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>Уведомления</DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="min-w-60">
+              <NotifyItems guildId={guildId} />
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
           {settingsTab &&
             menuItem("Настройки сервера", <Settings aria-hidden />, () => {
               void navigate({ to: "/guilds/$guildId/settings/$tab", params: { guildId, tab: settingsTab } });

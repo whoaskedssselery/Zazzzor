@@ -1,6 +1,7 @@
 import { Hash, Volume2 } from "lucide-react";
 import { CHANNEL_TYPE } from "@/entities/channel";
 import { type Channel, useGuilds } from "@/entities/guild";
+import { NotifyButton } from "@/features/notify";
 import { Skeleton } from "@/shared/ui";
 import { MembersButton, NavButton, ShellHeader } from "@/widgets/app-shell";
 import { ChannelSidebar } from "@/widgets/channel-sidebar";
@@ -47,6 +48,7 @@ const ChannelView = ({ guildId, channel }: { guildId: string; channel: Channel }
         </>
       )}
       <div className="ml-auto flex shrink-0 items-center">
+        <NotifyButton guildId={guildId} channelId={channel.id} />
         <MembersButton />
       </div>
     </ShellHeader>
