@@ -2155,8 +2155,9 @@ paths:
       description: |
         Needs `VIEW_CHANNEL`, `SEND_MESSAGES` and `ATTACH_FILES` in a text
         channel. Upload one file up to 25 MiB per request. Pending uploads
-        expire after one hour. Limited to 30 per minute per user, with a burst
-        of 10 and at most two concurrent uploads per user.
+        expire after one hour and count toward the user's storage quota.
+        Limited to 30 per minute per user, with a burst of 10 and at most
+        two concurrent uploads per user.
       parameters:
         - $ref: "#/components/parameters/ChannelID"
       requestBody:
@@ -2189,7 +2190,7 @@ paths:
         "404":
           $ref: "#/components/responses/Problem"
         "413":
-          description: "`file_too_large`: the file exceeds the upload limit."
+          description: "`file_too_large` or `attachment_quota_exceeded`."
           $ref: "#/components/responses/Problem"
         "415":
           $ref: "#/components/responses/Problem"
@@ -2197,6 +2198,9 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "503":
           description: "`server_busy`: the shared upload gate is full."
+          $ref: "#/components/responses/Problem"
+        "507":
+          description: "`storage_full`: the files volume is below the minimum free space."
           $ref: "#/components/responses/Problem"
   /channels/{channel_id}/attachments/{attachment_id}:
     delete:
