@@ -10,3 +10,11 @@ export function setViewportWidth(width: number): void {
     window.innerWidth = before;
   });
 }
+
+/** Pretends the screen is a touch screen ("(pointer: coarse)" matches) for the rest of the test. */
+export function setTouchScreen(): void {
+  document.documentElement.dataset.testTouch = "true";
+  onTestFinished(() => {
+    delete document.documentElement.dataset.testTouch;
+  });
+}

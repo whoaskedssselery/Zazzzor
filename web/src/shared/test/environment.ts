@@ -32,10 +32,12 @@ Object.assign(Element.prototype, {
 
 // jsdom has no matchMedia. Width queries ("(min-width: 1100px)",
 // "(max-width: …)") are answered from window.innerWidth, jsdom's 1024 unless a
-// test sets another before rendering; everything else (the OS colour scheme
+// test sets another before rendering; "(pointer: coarse)" matches after
+// setTouchScreen(); everything else (the OS colour scheme
 // useTheme follows) does not match. Tests that need a given preference
 // replace it with their own stub.
 const matchesWidth = (query: string): boolean => {
+  if (query.includes("pointer: coarse")) return document.documentElement.dataset.testTouch === "true";
   const width = window.innerWidth;
   const min = /\(min-width:\s*(\d+)px\)/.exec(query);
   const max = /\(max-width:\s*(\d+)px\)/.exec(query);

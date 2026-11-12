@@ -16,6 +16,7 @@ import {
  */
 export const ContextMenu = Menu.Root;
 export const ContextMenuTrigger = Menu.Trigger;
+export const ContextMenuGroup = Menu.Group;
 
 export const ContextMenuContent = ({ className, ...props }: ComponentProps<typeof Menu.Content>) => (
   <Menu.Portal>
