@@ -1076,8 +1076,9 @@ export interface paths {
          * Upload a pending message attachment
          * @description Needs `VIEW_CHANNEL`, `SEND_MESSAGES` and `ATTACH_FILES` in a text
          *     channel. Upload one file up to 25 MiB per request. Pending uploads
-         *     expire after one hour. Limited to 30 per minute per user, with a burst
-         *     of 10 and at most two concurrent uploads per user.
+         *     expire after one hour and count toward the user's storage quota.
+         *     Limited to 30 per minute per user, with a burst of 10 and at most
+         *     two concurrent uploads per user.
          */
         post: operations["uploadAttachment"];
         delete?: never;
@@ -1134,7 +1135,7 @@ export interface paths {
          *     return 404. Supports byte ranges and conditional requests. PNG, JPEG,
          *     WebP, GIF, MP4, WebM, MP3, OGG and WAV are served inline when identified
          *     by their bytes. All other files download as application/octet-stream.
-         *     Successful responses use private immutable caching, an ETag,
+         *     Successful responses use private cache revalidation, an ETag,
          *     nosniff, and a sandboxed Content Security Policy.
          */
         get: operations["downloadAttachment"];
@@ -2558,7 +2559,7 @@ export interface operations {
             400: components["responses"]["Problem"];
             /** @description `origin_not_allowed` or `registration_closed`. */
             403: components["responses"]["Problem"];
-            /** @description `username_taken`. */
+            /** @description `username_taken` for an existing or reserved username. */
             409: components["responses"]["Problem"];
             /** @description `unsupported_media_type`: the body is not application/json. */
             415: components["responses"]["Problem"];
@@ -3535,7 +3536,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Raster image with private caching for 24 hours and nosniff. */
+            /** @description Raster image with private cache revalidation and nosniff. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4390,12 +4391,14 @@ export interface operations {
             /** @description `origin_not_allowed` or `missing_permission`. */
             403: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
-            /** @description `file_too_large`: the file exceeds the upload limit. */
+            /** @description `file_too_large` or `attachment_quota_exceeded`. */
             413: components["responses"]["Problem"];
             415: components["responses"]["Problem"];
             429: components["responses"]["RateLimited"];
             /** @description `server_busy`: the shared upload gate is full. */
             503: components["responses"]["Problem"];
+            /** @description `storage_full`: the files volume is below the minimum free space. */
+            507: components["responses"]["Problem"];
         };
     };
     discardAttachment: {
