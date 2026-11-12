@@ -36,6 +36,7 @@ const (
 	ChangeNickname     Permission = 1 << 26
 	ManageNicknames    Permission = 1 << 27
 	ManageRoles        Permission = 1 << 28
+	ManageExpressions  Permission = 1 << 30
 )
 
 // All is the union of every defined permission. Unknown bits are never part
@@ -44,7 +45,7 @@ const All = CreateInvite | KickMembers | BanMembers | Administrator |
 	ManageChannels | ManageGuild | AddReactions | Stream | ViewChannel | SendMessages |
 	ManageMessages | AttachFiles | ReadMessageHistory | MentionEveryone |
 	Connect | Speak | MuteMembers | DeafenMembers | MoveMembers |
-	UseVoiceActivity | ChangeNickname | ManageNicknames | ManageRoles
+	UseVoiceActivity | ChangeNickname | ManageNicknames | ManageRoles | ManageExpressions
 
 // DefaultEveryone is the @everyone mask of a freshly created server.
 const DefaultEveryone = AddReactions | ViewChannel | SendMessages | ReadMessageHistory |
