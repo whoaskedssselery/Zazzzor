@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -57,5 +59,30 @@ func TestSessionFailuresAreLimitedBeforeDatabase(t *testing.T) {
 	fail()
 	if got := pool.Stat().AcquireCount() - before; got != 1 {
 		t.Errorf("lookups after refill = %d, want 1", got)
+	}
+}
+
+func TestSessionLimitCountsLookupsInFlight(t *testing.T) {
+	pool := testkit.Postgres(t)
+	s := NewService(Options{Pool: pool, IDs: snowflake.NewGenerator(0, time.Now)})
+	// Use the same admission boundary as lookup without requiring 30 open
+	// connections in the test pool.
+	const key = "192.0.2.12"
+	for range 30 {
+		finish, ok := s.sessionFailures.BeginAttempt(key)
+		if !ok {
+			t.Fatal("session attempt refused before reaching the burst")
+		}
+		defer finish(false)
+	}
+	token, _, err := newToken()
+	if err != nil {
+		t.Fatalf("newToken: %v", err)
+	}
+	// A cancelled context exposes any attempted database acquire as an error.
+	cancelled, stop := context.WithCancel(t.Context())
+	stop()
+	if _, _, err := s.AuthenticateFrom(cancelled, token, key); !errors.Is(err, ErrUnauthenticated) {
+		t.Errorf("overflow authentication = %v, want unauthenticated before DB", err)
 	}
 }

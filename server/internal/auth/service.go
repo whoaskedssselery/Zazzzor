@@ -613,22 +613,23 @@ func (s *Service) lookup(ctx context.Context, rawToken, clientKey string) (sessi
 	if !wellFormedToken(rawToken) {
 		return session{}, ErrUnauthenticated
 	}
+	rejected := false
 	if clientKey != "" {
-		if ok, _ := s.sessionFailures.Check(clientKey); !ok {
+		finish, ok := s.sessionFailures.BeginAttempt(clientKey)
+		if !ok {
 			if log, _ := s.sessionLimitLogs.Allow(clientKey); log {
 				httpx.LoggerFrom(ctx).WarnContext(ctx, "session lookup throttled", "client", clientKey)
 			}
 			return session{}, ErrUnauthenticated
 		}
+		defer func() { finish(rejected) }()
 	}
 	row, err := s.q.SessionByTokenHash(ctx, s.pool, store.SessionByTokenHashParams{
 		TokenHash: hashToken(rawToken),
 		Now:       s.now(),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		if clientKey != "" {
-			s.sessionFailures.Charge(clientKey)
-		}
+		rejected = true
 		return session{}, ErrUnauthenticated
 	}
 	if err != nil {
