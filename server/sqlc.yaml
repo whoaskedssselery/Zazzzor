@@ -104,7 +104,17 @@ sql:
           - column: channels.id
             go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
           - column: channels.guild_id
-            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+            nullable: true
+            go_type:
+              import: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake
+              type: ID
+              pointer: true
+          - column: channels.owner_id
+            nullable: true
+            go_type:
+              import: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake
+              type: ID
+              pointer: true
           - column: channels.last_message_id
             go_type:
               import: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake
