@@ -1,6 +1,14 @@
 import { applyReady } from "@/entities/guild";
-import { makeChannel, makeGuildState, makeMember, makeMessage, makeReady, makeUser } from "@/shared/test";
-import { alertFor, notificationOf, openChannelOf } from "./alerts";
+import {
+  makeChannel,
+  makeDMChannel,
+  makeGuildState,
+  makeMember,
+  makeMessage,
+  makeReady,
+  makeUser,
+} from "@/shared/test";
+import { alertFor, notificationOf, openChannelOf, privateNotificationOf } from "./alerts";
 
 const base = { mentioned: true, own: false, windowActive: true, openChannelId: "1", channelId: "2" };
 
@@ -22,6 +30,7 @@ describe("openChannelOf", () => {
     expect(openChannelOf("/channels/10/101")).toBe("101");
     expect(openChannelOf("/channels/10/101/settings")).toBe("101");
     expect(openChannelOf("/channels/@me")).toBeNull();
+    expect(openChannelOf("/channels/@me/900")).toBe("900");
     expect(openChannelOf("/settings/profile")).toBeNull();
   });
 });
@@ -63,5 +72,18 @@ describe("notificationOf", () => {
     const long = notificationOf(entry, makeMessage("3", "101", anna, { content: "а".repeat(500) })).body;
     expect(long).toHaveLength(200);
     expect(long.endsWith("…")).toBe(true);
+  });
+});
+
+describe("privateNotificationOf", () => {
+  const anya = makeUser("200", { display_name: "Аня" });
+  const petya = makeUser("300", { display_name: "Петя" });
+
+  it("names the author alone in a DM, and the group after the author", () => {
+    const m = makeMessage("5", "900", anya, { guild_id: null, content: "привет, <@300>" });
+    const dm = { channel: makeDMChannel("900", [anya]), read: null };
+    expect(privateNotificationOf(dm, { ...m, content: "привет" })).toMatchObject({ title: "Аня", body: "привет" });
+    const group = { channel: makeDMChannel("901", [anya, petya], { name: "Пятница" }), read: null };
+    expect(privateNotificationOf(group, m)).toMatchObject({ title: "Аня (Пятница)", body: "привет, @Петя" });
   });
 });
