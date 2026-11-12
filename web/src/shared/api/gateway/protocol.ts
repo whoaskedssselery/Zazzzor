@@ -226,6 +226,7 @@ const channelOverrideSchema: z.ZodMiniType<S["ChannelOverride"]> = z.object({
 /** The user's notification settings of a server, or of the private channels (guild_id null). */
 const userGuildSettingsSchema: z.ZodMiniType<S["UserGuildSettings"]> = z.object({
   guild_id: z.nullable(snowflake),
+  version: z.number(),
   muted: z.boolean(),
   mute_until: nullableString,
   message_notifications: z.union([z.literal(0), z.literal(1), z.literal(2)]),

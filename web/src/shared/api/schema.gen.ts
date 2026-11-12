@@ -1111,7 +1111,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read a proxied link preview image */
+        /**
+         * Read a proxied link preview image
+         * @description Needs a session and access to at least one message using the image.
+         *     Guild channels require `VIEW_CHANNEL` and `READ_MESSAGE_HISTORY`.
+         *     Direct messages require membership. Supports conditional requests.
+         */
         get: operations["downloadEmbedImage"];
         put?: never;
         post?: never;
@@ -1418,8 +1423,9 @@ export interface paths {
         };
         /**
          * Invites of a server
-         * @description Needs `MANAGE_GUILD`. Newest first, at most 1000, expired and used
-         *     up ones included; only invites to channels the caller can see.
+         * @description Needs `MANAGE_GUILD`. Newest first, expired and used up ones
+         *     included. Only invites to visible channels count toward the page.
+         *     Use the last invite's code as `before` for the next page.
          */
         get: operations["listGuildInvites"];
         put?: never;
@@ -2096,7 +2102,10 @@ export interface components {
             edited_at: string | null;
             /** @description The message this one answers, kept after that one is deleted. */
             reply_to_id: components["schemas"]["Snowflake"] | null;
-            /** @description The message this one answers; null when not a reply or the original is deleted. */
+            /**
+             * @description The message this one answers. Null if absent, deleted, or the
+             *     recipient cannot read the channel history. The reply ID is retained.
+             */
             referenced_message: components["schemas"]["MessageStub"] | null;
             attachments: components["schemas"]["Attachment"][];
             /**
@@ -2171,6 +2180,12 @@ export interface components {
             message_notifications: components["schemas"]["ChannelNotificationLevel"];
         };
         UserGuildSettings: {
+            /**
+             * Format: int64
+             * @description Monotonic per-user revision, initially zero. For each scope,
+             *     discard snapshots older than the newest version held for that scope.
+             */
+            version: number;
             /** @description The server ID, or null for private channels. */
             guild_id: components["schemas"]["Snowflake"] | null;
             muted: boolean;
@@ -4439,7 +4454,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description PNG, JPEG, GIF or WebP with public immutable caching for 24 hours and nosniff. */
+            /** @description PNG, JPEG, GIF or WebP with private cache revalidation, an ETag, and nosniff. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4448,7 +4463,14 @@ export interface operations {
                     "image/*": string;
                 };
             };
-            /** @description The image is unknown or no longer available. */
+            /** @description The cached image is current and the caller still has access. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The image is unknown or unavailable to the caller. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -4957,7 +4979,11 @@ export interface operations {
     };
     listGuildInvites: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Exclusive invite code cursor. A missing or inaccessible cursor invite yields an empty page. */
+                before?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 guild_id: components["parameters"]["GuildID"];
@@ -4975,6 +5001,8 @@ export interface operations {
                     "application/json": components["schemas"]["Invite"][];
                 };
             };
+            /** @description `validation_failed`: invalid cursor format or limit. */
+            400: components["responses"]["Problem"];
             /** @description `unauthenticated`. */
             401: components["responses"]["Problem"];
             /** @description `missing_permission`. */

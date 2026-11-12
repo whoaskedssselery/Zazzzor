@@ -7,6 +7,7 @@ export type NotifyLevel = 0 | 1 | 2;
 /** The settings of a scope nobody changed: a server alerts to mentions, the DMs to every message. */
 export const defaultNotify = (guildId: string | null): NotifySettings => ({
   guild_id: guildId,
+  version: 0,
   muted: false,
   mute_until: null,
   message_notifications: guildId === null ? NOTIFY_LEVEL.ALL : NOTIFY_LEVEL.MENTIONS,
