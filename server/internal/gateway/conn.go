@@ -26,7 +26,8 @@ type conn struct {
 	sessionID snowflake.ID
 	// token is the session cookie, checked once more after registration
 	// and then forgotten.
-	token string
+	token     string
+	clientKey string
 
 	ctx    context.Context // the reader's; cancelled when run ends
 	cancel context.CancelFunc
@@ -56,10 +57,10 @@ type conn struct {
 	online bool
 }
 
-func newConn(g *Gateway, ws *websocket.Conn, user auth.User, sessionID snowflake.ID, token string) *conn {
+func newConn(g *Gateway, ws *websocket.Conn, user auth.User, sessionID snowflake.ID, token, clientKey string) *conn {
 	ctx, cancel := context.WithCancel(context.Background())
 	writeCtx, writeCancel := context.WithCancel(context.Background())
-	return &conn{g: g, ws: ws, user: user, sessionID: sessionID, token: token, ctx: ctx, cancel: cancel,
+	return &conn{g: g, ws: ws, user: user, sessionID: sessionID, token: token, clientKey: clientKey, ctx: ctx, cancel: cancel,
 		writeCtx: writeCtx, writeCancel: writeCancel,
 		send: make(chan outgoing, g.opts.SendBuffer), beat: make(chan struct{}, 1),
 		peerGone: make(chan struct{}), closeReq: make(chan struct{})}
@@ -171,7 +172,7 @@ func (c *conn) sendReady() bool {
 	// The session may have been revoked between the handshake and the
 	// registration, when its SESSION_REVOKED found no connection to close.
 	// Revocations dispatched from now on do find this one.
-	user, sessionID, err := c.g.opts.Auth.Authenticate(ctx, c.token)
+	user, sessionID, err := c.g.opts.Auth.AuthenticateFrom(ctx, c.token, c.clientKey)
 	c.token = ""
 	switch {
 	case errors.Is(err, auth.ErrUnauthenticated) || (err == nil && sessionID != c.sessionID):

@@ -16,6 +16,7 @@ const anHourAgo = new Date(NOW - 3_600_000).toISOString();
 
 const settings = (over: Partial<NotifySettings> = {}): NotifySettings => ({
   guild_id: G,
+  version: 1,
   muted: false,
   mute_until: null,
   message_notifications: 1,
@@ -44,6 +45,14 @@ describe("notification settings", () => {
     s = applyEvent(s, "USER_GUILD_SETTINGS_UPDATE", settings({ guild_id: null, message_notifications: 2 }));
     expect(notifyOf(s, null).message_notifications).toBe(NOTIFY_LEVEL.NOTHING);
     expect(isScopeMuted(s, G, NOW)).toBe(true);
+  });
+
+  it("drops a snapshot older than the one it holds", () => {
+    let s = ready([settings({ version: 5, muted: true })]);
+    s = applyEvent(s, "USER_GUILD_SETTINGS_UPDATE", settings({ version: 4, muted: false }));
+    expect(isScopeMuted(s, G, NOW)).toBe(true);
+    s = applyEvent(s, "USER_GUILD_SETTINGS_UPDATE", settings({ version: 6, muted: false }));
+    expect(isScopeMuted(s, G, NOW)).toBe(false);
   });
 
   it("falls back to the defaults: a server alerts to mentions, the DMs to everything", () => {

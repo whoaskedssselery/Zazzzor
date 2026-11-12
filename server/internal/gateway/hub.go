@@ -10,6 +10,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/channels"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
+	"github.com/whoaskedssselery/zazzzor/server/internal/messages"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 	"github.com/whoaskedssselery/zazzzor/server/internal/relationships"
 )
@@ -84,7 +85,20 @@ func (g *Gateway) dispatch(ctx context.Context, e events.Event) {
 	ctx, cancel := context.WithTimeout(ctx, dispatchTimeout)
 	defer cancel()
 
-	recipients, err := g.recipients(ctx, e)
+	message, hasMessage := e.Payload.(messages.PublicMessage)
+	var (
+		recipients []snowflake.ID
+		readers    map[snowflake.ID]bool
+		err        error
+	)
+	if hasMessage && message.ReferencedMessage != nil && e.Audience.Kind == events.AudienceChannel {
+		recipients, readers, err = g.opts.Channels.ViewersWithHistory(ctx, e.Audience.ChannelID)
+		if errors.Is(err, channels.ErrNotFound) {
+			return
+		}
+	} else {
+		recipients, err = g.recipients(ctx, e)
+	}
 	if err != nil {
 		if g.dropped(e, err) {
 			switch a := e.Audience; {
@@ -105,8 +119,9 @@ func (g *Gateway) dispatch(ctx context.Context, e events.Event) {
 	perRecipient := e.Type == events.GuildCreate || e.Type == events.GuildSync ||
 		e.Audience.Kind == events.AudienceGuildSync
 	var (
-		shared  json.RawMessage
-		guildID snowflake.ID
+		shared   json.RawMessage
+		redacted json.RawMessage
+		guildID  snowflake.ID
 	)
 	if perRecipient {
 		if guildID = guildOf(e); guildID == 0 {
@@ -140,13 +155,17 @@ func (g *Gateway) dispatch(ctx context.Context, e events.Event) {
 				continue
 			}
 		} else {
-			if shared == nil {
-				if shared, err = json.Marshal(e.Payload); err != nil {
+			cached, payload := &shared, e.Payload
+			if readers != nil && !readers[uid] {
+				cached, payload = &redacted, message.ForReader(0)
+			}
+			if *cached == nil {
+				if *cached, err = json.Marshal(payload); err != nil {
 					g.dropped(e, err)
 					return
 				}
 			}
-			d = shared
+			d = *cached
 		}
 		for _, c := range cs {
 			c.enqueue(outgoing{op: OpDispatch, t: e.Type, d: d})

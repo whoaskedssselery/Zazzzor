@@ -629,6 +629,32 @@ func (q *Queries) EmbedImageByToken(ctx context.Context, db DBTX, token string) 
 	return i, err
 }
 
+const embedImageChannels = `-- name: EmbedImageChannels :many
+SELECT DISTINCT m.channel_id FROM messages AS m
+WHERE m.embeds <> '[]'::jsonb AND m.embeds @> jsonb_build_array(
+    jsonb_build_object('image', jsonb_build_object('url', $1::text)))
+`
+
+func (q *Queries) EmbedImageChannels(ctx context.Context, db DBTX, imageUrl string) ([]snowflake.ID, error) {
+	rows, err := db.Query(ctx, embedImageChannels, imageUrl)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []snowflake.ID
+	for rows.Next() {
+		var channel_id snowflake.ID
+		if err := rows.Scan(&channel_id); err != nil {
+			return nil, err
+		}
+		items = append(items, channel_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const expirePendingAttachments = `-- name: ExpirePendingAttachments :exec
 DELETE FROM message_attachments WHERE message_id IS NULL AND created_at <= $1
 `

@@ -33,7 +33,7 @@ func Middleware(s *Service) func(http.Handler) http.Handler {
 				return
 			}
 			ctx := r.Context()
-			sess, err := s.lookup(ctx, ck.Value)
+			sess, err := s.lookup(ctx, ck.Value, s.clientKey(r))
 			if errors.Is(err, ErrUnauthenticated) {
 				next.ServeHTTP(w, r)
 				return

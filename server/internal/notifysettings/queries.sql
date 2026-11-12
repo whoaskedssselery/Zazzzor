@@ -40,3 +40,12 @@ FROM channel_notification_overrides WHERE user_id = @user_id ORDER BY guild_id N
 -- name: LockUserSettings :exec
 -- Serializes one user's PATCHes, so a merge reads what the last one wrote.
 SELECT pg_advisory_xact_lock(hashtextextended('zazzzor.notify:' || @user_id::bigint, 0));
+
+-- name: UserSettingsVersion :one
+SELECT COALESCE((SELECT version FROM user_notification_settings_versions WHERE user_id = @user_id), 0)::bigint;
+
+-- name: AdvanceUserSettingsVersion :one
+INSERT INTO user_notification_settings_versions (user_id, version)
+VALUES (@user_id, 1)
+ON CONFLICT (user_id) DO UPDATE SET version = user_notification_settings_versions.version + 1
+RETURNING version;

@@ -50,6 +50,8 @@ case "$args" in
     step check
     [[ "${FAIL_CHECK:-0}" != 1 ]] || exit 2
     ;;
+  *" restore-replicas "*) step replicas; echo 2 ;;
+  *" finish-restore "*) step finish ;;
   *" restore "*)
     step restore
     [[ "${FAIL_RESTORE:-0}" != 1 ]] || exit "${FAIL_RESTORE_CODE:-2}"
@@ -95,7 +97,7 @@ for variant in compose swarm swarm-traefik; do
   echo "- $mode: проверка, остановка API, база и файлы, сверка, запуск API"
   : > "$STATE"
   bash "$script_dir/backup.sh" "$mode" restore "$name" --yes >/dev/null
-  expect check stop restore reconcile start
+  expect check stop restore reconcile finish start
   if [[ "$variant" == swarm-traefik ]]; then
     grep -q -- '--network zazzzor-host-test_db.*PGHOST=postgres.*PGPORT=5432' "$DOCKER_CALLS" || fail 'задание не в сети Postgres'
     grep -q -- '--network zazzzor-host-test_db.*files reconcile' "$DOCKER_CALLS" || fail 'reconcile не в сети Postgres'
@@ -118,11 +120,19 @@ for variant in compose swarm swarm-traefik; do
   expect check stop restore start
   grep -q 'Данные не изменены' <<<"$out" || fail "нет объяснения, что данные не изменены: $out"
 
-  echo "- $mode: неудача сверки файлов: API запущен, предупреждение, код не 0"
+  echo "- $mode: неудача сверки файлов оставляет API остановленным до --resume"
   : > "$STATE"
   if out="$(FAIL_RECONCILE=1 bash "$script_dir/backup.sh" "$mode" restore "$name" --yes 2>&1)"; then fail 'неудача сверки скрыта'; fi
-  expect check stop restore reconcile start
-  grep -q 'files reconcile' <<<"$out" || fail "предупреждение не говорит, что повторить: $out"
+  expect check stop restore reconcile
+  grep -q -- '--resume' <<<"$out" || fail "предупреждение не говорит, что повторить: $out"
+  : > "$STATE"
+  bash "$script_dir/backup.sh" "$mode" restore "$name" --yes --resume >/dev/null
+  if [[ "$mode" == swarm ]]; then
+    expect check replicas stop restore reconcile finish start
+    grep -q -- 'service scale zazzzor-host-test_api=2' "$DOCKER_CALLS" || fail 'число реплик не восстановлено'
+  else
+    expect check stop restore reconcile finish start
+  fi
 
   echo "- $mode: копия сейчас"
   : > "$STATE"

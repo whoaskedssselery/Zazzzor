@@ -12,6 +12,7 @@
 #   bash deploy/scripts/stack.sh rm            остановить стек (данные в томах остаются)
 #   bash deploy/scripts/stack.sh backup        снять резервную копию сейчас
 #   bash deploy/scripts/stack.sh restore <копия> --yes   заменить все данные копией
+#   bash deploy/scripts/stack.sh restore <копия> --yes --resume   продолжить восстановление
 #   bash deploy/scripts/stack.sh reconcile     сверить изображения с базой
 #
 # Вариант: ZAZZZOR_EDGE=caddy (по умолчанию) или traefik (deploy/README.md §17).

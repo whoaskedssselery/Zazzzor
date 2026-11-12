@@ -159,6 +159,11 @@ var (
 	loginFailBurst = 10
 	loginFailTTL   = 30 * time.Minute
 
+	// Failed session lookups per client IP.
+	sessionFailRate  = rate.Every(time.Minute / 30)
+	sessionFailBurst = 30
+	sessionFailTTL   = 2 * time.Minute
+
 	// Logouts per client IP: 30 per minute.
 	logoutRate  = rate.Every(time.Minute / 30)
 	logoutBurst = 30
@@ -212,6 +217,8 @@ type Service struct {
 	loginLimiter     *ratelimit.Limiter
 	registerLimiter  *ratelimit.Limiter
 	loginFailures    *ratelimit.Limiter
+	sessionFailures  *ratelimit.Limiter
+	sessionLimitLogs *ratelimit.Limiter
 	logoutLimiter    *ratelimit.Limiter
 	maxSessions      int
 	verify           func(ctx context.Context, pw, encoded string) (ok, needsRehash bool, err error)
@@ -242,6 +249,8 @@ func NewService(o Options) *Service {
 	if s.now == nil {
 		s.now = time.Now
 	}
+	s.sessionFailures = ratelimit.New(sessionFailRate, sessionFailBurst, sessionFailTTL, ratelimit.WithClock(s.now))
+	s.sessionLimitLogs = ratelimit.New(rate.Every(time.Minute), 1, sessionFailTTL, ratelimit.WithClock(s.now))
 	if s.loginLimiter == nil {
 		s.loginLimiter = ratelimit.New(loginRate, loginBurst, loginLimitTTL)
 	}
@@ -508,47 +517,57 @@ func (s *Service) login(ctx context.Context, username, password string, meta Ses
 	if row.DisabledAt != nil {
 		return User{}, "", ErrAccountDisabled
 	}
-	if rehash {
-		s.upgradeHash(ctx, row.ID, password)
-	}
 	var (
 		token   string
 		evicted []snowflake.ID
 	)
 	err = db.InTx(ctx, s.pool, func(tx pgx.Tx) error {
-		var txErr error
+		current, txErr := s.q.LockUserCredentials(ctx, tx, row.ID)
+		if errors.Is(txErr, pgx.ErrNoRows) {
+			return ErrInvalidCredentials
+		}
+		if txErr != nil {
+			return fmt.Errorf("auth: lock credentials: %w", txErr)
+		}
+		if current.DisabledAt != nil || current.PasswordHash != row.PasswordHash {
+			return ErrInvalidCredentials
+		}
 		token, evicted, txErr = s.createSession(ctx, tx, row.ID, meta, s.now())
+		row = current
 		return txErr
 	})
 	if err != nil {
 		return User{}, "", err
 	}
 	s.publishRevoked(ctx, row.ID, evicted)
+	if rehash {
+		s.upgradeHash(ctx, row, password)
+	}
 	return s.toUser(row), token, nil
 }
 
 // upgradeHash re-hashes a password stored with old parameters. Failure only
 // postpones the upgrade to the next login.
-func (s *Service) upgradeHash(ctx context.Context, userID snowflake.ID, password string) {
+func (s *Service) upgradeHash(ctx context.Context, verified store.User, password string) {
 	hash, err := HashPassword(ctx, password)
 	if err == nil {
-		_, err = s.q.SetPasswordHash(ctx, s.pool, store.SetPasswordHashParams{ID: userID, PasswordHash: hash})
+		_, err = s.q.ReplacePasswordHash(ctx, s.pool, store.ReplacePasswordHashParams{
+			ID: verified.ID, PasswordHash: hash, VerifiedHash: verified.PasswordHash,
+		})
 	}
 	if err != nil {
-		httpx.LoggerFrom(ctx).WarnContext(ctx, "upgrade password hash", "user_id", userID.String(), "err", err.Error())
+		httpx.LoggerFrom(ctx).WarnContext(ctx, "upgrade password hash", "user_id", verified.ID.String(), "err", err.Error())
 	}
 }
 
 // createSession opens a session inside tx. Past maxSessions it evicts the
 // oldest sessions of the user, returning their IDs for the caller to
-// announce once tx has committed.
+// announce once tx has committed. The caller holds the user row lock or
+// inserted the user in this transaction.
 func (s *Service) createSession(ctx context.Context, tx pgx.Tx, userID snowflake.ID, meta SessionMeta, now time.Time) (string, []snowflake.ID, error) {
 	token, hash, err := newToken()
 	if err != nil {
 		return "", nil, err
-	}
-	if err = s.q.LockUserSessions(ctx, tx, userID); err != nil {
-		return "", nil, fmt.Errorf("auth: lock sessions: %w", err)
 	}
 	if err = s.q.DeleteExpiredUserSessions(ctx, tx, store.DeleteExpiredUserSessionsParams{UserID: userID, Now: now}); err != nil {
 		return "", nil, fmt.Errorf("auth: purge expired sessions: %w", err)
@@ -589,15 +608,28 @@ type session struct {
 	lastUsedAt time.Time
 }
 
-func (s *Service) lookup(ctx context.Context, rawToken string) (session, error) {
+// lookup checks a network client's failure budget before reading the database.
+func (s *Service) lookup(ctx context.Context, rawToken, clientKey string) (session, error) {
 	if !wellFormedToken(rawToken) {
 		return session{}, ErrUnauthenticated
+	}
+	rejected := false
+	if clientKey != "" {
+		finish, ok := s.sessionFailures.BeginAttempt(clientKey)
+		if !ok {
+			if log, _ := s.sessionLimitLogs.Allow(clientKey); log {
+				httpx.LoggerFrom(ctx).WarnContext(ctx, "session lookup throttled", "client", clientKey)
+			}
+			return session{}, ErrUnauthenticated
+		}
+		defer func() { finish(rejected) }()
 	}
 	row, err := s.q.SessionByTokenHash(ctx, s.pool, store.SessionByTokenHashParams{
 		TokenHash: hashToken(rawToken),
 		Now:       s.now(),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
+		rejected = true
 		return session{}, ErrUnauthenticated
 	}
 	if err != nil {
@@ -610,7 +642,12 @@ func (s *Service) lookup(ctx context.Context, rawToken string) (session, error) 
 // malformed, expired or revoked tokens and tokens of disabled accounts give
 // ErrUnauthenticated.
 func (s *Service) Authenticate(ctx context.Context, rawToken string) (User, snowflake.ID, error) {
-	sess, err := s.lookup(ctx, rawToken)
+	return s.AuthenticateFrom(ctx, rawToken, "")
+}
+
+// AuthenticateFrom applies the shared HTTP and gateway budget for clientKey.
+func (s *Service) AuthenticateFrom(ctx context.Context, rawToken, clientKey string) (User, snowflake.ID, error) {
+	sess, err := s.lookup(ctx, rawToken, clientKey)
 	if err != nil {
 		return User{}, 0, err
 	}
@@ -800,12 +837,16 @@ func (s *Service) ChangePassword(ctx context.Context, userID snowflake.ID, curre
 	}
 	var revoked []snowflake.ID
 	err = db.InTx(ctx, s.pool, func(tx pgx.Tx) error {
-		n, txErr := s.q.SetPasswordHash(ctx, tx, store.SetPasswordHashParams{ID: userID, PasswordHash: hash})
+		// The conditional UPDATE locks the row and rechecks the verified hash
+		// before writing. Argon2 runs outside the transaction.
+		n, txErr := s.q.ReplacePasswordHash(ctx, tx, store.ReplacePasswordHashParams{
+			ID: userID, PasswordHash: hash, VerifiedHash: row.PasswordHash,
+		})
 		if txErr != nil {
 			return fmt.Errorf("auth: set password: %w", txErr)
 		}
 		if n == 0 {
-			return ErrUserNotFound
+			return ErrInvalidCredentials
 		}
 		revoked, txErr = s.q.DeleteOtherUserSessions(ctx, tx, store.DeleteOtherUserSessionsParams{UserID: userID, KeepID: keepSessionID})
 		if txErr != nil {

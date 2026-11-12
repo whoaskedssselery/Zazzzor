@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # Build: docker build -f server/Dockerfile --build-arg VERSION=$(git describe --always) -t zazzzor-api server
-FROM golang:1.27 AS build
+FROM golang:1.27.4 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download

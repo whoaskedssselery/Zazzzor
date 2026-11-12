@@ -2,6 +2,7 @@ package invites
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
@@ -56,7 +57,19 @@ func (s *Service) handleList(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	invs, err := s.List(r.Context(), id, auth.CurrentUser(r).ID)
+	query := r.URL.Query()
+	before := query.Get("before")
+	if query.Has("before") && !ValidCode(before) {
+		return fail(invalid("before", "must be an invite code"))
+	}
+	limit := DefaultListed
+	if query.Has("limit") {
+		limit, err = strconv.Atoi(query.Get("limit"))
+		if err != nil || limit < 1 || limit > MaxListed {
+			return fail(invalid("limit", "must be from 1 to "+strconv.Itoa(MaxListed)))
+		}
+	}
+	invs, err := s.List(r.Context(), id, auth.CurrentUser(r).ID, before, limit)
 	if err != nil {
 		return fail(err)
 	}

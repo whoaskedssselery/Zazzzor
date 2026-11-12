@@ -2228,7 +2228,10 @@ paths:
       tags: [messages]
       operationId: downloadEmbedImage
       summary: Read a proxied link preview image
-      security: []
+      description: |
+        Needs a session and access to at least one message using the image.
+        Guild channels require `VIEW_CHANNEL` and `READ_MESSAGE_HISTORY`.
+        Direct messages require membership. Supports conditional requests.
       parameters:
         - name: embed_image_id
           in: path
@@ -2237,14 +2240,16 @@ paths:
             type: string
       responses:
         "200":
-          description: PNG, JPEG, GIF or WebP with public immutable caching for 24 hours and nosniff.
+          description: PNG, JPEG, GIF or WebP with private cache revalidation, an ETag, and nosniff.
           content:
             image/*:
               schema:
                 type: string
                 format: binary
+        "304":
+          description: The cached image is current and the caller still has access.
         "404":
-          description: The image is unknown or no longer available.
+          description: The image is unknown or unavailable to the caller.
 
   /attachments/{channel_id}/{attachment_id}/{filename}:
     get:
@@ -2764,10 +2769,24 @@ paths:
       operationId: listGuildInvites
       summary: Invites of a server
       description: |
-        Needs `MANAGE_GUILD`. Newest first, at most 1000, expired and used
-        up ones included; only invites to channels the caller can see.
+        Needs `MANAGE_GUILD`. Newest first, expired and used up ones
+        included. Only invites to visible channels count toward the page.
+        Use the last invite's code as `before` for the next page.
       parameters:
         - $ref: "#/components/parameters/GuildID"
+        - name: before
+          in: query
+          description: Exclusive invite code cursor. A missing or inaccessible cursor invite yields an empty page.
+          schema:
+            type: string
+            pattern: '^[0-9A-Za-z]{8}$'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
       responses:
         "200":
           description: The invites.
@@ -2778,6 +2797,9 @@ paths:
                 maxItems: 1000
                 items:
                   $ref: "#/components/schemas/Invite"
+        "400":
+          description: "`validation_failed`: invalid cursor format or limit."
+          $ref: "#/components/responses/Problem"
         "401":
           description: "`unauthenticated`."
           $ref: "#/components/responses/Problem"
@@ -4200,7 +4222,9 @@ components:
             - $ref: "#/components/schemas/Snowflake"
             - type: "null"
         referenced_message:
-          description: The message this one answers; null when not a reply or the original is deleted.
+          description: |
+            The message this one answers. Null if absent, deleted, or the
+            recipient cannot read the channel history. The reply ID is retained.
           oneOf:
             - $ref: "#/components/schemas/MessageStub"
             - type: "null"
@@ -4333,8 +4357,15 @@ components:
     UserGuildSettings:
       type: object
       additionalProperties: false
-      required: [guild_id, muted, mute_until, message_notifications, suppress_everyone, channel_overrides]
+      required: [guild_id, version, muted, mute_until, message_notifications, suppress_everyone, channel_overrides]
       properties:
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+          description: |
+            Monotonic per-user revision, initially zero. For each scope,
+            discard snapshots older than the newest version held for that scope.
         guild_id:
           description: The server ID, or null for private channels.
           oneOf:

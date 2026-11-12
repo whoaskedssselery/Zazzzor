@@ -16,8 +16,9 @@
 #   backup-job.sh prune           удалить копии сверх хранимых
 #   backup-job.sh verify <имя>    проверить суммы и архив копии
 #   backup-job.sh check <имя>     verify и сравнить схему копии со схемой образа API
-#   backup-job.sh restore <имя>   check, затем база и изображения из копии (API в это
-#                                 время остановлен); код 3 — ничего не изменено
+#   backup-job.sh restore <имя> [--resume|<реплики>]   база и изображения при остановленном API
+#   backup-job.sh restore-replicas <имя>   число реплик до прерванного восстановления
+#   backup-job.sh finish-restore <имя>    удалить прежние файлы после успешной сверки
 #
 # Переменные:
 #   BACKUP_ROOT (/backups), DATA_ROOT (/data)    каталоги внутри контейнера
@@ -190,7 +191,8 @@ once() {
   local started name tag pg schema dump_size data_size
   validate_retention
   require_writable_root
-  take_lock
+  take_lock 2
+  [[ -z "$(pending_restore)" ]] || die 'восстановление не завершено; сначала выполните restore с --resume'
   # Блокировка у нас, значит .partial-* остались от прерванных запусков.
   find "$root" -mindepth 1 -maxdepth 1 -name '.partial-*' -exec rm -rf -- '{}' +
   check_space
@@ -347,49 +349,120 @@ restore_database() {
   } | PGOPTIONS='-c client_min_messages=warning' psql -X -q -o /dev/null -v ON_ERROR_STOP=1
 }
 
-# Восстановление; API в это время остановлен. Пока ничего не изменено,
-# любая ошибка даёт код 3, и backup.sh снова запускает API: копия не прошла
-# проверку, блокировка занята (идёт плановая копия), архив не распаковался,
-# база не восстановилась (транзакция откатана). Картинки распаковываются
-# рядом и подменяются переименованием уже после базы. Трогаются только
-# avatars, icons, attachments и trash: другое в томе (например, lost+found) остаётся.
+# Возвращает путь к незавершённому восстановлению, включая старый формат.
+pending_restore() {
+  local path
+  for path in "$data"/.restore-old-*; do
+    if [[ -e "$path" || -L "$path" ]]; then
+      printf '%s\n' "$path"
+    fi
+  done
+}
+
+# Проверяет, что продолжение относится к той же проверенной копии.
+restore_state() {
+  local name="$1" old
+  old="$(pending_restore)"
+  [[ -n "$old" ]] || die 'нет незавершённого восстановления'
+  [[ -d "$old" && ! -L "$old" && -f "$old/name" && -d "$old/.restore-new-files" ]] ||
+    die 'найдены старые каталоги .restore-old без журнала. Сохраните их отдельно перед ручным восстановлением'
+  [[ "$(cat "$old/name")" == "$name" ]] || die "восстановление начато из $(cat "$old/name"); продолжите с этой копией"
+  cmp -s "$old/SHA256SUMS" "$root/$name/SHA256SUMS" ||
+    die "суммы копии $name изменились; верните копию, с которой начиналось восстановление"
+  printf '%s\n' "$old"
+}
+
+# Публикует журнал только после полной распаковки, до изменений в базе.
+prepare_restore() {
+  local name="$1" replicas="$2" stage old kind
+  find "$data" -mindepth 1 -maxdepth 1 \( -name '.restore-stage-*' -o -name '.restore-complete-*' \) -exec rm -rf -- '{}' +
+  stage="$(mktemp -d "$data/.restore-stage-XXXXXXXX")"
+  old="$data/.restore-old-${stage##*-}"
+  mkdir -- "$stage/.restore-new-files" "$stage/original"
+  if ! tar -xzf "$root/$name/apidata.tar.gz" -C "$stage/.restore-new-files"; then
+    rm -rf -- "$stage"
+    echo "Ошибка: архив изображений копии $name не распаковался; ничего не изменено" >&2
+    return 3
+  fi
+  for kind in avatars icons attachments trash; do
+    mkdir -p -- "$stage/.restore-new-files/$kind"
+  done
+  printf '%s\n' "$name" > "$stage/name"
+  printf '%s\n' "$replicas" > "$stage/replicas"
+  cp -- "$root/$name/SHA256SUMS" "$stage/SHA256SUMS"
+  mv -- "$stage" "$old"
+  printf '%s\n' "$old"
+}
+
+# Подменяет каталоги переименованием. Исчезнувший из распаковки каталог
+# уже стоит на месте, даже если процесс прервался сразу после mv.
+swap_restore_files() {
+  local old="$1" fresh="$1/.restore-new-files" kind
+  for kind in avatars icons attachments trash; do
+    if [[ -d "$fresh/$kind" ]]; then
+      if [[ -e "$data/$kind" || -L "$data/$kind" ]]; then
+        [[ ! -e "$old/original/$kind" && ! -L "$old/original/$kind" ]] ||
+          die "найдены две версии $kind до подмены; сохраните обе и проверьте том"
+        mv -- "$data/$kind" "$old/original/"
+      fi
+      mv -- "$fresh/$kind" "$data/"
+    fi
+    [[ -d "$data/$kind" && ! -L "$data/$kind" ]] || die "нет каталога $kind после подмены"
+  done
+}
+
+# Восстанавливает базу и файлы при остановленном API. Код 3 возможен
+# только до начала изменений. После прерывания журнал остаётся в томе.
 restore() {
-  local name="$1" fresh old kind
+  local name="$1" mode="${2:-1}" old
+  old="$(pending_restore)"
+  if [[ "$mode" != --resume && -n "$old" ]]; then
+    die "найдено незавершённое восстановление ($old); повторите restore с --resume и той же копией"
+  fi
   (check "$name") || exit 3
   (require_writable_root) || exit 3
-  take_lock 3
+  # При занятой блокировке нельзя отличить копию от параллельного restore.
+  # Код 2 оставляет API остановленным до повторного запуска.
+  take_lock 2
   if [[ "$data" == / || ! -d "$data" || ! -w "$data" ]]; then
     echo "Ошибка: в каталог изображений $data нельзя писать" >&2
     exit 3
   fi
-  # Блокировка у нас, значит .restore-* остались от прерванного запуска.
-  find "$data" -mindepth 1 -maxdepth 1 -name '.restore-*' -exec rm -rf -- '{}' +
-  fresh="$(mktemp -d "$data/.restore-new-XXXXXXXX")"
-  if ! tar -xzf "$root/$name/apidata.tar.gz" -C "$fresh"; then
-    rm -rf -- "$fresh"
-    echo "Ошибка: архив изображений копии $name не распаковался; ничего не изменено" >&2
-    exit 3
+  if [[ "$mode" == --resume ]]; then
+    old="$(restore_state "$name")"
+  else
+    [[ "$mode" =~ ^[0-9]+$ ]] || die 'укажите число реплик или --resume'
+    [[ -z "$(pending_restore)" ]] || die 'восстановление уже началось; повторите с --resume'
+    old="$(set -e; prepare_restore "$name" "$mode")"
   fi
-  log "пересоздаю схему public и восстанавливаю базу из $name одной транзакцией"
-  if ! restore_database "$name"; then
-    rm -rf -- "$fresh"
-    echo "Ошибка: база не восстановлена из $name, транзакция откатана; ничего не изменено" >&2
-    exit 3
+  if [[ ! -f "$old/database-restored" ]]; then
+    log "пересоздаю схему public и восстанавливаю базу из $name одной транзакцией"
+    restore_database "$name" || die "база не восстановлена из $name; устраните причину и продолжите с --resume"
+    touch -- "$old/database-restored"
   fi
   log 'подменяю изображения'
-  old="$(mktemp -d "$data/.restore-old-XXXXXXXX")"
-  for kind in avatars icons attachments trash; do
-    if [[ -e "$data/$kind" ]]; then
-      mv -- "$data/$kind" "$old/"
-    fi
-    if [[ -e "$fresh/$kind" ]]; then
-      mv -- "$fresh/$kind" "$data/"
-    else
-      mkdir -- "$data/$kind"
-    fi
-  done
-  rm -rf -- "$old" "$fresh"
+  swap_restore_files "$old"
+  touch -- "$old/files-restored"
   log "база и изображения восстановлены из $name"
+}
+
+# Возвращает исходное число реплик Swarm после остановки API.
+restore_replicas() {
+  local old
+  old="$(restore_state "$1")"
+  cat -- "$old/replicas"
+}
+
+# Хост вызывает это только после сверки файлов. Переименование завершает
+# журнал целиком, даже если очистку каталога потом прервут.
+finish_restore() {
+  local old completed
+  take_lock 2
+  old="$(restore_state "$1")"
+  [[ -f "$old/database-restored" && -f "$old/files-restored" ]] || die 'сначала завершите подмену с --resume'
+  completed="$data/.restore-complete-${old##*-}"
+  mv -- "$old" "$completed"
+  rm -rf -- "$completed"
 }
 
 # Останавливает расписание вместе с идущей копией: у неё своя группа
@@ -459,6 +532,10 @@ health() {
       return 0
     fi
   fi
+  if [[ -n "$(pending_restore)" ]]; then
+    echo 'восстановление не завершено; выполните restore с --resume'
+    return 1
+  fi
   if [[ ! -w "$root" ]]; then
     echo "нет права записи в каталог копий $host_root (смотрите логи сервиса backup)"
     return 1
@@ -501,11 +578,21 @@ case "${1:-}" in
     health
     ;;
   prune)
+    take_lock 2
+    [[ -z "$(pending_restore)" ]] || die 'восстановление не завершено; сначала выполните restore с --resume'
     prune
     ;;
-  verify | check | restore)
+  verify | check)
     [[ -n "${2:-}" ]] || die "укажите имя копии: backup-job.sh $1 <имя>"
     "$1" "$2"
+    ;;
+  restore | restore-replicas | finish-restore)
+    [[ -n "${2:-}" ]] || die "укажите имя копии: backup-job.sh $1 <имя>"
+    case "$1" in
+      restore) restore "$2" "${3:-1}" ;;
+      restore-replicas) restore_replicas "$2" ;;
+      finish-restore) finish_restore "$2" ;;
+    esac
     ;;
   *)
     sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'

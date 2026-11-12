@@ -247,3 +247,8 @@ type UserGuildSetting struct {
 	MessageNotifications int16
 	SuppressEveryone     bool
 }
+
+type UserNotificationSettingsVersion struct {
+	UserID  int64
+	Version int64
+}

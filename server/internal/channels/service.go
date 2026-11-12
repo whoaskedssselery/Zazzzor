@@ -458,7 +458,7 @@ func (s *Service) DeleteChannel(ctx context.Context, channelID, actorID snowflak
 			return err
 		}
 		deleted = l.view(n)
-		audience = viewers(a, deleted.Overwrites)
+		audience = viewers(a, deleted.Overwrites, nil)
 
 		scopes := l.scopes()
 		from := n.parent()

@@ -37,6 +37,7 @@ type Limiter struct {
 type bucket struct {
 	lim      *rate.Limiter
 	lastSeen time.Time
+	inFlight int
 }
 
 // Option configures a Limiter.
@@ -129,6 +130,32 @@ func (l *Limiter) Charge(key string) {
 	}
 }
 
+// BeginAttempt reserves room for an in-flight operation. Call finish once
+// when it ends, passing true to charge a failure. Successful attempts
+// release their reservation immediately without consuming a token.
+// Use this for keys whose outcomes are only counted on failure.
+func (l *Limiter) BeginAttempt(key string) (finish func(charge bool), ok bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := l.now()
+	l.sweep(now, false)
+	b := l.bucketFor(key, now)
+	if b == nil || b.lim.TokensAt(now) < float64(b.inFlight+1) {
+		return nil, false
+	}
+	b.inFlight++
+	return func(charge bool) {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		now := l.now()
+		b.inFlight--
+		b.lastSeen = now
+		if charge {
+			b.lim.ReserveN(now, 1)
+		}
+	}, true
+}
+
 // bucketFor returns key's bucket, creating it if there is room; nil when the
 // table is full. l.mu must be held.
 func (l *Limiter) bucketFor(key string, now time.Time) *bucket {
@@ -160,7 +187,7 @@ func (l *Limiter) sweep(now time.Time, force bool) {
 	}
 	l.lastSweep = now
 	for k, b := range l.buckets {
-		if now.Sub(b.lastSeen) > l.ttl {
+		if b.inFlight == 0 && now.Sub(b.lastSeen) > l.ttl {
 			delete(l.buckets, k)
 		}
 	}

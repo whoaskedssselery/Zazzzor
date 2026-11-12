@@ -12,6 +12,20 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const advanceUserSettingsVersion = `-- name: AdvanceUserSettingsVersion :one
+INSERT INTO user_notification_settings_versions (user_id, version)
+VALUES ($1, 1)
+ON CONFLICT (user_id) DO UPDATE SET version = user_notification_settings_versions.version + 1
+RETURNING version
+`
+
+func (q *Queries) AdvanceUserSettingsVersion(ctx context.Context, db DBTX, userID int64) (int64, error) {
+	row := db.QueryRow(ctx, advanceUserSettingsVersion, userID)
+	var version int64
+	err := row.Scan(&version)
+	return version, err
+}
+
 const allOverrides = `-- name: AllOverrides :many
 SELECT guild_id, channel_id, muted, mute_until, message_notifications
 FROM channel_notification_overrides WHERE user_id = $1 ORDER BY guild_id NULLS FIRST, channel_id
@@ -271,4 +285,15 @@ func (q *Queries) ScopeSettings(ctx context.Context, db DBTX, arg ScopeSettingsP
 		&i.SuppressEveryone,
 	)
 	return i, err
+}
+
+const userSettingsVersion = `-- name: UserSettingsVersion :one
+SELECT COALESCE((SELECT version FROM user_notification_settings_versions WHERE user_id = $1), 0)::bigint
+`
+
+func (q *Queries) UserSettingsVersion(ctx context.Context, db DBTX, userID int64) (int64, error) {
+	row := db.QueryRow(ctx, userSettingsVersion, userID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }

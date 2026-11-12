@@ -2,6 +2,7 @@ package notifysettings_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"sync"
@@ -126,6 +127,46 @@ func TestServerMuteLevelsAndEvent(t *testing.T) {
 	list, err := s.List(t.Context(), alice)
 	if err != nil || len(list) != 0 {
 		t.Fatalf("list = %+v, %v; want nothing (defaults)", list, err)
+	}
+}
+
+func TestSettingsVersionSurvivesReturningToDefaults(t *testing.T) {
+	s, _, pub := setup(t)
+	version := func(value any) int64 {
+		t.Helper()
+		data, err := json.Marshal(value)
+		if err != nil {
+			t.Fatalf("marshal settings: %v", err)
+		}
+		var snapshot struct {
+			Version int64 `json:"version"`
+		}
+		if err := json.Unmarshal(data, &snapshot); err != nil {
+			t.Fatalf("decode settings version: %v", err)
+		}
+		return snapshot.Version
+	}
+	var last int64
+	for _, muted := range []bool{true, false, true} {
+		got, err := s.Update(t.Context(), alice, g(home), notifysettings.Patch{Muted: ptr(muted)})
+		if err != nil {
+			t.Fatalf("Update: %v", err)
+		}
+		current := version(got)
+		if current <= last {
+			t.Fatalf("version = %d, want greater than %d", current, last)
+		}
+		if event := version(pub.events[len(pub.events)-1].Payload); event != current {
+			t.Errorf("event version = %d, want %d", event, current)
+		}
+		last = current
+	}
+	list, err := s.List(t.Context(), alice)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("List = %+v, %v, want one scope", list, err)
+	}
+	if ready := version(list[0]); ready != last {
+		t.Errorf("READY version = %d, want %d", ready, last)
 	}
 }
 

@@ -52,6 +52,7 @@ type Override struct {
 // Settings is the schema UserGuildSettings: one server's, or the DMs' (GuildID nil).
 type Settings struct {
 	GuildID              *snowflake.ID `json:"guild_id"`
+	Version              int64         `json:"version"`
 	Muted                bool          `json:"muted"`
 	MuteUntil            *string       `json:"mute_until"`
 	MessageNotifications int16         `json:"message_notifications"`
@@ -147,11 +148,29 @@ func (s *Service) load(ctx context.Context, q store.DBTX, user snowflake.ID, gui
 // List returns every scope of user whose settings differ from the
 // defaults, for READY.
 func (s *Service) List(ctx context.Context, user snowflake.ID) ([]Settings, error) {
-	scopes, err := s.q.AllScopeSettings(ctx, s.pool, int64(user))
+	var out []Settings
+	err := pgx.BeginTxFunc(ctx, s.pool, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
+		var err error
+		out, err = s.listSnapshot(ctx, tx, user)
+		return err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("notifysettings: list snapshot: %w", err)
+	}
+	return out, nil
+}
+
+// listSnapshot reads the revision and all scopes at the same point in time.
+func (s *Service) listSnapshot(ctx context.Context, tx pgx.Tx, user snowflake.ID) ([]Settings, error) {
+	version, err := s.q.UserSettingsVersion(ctx, tx, int64(user))
+	if err != nil {
+		return nil, fmt.Errorf("notifysettings: read version: %w", err)
+	}
+	scopes, err := s.q.AllScopeSettings(ctx, tx, int64(user))
 	if err != nil {
 		return nil, fmt.Errorf("notifysettings: list scopes: %w", err)
 	}
-	overrides, err := s.q.AllOverrides(ctx, s.pool, int64(user))
+	overrides, err := s.q.AllOverrides(ctx, tx, int64(user))
 	if err != nil {
 		return nil, fmt.Errorf("notifysettings: list overrides: %w", err)
 	}
@@ -168,6 +187,7 @@ func (s *Service) List(ctx context.Context, user snowflake.ID) ([]Settings, erro
 			guildID = &id
 		}
 		st := defaults(guildID)
+		st.Version = version
 		byScope[key] = &st
 		order = append(order, key)
 		return &st
@@ -299,6 +319,10 @@ func (s *Service) Update(ctx context.Context, user snowflake.ID, guildID *snowfl
 		}
 		if len(out.ChannelOverrides) > MaxOverrides {
 			return httpx.BadRequest("too_many_overrides", fmt.Sprintf("at most %d channel overrides", MaxOverrides))
+		}
+		out.Version, err = s.q.AdvanceUserSettingsVersion(ctx, tx, int64(user))
+		if err != nil {
+			return fmt.Errorf("notifysettings: advance version: %w", err)
 		}
 		return nil
 	})

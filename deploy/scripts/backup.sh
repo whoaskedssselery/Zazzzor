@@ -8,6 +8,8 @@
 #   bash deploy/scripts/backup.sh compose restore <копия> --yes     заменить данные копией
 #   bash deploy/scripts/backup.sh swarm backup                     то же для стека
 #   bash deploy/scripts/backup.sh swarm restore <копия> --yes       (обычно через stack.sh)
+#   bash deploy/scripts/backup.sh <compose|swarm> restore <копия> --yes --resume
+#                                                                 продолжить подмену и сверку
 #   bash deploy/scripts/backup.sh compose reconcile                сверить изображения с базой
 #   bash deploy/scripts/backup.sh swarm reconcile                  (при работающем API)
 # <копия> — имя каталога копии или путь к нему, относительный или
@@ -18,7 +20,7 @@
 # база и изображения, files reconcile, запуск API. Без --yes ничего не
 # делает. Если данные не изменились (база откатилась, блокировка занята),
 # API запускается снова; если изменились частично, остаётся остановленным:
-# повторите ту же команду. Если не удалась только сверка, API запускается.
+# повторите с --resume. Прежние файлы удаляются только после сверки.
 # В обоих случаях код выхода не 0.
 #
 # Настройки: deploy/.env (другой файл: ENV_FILE=...). Имя проекта compose
@@ -39,13 +41,19 @@ usage() {
 
 mode="${1:-}"
 action="${2:-}"
+resume=0
 [[ "$mode" == compose || "$mode" == swarm ]] || usage
 case "$action" in
   backup | reconcile)
     [[ $# -eq 2 ]] || usage
     ;;
   restore)
-    [[ $# -eq 4 && "$4" == --yes ]] || die "restore заменяет все данные сервера копией; подтвердите: backup.sh $mode restore <копия> --yes"
+    [[ $# -ge 4 && "$4" == --yes ]] || die "restore заменяет все данные сервера копией; подтвердите: backup.sh $mode restore <копия> --yes"
+    if [[ $# -eq 5 && "$5" == --resume ]]; then
+      resume=1
+    elif [[ $# -ne 4 ]]; then
+      usage
+    fi
     ;;
   *)
     usage
@@ -95,7 +103,7 @@ fi
 # том изображений на запись.
 run_job() {
   local access=ro
-  if [[ "$1" == restore ]]; then
+  if [[ "$1" == restore || "$1" == finish-restore ]]; then
     access=rw
   fi
   if [[ "$mode" == compose ]]; then
@@ -193,7 +201,7 @@ api_env=''
 
 # Итог при любом выходе. До восстановления базы и изображений API
 # остаётся остановленным: запускать его на частично восстановленной базе
-# нельзя, а повтор той же команды безопасен.
+# нельзя. Журнал оставляет прежние файлы для продолжения с --resume.
 on_exit() {
   local status=$?
   trap - EXIT
@@ -201,7 +209,7 @@ on_exit() {
     rm -f -- "$api_env"
   fi
   if ((status != 0 && api_stopped == 1 && restored == 0)); then
-    echo "Ошибка: восстановление из $name НЕ завершено (ошибка выше). API оставлен остановленным, чтобы никто не работал на частично восстановленной базе. Устраните причину и повторите: bash deploy/scripts/backup.sh $mode restore $name --yes" >&2
+    echo "Ошибка: восстановление из $name НЕ завершено (ошибка выше). API оставлен остановленным. Устраните причину и, если остался журнал .restore-old, повторите: bash deploy/scripts/backup.sh $mode restore $name --yes --resume" >&2
   fi
   exit "$status"
 }
@@ -216,7 +224,11 @@ if [[ "$mode" == compose ]]; then
   api_stopped=1
   [[ -z "$("${compose[@]}" ps -q --status running api)" ]] || die "API проекта $stack всё ещё работает"
 else
-  replicas="$(docker service inspect --format '{{.Spec.Mode.Replicated.Replicas}}' "${stack}_api")"
+  if ((resume == 1)); then
+    replicas="$(run_job restore-replicas "$name")"
+  else
+    replicas="$(docker service inspect --format '{{.Spec.Mode.Replicated.Replicas}}' "${stack}_api")"
+  fi
   [[ "$replicas" =~ ^[0-9]+$ ]] || die "сервис ${stack}_api не replicated: восстанавливать некуда"
   # Окружение API нужно, чтобы запустить files reconcile тем же образом.
   api_env="$(mktemp)"
@@ -240,30 +252,29 @@ start_api() {
   fi
 }
 
-# Код 3 от задания значит, что данные не изменены (база откатилась,
-# блокировка занята плановой копией): API можно и нужно запустить снова.
+# При первом запуске код 3 означает отказ до изменения данных.
 status=0
-run_job restore "$name" || status=$?
-if ((status == 3)); then
+restore_mode="$replicas"
+if ((resume == 1)); then
+  restore_mode=--resume
+fi
+run_job restore "$name" "$restore_mode" || status=$?
+if ((status == 3 && resume == 0)); then
   restored=1
   echo "Данные не изменены (ошибка выше). Запускаю API снова." >&2
   start_api
   die "восстановление из $name не выполнено. Устраните причину и повторите: bash deploy/scripts/backup.sh $mode restore $name --yes"
 fi
 ((status == 0)) || exit "$status"
-restored=1
 
 echo 'Сверяю изображения с базой (files reconcile).'
-reconciled=1
 if [[ "$mode" == compose ]]; then
-  "${compose[@]}" run --rm --no-deps -T api files reconcile || reconciled=0
+  "${compose[@]}" run --rm --no-deps -T api files reconcile
 else
-  docker run --rm --network "$job_network" --env-file "$api_env" -v "$volume:/data" "$ZAZZZOR_APP_IMAGE" files reconcile || reconciled=0
+  docker run --rm --network "$job_network" --env-file "$api_env" -v "$volume:/data" "$ZAZZZOR_APP_IMAGE" files reconcile
 fi
+run_job finish-restore "$name"
+restored=1
 start_api
 
-if ((reconciled == 0)); then
-  echo "Внимание: база и изображения восстановлены из $name, API запущен, но files reconcile сообщил об ошибках (выше): часть картинок может не открываться. Устраните причину и повторите только сверку: bash deploy/scripts/backup.sh $mode reconcile" >&2
-  exit 1
-fi
 echo "Восстановление из $name завершено, API запущен. Проверьте вход, сообщения и картинки."

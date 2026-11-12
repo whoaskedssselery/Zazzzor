@@ -1,8 +1,8 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { api, type components, errorText, unwrap } from "@/shared/api";
-import { Avatar, IconButton, Skeleton, useToast } from "@/shared/ui";
+import { Avatar, Button, IconButton, Skeleton, useToast } from "@/shared/ui";
 
 type Invite = components["schemas"]["Invite"];
 
@@ -13,6 +13,9 @@ const dateFormat = new Intl.DateTimeFormat("ru-RU", {
   minute: "2-digit",
 });
 export const invitesKey = (guildId: string) => ["invites", guildId] as const;
+
+/** Invites per page; a full page means there may be more. */
+export const INVITES_PAGE = 100;
 
 /** «3 из 10», or «3» for an invite without a limit. */
 export const usesText = (invite: Pick<Invite, "uses" | "max_uses">): string =>
@@ -30,11 +33,22 @@ export const expiresText = (expiresAt: string | null): string =>
 export const InvitesTab = ({ guildId }: { guildId: string }) => {
   const qc = useQueryClient();
   const toast = useToast();
-  const invites = useQuery({
+  // Newest first, a page at a time: the next page starts after the last code shown.
+  const pages = useInfiniteQuery({
     queryKey: invitesKey(guildId),
-    queryFn: async () =>
-      unwrap(await api.GET("/guilds/{guild_id}/invites", { params: { path: { guild_id: guildId } } })),
+    initialPageParam: null as string | null,
+    queryFn: async ({ pageParam }) =>
+      unwrap(
+        await api.GET("/guilds/{guild_id}/invites", {
+          params: {
+            path: { guild_id: guildId },
+            query: { limit: INVITES_PAGE, ...(pageParam === null ? {} : { before: pageParam }) },
+          },
+        }),
+      ),
+    getNextPageParam: (last) => (last.length === INVITES_PAGE ? (last.at(-1)?.code ?? null) : null),
   });
+  const invites = { ...pages, data: pages.data?.pages.flat() };
   const remove = useMutation({
     mutationFn: async (code: string) => {
       unwrap(await api.DELETE("/invites/{code}", { params: { path: { code } } }));
@@ -52,7 +66,7 @@ export const InvitesTab = ({ guildId }: { guildId: string }) => {
     body = <Skeleton className="h-14 w-full rounded-md" />;
   } else if (invites.isError) {
     body = <p className="text-base text-fg-danger">{errorText(invites.error)}</p>;
-  } else if (invites.data.length === 0) {
+  } else if (invites.data === undefined || invites.data.length === 0) {
     body = <p className="text-base text-fg-muted">Приглашений нет.</p>;
   } else {
     body = (
@@ -116,6 +130,18 @@ export const InvitesTab = ({ guildId }: { guildId: string }) => {
         Приглашения
       </h2>
       {body}
+      {pages.hasNextPage && (
+        <Button
+          variant="secondary"
+          className="mt-4"
+          loading={pages.isFetchingNextPage}
+          onClick={() => {
+            void pages.fetchNextPage();
+          }}
+        >
+          Показать ещё
+        </Button>
+      )}
     </section>
   );
 };

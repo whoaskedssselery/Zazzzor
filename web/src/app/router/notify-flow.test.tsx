@@ -25,6 +25,7 @@ const signedIn = () => {
   const patches: { scope: string; body: NotifyPatch }[] = [];
   let settings: NotifySettings = {
     guild_id: G,
+    version: 0,
     muted: false,
     mute_until: null,
     message_notifications: 1,
@@ -48,7 +49,7 @@ const signedIn = () => {
       const body = await request.json();
       patches.push({ scope: params.guild_id, body });
       const { channel_overrides: overrides, ...scope } = body;
-      settings = { ...settings, ...scope };
+      settings = { ...settings, ...scope, version: settings.version + 1 };
       for (const [id, o] of Object.entries(overrides ?? {})) {
         const held = settings.channel_overrides.find((c) => c.channel_id === id) ?? {
           channel_id: id,

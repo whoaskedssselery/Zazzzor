@@ -258,7 +258,7 @@ func (s *Service) Create(ctx context.Context, channelID, userID snowflake.ID, f 
 		if row, err = s.createOnce(ctx, guildID, params, f, &m, &picked, &reopened); !errors.Is(err, errNonceTaken) {
 			break
 		}
-		if sent, ok, sentErr := s.sentWith(ctx, guildID, channelID, userID, *f.Nonce); ok || sentErr != nil {
+		if sent, ok, sentErr := s.sentWith(ctx, guildID, channelID, userID, *f.Nonce, p); ok || sentErr != nil {
 			return sent, sentErr
 		}
 	}
@@ -277,6 +277,7 @@ func (s *Service) Create(ctx context.Context, channelID, userID snowflake.ID, f 
 	s.publish(ctx, events.Event{Type: events.MessageCreate, Audience: channelAudience(guildID, channelID),
 		Payload: m.Public()})
 	s.enqueuePreviews(m, picked.pending)
+	m.Referenced = referenceForReader(p, m.Referenced)
 	return m, nil
 }
 
@@ -418,7 +419,7 @@ func (s *Service) bindAttachments(ctx context.Context, tx pgx.Tx, params store.C
 // sentWith returns the message userID sent to the channel with the nonce,
 // for a retry (it is not announced again); false when no live claim holds
 // the nonce.
-func (s *Service) sentWith(ctx context.Context, guildID, channelID, userID snowflake.ID, nonce string) (Message, bool, error) {
+func (s *Service) sentWith(ctx context.Context, guildID, channelID, userID snowflake.ID, nonce string, p permissions.Permission) (Message, bool, error) {
 	row, err := s.q.MessageByNonce(ctx, s.pool, store.MessageByNonceParams{AuthorID: userID, ChannelID: channelID,
 		Nonce: nonce})
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -432,6 +433,7 @@ func (s *Service) sentWith(ctx context.Context, guildID, channelID, userID snowf
 		return Message{}, false, err
 	}
 	m.Nonce = &nonce
+	s.projectReference(ctx, userID, channelID, p, &m)
 	return m, true, nil
 }
 
@@ -488,6 +490,7 @@ func (s *Service) Edit(ctx context.Context, channelID, messageID, userID snowfla
 	// nothing can fail between the write and the event.
 	m, err := s.completeOne(ctx, guildID, row, userID)
 	if err != nil || content == row.Content {
+		s.projectReference(ctx, userID, channelID, p, &m)
 		return m, err
 	}
 	var picked previewSelection
@@ -498,7 +501,9 @@ func (s *Service) Edit(ctx context.Context, channelID, messageID, userID snowfla
 		if row, err = s.load(ctx, channelID, messageID); err != nil {
 			return Message{}, err
 		}
-		return s.completeOne(ctx, guildID, row, userID)
+		m, err = s.completeOne(ctx, guildID, row, userID)
+		s.projectReference(ctx, userID, channelID, p, &m)
+		return m, err
 	}
 	if err != nil {
 		return Message{}, fmt.Errorf("messages: edit message: %w", err)
@@ -507,7 +512,23 @@ func (s *Service) Edit(ctx context.Context, channelID, messageID, userID snowfla
 	m.Embeds = picked.embeds
 	s.publishMessageUpdate(ctx, m)
 	s.enqueuePreviews(m, picked.pending)
+	s.projectReference(ctx, userID, channelID, p, &m)
 	return m, nil
+}
+
+// projectReference shows the replied-to message only to a reader who may
+// read the history both before and after it was loaded: a revocation that
+// lands between the check and the read must not reveal what came after it.
+// Without a fresh answer the reference is hidden.
+func (s *Service) projectReference(ctx context.Context, userID, channelID snowflake.ID, p permissions.Permission, m *Message) {
+	if m.Referenced == nil {
+		return
+	}
+	now, _, err := s.channels.Permissions(ctx, userID, channelID)
+	if err != nil {
+		now = 0
+	}
+	m.Referenced = referenceForReader(p&now, m.Referenced)
 }
 
 // publishMessageUpdate emits a shared payload without caller-specific reactions.

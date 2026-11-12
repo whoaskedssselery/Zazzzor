@@ -16,6 +16,10 @@ SELECT * FROM users WHERE id = ANY(@ids::bigint[]) ORDER BY id;
 -- name: SetPasswordHash :execrows
 UPDATE users SET password_hash = @password_hash WHERE id = @id;
 
+-- name: ReplacePasswordHash :execrows
+UPDATE users SET password_hash = @password_hash
+WHERE id = @id AND password_hash = @verified_hash AND disabled_at IS NULL;
+
 -- name: SetDisplayName :one
 UPDATE users SET display_name = @display_name WHERE id = @id RETURNING *;
 
@@ -26,9 +30,9 @@ VALUES (@id, @user_id, @token_hash, @created_at, @created_at, @expires_at, @user
 -- name: DeleteExpiredUserSessions :exec
 DELETE FROM sessions WHERE user_id = @user_id AND expires_at <= @now;
 
--- name: LockUserSessions :exec
--- Serializes the session cap of one user across concurrent sign-ins.
-SELECT 1 FROM users WHERE id = @user_id FOR NO KEY UPDATE;
+-- name: LockUserCredentials :one
+-- Serializes session creation with credential changes and other sign-ins.
+SELECT * FROM users WHERE id = @id FOR UPDATE;
 
 -- name: DeleteSessionsBeyond :many
 -- Keeps the newest @keep sessions of the user.

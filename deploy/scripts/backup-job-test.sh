@@ -275,9 +275,41 @@ want="$(printf '%s\n' 'BEGIN;' 'DROP SCHEMA public CASCADE;' 'CREATE SCHEMA publ
 [[ "$(cat "$DATA_ROOT/attachments/1/2")" == 'original attachment' ]] || fail 'вложение не восстановилось побайтно'
 [[ ! -e "$DATA_ROOT/icons/stray" ]] || fail 'лишний файл остался после замены'
 [[ -d "$DATA_ROOT/lost+found" ]] || fail 'restore удалил постороннее (lost+found)'
+bash "$job" finish-restore "$name" >/dev/null
 [[ -z "$(find "$DATA_ROOT" -maxdepth 1 -name '.restore-*')" ]] || fail 'остались .restore-*'
 
-echo '- restore: неудачный pg_restore — без COMMIT, код 3, картинки не тронуты'
+echo '- restore: сбой после первого каталога, старые файлы сохраняются до завершения'
+fresh_dirs interrupted
+printf 'restored icon' > "$DATA_ROOT/icons/restored"
+bash "$job" once >/dev/null
+name="$(newest)"
+printf 'old avatar' > "$DATA_ROOT/avatars/old"
+printf 'old icon' > "$DATA_ROOT/icons/old"
+cat > "$test_root/bin/mv" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${FAIL_RESTORE_SWAP:-0}" == 1 && "${*: -2:1}" == */.restore-new-*/icons ]]; then
+  exit 17
+fi
+exec /bin/mv "$@"
+EOF
+chmod +x "$test_root/bin/mv"
+status=0
+FAIL_RESTORE_SWAP=1 ZAZZZOR_SCHEMA_VERSION=9 bash "$job" restore "$name" >/dev/null 2>&1 || status=$?
+((status == 17)) || fail "код сбоя при подмене файлов $status, ожидался 17"
+old=("$DATA_ROOT"/.restore-old-*)
+[[ -n "$(find "${old[0]}" -name old -print)" ]] || fail 'прежние файлы не сохранены'
+if ZAZZZOR_SCHEMA_VERSION=9 bash "$job" restore "$name" >/dev/null 2>&1; then
+  fail 'повтор без --resume принят'
+fi
+[[ -n "$(find "${old[0]}" -name old -print)" ]] || fail 'повтор удалил прежние файлы'
+ZAZZZOR_SCHEMA_VERSION=9 bash "$job" restore "$name" --resume >/dev/null
+[[ -f "$DATA_ROOT/avatars/1/0123456789abcdef.png" && -d "$DATA_ROOT/icons" ]] || fail 'подмена не завершена'
+[[ -n "$(find "${old[0]}" -name old -print)" ]] || fail 'старые файлы удалены до сверки'
+bash "$job" finish-restore "$name" >/dev/null
+[[ ! -e "${old[0]}" ]] || fail 'старые файлы остались после завершения'
+rm -f "$test_root/bin/mv"
+
+echo '- restore: неудачный pg_restore — без COMMIT, журнал сохранён'
 fresh_dirs restorefail
 bash "$job" once >/dev/null
 name="$(newest)"
@@ -285,11 +317,14 @@ printf 'stray' > "$DATA_ROOT/icons/stray"
 : > "$CALLS"
 status=0
 FAIL_PG_RESTORE=1 ZAZZZOR_SCHEMA_VERSION=9 bash "$job" restore "$name" >/dev/null 2>&1 || status=$?
-((status == 3)) || fail "код неудачного восстановления базы $status, ожидался 3"
+((status == 2)) || fail "код неудачного восстановления базы $status, ожидался 2"
 if grep -q 'COMMIT' "$CALLS"; then fail 'неудачный pg_restore закоммичен'; fi
 [[ -f "$DATA_ROOT/icons/stray" ]] || fail 'картинки заменены, хотя база не восстановилась'
 
-echo '- restore: занятая блокировка — код 3, ничего не изменено'
+echo '- restore: занятая блокировка — код 2, ничего не изменено'
+fresh_dirs lockedrestore
+bash "$job" once >/dev/null
+name="$(newest)"
 flock "$BACKUP_ROOT/.lock" sleep 30 &
 holder=$!
 sleep 0.5
@@ -299,7 +334,7 @@ ZAZZZOR_SCHEMA_VERSION=9 bash "$job" restore "$name" >/dev/null 2>&1 || status=$
 kill "$holder"
 wait "$holder" 2>/dev/null || true
 holder=''
-((status == 3)) || fail "код восстановления при занятой блокировке $status, ожидался 3"
+((status == 2)) || fail "код восстановления при занятой блокировке $status, ожидался 2"
 [[ ! -s "$CALLS" ]] || fail "при занятой блокировке тронута база: $(cat "$CALLS")"
 
 echo '- непрочитываемая копия: ошибка называет chown -R для неё'

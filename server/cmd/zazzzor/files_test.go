@@ -141,6 +141,35 @@ func TestFilesReconcileTrashesOldOrphan(t *testing.T) {
 	}
 }
 
+func TestStrictReconcileRejectsMissingReferencedFiles(t *testing.T) {
+	m, cfg := newFilesModules(t)
+	u, _, err := m.Auth.Register(t.Context(), auth.RegisterInput{Username: "restore", Password: "password123"}, auth.SessionMeta{})
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	u, err = m.Users.SetAvatar(t.Context(), u.ID, testPNG(t))
+	if err != nil {
+		t.Fatalf("SetAvatar: %v", err)
+	}
+	path := filepath.Join(cfg.DataDir, "avatars", u.ID.String(), *u.AvatarHash+".png")
+	if err := os.Remove(path); err != nil {
+		t.Fatalf("remove live avatar: %v", err)
+	}
+	for _, tc := range []struct {
+		args []string
+		want int
+	}{
+		{[]string{"files", "reconcile"}, 0},
+		{[]string{"files", "reconcile", "--strict"}, 1},
+	} {
+		var stdout, stderr bytes.Buffer
+		if code := run(tc.args, filesEnv(cfg), &stdout, &stderr); code != tc.want ||
+			!strings.Contains(stderr.String(), files.ErrMissingImage.Error()) {
+			t.Errorf("%v exit = %d, want %d with missing-file diagnostic: %s", tc.args, code, tc.want, &stderr)
+		}
+	}
+}
+
 func TestFilesReconcileReportsFailedItems(t *testing.T) {
 	_, cfg := newFilesModules(t)
 	orphan := oldOrphan(t, cfg.DataDir)

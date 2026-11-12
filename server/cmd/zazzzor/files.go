@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/app"
@@ -17,7 +19,7 @@ import (
 )
 
 const (
-	filesUsage = "usage: zazzzor files reconcile"
+	filesUsage = "usage: zazzzor files reconcile [--strict]"
 	// reconcileTimeout bounds a whole reconcile run.
 	reconcileTimeout = 10 * time.Minute
 )
@@ -50,9 +52,12 @@ func startBackground(ctx context.Context, run func(context.Context)) func() {
 // filesCommand runs `zazzzor files reconcile`: it makes the data directory
 // match the database (files.Disk.Reconcile), printing every warning and
 // failure with its path and then a summary. It exits 1 when an item failed
-// or the run could not start, 2 on bad usage.
+// or the run could not start, 2 on bad usage. With --strict an image the
+// database refers to and the disk lacks (files.ErrMissingImage) fails the
+// run too: after a restore that means the files and the database disagree.
 func filesCommand(args []string, env func(string) string, stdout, stderr io.Writer) int {
-	if len(args) != 1 || args[0] != "reconcile" {
+	strict := slices.Equal(args, []string{"reconcile", "--strict"})
+	if !strict && !slices.Equal(args, []string{"reconcile"}) {
 		_, _ = fmt.Fprintln(stderr, filesUsage)
 		return 2
 	}
@@ -90,6 +95,10 @@ func filesCommand(args []string, env func(string) string, stdout, stderr io.Writ
 		return 1
 	}
 	if len(rep.Failures) > 0 {
+		return 1
+	}
+	if strict && slices.ContainsFunc(rep.Warnings, func(w error) bool { return errors.Is(w, files.ErrMissingImage) }) {
+		_, _ = fmt.Fprintln(stderr, "files reconcile: --strict: referenced files are missing")
 		return 1
 	}
 	return 0

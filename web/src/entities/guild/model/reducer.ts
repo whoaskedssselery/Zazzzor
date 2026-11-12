@@ -372,7 +372,9 @@ const handlers: Handlers = {
       ),
     };
   },
-  USER_GUILD_SETTINGS_UPDATE: (s, n) => ({ ...s, notify: { ...s.notify, [scopeOf(n)]: n } }),
+  // Answers and events can cross: a snapshot older than the one held is dropped.
+  USER_GUILD_SETTINGS_UPDATE: (s, n) =>
+    (s.notify[scopeOf(n)]?.version ?? -1) > n.version ? s : { ...s, notify: { ...s.notify, [scopeOf(n)]: n } },
   DM_CHANNEL_CREATE: upsertPrivate,
   DM_CHANNEL_UPDATE: upsertPrivate,
   DM_CHANNEL_DELETE: (s, d) => (d.id in s.privates ? { ...s, privates: without(s.privates, d.id) } : s),
