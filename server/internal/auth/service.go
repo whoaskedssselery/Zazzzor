@@ -159,6 +159,11 @@ var (
 	loginFailBurst = 10
 	loginFailTTL   = 30 * time.Minute
 
+	// Failed session lookups per client IP.
+	sessionFailRate  = rate.Every(time.Minute / 30)
+	sessionFailBurst = 30
+	sessionFailTTL   = 2 * time.Minute
+
 	// Logouts per client IP: 30 per minute.
 	logoutRate  = rate.Every(time.Minute / 30)
 	logoutBurst = 30
@@ -212,6 +217,8 @@ type Service struct {
 	loginLimiter     *ratelimit.Limiter
 	registerLimiter  *ratelimit.Limiter
 	loginFailures    *ratelimit.Limiter
+	sessionFailures  *ratelimit.Limiter
+	sessionLimitLogs *ratelimit.Limiter
 	logoutLimiter    *ratelimit.Limiter
 	maxSessions      int
 	verify           func(ctx context.Context, pw, encoded string) (ok, needsRehash bool, err error)
@@ -242,6 +249,8 @@ func NewService(o Options) *Service {
 	if s.now == nil {
 		s.now = time.Now
 	}
+	s.sessionFailures = ratelimit.New(sessionFailRate, sessionFailBurst, sessionFailTTL, ratelimit.WithClock(s.now))
+	s.sessionLimitLogs = ratelimit.New(rate.Every(time.Minute), 1, sessionFailTTL, ratelimit.WithClock(s.now))
 	if s.loginLimiter == nil {
 		s.loginLimiter = ratelimit.New(loginRate, loginBurst, loginLimitTTL)
 	}
@@ -599,15 +608,27 @@ type session struct {
 	lastUsedAt time.Time
 }
 
-func (s *Service) lookup(ctx context.Context, rawToken string) (session, error) {
+// lookup checks a network client's failure budget before reading the database.
+func (s *Service) lookup(ctx context.Context, rawToken, clientKey string) (session, error) {
 	if !wellFormedToken(rawToken) {
 		return session{}, ErrUnauthenticated
+	}
+	if clientKey != "" {
+		if ok, _ := s.sessionFailures.Check(clientKey); !ok {
+			if log, _ := s.sessionLimitLogs.Allow(clientKey); log {
+				httpx.LoggerFrom(ctx).WarnContext(ctx, "session lookup throttled", "client", clientKey)
+			}
+			return session{}, ErrUnauthenticated
+		}
 	}
 	row, err := s.q.SessionByTokenHash(ctx, s.pool, store.SessionByTokenHashParams{
 		TokenHash: hashToken(rawToken),
 		Now:       s.now(),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
+		if clientKey != "" {
+			s.sessionFailures.Charge(clientKey)
+		}
 		return session{}, ErrUnauthenticated
 	}
 	if err != nil {
@@ -620,7 +641,12 @@ func (s *Service) lookup(ctx context.Context, rawToken string) (session, error) 
 // malformed, expired or revoked tokens and tokens of disabled accounts give
 // ErrUnauthenticated.
 func (s *Service) Authenticate(ctx context.Context, rawToken string) (User, snowflake.ID, error) {
-	sess, err := s.lookup(ctx, rawToken)
+	return s.AuthenticateFrom(ctx, rawToken, "")
+}
+
+// AuthenticateFrom applies the shared HTTP and gateway budget for clientKey.
+func (s *Service) AuthenticateFrom(ctx context.Context, rawToken, clientKey string) (User, snowflake.ID, error) {
+	sess, err := s.lookup(ctx, rawToken, clientKey)
 	if err != nil {
 		return User{}, 0, err
 	}

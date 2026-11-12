@@ -30,7 +30,7 @@ import (
 
 // Authenticator resolves a session cookie (auth.Service).
 type Authenticator interface {
-	Authenticate(ctx context.Context, rawToken string) (auth.User, snowflake.ID, error)
+	AuthenticateFrom(ctx context.Context, rawToken, clientKey string) (auth.User, snowflake.ID, error)
 }
 
 // Bus is the event bus the gateway subscribes to and announces presence on
@@ -242,7 +242,8 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteProblem(w, httpx.Forbidden("origin_not_allowed"))
 		return
 	}
-	if ok, retry := g.opts.IPUpgradeLimiter.Allow(httpx.ClientKey(r, g.opts.TrustedProxies)); !ok {
+	clientKey := httpx.ClientKey(r, g.opts.TrustedProxies)
+	if ok, retry := g.opts.IPUpgradeLimiter.Allow(clientKey); !ok {
 		httpx.WriteProblem(w, httpx.TooManyRequests(retry))
 		return
 	}
@@ -252,7 +253,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	user, sessionID, err := g.opts.Auth.Authenticate(ctx, ck.Value)
+	user, sessionID, err := g.opts.Auth.AuthenticateFrom(ctx, ck.Value, clientKey)
 	if errors.Is(err, auth.ErrUnauthenticated) {
 		httpx.WriteProblem(w, httpx.Unauthorized("unauthenticated"))
 		return
@@ -293,7 +294,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// by readLoop with 4002 instead of by the library with 1009.
 	ws.SetReadLimit(MaxFrameBytes + 1)
 
-	c := newConn(g, ws, user, sessionID, ck.Value)
+	c := newConn(g, ws, user, sessionID, ck.Value, clientKey)
 	if !g.register(c) {
 		go func() { _ = ws.Close(CloseServiceRestart, closeReasons[CloseServiceRestart]) }()
 		return
