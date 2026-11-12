@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { isUnread, markRead, useGuilds } from "@/entities/guild";
+import { isChannelUnread, lastMessageOf, markRead, useGuilds } from "@/entities/guild";
 import { api } from "@/shared/api";
 
 /** Acks wait this long, so a burst of messages read at once is one request. */
@@ -26,19 +26,16 @@ const useWindowActive = (): boolean => {
 };
 
 /**
- * Marks channel `channelId` read as the user reads it, as Discord does:
+ * Marks channel `channelId` (of a server, or a DM or group) read as the user reads it, as Discord does:
  * while it is open in an active window and its list is at the bottom
  * (`atBottom`), every new message is read. The mark moves at once; the server
  * hears it shortly after (POST …/ack), and its other tabs from the server.
  * A failed ack is not worth a word: the next one carries it.
  */
-export const useReadChannel = (guildId: string, channelId: string, atBottom: boolean): void => {
+export const useReadChannel = (channelId: string, atBottom: boolean): void => {
   const active = useWindowActive();
-  const unread = useGuilds((s) => {
-    const e = s.guilds[guildId];
-    return e !== undefined && isUnread(e, channelId);
-  });
-  const last = useGuilds((s) => s.guilds[guildId]?.channels[channelId]?.last_message_id ?? null);
+  const unread = useGuilds((s) => isChannelUnread(s, channelId));
+  const last = useGuilds((s) => lastMessageOf(s, channelId));
   useEffect(() => {
     if (!unread || !active || !atBottom || last === null) return;
     const timer = setTimeout(() => {

@@ -205,6 +205,16 @@ const relationshipSchema: z.ZodMiniType<S["Relationship"]> = z.object({
   since: z.string(),
 });
 
+/** A direct message or group DM as the receiving user sees it (recipients: everyone else). */
+const dmChannelSchema: z.ZodMiniType<S["DMChannel"]> = z.object({
+  id: snowflake,
+  type: z.union([z.literal(1), z.literal(3)]),
+  name: nullableString,
+  owner_id: z.nullable(snowflake),
+  recipients: z.array(userSchema),
+  last_message_id: z.nullable(snowflake),
+});
+
 /** The payload type of each event the guild store applies (`x-gateway.events`). */
 export interface GatewayEvents {
   READY: S["GatewayReady"];
@@ -226,6 +236,9 @@ export interface GatewayEvents {
   USER_UPDATE: S["User"];
   RELATIONSHIP_ADD: S["Relationship"];
   RELATIONSHIP_REMOVE: S["RelationshipRemove"];
+  DM_CHANNEL_CREATE: S["DMChannel"];
+  DM_CHANNEL_UPDATE: S["DMChannel"];
+  DM_CHANNEL_DELETE: S["DMChannelDeleteEvent"];
   VOICE_STATE_UPDATE: S["VoiceState"];
   MESSAGE_ACK: S["ReadState"];
 }
@@ -240,6 +253,7 @@ const eventSchemas: { [K in keyof GatewayEvents]: z.ZodMiniType<GatewayEvents[K]
     presences: z.array(presenceSchema),
     read_states: z.array(readStateSchema),
     relationships: z.array(relationshipSchema),
+    private_channels: z.array(dmChannelSchema),
   }),
   GUILD_CREATE: guildStateSchema,
   GUILD_SYNC: guildStateSchema,
@@ -259,6 +273,9 @@ const eventSchemas: { [K in keyof GatewayEvents]: z.ZodMiniType<GatewayEvents[K]
   USER_UPDATE: userSchema,
   RELATIONSHIP_ADD: relationshipSchema,
   RELATIONSHIP_REMOVE: z.object({ id: snowflake, type: relationshipType }),
+  DM_CHANNEL_CREATE: dmChannelSchema,
+  DM_CHANNEL_UPDATE: dmChannelSchema,
+  DM_CHANNEL_DELETE: z.object({ id: snowflake }),
   VOICE_STATE_UPDATE: voiceStateSchema,
   MESSAGE_ACK: readStateSchema,
 };
@@ -318,10 +335,13 @@ const embedSchema: z.ZodMiniType<S["Embed"]> = z.object({
   video: z.nullable(embedMediaSchema),
 });
 
+/** The server of a chat event; null in a direct message or group DM. */
+const chatGuildId = z.nullable(snowflake);
+
 const messageSchema: z.ZodMiniType<S["Message"]> = z.object({
   id: snowflake,
   channel_id: snowflake,
-  guild_id: snowflake,
+  guild_id: chatGuildId,
   author: z.nullable(userSchema),
   content: z.string(),
   created_at: z.string(),
@@ -350,7 +370,7 @@ export interface ChatEvents {
 
 const reactionEventSchema: z.ZodMiniType<S["MessageReactionEvent"]> = z.object({
   channel_id: snowflake,
-  guild_id: snowflake,
+  guild_id: chatGuildId,
   message_id: snowflake,
   user_id: snowflake,
   emoji: emojiSchema,
@@ -362,10 +382,10 @@ const chatSchemas: { [K in keyof ChatEvents]: z.ZodMiniType<ChatEvents[K]> } = {
   MESSAGE_DELETE: z.object({
     id: snowflake,
     channel_id: snowflake,
-    guild_id: snowflake,
+    guild_id: chatGuildId,
     last_message_id: z.nullable(snowflake),
   }),
-  TYPING_START: z.object({ channel_id: snowflake, guild_id: snowflake, user_id: snowflake, timestamp: z.string() }),
+  TYPING_START: z.object({ channel_id: snowflake, guild_id: chatGuildId, user_id: snowflake, timestamp: z.string() }),
   MESSAGE_REACTION_ADD: reactionEventSchema,
   MESSAGE_REACTION_REMOVE: reactionEventSchema,
 };

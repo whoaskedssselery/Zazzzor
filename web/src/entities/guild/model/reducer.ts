@@ -17,6 +17,19 @@ export type PresenceStatus = S["Presence"]["status"];
  */
 export type Relationship = S["Relationship"];
 
+/** A direct message (type 1) or group DM (type 3) as the user sees it; `recipients` are everyone else. */
+export type DMChannel = S["DMChannel"];
+
+/** Private channel types, as Discord numbers them. */
+export const PRIVATE_TYPE = { DM: 1, GROUP: 3 } as const;
+
+/** One open direct message or group the user is in, with how far they read it. */
+export interface PrivateEntry {
+  channel: DMChannel;
+  /** Null before the user read anything there. */
+  read: ReadMark | null;
+}
+
 /** Relationship types, as Discord numbers them. */
 export const RELATIONSHIP = { FRIEND: 1, BLOCKED: 2, INCOMING: 3, OUTGOING: 4 } as const;
 
@@ -62,9 +75,18 @@ export interface GuildsState {
   presences: Record<string, PresenceStatus>;
   /** The user's friends, blocks and requests, by the other user's ID. */
   relationships: Record<string, Relationship>;
+  /** The user's open direct messages and their groups, by channel ID. */
+  privates: Record<string, PrivateEntry>;
 }
 
-export const EMPTY_GUILDS: GuildsState = { me: null, guilds: {}, order: [], presences: {}, relationships: {} };
+export const EMPTY_GUILDS: GuildsState = {
+  me: null,
+  guilds: {},
+  order: [],
+  presences: {},
+  relationships: {},
+  privates: {},
+};
 
 const byId = <T extends { id: string }>(items: T[]): Record<string, T> =>
   Object.fromEntries(items.map((item) => [item.id, item]));
@@ -111,7 +133,28 @@ export function applyReady(d: ReadyPayload): GuildsState {
     presences = presencesOf(g, presences);
   }
   for (const p of d.presences) presences[p.user_id] = p.status;
-  return { me: d.user, guilds, order, presences, relationships: byId(d.relationships) };
+  // READY's own read_states hold the marks of the private channels too.
+  const marks = new Map(d.read_states.map((r) => [r.channel_id, r]));
+  const privates: Record<string, PrivateEntry> = {};
+  for (const channel of d.private_channels) {
+    const r = marks.get(channel.id);
+    privates[channel.id] = { channel, read: r ? { lastReadId: r.last_read_id, mentions: r.mention_count } : null };
+  }
+  return { me: d.user, guilds, order, presences, relationships: byId(d.relationships), privates };
+}
+
+/** Changes private channel `id` with `fn`; one not held is left alone. */
+function updatePrivate(s: GuildsState, id: string, fn: (p: PrivateEntry) => PrivateEntry): GuildsState {
+  const entry = s.privates[id];
+  if (!entry) return s;
+  const next = fn(entry);
+  return next === entry ? s : { ...s, privates: { ...s.privates, [id]: next } };
+}
+
+/** A private channel opened, reopened or changed: its read mark stays. */
+function upsertPrivate(s: GuildsState, channel: DMChannel): GuildsState {
+  const held = s.privates[channel.id];
+  return { ...s, privates: { ...s.privates, [channel.id]: { channel, read: held?.read ?? null } } };
 }
 
 /** A server whole (GUILD_CREATE, GUILD_SYNC): replaced if held, else added at the end. */
@@ -173,14 +216,16 @@ const guildOfChannel = (s: GuildsState, channelId: string): string | undefined =
  * (an ack that crossed a newer one) changes nothing.
  */
 export function advanceRead(s: GuildsState, channelId: string, mark: ReadMark): GuildsState {
+  const moved = (held: ReadMark | undefined | null): boolean => {
+    if (held && newer(held.lastReadId, mark.lastReadId)) return false;
+    return !(held?.lastReadId === mark.lastReadId && held.mentions === mark.mentions);
+  };
+  if (channelId in s.privates) return updatePrivate(s, channelId, (p) => (moved(p.read) ? { ...p, read: mark } : p));
   const guildId = guildOfChannel(s, channelId);
   if (guildId === undefined) return s;
-  return updateGuild(s, guildId, (e) => {
-    const held = e.reads[channelId];
-    if (held && newer(held.lastReadId, mark.lastReadId)) return e;
-    if (held?.lastReadId === mark.lastReadId && held.mentions === mark.mentions) return e;
-    return { ...e, reads: { ...e.reads, [channelId]: mark } };
-  });
+  return updateGuild(s, guildId, (e) =>
+    moved(e.reads[channelId]) ? { ...e, reads: { ...e.reads, [channelId]: mark } } : e,
+  );
 }
 
 type NewMessage = ChatEvents["MESSAGE_CREATE"];
@@ -201,6 +246,7 @@ export const mentionsMe = (
  * already counted, so a repeated event changes nothing.
  */
 function messageCreated(s: GuildsState, m: NewMessage): GuildsState {
+  if (m.guild_id === null) return privateMessageCreated(s, m);
   const e = s.guilds[m.guild_id];
   const channel = e?.channels[m.channel_id];
   if (!e || !channel) return s;
@@ -216,11 +262,34 @@ function messageCreated(s: GuildsState, m: NewMessage): GuildsState {
   return { ...s, guilds: { ...s.guilds, [e.guild.id]: { ...e, channels, reads } } };
 }
 
+/**
+ * A new message in a private channel. As in Discord, every message from
+ * someone else counts like a mention (the badge counts messages); the
+ * user's own reads the channel.
+ */
+function privateMessageCreated(s: GuildsState, m: NewMessage): GuildsState {
+  return updatePrivate(s, m.channel_id, (p) => {
+    const last = p.channel.last_message_id;
+    if (last !== null && !newer(m.id, last)) return p;
+    const channel = { ...p.channel, last_message_id: m.id };
+    if (m.author !== null && m.author.id === s.me?.id) return { channel, read: { lastReadId: m.id, mentions: 0 } };
+    return { channel, read: { lastReadId: p.read?.lastReadId ?? "0", mentions: (p.read?.mentions ?? 0) + 1 } };
+  });
+}
+
 /** A deleted message may have been the channel's newest: the event says which one is now. */
 function messageDeleted(s: GuildsState, d: ChatEvents["MESSAGE_DELETE"]): GuildsState {
-  const channel = s.guilds[d.guild_id]?.channels[d.channel_id];
+  if (d.guild_id === null) {
+    return updatePrivate(s, d.channel_id, (p) =>
+      p.channel.last_message_id === d.last_message_id
+        ? p
+        : { ...p, channel: { ...p.channel, last_message_id: d.last_message_id } },
+    );
+  }
+  const guildId = d.guild_id;
+  const channel = s.guilds[guildId]?.channels[d.channel_id];
   if (!channel || channel.last_message_id === d.last_message_id) return s;
-  return updateGuild(s, d.guild_id, (e) => ({
+  return updateGuild(s, guildId, (e) => ({
     ...e,
     channels: { ...e.channels, [channel.id]: { ...channel, last_message_id: d.last_message_id } },
   }));
@@ -278,8 +347,22 @@ const handlers: Handlers = {
       me: s.me?.id === user.id ? user : s.me,
       guilds: Object.fromEntries(Object.entries(s.guilds).map(([id, e]) => [id, renameUser(e, user)])),
       relationships: held ? { ...s.relationships, [user.id]: { ...held, user } } : s.relationships,
+      privates: Object.fromEntries(
+        Object.entries(s.privates).map(([id, p]) => [
+          id,
+          p.channel.recipients.some((r) => r.id === user.id)
+            ? {
+                ...p,
+                channel: { ...p.channel, recipients: p.channel.recipients.map((r) => (r.id === user.id ? user : r)) },
+              }
+            : p,
+        ]),
+      ),
     };
   },
+  DM_CHANNEL_CREATE: upsertPrivate,
+  DM_CHANNEL_UPDATE: upsertPrivate,
+  DM_CHANNEL_DELETE: (s, d) => (d.id in s.privates ? { ...s, privates: without(s.privates, d.id) } : s),
   RELATIONSHIP_ADD: (s, r) => ({ ...s, relationships: { ...s.relationships, [r.id]: r } }),
   // Only the tie the event names: a request accepted meanwhile is a friendship now, and stays.
   RELATIONSHIP_REMOVE: (s, d) =>

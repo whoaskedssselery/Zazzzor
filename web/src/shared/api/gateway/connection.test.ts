@@ -54,6 +54,7 @@ const readyFrame = (s = 1) => ({
     presences: [],
     read_states: [],
     relationships: [],
+    private_channels: [],
   },
 });
 
