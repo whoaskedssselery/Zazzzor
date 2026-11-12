@@ -23,10 +23,13 @@ type mentions struct {
 }
 
 // resolveMentions filters the raw syntax using the permission snapshot of the write.
-func (s *Service) resolveMentions(ctx context.Context, tx pgx.Tx, channelID, authorID snowflake.ID,
+func (s *Service) resolveMentions(ctx context.Context, tx pgx.Tx, guildID, channelID, authorID snowflake.ID,
 	p permissions.Permission, content string,
 ) (mentions, error) {
 	tokens := parseMentions(content)
+	if guildID == 0 {
+		return s.privateMentions(ctx, tx, channelID, authorID, tokens)
+	}
 	m := mentions{userIDs: []int64{}, roleIDs: []int64{}}
 	if len(tokens) == 0 {
 		return m, nil

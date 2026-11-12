@@ -40,11 +40,11 @@ type Reaction struct {
 
 // ReactionPayload describes the user whose reaction changed.
 type ReactionPayload struct {
-	ChannelID snowflake.ID `json:"channel_id"`
-	GuildID   snowflake.ID `json:"guild_id"`
-	MessageID snowflake.ID `json:"message_id"`
-	UserID    snowflake.ID `json:"user_id"`
-	Emoji     Emoji        `json:"emoji"`
+	ChannelID snowflake.ID  `json:"channel_id"`
+	GuildID   *snowflake.ID `json:"guild_id"`
+	MessageID snowflake.ID  `json:"message_id"`
+	UserID    snowflake.ID  `json:"user_id"`
+	Emoji     Emoji         `json:"emoji"`
 }
 
 // Get returns a visible message and its reactions for userID.
@@ -119,7 +119,7 @@ func (s *Service) changeReaction(ctx context.Context, channelID, messageID, acto
 	if target != nil {
 		userID = *target
 	}
-	payload := ReactionPayload{ChannelID: channelID, GuildID: guildID, MessageID: messageID, UserID: userID}
+	payload := ReactionPayload{ChannelID: channelID, GuildID: nullableGuildID(guildID), MessageID: messageID, UserID: userID}
 	// Keep the database commit and its event in order for a message.
 	// Mix in the timestamp bits because many Snowflakes have sequence zero.
 	key := int64(messageID) ^ messageID.Time().UnixMilli()
@@ -128,7 +128,7 @@ func (s *Service) changeReaction(ctx context.Context, channelID, messageID, acto
 	defer lock.Unlock()
 
 	var changed int64
-	err = s.withGuildWrite(ctx, guildID, func(tx pgx.Tx) error {
+	err = s.withChannelWrite(ctx, guildID, channelID, func(tx pgx.Tx) error {
 		p, _, accessErr := s.channels.PermissionsIn(ctx, tx, actor, channelID)
 		if accessErr != nil {
 			return fmt.Errorf("messages: recheck reaction access: %w", accessErr)
