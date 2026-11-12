@@ -28,6 +28,7 @@ import {
   IconButton,
 } from "@/shared/ui";
 import { memberActions, useVoiceModeration, type VoiceActions, voiceActions } from "../model/actions";
+import { BlockDialog, FriendItems } from "./FriendItems";
 import { type MemberDialog, MemberDialogs } from "./MemberDialogs";
 
 interface Item {
@@ -140,7 +141,8 @@ const Card = ({ entry, userId, kind }: { entry: GuildEntry; userId: string; kind
  * it is, then «Изменить ник», «Роли», «Выгнать» and «Забанить», each only
  * when the user's permissions and rank allow it. `children` is what opens
  * it: by right click in "context" mode (a row of the member list), by click
- * in "dropdown" mode (a message author's name, as a profile); without
+ * in "dropdown" mode (a message author's name, as a profile). Anyone but
+ * the user also gets the friendship items (add, accept, block…). Without
  * children it is a «…» button, shown only when some action is allowed. A
  * member the store does not hold (a former member's message) gets no menu.
  */
@@ -148,32 +150,52 @@ export const MemberMenu = ({
   guildId,
   userId,
   mode = "context",
+  friends = true,
   children,
 }: {
   guildId: string;
   userId: string;
   mode?: "context" | "dropdown";
+  /** The friendship items; off where the menu is only about running the server (its settings). */
+  friends?: boolean;
   children?: ReactNode;
 }) => {
   const entry = useGuilds((s) => s.guilds[guildId]);
   const meId = useGuilds((s) => s.me?.id ?? null);
   const [dialog, setDialog] = useState<MemberDialog | null>(null);
+  const [blocking, setBlocking] = useState(false);
   const member = entry?.members[userId];
   if (!entry || meId === null || !member) return <>{children}</>;
 
   const items = itemsFor(entry, meId, userId);
   const voice = voiceActions(entry, meId, userId);
   // Mounted only while one is open: a list has a menu on every row.
-  const dialogs = dialog !== null && (
-    <MemberDialogs
-      entry={entry}
-      meId={meId}
-      member={member}
-      open={dialog}
-      onClose={() => {
-        setDialog(null);
-      }}
-    />
+  const self = userId === meId;
+  const withFriends = friends && !self;
+  const shownName = member.nick ?? member.user.display_name;
+  const dialogs = (
+    <>
+      {dialog !== null && (
+        <MemberDialogs
+          entry={entry}
+          meId={meId}
+          member={member}
+          open={dialog}
+          onClose={() => {
+            setDialog(null);
+          }}
+        />
+      )}
+      {blocking && (
+        <BlockDialog
+          userId={userId}
+          name={shownName}
+          onClose={() => {
+            setBlocking(false);
+          }}
+        />
+      )}
+    </>
   );
   const rows = (kind: "context" | "dropdown") => {
     const Row = kind === "context" ? ContextMenuItem : DropdownMenuItem;
@@ -198,6 +220,19 @@ export const MemberMenu = ({
           <>
             <Separator />
             <VoiceItems guildId={guildId} userId={userId} entry={entry} voice={voice} kind={kind} />
+          </>
+        )}
+        {withFriends && (
+          <>
+            <Separator />
+            <FriendItems
+              userId={userId}
+              username={member.user.username}
+              kind={kind}
+              onBlock={() => {
+                setBlocking(true);
+              }}
+            />
           </>
         )}
       </>
@@ -226,7 +261,7 @@ export const MemberMenu = ({
       </>
     );
   }
-  if (items.length === 0 && !voice) return null;
+  if (items.length === 0 && !voice && !withFriends) return null;
   return (
     <>
       <DropdownMenu>

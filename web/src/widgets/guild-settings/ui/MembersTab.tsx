@@ -80,7 +80,7 @@ export const MembersTab = ({ entry }: { entry: GuildEntry }) => {
                     </ul>
                   )}
                 </div>
-                <MemberMenu guildId={entry.guild.id} userId={member.user.id} />
+                <MemberMenu guildId={entry.guild.id} userId={member.user.id} friends={false} />
               </li>
             );
           })}
