@@ -196,6 +196,15 @@ const guildStateSchema: z.ZodMiniType<S["GuildState"]> = z.object({
   read_states: z.array(readStateSchema),
 });
 
+const relationshipType = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]);
+
+const relationshipSchema: z.ZodMiniType<S["Relationship"]> = z.object({
+  id: snowflake,
+  type: relationshipType,
+  user: userSchema,
+  since: z.string(),
+});
+
 /** The payload type of each event the guild store applies (`x-gateway.events`). */
 export interface GatewayEvents {
   READY: S["GatewayReady"];
@@ -215,6 +224,8 @@ export interface GatewayEvents {
   CHANNEL_DELETE: S["Channel"];
   PRESENCE_UPDATE: S["Presence"];
   USER_UPDATE: S["User"];
+  RELATIONSHIP_ADD: S["Relationship"];
+  RELATIONSHIP_REMOVE: S["RelationshipRemove"];
   VOICE_STATE_UPDATE: S["VoiceState"];
   MESSAGE_ACK: S["ReadState"];
 }
@@ -228,6 +239,7 @@ const eventSchemas: { [K in keyof GatewayEvents]: z.ZodMiniType<GatewayEvents[K]
     guilds: z.array(guildStateSchema),
     presences: z.array(presenceSchema),
     read_states: z.array(readStateSchema),
+    relationships: z.array(relationshipSchema),
   }),
   GUILD_CREATE: guildStateSchema,
   GUILD_SYNC: guildStateSchema,
@@ -245,6 +257,8 @@ const eventSchemas: { [K in keyof GatewayEvents]: z.ZodMiniType<GatewayEvents[K]
   CHANNEL_DELETE: channelSchema,
   PRESENCE_UPDATE: presenceSchema,
   USER_UPDATE: userSchema,
+  RELATIONSHIP_ADD: relationshipSchema,
+  RELATIONSHIP_REMOVE: z.object({ id: snowflake, type: relationshipType }),
   VOICE_STATE_UPDATE: voiceStateSchema,
   MESSAGE_ACK: readStateSchema,
 };

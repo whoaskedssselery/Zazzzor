@@ -90,7 +90,13 @@ export function makeReady(me: User, guilds: GuildState[] = []): GatewayReady {
     guilds,
     presences: [{ user_id: me.id, status: "online" }],
     read_states: guilds.flatMap((g) => g.read_states),
+    relationships: [],
   };
+}
+
+/** `user` as the signed-in user's friend (1), block (2), incoming (3) or outgoing (4) request. */
+export function makeRelationship(user: User, type: 1 | 2 | 3 | 4 = 1): S["Relationship"] {
+  return { id: user.id, type, user, since: AT };
 }
 
 /** When message `id` was sent: one second per ID unit after 23.10.2026 18:00 UTC, so IDs in order are seconds apart. */

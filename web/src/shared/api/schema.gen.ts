@@ -148,6 +148,58 @@ export interface paths {
         patch: operations["updateCurrentUser"];
         trace?: never;
     };
+    "/users/@me/relationships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the caller's relationships */
+        get: operations["listRelationships"];
+        put?: never;
+        /**
+         * Send or reciprocate a friend request
+         * @description Matches usernames case-insensitively. A request in the opposite
+         *     direction becomes a friendship. An existing outgoing request returns
+         *     204 with no change, as does a request to a user who blocked the caller.
+         *     A caller can have up to 1000 friends and 100 outgoing requests.
+         *     This endpoint allows 10 attempts per minute and 100 per day per caller.
+         */
+        post: operations["requestFriend"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/@me/relationships/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: components["parameters"]["UserID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Accept a friend request or block a user
+         * @description Type 1 accepts an incoming request. Type 2 creates a private block
+         *     and removes any existing friendship or request between the users.
+         */
+        put: operations["putRelationship"];
+        post?: never;
+        /**
+         * Remove a friend, request or block
+         * @description The operation is idempotent. Unblocking removes only the caller's block.
+         */
+        delete: operations["deleteRelationship"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users/@me/password": {
         parameters: {
             query?: never;
@@ -1977,6 +2029,22 @@ export interface components {
             content: string;
         };
         /**
+         * @description 1 friend, 2 blocked, 3 incoming request, 4 outgoing request.
+         * @enum {integer}
+         */
+        RelationshipType: 1 | 2 | 3 | 4;
+        Relationship: {
+            id: components["schemas"]["Snowflake"];
+            type: components["schemas"]["RelationshipType"];
+            user: components["schemas"]["User"];
+            /** Format: date-time */
+            since: string;
+        };
+        RelationshipRemove: {
+            id: components["schemas"]["Snowflake"];
+            type: components["schemas"]["RelationshipType"];
+        };
+        /**
          * @description A server frame. `t` and `s` are present exactly on DISPATCH (op 0);
          *     `s` counts the DISPATCH frames of the connection from 1.
          */
@@ -1990,16 +2058,18 @@ export interface components {
             t?: string;
             s?: number;
             /** @description The payload; null for HEARTBEAT_ACK. */
-            d: null | components["schemas"]["GatewayHello"] | components["schemas"]["GatewayReady"] | components["schemas"]["GuildState"] | components["schemas"]["GuildEmojisUpdate"] | components["schemas"]["Guild"] | components["schemas"]["GuildDeleteEvent"] | components["schemas"]["MemberEvent"] | components["schemas"]["MemberRemoveEvent"] | components["schemas"]["RoleEvent"] | components["schemas"]["RoleDeleteEvent"] | components["schemas"]["Channel"] | components["schemas"]["Message"] | components["schemas"]["MessageDeleteEvent"] | components["schemas"]["MessageReactionEvent"] | components["schemas"]["ReadState"] | components["schemas"]["TypingStartEvent"] | components["schemas"]["Presence"] | components["schemas"]["User"] | components["schemas"]["VoiceState"] | components["schemas"]["VoiceMove"];
+            d: null | components["schemas"]["GatewayHello"] | components["schemas"]["GatewayReady"] | components["schemas"]["GuildState"] | components["schemas"]["GuildEmojisUpdate"] | components["schemas"]["Relationship"] | components["schemas"]["RelationshipRemove"] | components["schemas"]["Guild"] | components["schemas"]["GuildDeleteEvent"] | components["schemas"]["MemberEvent"] | components["schemas"]["MemberRemoveEvent"] | components["schemas"]["RoleEvent"] | components["schemas"]["RoleDeleteEvent"] | components["schemas"]["Channel"] | components["schemas"]["Message"] | components["schemas"]["MessageDeleteEvent"] | components["schemas"]["MessageReactionEvent"] | components["schemas"]["ReadState"] | components["schemas"]["TypingStartEvent"] | components["schemas"]["Presence"] | components["schemas"]["User"] | components["schemas"]["VoiceState"] | components["schemas"]["VoiceMove"];
         };
         GatewayHello: {
             /** @description Send HEARTBEAT this often (30000); 150 s without one closes the connection with 4009, allowing for throttled timers in hidden browser tabs. */
             heartbeat_interval_ms: number;
         };
         GatewayReady: {
+            /** @description Relationships visible to the receiving user. */
+            relationships: components["schemas"]["Relationship"][];
             user: components["schemas"]["User"];
             guilds: components["schemas"]["GuildState"][];
-            /** @description Everyone online who shares a server with the user, the user included. */
+            /** @description Online friends and people who share a server with the user, including the user. */
             presences: components["schemas"]["Presence"][];
             /** @description Stored read markers only for channels the receiving user can view. */
             read_states: components["schemas"]["ReadState"][];
@@ -2444,6 +2514,122 @@ export interface operations {
             /** @description `unsupported_media_type`. */
             415: components["responses"]["Problem"];
             429: components["responses"]["RateLimited"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    listRelationships: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's friends, blocks and pending requests. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Relationship"][];
+                };
+            };
+            401: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    requestFriend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    username: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The request was handled. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid body, blocked_by_you, too_many_friends or too_many_outgoing_requests. */
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            /** @description Identical for a missing username or the caller. */
+            404: components["responses"]["Problem"];
+            415: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    putRelationship: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: components["parameters"]["UserID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {integer} */
+                    type: 1 | 2;
+                };
+            };
+        };
+        responses: {
+            /** @description The requested relationship is in effect. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid body or too_many_friends. */
+            400: components["responses"]["Problem"];
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            /** @description Unknown user or no incoming request to accept. */
+            404: components["responses"]["Problem"];
+            415: components["responses"]["Problem"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    deleteRelationship: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: components["parameters"]["UserID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's relationship is absent. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            /** @description Malformed user ID. */
+            404: components["responses"]["Problem"];
             500: components["responses"]["Problem"];
         };
     };

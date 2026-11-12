@@ -42,6 +42,10 @@ export const ERROR_TEXTS: Readonly<Record<string, string>> = {
   unsupported_image: "Нужна картинка PNG, JPEG, GIF или WebP.",
   body_too_large: "Слишком большой запрос.",
   invalid_body: "Сервер не понял запрос. Обновите страницу и попробуйте снова.",
+  // Friends
+  blocked_by_you: "Сначала разблокируйте этого пользователя.",
+  too_many_friends: "Достигнут предел в 1000 друзей.",
+  too_many_outgoing_requests: "Слишком много неотвеченных заявок. Отмените часть из них.",
   // Invites
   invite_expired: "Срок действия приглашения истёк.",
   invite_exhausted: "Приглашение больше не действует: все использования исчерпаны.",

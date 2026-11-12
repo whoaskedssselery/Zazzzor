@@ -1,4 +1,11 @@
 export {
+  NO_SUCH_USER,
+  requestErrorText,
+  useRemoveRelationship,
+  useRequestFriend,
+  useSetRelationship,
+} from "./api/relationships";
+export {
   CHANNEL_PERMISSION_GROUPS,
   PERMISSION_GROUPS,
   type PermissionGroup,
@@ -33,10 +40,13 @@ export {
   mentionsMe,
   newer,
   type PresenceStatus,
+  RELATIONSHIP,
   type ReadMark,
+  type Relationship,
   type Role,
   type VoiceState,
 } from "./model/reducer";
+export { type FriendLists, friendLists, incomingCount } from "./model/relationships";
 export {
   CHANNEL_SETTINGS_TABS,
   CHANNEL_SETTINGS_TITLES,
