@@ -70,11 +70,7 @@ func (g *Gateway) guildState(ctx context.Context, userID, guildID snowflake.ID) 
 	for j, m := range snap.Members {
 		memberIDs[j] = m.User.ID
 	}
-	online := g.OnlineAmong(memberIDs)
-	st.Presences = make([]Presence, len(online))
-	for j, id := range online {
-		st.Presences[j] = Presence{UserID: id, Status: StatusOnline}
-	}
+	st.Presences = g.PresencesAmong(memberIDs)
 	st.VoiceStates = g.voiceStates(guildID, visible)
 	return st, nil
 }
@@ -102,7 +98,7 @@ func (g *Gateway) ready(ctx context.Context, user auth.User) (Ready, error) {
 	if err != nil {
 		return Ready{}, err
 	}
-	r := Ready{User: user.Public(), Guilds: make([]GuildState, 0, len(ids)), Presences: []Presence{},
+	r := Ready{User: user.Self(), Guilds: make([]GuildState, 0, len(ids)), Presences: []Presence{},
 		ReadStates: []messages.ReadState{}, Relationships: []relationships.Relationship{},
 		UserGuildSettings: []notifysettings.Settings{}, PrivateVoiceStates: []voice.PublicState{}, Calls: []voice.Call{}}
 	if g.opts.NotifySettings != nil {
@@ -145,9 +141,7 @@ func (g *Gateway) ready(ctx context.Context, user auth.User) (Ready, error) {
 		peers = append(peers, user.ID)
 		slices.Sort(peers)
 	}
-	for _, id := range g.OnlineAmong(peers) {
-		r.Presences = append(r.Presences, Presence{UserID: id, Status: StatusOnline})
-	}
+	r.Presences = append(r.Presences, g.PresencesAmong(peers)...)
 	return r, nil
 }
 

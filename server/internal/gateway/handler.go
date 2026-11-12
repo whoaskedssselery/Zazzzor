@@ -362,7 +362,7 @@ func (g *Gateway) markOnline(c *conn) {
 		return
 	}
 	c.online = true
-	g.presenceConnected(c.user.ID)
+	g.presenceConnected(c.user)
 }
 
 // unregister removes c; called once, when its goroutines are done.

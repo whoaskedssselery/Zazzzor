@@ -78,6 +78,12 @@ func (g *Gateway) dispatch(ctx context.Context, e events.Event) {
 		g.revokeSessions(e)
 		return
 	}
+	if e.Type == events.PresenceSet {
+		if p, ok := e.Payload.(events.PresenceSetPayload); ok {
+			g.setPresence(p)
+		}
+		return
+	}
 	conns := g.connsByUser()
 	if len(conns) == 0 {
 		return // nobody to tell: no queries
@@ -203,7 +209,11 @@ func (g *Gateway) dispatch(ctx context.Context, e events.Event) {
 // current presence. The reciprocal upsert takes care of the other side.
 func (g *Gateway) friendPresence(ctx context.Context, e events.Event, to []snowflake.ID, conns map[snowflake.ID][]*conn) {
 	rel, ok := e.Payload.(relationships.Relationship)
-	if !ok || rel.Type != relationships.Friend || len(g.OnlineAmong([]snowflake.ID{rel.ID})) == 0 {
+	if !ok || rel.Type != relationships.Friend {
+		return
+	}
+	shown := g.PresencesAmong([]snowflake.ID{rel.ID})
+	if len(shown) == 0 {
 		return
 	}
 	// A queued relationship event can outlive the friendship. Resolve
@@ -214,7 +224,7 @@ func (g *Gateway) friendPresence(ctx context.Context, e events.Event, to []snowf
 		return
 	}
 	eligible := slices.DeleteFunc(slices.Clone(to), func(id snowflake.ID) bool { return !slices.Contains(peers, id) })
-	g.sendPresence(Presence{UserID: rel.ID, Status: StatusOnline}, eligible, e.ExcludeUserID, conns)
+	g.sendPresence(shown[0], eligible, e.ExcludeUserID, conns)
 }
 
 // joinPresence follows GUILD_MEMBER_ADD: if the new member is online, the
@@ -227,10 +237,11 @@ func (g *Gateway) joinPresence(e events.Event, members []snowflake.ID, conns map
 		return
 	}
 	joiner := p.Member.User.ID
-	if len(g.OnlineAmong([]snowflake.ID{joiner})) == 0 {
+	shown := g.PresencesAmong([]snowflake.ID{joiner})
+	if len(shown) == 0 {
 		return
 	}
-	g.sendPresence(Presence{UserID: joiner, Status: StatusOnline}, members, joiner, conns)
+	g.sendPresence(shown[0], members, joiner, conns)
 }
 
 // leavePresence follows GUILD_MEMBER_REMOVE (the removal has committed):
