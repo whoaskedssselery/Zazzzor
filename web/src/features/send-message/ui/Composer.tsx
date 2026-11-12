@@ -37,7 +37,10 @@ export interface ReplyTarget {
 
 export interface ComposerProps {
   channelId: string;
-  channelName: string;
+  /** The field's name, as a screen reader says it: «Сообщение в #общий», «Сообщение для @Аня». */
+  label: string;
+  /** What the empty field says: «Написать в #общий», «Написать @Аня». */
+  placeholder: string;
   /** SEND_MESSAGES in the channel; without it the field gives way to a notice. */
   canSend: boolean;
   /** ATTACH_FILES in the channel: files may be added (button, paste, drop). */
@@ -87,7 +90,8 @@ export const useAddFiles = (channelId: string, canAttach: boolean) => {
  */
 export const Composer = ({
   channelId,
-  channelName,
+  label,
+  placeholder,
   canSend,
   canAttach,
   replyTo,
@@ -276,8 +280,8 @@ export const Composer = ({
             ref={field}
             rows={1}
             value={text}
-            aria-label={`Сообщение в #${channelName}`}
-            placeholder={`Написать в #${channelName}`}
+            aria-label={label}
+            placeholder={placeholder}
             aria-invalid={tooLong || undefined}
             aria-autocomplete="list"
             aria-controls={listOpen ? MENTION_LIST_ID : undefined}

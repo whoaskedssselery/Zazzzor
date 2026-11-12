@@ -44,7 +44,8 @@ const renderComposer = (props: Partial<ComposerProps> = {}) => {
   const user = userEvent.setup();
   const all: ComposerProps = {
     channelId: "101",
-    channelName: "общий",
+    label: "Сообщение в #общий",
+    placeholder: "Написать в #общий",
     canSend: true,
     canAttach: true,
     replyTo: null,
@@ -60,7 +61,7 @@ const renderComposer = (props: Partial<ComposerProps> = {}) => {
       </UiProviders>
     </QueryClientProvider>,
   );
-  const field = () => screen.getByRole<HTMLTextAreaElement>("textbox", { name: `Сообщение в #${all.channelName}` });
+  const field = () => screen.getByRole<HTMLTextAreaElement>("textbox", { name: all.label });
   return { user, field, ...view, props: all };
 };
 
@@ -73,7 +74,8 @@ const Replying = () => {
   return (
     <Composer
       channelId="101"
-      channelName="общий"
+      label="Сообщение в #общий"
+      placeholder="Написать в #общий"
       canSend
       canAttach
       replyTo={target}
@@ -209,7 +211,7 @@ describe("Composer", () => {
     const at = (channelId: string, channelName: string) => (
       <QueryClientProvider client={new QueryClient()}>
         <UiProviders>
-          <Composer {...props} channelId={channelId} channelName={channelName} />
+          <Composer {...props} channelId={channelId} label={`Сообщение в #${channelName}`} />
         </UiProviders>
       </QueryClientProvider>
     );
