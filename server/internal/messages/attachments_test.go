@@ -70,7 +70,7 @@ func TestAttachmentImageAndRange(t *testing.T) {
 		t.Errorf("range = %x, want %x", r.Body, source.Bytes()[:8])
 	}
 	for header, want := range map[string]string{
-		"Cache-Control":           "private, max-age=31536000, immutable",
+		"Cache-Control":           "private, no-cache",
 		"X-Content-Type-Options":  "nosniff",
 		"Content-Security-Policy": "default-src 'none'; sandbox",
 	} {
@@ -125,9 +125,16 @@ func TestAttachmentPrivacyAndBinding(t *testing.T) {
 	if !bytes.Equal(first.Body, retry.Body) {
 		t.Errorf("nonce retry = %s, want %s", retry.Body, first.Body)
 	}
-	expect(t, bob.Do(http.MethodGet, a.URL, nil), http.StatusOK)
+	download := bob.Do(http.MethodGet, a.URL, nil)
+	expect(t, download, http.StatusOK)
+	etag := download.Header.Get("ETag")
+	if etag == "" {
+		t.Fatal("attachment ETag is empty")
+	}
+	conditional := testkit.WithHeader("If-None-Match", etag)
+	expect(t, bob.Do(http.MethodGet, a.URL, nil, conditional), http.StatusNotModified)
 	denyEveryone(t, alice, g, ch.ID, permissions.ReadMessageHistory)
-	problemOf(t, bob.Do(http.MethodGet, a.URL, nil), http.StatusNotFound, "attachment_not_found")
+	problemOf(t, bob.Do(http.MethodGet, a.URL, nil, conditional), http.StatusNotFound, "attachment_not_found")
 	expect(t, alice.Do(http.MethodDelete, messagePath(ch.ID, sent.ID), nil), http.StatusNoContent)
 	assertOriginalMoved(t, e, ch.ID, a.ID)
 	problemOf(t, alice.Do(http.MethodGet, a.URL, nil), http.StatusNotFound, "attachment_not_found")

@@ -130,7 +130,7 @@ func (s *Service) handleEmojiImage(w http.ResponseWriter, r *http.Request) error
 		mime = "image/gif"
 	}
 	w.Header().Set("Content-Type", mime)
-	w.Header().Set("Cache-Control", "private, max-age=86400")
+	w.Header().Set("Cache-Control", "private, no-cache")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	http.ServeContent(w, r, id.String(), row.CreatedAt, file)
 	return nil

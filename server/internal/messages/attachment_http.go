@@ -227,7 +227,7 @@ func serveAttachment(w http.ResponseWriter, r *http.Request, row store.MessageAt
 	h.Set("Content-Disposition", disposition+"; filename*=UTF-8''"+name)
 	h.Set("Content-Security-Policy", "default-src 'none'; sandbox")
 	h.Set("X-Content-Type-Options", "nosniff")
-	h.Set("Cache-Control", "private, max-age=31536000, immutable")
+	h.Set("Cache-Control", "private, no-cache")
 	h.Add("Vary", "Cookie")
 	h.Set("ETag", `"`+row.Digest+`"`)
 	http.ServeContent(w, r, row.Filename, row.CreatedAt, f)
