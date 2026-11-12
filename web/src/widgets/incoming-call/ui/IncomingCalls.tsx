@@ -129,7 +129,7 @@ export const IncomingCalls = () => {
 
   if (ringing.length === 0) return null;
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-6 z-(--z-dialog) flex flex-col items-center gap-3 px-4">
+    <div className="pointer-events-none fixed inset-0 z-(--z-dialog) flex flex-col items-center justify-center gap-3 px-4">
       {ringing.map((p) => (
         <IncomingCall key={p.channel.id} entry={p} />
       ))}
