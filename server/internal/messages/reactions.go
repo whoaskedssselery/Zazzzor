@@ -62,8 +62,9 @@ func (s *Service) Get(ctx context.Context, channelID, messageID, userID snowflak
 
 // ReactionUsers lists the users who reacted with emoji, ordered by ID.
 func (s *Service) ReactionUsers(ctx context.Context, channelID, messageID, actor snowflake.ID, emoji string, after snowflake.ID, limit int) ([]auth.PublicUser, error) {
-	if !validReactionEmoji(emoji) {
-		return nil, badReactionEmoji()
+	key, emojiID, err := reactionIdentity(emoji)
+	if err != nil {
+		return nil, err
 	}
 	if limit == 0 {
 		limit = defaultReactionPage
@@ -71,14 +72,18 @@ func (s *Service) ReactionUsers(ctx context.Context, channelID, messageID, actor
 	if limit < 1 || limit > MaxLimit {
 		return nil, invalid("limit", fmt.Sprintf("must be from 1 to %d", MaxLimit))
 	}
-	if _, _, err := s.access(ctx, actor, channelID, reactionAccess); err != nil {
+	_, guildID, err := s.access(ctx, actor, channelID, reactionAccess)
+	if err != nil {
 		return nil, fmt.Errorf("messages: check reaction access: %w", err)
 	}
-	if _, err := s.load(ctx, channelID, messageID); err != nil {
-		return nil, fmt.Errorf("messages: find reacted message: %w", err)
+	if _, loadErr := s.load(ctx, channelID, messageID); loadErr != nil {
+		return nil, fmt.Errorf("messages: find reacted message: %w", loadErr)
+	}
+	if _, resolveErr := s.resolveReactionEmoji(ctx, s.pool, guildID, emojiID, key, true); resolveErr != nil {
+		return nil, resolveErr
 	}
 	rows, err := s.q.ReactionUserIDs(ctx, s.pool, store.ReactionUserIDsParams{
-		MessageID: int64(messageID), Emoji: emoji, AfterID: int64(after), PageLimit: int32(limit), //nolint:gosec // G115: limit is range checked.
+		MessageID: int64(messageID), Emoji: key, AfterID: int64(after), PageLimit: int32(limit), //nolint:gosec // G115: limit is range checked.
 	})
 	if err != nil {
 		return nil, fmt.Errorf("messages: page reaction users: %w", err)
@@ -102,8 +107,9 @@ func (s *Service) ReactionUsers(ctx context.Context, channelID, messageID, actor
 // changeReaction serializes reaction writes with permission changes and message
 // deletion. A nil target means the caller is changing their own reaction.
 func (s *Service) changeReaction(ctx context.Context, channelID, messageID, actor snowflake.ID, emoji string, add bool, target *snowflake.ID) error {
-	if !validReactionEmoji(emoji) {
-		return badReactionEmoji()
+	emojiKey, emojiID, err := reactionIdentity(emoji)
+	if err != nil {
+		return err
 	}
 	_, guildID, err := s.access(ctx, actor, channelID, reactionAccess)
 	if err != nil {
@@ -113,7 +119,7 @@ func (s *Service) changeReaction(ctx context.Context, channelID, messageID, acto
 	if target != nil {
 		userID = *target
 	}
-	payload := ReactionPayload{ChannelID: channelID, GuildID: guildID, MessageID: messageID, UserID: userID, Emoji: Emoji{Name: emoji}}
+	payload := ReactionPayload{ChannelID: channelID, GuildID: guildID, MessageID: messageID, UserID: userID}
 	// Keep the database commit and its event in order for a message.
 	// Mix in the timestamp bits because many Snowflakes have sequence zero.
 	key := int64(messageID) ^ messageID.Time().UnixMilli()
@@ -142,13 +148,18 @@ func (s *Service) changeReaction(ctx context.Context, channelID, messageID, acto
 				return fmt.Errorf("messages: authorize reaction removal: %w", modErr)
 			}
 		}
+		resolved, resolveErr := s.resolveReactionEmoji(ctx, tx, guildID, emojiID, emojiKey, !add)
+		if resolveErr != nil {
+			return resolveErr
+		}
+		payload.Emoji = resolved
 		if add {
-			n, addErr := s.addReactionIn(ctx, tx, p, payload)
+			n, addErr := s.addReactionIn(ctx, tx, p, payload, emojiKey)
 			changed = n
 			return addErr
 		}
 		n, removeErr := s.q.RemoveMessageReaction(ctx, tx, store.RemoveMessageReactionParams{
-			MessageID: int64(messageID), Emoji: emoji, UserID: int64(userID),
+			MessageID: int64(messageID), Emoji: emojiKey, UserID: int64(userID),
 		})
 		if removeErr != nil {
 			return fmt.Errorf("messages: delete reaction: %w", removeErr)
@@ -193,14 +204,17 @@ func (s *Service) checkReactionModeration(ctx context.Context, tx pgx.Tx, p perm
 }
 
 // addReactionIn preserves a group's first addition time until its last reaction is removed.
-func (s *Service) addReactionIn(ctx context.Context, tx pgx.Tx, p permissions.Permission, r ReactionPayload) (int64, error) {
+func (s *Service) addReactionIn(ctx context.Context, tx pgx.Tx, p permissions.Permission, r ReactionPayload, key string) (int64, error) {
 	groups, err := s.q.ReactionGroupsForWrite(ctx, tx, int64(r.MessageID))
 	if err != nil {
 		return 0, fmt.Errorf("messages: load reaction groups: %w", err)
 	}
-	params := store.AddMessageReactionParams{MessageID: int64(r.MessageID), Emoji: r.Emoji.Name, UserID: int64(r.UserID)}
+	params := store.AddMessageReactionParams{MessageID: int64(r.MessageID), Emoji: key, UserID: int64(r.UserID)}
+	if r.Emoji.ID != nil {
+		params.EmojiID = dbID(*r.Emoji.ID)
+	}
 	for _, group := range groups {
-		if group.Emoji == r.Emoji.Name {
+		if group.Emoji == key {
 			params.FirstAddedAt = &group.FirstAddedAt
 			break
 		}
@@ -229,12 +243,17 @@ func (s *Service) reactionSummaries(ctx context.Context, ids []int64, caller sno
 	}
 	for _, row := range rows {
 		id := snowflake.ID(row.MessageID)
-		byMessage[id] = append(byMessage[id], Reaction{Emoji: Emoji{Name: row.Emoji}, Count: row.Count, Me: row.Me})
+		emoji := Emoji{Name: row.EmojiName}
+		if row.EmojiID.Valid {
+			customID := snowflake.ID(row.EmojiID.Int64)
+			emoji.ID = &customID
+		}
+		byMessage[id] = append(byMessage[id], Reaction{Emoji: emoji, Count: row.Count, Me: row.Me})
 	}
 	return byMessage, nil
 }
 
 // badReactionEmoji gives clients the validation requirements for the path segment.
 func badReactionEmoji() error {
-	return invalid("emoji", "must be one Unicode emoji of at most 32 UTF-8 bytes")
+	return invalid("emoji", "must be one Unicode emoji of at most 32 UTF-8 bytes or a custom emoji in name:id form")
 }

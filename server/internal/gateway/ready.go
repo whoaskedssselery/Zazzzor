@@ -43,7 +43,10 @@ func (g *Gateway) guildState(ctx context.Context, userID, guildID snowflake.ID) 
 	pub := snap.Public()
 	st := GuildState{Guild: pub.Guild, Roles: pub.Roles, MyMember: pub.Members[i],
 		Members:  pub.Members[:min(len(pub.Members), MaxMembers)],
-		Channels: make([]channels.PublicChannel, len(visible))}
+		Channels: make([]channels.PublicChannel, len(visible)), Emojis: snap.Emojis}
+	if st.Emojis == nil {
+		st.Emojis = []guilds.Emoji{}
+	}
 	for j, c := range visible {
 		st.Channels[j] = c.Public()
 	}
