@@ -311,8 +311,8 @@ paths:
       summary: Send or reciprocate a friend request
       description: |
         Matches usernames case-insensitively. A request in the opposite
-        direction becomes a friendship. A blocked recipient and an existing
-        outgoing request both produce a successful response with no change.
+        direction becomes a friendship. An existing outgoing request returns
+        204 with no change, as does a request to a user who blocked the caller.
         A caller can have up to 1000 friends and 100 outgoing requests.
         This endpoint allows 10 attempts per minute and 100 per day per caller.
       requestBody:
@@ -4136,7 +4136,7 @@ components:
             $ref: "#/components/schemas/GuildState"
         presences:
           type: array
-          description: Everyone online who shares a server with the user, the user included.
+          description: Online friends and people who share a server with the user, including the user.
           items:
             $ref: "#/components/schemas/Presence"
         read_states:

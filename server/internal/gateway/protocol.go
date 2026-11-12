@@ -20,6 +20,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
 	"github.com/whoaskedssselery/zazzzor/server/internal/messages"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
+	"github.com/whoaskedssselery/zazzzor/server/internal/relationships"
 	"github.com/whoaskedssselery/zazzzor/server/internal/voice"
 )
 
@@ -130,9 +131,10 @@ type GuildState struct {
 
 // Ready is the payload of READY.
 type Ready struct {
-	User      auth.PublicUser `json:"user"`
-	Guilds    []GuildState    `json:"guilds"`
-	Presences []Presence      `json:"presences"`
+	Relationships []relationships.Relationship `json:"relationships"`
+	User          auth.PublicUser              `json:"user"`
+	Guilds        []GuildState                 `json:"guilds"`
+	Presences     []Presence                   `json:"presences"`
 	// ReadStates are the user's stored read states across all visible channels.
 	ReadStates []messages.ReadState `json:"read_states"`
 }

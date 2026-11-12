@@ -277,10 +277,10 @@ type Directory interface {
 	GuildIDsOf(ctx context.Context, userID snowflake.ID) ([]snowflake.ID, error)
 	// Snapshot returns the guild with its roles and members, or ErrNotFound.
 	Snapshot(ctx context.Context, guildID snowflake.ID) (GuildSnapshot, error)
-	// PeerIDs returns everyone sharing at least one guild with userID
+	// PeerIDs returns everyone sharing a guild or friendship with userID
 	// (userID too, if it is in any guild), ascending.
 	PeerIDs(ctx context.Context, userID snowflake.ID) ([]snowflake.ID, error)
-	// SharedPeers returns, for each of userIDs in some guild, which of peerIDs
+	// SharedPeers returns, for each of userIDs, which of peerIDs
 	// share at least one guild with it (itself included when listed), in
 	// one query.
 	SharedPeers(ctx context.Context, userIDs, peerIDs []snowflake.ID) (map[snowflake.ID][]snowflake.ID, error)
