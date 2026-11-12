@@ -7,7 +7,7 @@ import type { components } from "@/shared/api";
 import { apiHandler, makeUser, server } from "@/shared/test";
 import { UiProviders } from "@/shared/ui";
 import { BansTab } from "./BansTab";
-import { expiresText, InvitesTab, usesText } from "./InvitesTab";
+import { expiresText, INVITES_PAGE, InvitesTab, usesText } from "./InvitesTab";
 
 type Ban = components["schemas"]["Ban"];
 type Invite = components["schemas"]["Invite"];
@@ -97,5 +97,26 @@ describe("InvitesTab", () => {
       expect(screen.queryByText("AbCd1234")).toBeNull();
     });
     expect(screen.getByText("XyZw5678")).toBeTruthy();
+  });
+
+  it("shows older invites a page at a time", async () => {
+    const code = (i: number) => `Code${String(i).padStart(4, "0")}`;
+    const all = Array.from({ length: INVITES_PAGE + 1 }, (_, i) => invite(code(i)));
+    const asked: (string | null)[] = [];
+    server.use(
+      apiHandler("get", "/guilds/{guild_id}/invites", ({ request }) => {
+        const before = new URL(request.url).searchParams.get("before");
+        asked.push(before);
+        const from = before === null ? 0 : all.findIndex((i) => i.code === before) + 1;
+        return HttpResponse.json(all.slice(from, from + INVITES_PAGE));
+      }),
+    );
+    const user = renderWith(<InvitesTab guildId={G} />);
+    expect(await screen.findByText("Code0000")).toBeTruthy();
+    expect(screen.queryByText(code(INVITES_PAGE))).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Показать ещё" }));
+    expect(await screen.findByText(code(INVITES_PAGE))).toBeTruthy();
+    expect(asked).toEqual([null, code(INVITES_PAGE - 1)]);
+    expect(screen.queryByRole("button", { name: "Показать ещё" })).toBeNull();
   });
 });
