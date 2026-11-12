@@ -142,7 +142,7 @@ describe("chat", () => {
     expect(await screen.findByText("я тут")).toBeTruthy();
   });
 
-  it("catches up after a reconnect with after=<newest>, without duplicates", async () => {
+  it("catches up after a reconnect from the oldest loaded message, without duplicates", async () => {
     const h = history([makeMessage("1", C, anna, { content: "до обрыва" })]);
     let first: Client | undefined;
     signedIn(undefined, (client, n) => {
@@ -155,7 +155,8 @@ describe("chat", () => {
     first?.close(1012, "service_restart");
     expect(await screen.findByText("пока вас не было", {}, { timeout: 3000 })).toBeTruthy();
     expect(screen.getAllByText("до обрыва")).toHaveLength(1);
-    expect(h.queries.some((q) => q.includes("after=1"))).toBe(true);
+    // From just before the oldest loaded one: edits and deletions while away reach it too.
+    expect(h.queries.some((q) => q.includes("after=0"))).toBe(true);
   });
 
   it("asks for no history without READ_MESSAGE_HISTORY, and still lets the user write", async () => {

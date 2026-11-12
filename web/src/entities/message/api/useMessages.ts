@@ -1,5 +1,5 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { fetchMessages, messagesKey, PAGE_SIZE } from "../model/cache";
+import { fetchHistoryPage, messagesKey, nextBefore } from "../model/cache";
 
 /**
  * The history of `channelId`, loaded from the newest page; `fetchNextPage`
@@ -12,14 +12,10 @@ import { fetchMessages, messagesKey, PAGE_SIZE } from "../model/cache";
 export const useMessages = (channelId: string, enabled: boolean) =>
   useInfiniteQuery({
     queryKey: messagesKey(channelId),
-    queryFn: ({ pageParam, signal }) =>
-      fetchMessages(
-        channelId,
-        pageParam === undefined ? { limit: PAGE_SIZE } : { before: pageParam, limit: PAGE_SIZE },
-        signal,
-      ),
+    queryFn: ({ pageParam, signal }) => fetchHistoryPage(channelId, pageParam, signal),
     initialPageParam: undefined as string | undefined,
-    getNextPageParam: (last) => (last.length < PAGE_SIZE ? undefined : last.at(-1)?.id),
+    // Whether the history ended is known from the page as it came, not as deletions left it.
+    getNextPageParam: (last, _all, lastBefore) => nextBefore(channelId, last, lastBefore),
     enabled,
     staleTime: Number.POSITIVE_INFINITY,
     refetchOnReconnect: false,

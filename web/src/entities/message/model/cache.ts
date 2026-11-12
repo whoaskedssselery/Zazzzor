@@ -18,8 +18,8 @@ export type MessagePages = InfiniteData<Message[], string | undefined>;
 export const PAGE_SIZE = 50;
 /** Messages per page while catching up after a reconnect (the API maximum). */
 const CATCH_UP_SIZE = 100;
-/** Catch-up pages before the history is reloaded from the newest instead. */
-const CATCH_UP_PAGES = 5;
+/** Catch-up pages (the loaded history and what was missed) before the history is reloaded from the newest instead. */
+const CATCH_UP_PAGES = 10;
 
 export const messagesKey = (channelId: string) => ["messages", channelId] as const;
 
@@ -36,6 +36,50 @@ export async function fetchMessages(
     }),
   );
 }
+
+/**
+ * Per channel, the `before` of every history page that came back short:
+ * nothing older exists past it. Known when the page loads, because a
+ * deletion later shortens the page in the cache without the history ending.
+ */
+const ends = new Map<string, Set<string | undefined>>();
+
+const markEnd = (channelId: string, before: string | undefined, ended: boolean) => {
+  const set = ends.get(channelId) ?? new Set();
+  if (ended) set.add(before);
+  else set.delete(before);
+  ends.set(channelId, set);
+};
+
+/** The history page of `channelId` older than `before` (the newest without it), noting whether it is the last. */
+export async function fetchHistoryPage(
+  channelId: string,
+  before: string | undefined,
+  signal?: AbortSignal,
+): Promise<Message[]> {
+  const page = await fetchMessages(
+    channelId,
+    before === undefined ? { limit: PAGE_SIZE } : { before, limit: PAGE_SIZE },
+    signal,
+  );
+  markEnd(channelId, before, page.length < PAGE_SIZE);
+  return page;
+}
+
+/** Nothing older than the page loaded with `before` exists. */
+const endedAt = (channelId: string, before: string | undefined): boolean => ends.get(channelId)?.has(before) ?? false;
+
+/** The whole history of `channelId` is loaded: its oldest page came back short. */
+const historyEnded = (channelId: string, data: Pick<MessagePages, "pageParams">): boolean =>
+  endedAt(channelId, data.pageParams.at(-1));
+
+/**
+ * The `before` of the page after `last` (loaded with `lastBefore`), or
+ * undefined when the history ended there. A page that deletions emptied
+ * is followed from where it started.
+ */
+export const nextBefore = (channelId: string, last: Message[], lastBefore: string | undefined): string | undefined =>
+  endedAt(channelId, lastBefore) ? undefined : (last.at(-1)?.id ?? lastBefore);
 
 /** The newest loaded message, if any. */
 export const newestId = (data: Pick<MessagePages, "pages">): string | undefined =>
@@ -59,11 +103,12 @@ const mapMessages = (data: MessagePages, fn: (m: Message) => Message | null): Me
 /**
  * The history with `m` in it: a message already there is replaced, a new one
  * goes into the page whose span holds it. A message older than everything
- * loaded is left out while older history is still to load: the history
- * fetch brings it. The `nonce` of an own message is not kept, as in the
+ * loaded is left out while older history is still to load (`ended` false):
+ * the history fetch brings it. Without `ended`, a full last page means
+ * there is more. The `nonce` of an own message is not kept, as in the
  * history.
  */
-export function upsertMessage(data: MessagePages, incoming: Message): MessagePages {
+export function upsertMessage(data: MessagePages, incoming: Message, ended?: boolean): MessagePages {
   const { nonce: _nonce, ...m } = incoming;
   if (data.pages.some((page) => page.some((x) => x.id === m.id))) {
     return withReplies(
@@ -79,7 +124,8 @@ export function upsertMessage(data: MessagePages, incoming: Message): MessagePag
   const page = data.pages[p];
   if (page === undefined) return data;
   const oldest = page.at(-1);
-  if (p === last && page.length >= PAGE_SIZE && oldest !== undefined && compareIds(m.id, oldest.id) < 0) return data;
+  const more = ended === undefined ? page.length >= PAGE_SIZE : !ended;
+  if (p === last && more && oldest !== undefined && compareIds(m.id, oldest.id) < 0) return data;
   const at = page.findIndex((x) => compareIds(x.id, m.id) < 0);
   const next = at === -1 ? [...page, m] : [...page.slice(0, at), m, ...page.slice(at)];
   return { ...data, pages: data.pages.map((x, i) => (i === p ? next : x)) };
@@ -135,7 +181,7 @@ export function applyMessageDispatch(qc: QueryClient, t: string, d: unknown, meI
     case "MESSAGE_CREATE": {
       const m = parseChatEvent(t, d);
       if (m === null) return;
-      updateHistory(qc, m.channel_id, (h) => upsertMessage(h, m));
+      updateHistory(qc, m.channel_id, (h) => upsertMessage(h, m, historyEnded(m.channel_id, h)));
       if (m.nonce !== undefined) confirmPending(m.channel_id, m.nonce);
       return;
     }
@@ -164,14 +210,39 @@ export function applyMessageDispatch(qc: QueryClient, t: string, d: unknown, meI
   }
 }
 
+/** The oldest loaded message, if any. */
+const oldestId = (data: Pick<MessagePages, "pages">): string | undefined => data.pages.flat().at(-1)?.id;
+
+/** The ID just below `id`: `after` it takes `id` itself in. */
+const justBefore = (id: string): string => (BigInt(id) - 1n).toString();
+
 /**
- * Brings the loaded histories up to date after a reconnect: the events
- * missed while away are fetched with `after=<newest>`, page by page until a
- * short one, and merged by ID (no duplicates). A history too far behind
- * (more than CATCH_UP_PAGES pages), or empty, loads again from the newest
- * page instead; a history no screen shows is dropped, to load fresh when
- * opened. A channel that cannot be read any more is left to the page,
- * which leaves it.
+ * `messages` (oldest first) as history pages from the newest, PAGE_SIZE
+ * each, every page's parameter the `before` that would load it. Whether
+ * anything older exists carries over from `ended`.
+ */
+const asPages = (channelId: string, messages: Message[], ended: boolean): MessagePages => {
+  const newestFirst = [...messages].reverse();
+  const pages: Message[][] = [];
+  const pageParams: (string | undefined)[] = [];
+  for (let i = 0; i < newestFirst.length || pages.length === 0; i += PAGE_SIZE) {
+    pageParams.push(pages.at(-1)?.at(-1)?.id);
+    pages.push(newestFirst.slice(i, i + PAGE_SIZE));
+  }
+  markEnd(channelId, pageParams.at(-1), ended);
+  return { pages, pageParams };
+};
+
+/**
+ * Brings the loaded histories up to date after a reconnect. Events missed
+ * while away touch messages already loaded too (edits, deletions,
+ * reactions), so the whole loaded span and everything after it is fetched
+ * again with `after`, page by page until a short one, and replaces the
+ * history; a message the gateway delivered meanwhile, newer than the
+ * fetch, stays. A history too long for that (more than CATCH_UP_PAGES
+ * pages), or empty, loads again from the newest page instead; a history no
+ * screen shows is dropped, to load fresh when opened. A channel that cannot
+ * be read any more is left to the page, which leaves it.
  */
 export async function catchUpMessages(qc: QueryClient): Promise<void> {
   const queries = qc.getQueryCache().findAll({ queryKey: ["messages"] });
@@ -184,7 +255,10 @@ export async function catchUpMessages(qc: QueryClient): Promise<void> {
         qc.removeQueries({ queryKey: q.queryKey, exact: true });
         return;
       }
-      let after = newestId(data);
+      const oldest = oldestId(data);
+      const ended = historyEnded(channelId, data);
+      const fetched: Message[] = [];
+      let after = oldest === undefined ? undefined : justBefore(oldest);
       for (let n = 0; after !== undefined && n < CATCH_UP_PAGES; n++) {
         let page: Message[];
         try {
@@ -192,8 +266,18 @@ export async function catchUpMessages(qc: QueryClient): Promise<void> {
         } catch {
           return;
         }
-        for (const m of page) updateHistory(qc, channelId, (h) => upsertMessage(h, m));
-        if (page.length < CATCH_UP_SIZE) return;
+        fetched.push(...page);
+        if (page.length < CATCH_UP_SIZE) {
+          const newest = fetched.at(-1)?.id;
+          updateHistory(qc, channelId, (now) => {
+            const later = now.pages
+              .flat()
+              .filter((m) => newest === undefined || compareIds(m.id, newest) > 0)
+              .reverse();
+            return asPages(channelId, [...fetched, ...later], ended);
+          });
+          return;
+        }
         after = page.at(-1)?.id;
       }
       await qc.resetQueries({ queryKey: q.queryKey, exact: true });
