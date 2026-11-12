@@ -1,10 +1,13 @@
 package messages_test
 
 import (
+	"context"
 	"net/http"
 	"testing"
 
+	"github.com/whoaskedssselery/zazzzor/server/internal/messages"
 	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
 
 // An old reply must not become a way to read the original's later edits
@@ -61,5 +64,52 @@ func TestReplyOperationsRespectRevokedHistory(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+type historyRevocation struct {
+	messages.Channels
+	afterRead func(snowflake.ID)
+}
+
+func (c *historyRevocation) Permissions(ctx context.Context, user, channel snowflake.ID) (permissions.Permission, snowflake.ID, error) {
+	p, guild, err := c.Channels.Permissions(ctx, user, channel)
+	if err == nil && c.afterRead != nil {
+		c.afterRead(user)
+	}
+	return p, guild, err
+}
+
+func TestReplyEditRechecksHistoryAfterLoadingOriginal(t *testing.T) {
+	resolver := &historyRevocation{}
+	e := newEnv(t, func(o *messages.Options) {
+		resolver.Channels = o.Channels
+		o.Channels = resolver
+	})
+	alice, _ := e.user("alice")
+	bob, bu := e.user("bob")
+	guild, channel, _ := newGuild(t, alice, "home")
+	e.join(guild, bu)
+	original := post(t, alice, channel.ID, "original")
+	resp := send(bob, channel.ID, map[string]any{"content": "answer", "reply_to_id": original.ID})
+	expect(t, resp, http.StatusCreated)
+	var reply messageBody
+	resp.JSON(&reply)
+	bobID := parseID(t, bu.ID)
+	resolver.afterRead = func(user snowflake.ID) {
+		if user != bobID {
+			return
+		}
+		resolver.afterRead = nil
+		denyEveryone(t, alice, guild, channel.ID, permissions.ReadMessageHistory)
+		expect(t, alice.Do(http.MethodPatch, messagePath(channel.ID, original.ID),
+			map[string]string{"content": "new secret"}), http.StatusOK)
+	}
+	resp = bob.Do(http.MethodPatch, messagePath(channel.ID, reply.ID), map[string]string{"content": "answer"})
+	expect(t, resp, http.StatusOK)
+	var got messageBody
+	resp.JSON(&got)
+	if got.ReferencedMessage != nil {
+		t.Errorf("reference after revoking history = %+v, want null", got.ReferencedMessage)
 	}
 }
