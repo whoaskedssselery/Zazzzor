@@ -16,7 +16,7 @@ export interface MentionTarget {
 export interface MentionNames {
   user: (id: string) => MentionTarget | null;
   role: (id: string) => MentionTarget | null;
-  emoji?: (id: string) => { url: string } | null;
+  emoji?: (id: string) => { url: string; name?: string } | null;
 }
 
 const NO_NAMES: MentionNames = { user: () => null, role: () => null };
@@ -105,11 +105,13 @@ const CustomEmoji = ({ name, id }: { name: string; id: string }) => {
   const jumbo = use(JumboContext);
   const found = names.emoji?.(id) ?? null;
   if (found === null) return `:${name}:`;
+  // Its name now: the text keeps the one it had when sent.
+  const shown = `:${found.name ?? name}:`;
   return (
     <img
       src={found.url}
-      alt={`:${name}:`}
-      title={`:${name}:`}
+      alt={shown}
+      title={shown}
       draggable={false}
       loading="lazy"
       data-emoji={id}
