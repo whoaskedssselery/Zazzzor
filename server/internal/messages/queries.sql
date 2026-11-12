@@ -222,6 +222,11 @@ INSERT INTO embed_images (id, token, content_type, created_at) VALUES ($1, $2, $
 -- name: EmbedImageByToken :one
 SELECT id, content_type FROM embed_images WHERE token = $1;
 
+-- name: EmbedImageChannels :many
+SELECT DISTINCT m.channel_id FROM messages AS m
+WHERE m.embeds <> '[]'::jsonb AND m.embeds @> jsonb_build_array(
+    jsonb_build_object('image', jsonb_build_object('url', @image_url::text)));
+
 -- name: ExpirePreviews :exec
 DELETE FROM link_previews
 WHERE fetched_at <= CASE WHEN status THEN @success_cutoff::timestamptz ELSE @failure_cutoff::timestamptz END;

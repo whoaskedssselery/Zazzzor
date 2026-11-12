@@ -14,6 +14,8 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/linkpreview"
 	"github.com/whoaskedssselery/zazzzor/server/internal/messages"
+	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/testkit"
 )
 
 type previewFetchFunc func(context.Context, string, linkpreview.SaveImage) *linkpreview.Embed
@@ -62,7 +64,7 @@ func TestPreviewCreateEditAndCache(t *testing.T) {
 	})
 	startPreviews(t, e)
 	alice, _ := e.user("alice")
-	_, general, _ := newGuild(t, alice, "home")
+	g, general, _ := newGuild(t, alice, "home")
 	const target = "https://example.test/img"
 	resp := send(alice, general.ID, map[string]any{"content": target})
 	expect(t, resp, http.StatusCreated)
@@ -78,9 +80,47 @@ func TestPreviewCreateEditAndCache(t *testing.T) {
 	src := update.Embeds[0].Image.URL
 	got := alice.Do(http.MethodGet, src, nil)
 	expect(t, got, http.StatusOK)
-	if got.Header.Get("Content-Type") != "image/png" || got.Header.Get("Cache-Control") != "public, max-age=86400, immutable" || got.Header.Get("X-Content-Type-Options") != "nosniff" {
-		t.Errorf("image headers = %v, want public immutable PNG with nosniff", got.Header)
+	tag := got.Header.Get("ETag")
+	if got.Header.Get("Content-Type") != "image/png" || got.Header.Get("Cache-Control") != "private, no-cache" ||
+		got.Header.Get("Vary") != "Cookie" || got.Header.Get("X-Content-Type-Options") != "nosniff" || tag == "" {
+		t.Errorf("image headers = %v, want private PNG with revalidation", got.Header)
 	}
+	conditional := testkit.WithHeader("If-None-Match", tag)
+	expect(t, alice.Do(http.MethodGet, src, nil, conditional), http.StatusNotModified)
+	anonymous := testkit.NewClient(t, e.h)
+	expect(t, anonymous.Do(http.MethodGet, src, nil), http.StatusNotFound)
+	bob, bu := e.user("bob")
+	e.join(g, bu)
+	expect(t, bob.Do(http.MethodGet, src, nil), http.StatusOK)
+	denyEveryone(t, alice, g, general.ID, permissions.ReadMessageHistory)
+	expect(t, bob.Do(http.MethodGet, src, nil, conditional), http.StatusNotFound)
+	// The same cached image is also usable from a group DM. Only its
+	// recipients gain access, even when the guild copy remains inaccessible.
+	var dmID int64
+	err := e.pool.QueryRow(t.Context(), `
+		WITH dm AS (
+			INSERT INTO channels (id, type, owner_id, position, permission_synced, created_at)
+			SELECT 100, 3, id, 0, false, now() FROM users WHERE username = 'alice'
+			RETURNING id, owner_id
+		), recipients AS (
+			INSERT INTO channel_recipients (channel_id, user_id, joined_at)
+			SELECT dm.id, id_of_recipient.id, now() FROM dm CROSS JOIN users AS id_of_recipient
+			WHERE id_of_recipient.username IN ('alice', 'bob')
+		)
+		INSERT INTO messages (id, channel_id, author_id, content, created_at, embeds)
+		SELECT 101, dm.id, dm.owner_id, m.content, now(), m.embeds
+		FROM dm CROSS JOIN messages AS m WHERE m.id = $1
+		RETURNING channel_id
+	`, created.ID).Scan(&dmID)
+	if err != nil {
+		t.Fatalf("seed group preview: %v", err)
+	}
+	expect(t, bob.Do(http.MethodGet, src, nil, conditional), http.StatusNotModified)
+	if _, err := e.pool.Exec(t.Context(), "DELETE FROM channel_recipients WHERE channel_id = $1 AND user_id = $2",
+		dmID, parseID(t, bu.ID)); err != nil {
+		t.Fatalf("remove group recipient: %v", err)
+	}
+	expect(t, bob.Do(http.MethodGet, src, nil, conditional), http.StatusNotFound)
 	expect(t, alice.Do(http.MethodGet, "/api/v1/embeds/42", nil), http.StatusNotFound)
 	resp = send(alice, general.ID, map[string]any{"content": target})
 	expect(t, resp, http.StatusCreated)

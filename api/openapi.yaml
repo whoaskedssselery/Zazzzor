@@ -2228,7 +2228,10 @@ paths:
       tags: [messages]
       operationId: downloadEmbedImage
       summary: Read a proxied link preview image
-      security: []
+      description: |
+        Needs a session and access to at least one message using the image.
+        Guild channels require `VIEW_CHANNEL` and `READ_MESSAGE_HISTORY`.
+        Direct messages require membership. Supports conditional requests.
       parameters:
         - name: embed_image_id
           in: path
@@ -2237,14 +2240,16 @@ paths:
             type: string
       responses:
         "200":
-          description: PNG, JPEG, GIF or WebP with public immutable caching for 24 hours and nosniff.
+          description: PNG, JPEG, GIF or WebP with private cache revalidation, an ETag, and nosniff.
           content:
             image/*:
               schema:
                 type: string
                 format: binary
+        "304":
+          description: The cached image is current and the caller still has access.
         "404":
-          description: The image is unknown or no longer available.
+          description: The image is unknown or unavailable to the caller.
 
   /attachments/{channel_id}/{attachment_id}/{filename}:
     get:
