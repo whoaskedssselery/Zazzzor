@@ -1,6 +1,6 @@
 -- name: CreateChannel :one
 INSERT INTO channels (id, guild_id, type, name, topic, parent_id, position, permission_synced, created_at)
-VALUES (@id, @guild_id, @type, @name, @topic, @parent_id, @position, @permission_synced, @created_at)
+VALUES (@id, @guild_id::bigint, @type, @name::text, @topic, @parent_id, @position, @permission_synced, @created_at)
 RETURNING *;
 
 -- name: ChannelByID :one
@@ -25,7 +25,7 @@ WHERE channels.guild_id = @guild_id
 ORDER BY overwrites.channel_id, overwrites.target_id;
 
 -- name: SetChannelInfo :exec
-UPDATE channels SET name = @name, topic = @topic WHERE id = @id;
+UPDATE channels SET name = @name::text, topic = @topic WHERE id = @id;
 
 -- name: SetChannelLayout :exec
 -- Moves channels within the guild in one statement; parent 0 means none.
@@ -74,3 +74,63 @@ USING (
 ) AS hidden
 WHERE r.guild_id = @guild_id::bigint
     AND r.user_id = hidden.user_id AND r.channel_id = hidden.channel_id;
+
+-- name: LockDirectPair :exec
+SELECT pg_advisory_xact_lock(hashtextextended(
+    'zazzzor.dm:' || @low_id::bigint || ':' || @high_id::bigint, 0));
+
+-- name: DirectChannelOfPair :one
+SELECT channel_id FROM direct_channel_pairs WHERE low_id = $1 AND high_id = $2;
+
+-- name: BindDirectPair :exec
+INSERT INTO direct_channel_pairs (low_id, high_id, channel_id) VALUES ($1,$2,$3);
+
+-- name: LockPrivateAccounts :many
+-- Same ordered account locks as relationship writes, plus group quotas.
+SELECT id FROM users WHERE id = ANY(@user_ids::bigint[]) ORDER BY id FOR NO KEY UPDATE;
+
+-- name: CanDirectMessage :one
+SELECT (
+    EXISTS (SELECT 1 FROM relationships WHERE user_id = @actor_id::bigint AND other_id = @other_id::bigint AND type = 1)
+    OR EXISTS (SELECT 1 FROM members a JOIN members b USING (guild_id)
+               WHERE a.user_id = @actor_id AND b.user_id = @other_id)
+) AND NOT EXISTS (
+    SELECT 1 FROM relationships WHERE type = 2 AND
+    ((user_id = @actor_id AND other_id = @other_id) OR (user_id = @other_id AND other_id = @actor_id))
+) AS allowed;
+
+-- name: CreatePrivateChannel :one
+INSERT INTO channels (id, type, owner_id, position, permission_synced, created_at)
+VALUES (@id, @type, sqlc.narg(owner_id), 0, false, @created_at)
+RETURNING *;
+
+-- name: AddPrivateRecipients :exec
+INSERT INTO channel_recipients (channel_id, user_id, joined_at)
+SELECT @channel_id, id, @joined_at FROM unnest(@user_ids::bigint[]) AS targets(id);
+
+-- name: OpenPrivateChannels :many
+SELECT c.* FROM channels c JOIN channel_recipients r ON c.id = r.channel_id
+WHERE r.user_id = @user_id AND NOT r.closed
+ORDER BY c.last_message_id DESC NULLS LAST, c.id DESC;
+
+-- name: PrivateProfiles :many
+SELECT r.channel_id, u.id, u.username, u.display_name, u.avatar_hash, u.created_at
+FROM channel_recipients r JOIN users u ON r.user_id = u.id
+WHERE r.channel_id = ANY(@channel_ids::bigint[])
+ORDER BY r.channel_id, r.joined_at, r.user_id;
+
+-- name: PrivateRecipientIDs :many
+SELECT user_id FROM channel_recipients WHERE channel_id = @channel_id ORDER BY user_id;
+
+-- name: IsPrivateRecipient :one
+SELECT EXISTS (SELECT 1 FROM channel_recipients WHERE channel_id = @channel_id AND user_id = @user_id);
+
+-- name: LockPrivateChannel :one
+SELECT * FROM channels WHERE id = @id AND guild_id IS NULL FOR NO KEY UPDATE;
+
+-- name: SetDirectClosed :execrows
+UPDATE channel_recipients SET closed = @closed
+WHERE channel_id = @channel_id AND user_id = @user_id AND closed <> @closed;
+
+-- name: ReopenPrivateRecipients :many
+UPDATE channel_recipients SET closed = false WHERE channel_id = @channel_id AND closed RETURNING user_id;

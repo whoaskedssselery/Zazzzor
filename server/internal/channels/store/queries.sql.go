@@ -9,11 +9,66 @@ import (
 	"context"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
 
+const addPrivateRecipients = `-- name: AddPrivateRecipients :exec
+INSERT INTO channel_recipients (channel_id, user_id, joined_at)
+SELECT $1, id, $2 FROM unnest($3::bigint[]) AS targets(id)
+`
+
+type AddPrivateRecipientsParams struct {
+	ChannelID int64
+	JoinedAt  time.Time
+	UserIds   []int64
+}
+
+func (q *Queries) AddPrivateRecipients(ctx context.Context, db DBTX, arg AddPrivateRecipientsParams) error {
+	_, err := db.Exec(ctx, addPrivateRecipients, arg.ChannelID, arg.JoinedAt, arg.UserIds)
+	return err
+}
+
+const bindDirectPair = `-- name: BindDirectPair :exec
+INSERT INTO direct_channel_pairs (low_id, high_id, channel_id) VALUES ($1,$2,$3)
+`
+
+type BindDirectPairParams struct {
+	LowID     int64
+	HighID    int64
+	ChannelID int64
+}
+
+func (q *Queries) BindDirectPair(ctx context.Context, db DBTX, arg BindDirectPairParams) error {
+	_, err := db.Exec(ctx, bindDirectPair, arg.LowID, arg.HighID, arg.ChannelID)
+	return err
+}
+
+const canDirectMessage = `-- name: CanDirectMessage :one
+SELECT (
+    EXISTS (SELECT 1 FROM relationships WHERE user_id = $1::bigint AND other_id = $2::bigint AND type = 1)
+    OR EXISTS (SELECT 1 FROM members a JOIN members b USING (guild_id)
+               WHERE a.user_id = $1 AND b.user_id = $2)
+) AND NOT EXISTS (
+    SELECT 1 FROM relationships WHERE type = 2 AND
+    ((user_id = $1 AND other_id = $2) OR (user_id = $2 AND other_id = $1))
+) AS allowed
+`
+
+type CanDirectMessageParams struct {
+	ActorID int64
+	OtherID int64
+}
+
+func (q *Queries) CanDirectMessage(ctx context.Context, db DBTX, arg CanDirectMessageParams) (pgtype.Bool, error) {
+	row := db.QueryRow(ctx, canDirectMessage, arg.ActorID, arg.OtherID)
+	var allowed pgtype.Bool
+	err := row.Scan(&allowed)
+	return allowed, err
+}
+
 const channelByID = `-- name: ChannelByID :one
-SELECT id, guild_id, type, name, topic, parent_id, position, permission_synced, created_at, last_message_id FROM channels WHERE id = $1
+SELECT id, guild_id, type, name, topic, parent_id, position, permission_synced, created_at, last_message_id, owner_id, position_parent_id FROM channels WHERE id = $1
 `
 
 func (q *Queries) ChannelByID(ctx context.Context, db DBTX, id snowflake.ID) (Channel, error) {
@@ -30,6 +85,8 @@ func (q *Queries) ChannelByID(ctx context.Context, db DBTX, id snowflake.ID) (Ch
 		&i.PermissionSynced,
 		&i.CreatedAt,
 		&i.LastMessageID,
+		&i.OwnerID,
+		&i.PositionParentID,
 	)
 	return i, err
 }
@@ -47,7 +104,7 @@ const countChannels = `-- name: CountChannels :one
 SELECT count(*) FROM channels WHERE guild_id = $1
 `
 
-func (q *Queries) CountChannels(ctx context.Context, db DBTX, guildID snowflake.ID) (int64, error) {
+func (q *Queries) CountChannels(ctx context.Context, db DBTX, guildID *snowflake.ID) (int64, error) {
 	row := db.QueryRow(ctx, countChannels, guildID)
 	var count int64
 	err := row.Scan(&count)
@@ -56,13 +113,13 @@ func (q *Queries) CountChannels(ctx context.Context, db DBTX, guildID snowflake.
 
 const createChannel = `-- name: CreateChannel :one
 INSERT INTO channels (id, guild_id, type, name, topic, parent_id, position, permission_synced, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, guild_id, type, name, topic, parent_id, position, permission_synced, created_at, last_message_id
+VALUES ($1, $2::bigint, $3, $4::text, $5, $6, $7, $8, $9)
+RETURNING id, guild_id, type, name, topic, parent_id, position, permission_synced, created_at, last_message_id, owner_id, position_parent_id
 `
 
 type CreateChannelParams struct {
 	ID               snowflake.ID
-	GuildID          snowflake.ID
+	GuildID          int64
 	Type             int16
 	Name             string
 	Topic            *string
@@ -96,6 +153,46 @@ func (q *Queries) CreateChannel(ctx context.Context, db DBTX, arg CreateChannelP
 		&i.PermissionSynced,
 		&i.CreatedAt,
 		&i.LastMessageID,
+		&i.OwnerID,
+		&i.PositionParentID,
+	)
+	return i, err
+}
+
+const createPrivateChannel = `-- name: CreatePrivateChannel :one
+INSERT INTO channels (id, type, owner_id, position, permission_synced, created_at)
+VALUES ($1, $2, $3, 0, false, $4)
+RETURNING id, guild_id, type, name, topic, parent_id, position, permission_synced, created_at, last_message_id, owner_id, position_parent_id
+`
+
+type CreatePrivateChannelParams struct {
+	ID        snowflake.ID
+	Type      int16
+	OwnerID   *snowflake.ID
+	CreatedAt time.Time
+}
+
+func (q *Queries) CreatePrivateChannel(ctx context.Context, db DBTX, arg CreatePrivateChannelParams) (Channel, error) {
+	row := db.QueryRow(ctx, createPrivateChannel,
+		arg.ID,
+		arg.Type,
+		arg.OwnerID,
+		arg.CreatedAt,
+	)
+	var i Channel
+	err := row.Scan(
+		&i.ID,
+		&i.GuildID,
+		&i.Type,
+		&i.Name,
+		&i.Topic,
+		&i.ParentID,
+		&i.Position,
+		&i.PermissionSynced,
+		&i.CreatedAt,
+		&i.LastMessageID,
+		&i.OwnerID,
+		&i.PositionParentID,
 	)
 	return i, err
 }
@@ -118,7 +215,7 @@ WHERE channels.id = overwrites.channel_id
 `
 
 type DeleteTargetOverwritesParams struct {
-	GuildID  snowflake.ID
+	GuildID  *snowflake.ID
 	TargetID snowflake.ID
 }
 
@@ -126,6 +223,22 @@ type DeleteTargetOverwritesParams struct {
 func (q *Queries) DeleteTargetOverwrites(ctx context.Context, db DBTX, arg DeleteTargetOverwritesParams) error {
 	_, err := db.Exec(ctx, deleteTargetOverwrites, arg.GuildID, arg.TargetID)
 	return err
+}
+
+const directChannelOfPair = `-- name: DirectChannelOfPair :one
+SELECT channel_id FROM direct_channel_pairs WHERE low_id = $1 AND high_id = $2
+`
+
+type DirectChannelOfPairParams struct {
+	LowID  int64
+	HighID int64
+}
+
+func (q *Queries) DirectChannelOfPair(ctx context.Context, db DBTX, arg DirectChannelOfPairParams) (int64, error) {
+	row := db.QueryRow(ctx, directChannelOfPair, arg.LowID, arg.HighID)
+	var channel_id int64
+	err := row.Scan(&channel_id)
+	return channel_id, err
 }
 
 const dropReadStates = `-- name: DropReadStates :exec
@@ -149,10 +262,10 @@ func (q *Queries) DropReadStates(ctx context.Context, db DBTX, arg DropReadState
 }
 
 const guildChannels = `-- name: GuildChannels :many
-SELECT id, guild_id, type, name, topic, parent_id, position, permission_synced, created_at, last_message_id FROM channels WHERE guild_id = $1 ORDER BY position, id
+SELECT id, guild_id, type, name, topic, parent_id, position, permission_synced, created_at, last_message_id, owner_id, position_parent_id FROM channels WHERE guild_id = $1 ORDER BY position, id
 `
 
-func (q *Queries) GuildChannels(ctx context.Context, db DBTX, guildID snowflake.ID) ([]Channel, error) {
+func (q *Queries) GuildChannels(ctx context.Context, db DBTX, guildID *snowflake.ID) ([]Channel, error) {
 	rows, err := db.Query(ctx, guildChannels, guildID)
 	if err != nil {
 		return nil, err
@@ -172,6 +285,8 @@ func (q *Queries) GuildChannels(ctx context.Context, db DBTX, guildID snowflake.
 			&i.PermissionSynced,
 			&i.CreatedAt,
 			&i.LastMessageID,
+			&i.OwnerID,
+			&i.PositionParentID,
 		); err != nil {
 			return nil, err
 		}
@@ -190,7 +305,7 @@ WHERE channels.guild_id = $1
 ORDER BY overwrites.channel_id, overwrites.target_id
 `
 
-func (q *Queries) GuildOverwrites(ctx context.Context, db DBTX, guildID snowflake.ID) ([]Overwrite, error) {
+func (q *Queries) GuildOverwrites(ctx context.Context, db DBTX, guildID *snowflake.ID) ([]Overwrite, error) {
 	rows, err := db.Query(ctx, guildOverwrites, guildID)
 	if err != nil {
 		return nil, err
@@ -270,6 +385,125 @@ func (q *Queries) InsertOverwrites(ctx context.Context, db DBTX, arg InsertOverw
 	return err
 }
 
+const isPrivateRecipient = `-- name: IsPrivateRecipient :one
+SELECT EXISTS (SELECT 1 FROM channel_recipients WHERE channel_id = $1 AND user_id = $2)
+`
+
+type IsPrivateRecipientParams struct {
+	ChannelID int64
+	UserID    int64
+}
+
+func (q *Queries) IsPrivateRecipient(ctx context.Context, db DBTX, arg IsPrivateRecipientParams) (bool, error) {
+	row := db.QueryRow(ctx, isPrivateRecipient, arg.ChannelID, arg.UserID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const lockDirectPair = `-- name: LockDirectPair :exec
+SELECT pg_advisory_xact_lock(hashtextextended(
+    'zazzzor.dm:' || $1::bigint || ':' || $2::bigint, 0))
+`
+
+type LockDirectPairParams struct {
+	LowID  int64
+	HighID int64
+}
+
+func (q *Queries) LockDirectPair(ctx context.Context, db DBTX, arg LockDirectPairParams) error {
+	_, err := db.Exec(ctx, lockDirectPair, arg.LowID, arg.HighID)
+	return err
+}
+
+const lockPrivateAccounts = `-- name: LockPrivateAccounts :many
+SELECT id FROM users WHERE id = ANY($1::bigint[]) ORDER BY id FOR NO KEY UPDATE
+`
+
+// Same ordered account locks as relationship writes, plus group quotas.
+func (q *Queries) LockPrivateAccounts(ctx context.Context, db DBTX, userIds []int64) ([]int64, error) {
+	rows, err := db.Query(ctx, lockPrivateAccounts, userIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockPrivateChannel = `-- name: LockPrivateChannel :one
+SELECT id, guild_id, type, name, topic, parent_id, position, permission_synced, created_at, last_message_id, owner_id, position_parent_id FROM channels WHERE id = $1 AND guild_id IS NULL FOR NO KEY UPDATE
+`
+
+func (q *Queries) LockPrivateChannel(ctx context.Context, db DBTX, id snowflake.ID) (Channel, error) {
+	row := db.QueryRow(ctx, lockPrivateChannel, id)
+	var i Channel
+	err := row.Scan(
+		&i.ID,
+		&i.GuildID,
+		&i.Type,
+		&i.Name,
+		&i.Topic,
+		&i.ParentID,
+		&i.Position,
+		&i.PermissionSynced,
+		&i.CreatedAt,
+		&i.LastMessageID,
+		&i.OwnerID,
+		&i.PositionParentID,
+	)
+	return i, err
+}
+
+const openPrivateChannels = `-- name: OpenPrivateChannels :many
+SELECT c.id, c.guild_id, c.type, c.name, c.topic, c.parent_id, c.position, c.permission_synced, c.created_at, c.last_message_id, c.owner_id, c.position_parent_id FROM channels c JOIN channel_recipients r ON c.id = r.channel_id
+WHERE r.user_id = $1 AND NOT r.closed
+ORDER BY c.last_message_id DESC NULLS LAST, c.id DESC
+`
+
+func (q *Queries) OpenPrivateChannels(ctx context.Context, db DBTX, userID int64) ([]Channel, error) {
+	rows, err := db.Query(ctx, openPrivateChannels, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Channel
+	for rows.Next() {
+		var i Channel
+		if err := rows.Scan(
+			&i.ID,
+			&i.GuildID,
+			&i.Type,
+			&i.Name,
+			&i.Topic,
+			&i.ParentID,
+			&i.Position,
+			&i.PermissionSynced,
+			&i.CreatedAt,
+			&i.LastMessageID,
+			&i.OwnerID,
+			&i.PositionParentID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const overwritesOf = `-- name: OverwritesOf :many
 SELECT channel_id, target_id, target_type, allow, deny FROM overwrites
 WHERE channel_id = ANY($1::bigint[])
@@ -303,6 +537,97 @@ func (q *Queries) OverwritesOf(ctx context.Context, db DBTX, channelIds []int64)
 	return items, nil
 }
 
+const privateProfiles = `-- name: PrivateProfiles :many
+SELECT r.channel_id, u.id, u.username, u.display_name, u.avatar_hash, u.created_at
+FROM channel_recipients r JOIN users u ON r.user_id = u.id
+WHERE r.channel_id = ANY($1::bigint[])
+ORDER BY r.channel_id, r.joined_at, r.user_id
+`
+
+type PrivateProfilesRow struct {
+	ChannelID   int64
+	ID          int64
+	Username    string
+	DisplayName string
+	AvatarHash  *string
+	CreatedAt   time.Time
+}
+
+func (q *Queries) PrivateProfiles(ctx context.Context, db DBTX, channelIds []int64) ([]PrivateProfilesRow, error) {
+	rows, err := db.Query(ctx, privateProfiles, channelIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PrivateProfilesRow
+	for rows.Next() {
+		var i PrivateProfilesRow
+		if err := rows.Scan(
+			&i.ChannelID,
+			&i.ID,
+			&i.Username,
+			&i.DisplayName,
+			&i.AvatarHash,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const privateRecipientIDs = `-- name: PrivateRecipientIDs :many
+SELECT user_id FROM channel_recipients WHERE channel_id = $1 ORDER BY user_id
+`
+
+func (q *Queries) PrivateRecipientIDs(ctx context.Context, db DBTX, channelID int64) ([]int64, error) {
+	rows, err := db.Query(ctx, privateRecipientIDs, channelID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var user_id int64
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const reopenPrivateRecipients = `-- name: ReopenPrivateRecipients :many
+UPDATE channel_recipients SET closed = false WHERE channel_id = $1 AND closed RETURNING user_id
+`
+
+func (q *Queries) ReopenPrivateRecipients(ctx context.Context, db DBTX, channelID int64) ([]int64, error) {
+	rows, err := db.Query(ctx, reopenPrivateRecipients, channelID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var user_id int64
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const seedReadStates = `-- name: SeedReadStates :exec
 INSERT INTO read_states (user_id, channel_id, guild_id, last_read_id, mention_count)
 SELECT $1::bigint, c.id, c.guild_id, COALESCE(c.last_message_id, 0), 0
@@ -322,7 +647,7 @@ func (q *Queries) SeedReadStates(ctx context.Context, db DBTX, arg SeedReadState
 }
 
 const setChannelInfo = `-- name: SetChannelInfo :exec
-UPDATE channels SET name = $1, topic = $2 WHERE id = $3
+UPDATE channels SET name = $1::text, topic = $2 WHERE id = $3
 `
 
 type SetChannelInfoParams struct {
@@ -347,7 +672,7 @@ WHERE channels.guild_id = $1 AND channels.id = new.id
 `
 
 type SetChannelLayoutParams struct {
-	GuildID   snowflake.ID
+	GuildID   *snowflake.ID
 	Ids       []int64
 	Positions []int32
 	ParentIds []int64
@@ -365,4 +690,23 @@ func (q *Queries) SetChannelLayout(ctx context.Context, db DBTX, arg SetChannelL
 		arg.Synced,
 	)
 	return err
+}
+
+const setDirectClosed = `-- name: SetDirectClosed :execrows
+UPDATE channel_recipients SET closed = $1
+WHERE channel_id = $2 AND user_id = $3 AND closed <> $1
+`
+
+type SetDirectClosedParams struct {
+	Closed    bool
+	ChannelID int64
+	UserID    int64
+}
+
+func (q *Queries) SetDirectClosed(ctx context.Context, db DBTX, arg SetDirectClosedParams) (int64, error) {
+	result, err := db.Exec(ctx, setDirectClosed, arg.Closed, arg.ChannelID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

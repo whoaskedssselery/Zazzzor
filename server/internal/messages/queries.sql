@@ -123,14 +123,14 @@ DELETE FROM message_mention_recipients WHERE message_id = @message_id;
 
 -- name: IncrementMentions :exec
 INSERT INTO read_states (user_id, channel_id, guild_id, last_read_id, mention_count)
-SELECT user_id, @channel_id, @guild_id, 0, 1
+SELECT user_id, @channel_id, sqlc.narg(guild_id)::bigint, 0, 1
 FROM unnest(@user_ids::bigint[]) AS target(user_id)
 ON CONFLICT (user_id, channel_id) DO UPDATE SET mention_count = read_states.mention_count + 1
 WHERE read_states.last_read_id < @message_id::bigint;
 
 -- name: AdvanceReadStates :many
 INSERT INTO read_states (user_id, guild_id, channel_id, last_read_id, mention_count)
-SELECT @user_id, @guild_id, target.channel_id, target.message_id,
+SELECT @user_id, sqlc.narg(guild_id)::bigint, target.channel_id, target.message_id,
     (SELECT count(*) FROM messages AS m
         JOIN message_mention_recipients AS r ON r.message_id = m.id
         WHERE m.channel_id = target.channel_id AND m.id > target.message_id AND r.user_id = @user_id)
