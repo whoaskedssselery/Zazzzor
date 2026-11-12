@@ -158,7 +158,8 @@ export const useMentionAlerts = (): void => {
           openChannelId: openChannelOf(router.state.location.pathname),
           channelId: m.channel_id,
         });
-        if (alert === null) return;
+        // «Не беспокоить» silences every alert; the counts still show.
+        if (alert === null || s.me?.status === "dnd") return;
         const prefs = getNotifyPrefs();
         if (alert.sound && prefs.sound) playMentionSound();
         if (!alert.desktop || !prefs.desktop || !("Notification" in window)) return;

@@ -1,9 +1,10 @@
 import { useNavigate } from "@tanstack/react-router";
 import { HeadphoneOff, Headphones, Mic, MicOff, Settings } from "lucide-react";
 import type { CSSProperties } from "react";
-import { useConnectionStatus } from "@/entities/guild";
+import { PRESENCE_LABEL, useConnectionStatus } from "@/entities/guild";
 import { useSession } from "@/entities/session";
 import { LogoutButton } from "@/features/auth";
+import { StatusMenu } from "@/features/edit-profile";
 import { useSelfSwitches } from "@/features/voice-call";
 import { Avatar, cn, IconButton } from "@/shared/ui";
 
@@ -12,33 +13,42 @@ export { MODERATOR_DEAFENED, MODERATOR_MUTED } from "@/features/voice-call";
 /**
  * The signed-in user at the foot of the channel list: avatar with presence,
  * name, status, then the microphone and sound switches, sign-out and the user
- * settings. The user's own presence is the gateway's: online while connected
- * (the server tells others, not the user). The switches work outside a call
+ * settings. The presence shown is the status the user chose while the
+ * gateway is connected, offline otherwise; a click on it opens the status
+ * menu. Their status line, if any, replaces the status text. The switches work outside a call
  * too, as in Discord; a switch a moderator turned off is locked.
  */
 export const UserPanel = () => {
   const { user } = useSession();
-  const online = useConnectionStatus() === "ready";
+  const connected = useConnectionStatus() === "ready";
   const navigate = useNavigate();
   const { mic, sound } = useSelfSwitches();
   if (!user) return null;
+  const shown = !connected || user.status === "invisible" ? "offline" : user.status;
+  const statusText = connected && user.status === "invisible" ? "Невидимка" : PRESENCE_LABEL[shown];
   return (
     <section
       aria-label="Ваш профиль"
       className="flex h-(--user-panel-height) shrink-0 items-center gap-1 bg-panel px-2"
       style={{ "--avatar-cutout": "var(--bg-panel)" } as CSSProperties}
     >
-      <div className="flex min-w-0 flex-1 items-center gap-2 py-1 pr-1 pl-0.5">
-        <Avatar name={user.display_name} src={user.avatar_url} size={32} status={online ? "online" : "offline"} />
-        <span className="min-w-0">
-          <span data-user-name className="block truncate text-sm leading-4 font-semibold">
-            {user.display_name}
+      <StatusMenu user={user}>
+        <button
+          type="button"
+          aria-label={`Статус: ${statusText}`}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md py-1 pr-1 pl-0.5 text-left transition-colors duration-(--duration-fast) hover:bg-hover data-[state=open]:bg-selected"
+        >
+          <Avatar name={user.display_name} src={user.avatar_url} size={32} status={shown} />
+          <span className="min-w-0">
+            <span data-user-name className="block truncate text-sm leading-4 font-semibold">
+              {user.display_name}
+            </span>
+            <span data-user-status className="block truncate text-xs text-fg-faint">
+              {connected && user.custom_status !== null ? user.custom_status : statusText}
+            </span>
           </span>
-          <span data-user-status className="block truncate text-xs text-fg-faint">
-            {online ? "В сети" : "Не в сети"}
-          </span>
-        </span>
-      </div>
+        </button>
+      </StatusMenu>
       <IconButton
         label={mic.label}
         icon={mic.off ? MicOff : Mic}
