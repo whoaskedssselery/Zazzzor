@@ -6,6 +6,7 @@ import {
   makeGuildState,
   makeMember,
   makeReady,
+  makeRelationship,
   makeRole,
   makeUser,
 } from "@/shared/test";
@@ -148,6 +149,27 @@ describe("applyEvent", () => {
     const next = applyTwice(ready(), "GUILD_DELETE", { id: G1 });
     expect(next.guilds[G1]).toBeUndefined();
     expect(next.order).toEqual([G2]);
+  });
+
+  it("READY and RELATIONSHIP_ADD hold the user's ties by the other user's ID", () => {
+    const s0 = applyReady({ ...makeReady(me), relationships: [makeRelationship(petya, 3)] });
+    expect(s0.relationships[petya.id]?.type).toBe(3);
+    const s1 = applyTwice(s0, "RELATIONSHIP_ADD", makeRelationship(petya, 1));
+    expect(s1.relationships[petya.id]?.type).toBe(1);
+  });
+
+  it("RELATIONSHIP_REMOVE drops only the tie it names", () => {
+    const s0 = applyReady({ ...makeReady(me), relationships: [makeRelationship(petya, 1)] });
+    // A late removal of the request that became this friendship changes nothing.
+    expect(applyEvent(s0, "RELATIONSHIP_REMOVE", { id: petya.id, type: 3 })).toBe(s0);
+    const s1 = applyTwice(s0, "RELATIONSHIP_REMOVE", { id: petya.id, type: 1 });
+    expect(s1.relationships).toEqual({});
+  });
+
+  it("USER_UPDATE renames a friend outside any shared server", () => {
+    const s0 = applyReady({ ...makeReady(me), relationships: [makeRelationship(masha, 1)] });
+    const s1 = applyTwice(s0, "USER_UPDATE", { ...masha, display_name: "Мария" });
+    expect(s1.relationships[masha.id]?.user.display_name).toBe("Мария");
   });
 
   it("GUILD_EMOJIS_UPDATE replaces the server's emoji with the list it carries", () => {

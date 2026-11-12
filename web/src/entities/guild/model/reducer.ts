@@ -11,6 +11,15 @@ export type GuildState = S["GuildState"];
 export type GuildEmoji = S["GuildEmoji"];
 export type ReadyPayload = S["GatewayReady"];
 export type PresenceStatus = S["Presence"]["status"];
+/**
+ * The user's tie to someone else: a friend, someone they blocked, or a
+ * friend request either way (`RELATIONSHIP`).
+ */
+export type Relationship = S["Relationship"];
+
+/** Relationship types, as Discord numbers them. */
+export const RELATIONSHIP = { FRIEND: 1, BLOCKED: 2, INCOMING: 3, OUTGOING: 4 } as const;
+
 /** Someone in a voice channel; `left` exists only on the event. */
 export type VoiceState = Omit<S["VoiceState"], "left">;
 
@@ -51,9 +60,11 @@ export interface GuildsState {
   order: string[];
   /** Users seen online or offline; anyone missing is offline. */
   presences: Record<string, PresenceStatus>;
+  /** The user's friends, blocks and requests, by the other user's ID. */
+  relationships: Record<string, Relationship>;
 }
 
-export const EMPTY_GUILDS: GuildsState = { me: null, guilds: {}, order: [], presences: {} };
+export const EMPTY_GUILDS: GuildsState = { me: null, guilds: {}, order: [], presences: {}, relationships: {} };
 
 const byId = <T extends { id: string }>(items: T[]): Record<string, T> =>
   Object.fromEntries(items.map((item) => [item.id, item]));
@@ -100,7 +111,7 @@ export function applyReady(d: ReadyPayload): GuildsState {
     presences = presencesOf(g, presences);
   }
   for (const p of d.presences) presences[p.user_id] = p.status;
-  return { me: d.user, guilds, order, presences };
+  return { me: d.user, guilds, order, presences, relationships: byId(d.relationships) };
 }
 
 /** A server whole (GUILD_CREATE, GUILD_SYNC): replaced if held, else added at the end. */
@@ -260,11 +271,19 @@ const handlers: Handlers = {
     })),
   MESSAGE_ACK: (s, r) => advanceRead(s, r.channel_id, { lastReadId: r.last_read_id, mentions: r.mention_count }),
   PRESENCE_UPDATE: (s, p) => ({ ...s, presences: { ...s.presences, [p.user_id]: p.status } }),
-  USER_UPDATE: (s, user) => ({
-    ...s,
-    me: s.me?.id === user.id ? user : s.me,
-    guilds: Object.fromEntries(Object.entries(s.guilds).map(([id, e]) => [id, renameUser(e, user)])),
-  }),
+  USER_UPDATE: (s, user) => {
+    const held = s.relationships[user.id];
+    return {
+      ...s,
+      me: s.me?.id === user.id ? user : s.me,
+      guilds: Object.fromEntries(Object.entries(s.guilds).map(([id, e]) => [id, renameUser(e, user)])),
+      relationships: held ? { ...s.relationships, [user.id]: { ...held, user } } : s.relationships,
+    };
+  },
+  RELATIONSHIP_ADD: (s, r) => ({ ...s, relationships: { ...s.relationships, [r.id]: r } }),
+  // Only the tie the event names: a request accepted meanwhile is a friendship now, and stays.
+  RELATIONSHIP_REMOVE: (s, d) =>
+    s.relationships[d.id]?.type === d.type ? { ...s, relationships: without(s.relationships, d.id) } : s,
   VOICE_STATE_UPDATE: (s, { left, ...v }) =>
     updateGuild(s, v.guild_id, (e) => {
       if (!left) return { ...e, voice: { ...e.voice, [v.user_id]: v } };

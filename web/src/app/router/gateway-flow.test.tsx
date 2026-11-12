@@ -12,7 +12,7 @@ describe("gateway", () => {
   it("connects once signed in and says «Подключение…» until READY", async () => {
     server.use(sessionHandler(testUser));
     renderApp("/channels/@me");
-    await screen.findByText("Выберите сервер слева или создайте свой");
+    await screen.findByRole("heading", { level: 1, name: "Друзья" });
     // The default gateway of the tests accepts and never says HELLO.
     expect(banner().textContent).toBe("Подключение…");
   });

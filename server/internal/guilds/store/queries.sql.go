@@ -909,14 +909,15 @@ func (q *Queries) MembersWithRoles(ctx context.Context, db DBTX, guildID snowfla
 }
 
 const peerIDs = `-- name: PeerIDs :many
-SELECT DISTINCT other.user_id FROM members AS mine
+SELECT other.user_id FROM members AS mine
 JOIN members AS other ON other.guild_id = mine.guild_id
 WHERE mine.user_id = $1
-ORDER BY other.user_id
+UNION
+SELECT rel.other_id FROM relationships AS rel WHERE rel.user_id = $1 AND rel.type = 1
+ORDER BY user_id
 `
 
-// Everyone sharing at least one guild with user_id (user_id included when
-// it is in any guild), ascending.
+// Everyone sharing a guild or a friendship with user_id, ascending.
 func (q *Queries) PeerIDs(ctx context.Context, db DBTX, userID snowflake.ID) ([]snowflake.ID, error) {
 	rows, err := db.Query(ctx, peerIDs, userID)
 	if err != nil {
@@ -1141,10 +1142,13 @@ func (q *Queries) SetRolePositions(ctx context.Context, db DBTX, arg SetRolePosi
 }
 
 const sharedPeers = `-- name: SharedPeers :many
-SELECT DISTINCT mine.user_id, other.user_id AS peer_id FROM members AS mine
+SELECT mine.user_id, other.user_id AS peer_id FROM members AS mine
 JOIN members AS other ON other.guild_id = mine.guild_id
 WHERE mine.user_id = ANY($1::bigint[]) AND other.user_id = ANY($2::bigint[])
-ORDER BY mine.user_id, peer_id
+UNION
+SELECT rel.user_id, rel.other_id FROM relationships AS rel
+WHERE rel.user_id = ANY($1::bigint[]) AND rel.other_id = ANY($2::bigint[]) AND rel.type = 1
+ORDER BY user_id, peer_id
 `
 
 type SharedPeersParams struct {
@@ -1157,8 +1161,7 @@ type SharedPeersRow struct {
 	PeerID snowflake.ID
 }
 
-// The pairs (user, peer) with user among user_ids and peer among peer_ids
-// that share at least one guild (a user is its own peer when in a guild).
+// The pairs (user, peer) that share a guild or a friendship.
 func (q *Queries) SharedPeers(ctx context.Context, db DBTX, arg SharedPeersParams) ([]SharedPeersRow, error) {
 	rows, err := db.Query(ctx, sharedPeers, arg.UserIds, arg.PeerIds)
 	if err != nil {

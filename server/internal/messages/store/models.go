@@ -167,6 +167,18 @@ type ReadState struct {
 	MentionCount int32
 }
 
+type Relationship struct {
+	UserID  int64
+	OtherID int64
+	Type    int16
+	Since   time.Time
+}
+
+type RelationshipRequestWindow struct {
+	UserID   int64
+	Attempts []time.Time
+}
+
 type Role struct {
 	ID          int64
 	GuildID     int64

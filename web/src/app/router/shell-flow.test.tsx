@@ -63,14 +63,14 @@ afterEach(() => {
 });
 
 describe("app shell", () => {
-  it("home says where to start, with the buttons to create and to join a server", async () => {
+  it("home is the friends screen, and offers to add one when there are none", async () => {
     signedIn([]);
     renderApp("/channels/@me");
     const main = await screen.findByRole("main");
-    expect(await within(main).findByText("Выберите сервер слева или создайте свой")).toBeTruthy();
-    expect(within(main).getByRole("button", { name: "Создать сервер" })).toBeTruthy();
-    expect(within(main).getByRole("button", { name: "Присоединиться к серверу" })).toBeTruthy();
-    expect(within(main).getByRole("heading", { level: 1 }).textContent).toBe("Выберите сервер слева или создайте свой");
+    expect(await within(main).findByRole("heading", { level: 1, name: "Друзья" })).toBeTruthy();
+    expect(within(main).getByRole("tab", { name: "В сети", selected: true })).toBeTruthy();
+    expect(within(main).getByText("Никого из друзей сейчас нет в сети.")).toBeTruthy();
+    expect(within(main).getByRole("button", { name: "Добавить в друзья" })).toBeTruthy();
     expect(within(main).queryByText("Главная")).toBeNull();
   });
 

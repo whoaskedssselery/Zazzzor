@@ -11,6 +11,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
+	"github.com/whoaskedssselery/zazzzor/server/internal/relationships"
 )
 
 // dispatchLoop consumes the bus in order. An Overflow (the dispatcher fell
@@ -151,11 +152,31 @@ func (g *Gateway) dispatch(ctx context.Context, e events.Event) {
 	switch e.Type {
 	case events.GuildMemberAdd:
 		g.joinPresence(e, recipients, conns)
+	case events.RelationshipAdd:
+		g.friendPresence(ctx, e, recipients, conns)
 	case events.GuildMemberRemove:
 		g.leavePresence(ctx, e, recipients, conns)
 	case events.GuildDelete:
 		g.deletePresence(ctx, e, recipients, conns)
 	}
+}
+
+// friendPresence follows a private friendship upsert with the new friend's
+// current presence. The reciprocal upsert takes care of the other side.
+func (g *Gateway) friendPresence(ctx context.Context, e events.Event, to []snowflake.ID, conns map[snowflake.ID][]*conn) {
+	rel, ok := e.Payload.(relationships.Relationship)
+	if !ok || rel.Type != relationships.Friend || len(g.OnlineAmong([]snowflake.ID{rel.ID})) == 0 {
+		return
+	}
+	// A queued relationship event can outlive the friendship. Resolve
+	// the current audience after sampling presence, as for normal updates.
+	peers, err := g.opts.Guilds.PeerIDs(ctx, rel.ID)
+	if err != nil {
+		g.dropped(e, fmt.Errorf("gateway: resolve friend presence: %w", err))
+		return
+	}
+	eligible := slices.DeleteFunc(slices.Clone(to), func(id snowflake.ID) bool { return !slices.Contains(peers, id) })
+	g.sendPresence(Presence{UserID: rel.ID, Status: StatusOnline}, eligible, e.ExcludeUserID, conns)
 }
 
 // joinPresence follows GUILD_MEMBER_ADD: if the new member is online, the

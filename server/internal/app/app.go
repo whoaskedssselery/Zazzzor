@@ -27,6 +27,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/ratelimit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
+	"github.com/whoaskedssselery/zazzzor/server/internal/relationships"
 	"github.com/whoaskedssselery/zazzzor/server/internal/users"
 	"github.com/whoaskedssselery/zazzzor/server/internal/voice"
 )
@@ -40,15 +41,16 @@ var (
 
 // Modules are the domain modules served by the API.
 type Modules struct {
-	presence *atomic.Pointer[gateway.Gateway]
-	Auth     *auth.Service
-	Users    *users.Service
-	Guilds   *guilds.Service
-	Channels *channels.Service
-	Invites  *invites.Service
-	Messages *messages.Service
-	Admin    *admin.Service
-	Files    *files.Disk
+	presence      *atomic.Pointer[gateway.Gateway]
+	Auth          *auth.Service
+	Users         *users.Service
+	Relationships *relationships.Service
+	Guilds        *guilds.Service
+	Channels      *channels.Service
+	Invites       *invites.Service
+	Messages      *messages.Service
+	Admin         *admin.Service
+	Files         *files.Disk
 	// Voice is unavailable (every operation 503) without LiveKit
 	// credentials; its Run must be started by the caller.
 	Voice *voice.Service
@@ -101,17 +103,18 @@ func NewModules(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator,
 	}
 	cleanup.voice = voice.NewService(vo)
 	return &Modules{
-		presence:    presence,
-		Auth:        authSvc,
-		Users:       users.NewService(users.Options{Accounts: authSvc, Files: disk, Publisher: pub}),
-		Guilds:      guildSvc,
-		Channels:    channelSvc,
-		Invites:     invites.NewService(invites.Options{Pool: pool, Channels: channelSvc, Guilds: guildSvc, Users: authSvc}),
-		Messages:    messageSvc,
-		Admin:       admin.NewService(admin.Options{Settings: settings, Accounts: authSvc}),
-		Files:       disk,
-		Voice:       cleanup.voice,
-		ReadLimiter: ratelimit.New(readRate, readBurst, readTTL),
+		presence:      presence,
+		Auth:          authSvc,
+		Users:         users.NewService(users.Options{Accounts: authSvc, Files: disk, Publisher: pub}),
+		Relationships: relationships.NewService(relationships.Options{Pool: pool, Publisher: pub}),
+		Guilds:        guildSvc,
+		Channels:      channelSvc,
+		Invites:       invites.NewService(invites.Options{Pool: pool, Channels: channelSvc, Guilds: guildSvc, Users: authSvc}),
+		Messages:      messageSvc,
+		Admin:         admin.NewService(admin.Options{Settings: settings, Accounts: authSvc}),
+		Files:         disk,
+		Voice:         cleanup.voice,
+		ReadLimiter:   ratelimit.New(readRate, readBurst, readTTL),
 	}, nil
 }
 
@@ -135,6 +138,7 @@ func (m *Modules) NewGateway(bus *events.Bus, cfg config.Config, logger *slog.Lo
 	opts.Logger = logger
 	opts.Registerer = reg
 	opts.ReadStates = m.Messages
+	opts.Relationships = m.Relationships
 	gw := gateway.New(opts)
 	if m.presence != nil {
 		m.presence.Store(gw)
@@ -157,6 +161,7 @@ func (m *Modules) Routes(r chi.Router, gw *gateway.Gateway) {
 		r.Use(auth.Middleware(m.Auth), auth.LimitReads(m.ReadLimiter))
 		auth.Mount(r, m.Auth)
 		users.Mount(r, m.Users)
+		relationships.Mount(r, m.Relationships)
 		admin.Mount(r, m.Admin)
 		guilds.Mount(r, m.Guilds)
 		channels.Mount(r, m.Channels)

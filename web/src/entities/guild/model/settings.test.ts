@@ -17,7 +17,7 @@ const entryWith = (perms: bigint, userId = me.id) => {
     members: [mine, makeMember(owner)],
     my_member: mine,
   });
-  const entry = applyReady({ user: me, guilds: [state], presences: [], read_states: [] }).guilds[G];
+  const entry = applyReady({ user: me, guilds: [state], presences: [], read_states: [], relationships: [] }).guilds[G];
   if (!entry) throw new Error("no entry");
   return { entry, userId };
 };

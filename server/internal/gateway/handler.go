@@ -23,6 +23,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/ratelimit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
+	"github.com/whoaskedssselery/zazzzor/server/internal/relationships"
 	"github.com/whoaskedssselery/zazzzor/server/internal/voice"
 )
 
@@ -52,6 +53,11 @@ type ReadStates interface {
 	ReadStates(ctx context.Context, userID snowflake.ID, channelIDs []snowflake.ID) ([]messages.ReadState, error)
 }
 
+// RelationshipReader reads the signed-in user's READY relationships.
+type RelationshipReader interface {
+	List(context.Context, snowflake.ID) ([]relationships.Relationship, error)
+}
+
 // Options configures a Gateway. Auth, Guilds, Channels and Bus are
 // required; zero tuning fields take the defaults.
 type Options struct {
@@ -64,6 +70,8 @@ type Options struct {
 	Voice VoiceStates
 	// ReadStates fills snapshot read_states; nil leaves them empty.
 	ReadStates ReadStates
+	// Relationships fills READY relationships. Nil leaves the list empty.
+	Relationships RelationshipReader
 	// AllowedOrigins are the only Origin values accepted for the upgrade.
 	AllowedOrigins []string
 	// Logger is for failures; nil discards.
