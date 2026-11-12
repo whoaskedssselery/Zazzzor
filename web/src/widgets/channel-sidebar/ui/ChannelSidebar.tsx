@@ -12,6 +12,7 @@ import {
   PlusCircle,
   Settings,
   UserPlus,
+  Video,
   Volume2,
 } from "lucide-react";
 import { createContext, type DragEvent, type KeyboardEvent, type ReactNode, use, useState } from "react";
@@ -280,6 +281,9 @@ const VoiceMember = ({ entry, state, speaking }: { entry: GuildEntry; state: Voi
           <Avatar name={view.name} src={view.avatarUrl} size={24} />
         </span>
         <span className={cn("min-w-0 flex-1 truncate", speaking && "text-fg")}>{view.name}</span>
+        {state.self_video && (
+          <Video role="img" aria-label="Камера включена" className="size-4 shrink-0 text-fg-muted" />
+        )}
         {state.self_stream && <Badge variant="live">В ЭФИРЕ</Badge>}
         {(state.mute || state.self_mute) && (
           <VoiceFlag icon={MicOff} label="Микрофон выключен" byModerator={state.mute} />

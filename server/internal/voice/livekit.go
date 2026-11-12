@@ -32,6 +32,8 @@ type Participant struct {
 	Join string
 	// Screens are the SIDs of the screen share tracks it publishes.
 	Screens []string
+	// Cameras are the SIDs of the camera tracks it publishes.
+	Cameras []string
 }
 
 // RoomClient is the part of the LiveKit server API the voice service
@@ -132,8 +134,11 @@ func participantOf(p *livekit.ParticipantInfo) Participant {
 		out.JoinedAt = time.Unix(p.GetJoinedAt(), 0).UTC()
 	}
 	for _, t := range p.GetTracks() {
-		if isScreen(t) {
+		switch {
+		case isScreen(t):
 			out.Screens = append(out.Screens, t.GetSid())
+		case isCamera(t):
+			out.Cameras = append(out.Cameras, t.GetSid())
 		}
 	}
 	return out
@@ -142,3 +147,6 @@ func participantOf(p *livekit.ParticipantInfo) Participant {
 // isScreen reports whether t is the video of a screen share; its audio
 // does not count.
 func isScreen(t *livekit.TrackInfo) bool { return t.GetSource() == livekit.TrackSource_SCREEN_SHARE }
+
+// isCamera reports whether t is the video of a camera.
+func isCamera(t *livekit.TrackInfo) bool { return t.GetSource() == livekit.TrackSource_CAMERA }

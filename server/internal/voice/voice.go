@@ -111,11 +111,12 @@ type State struct {
 	GuildID   snowflake.ID
 	ChannelID snowflake.ID
 	UserID    snowflake.ID
-	// SelfMute and SelfDeaf are what the client says; SelfStream is
-	// whether LiveKit has a screen share of the user.
+	// SelfMute and SelfDeaf are what the client says; SelfStream and
+	// SelfVideo are whether LiveKit has a screen share or a camera of the user.
 	SelfMute   bool
 	SelfDeaf   bool
 	SelfStream bool
+	SelfVideo  bool
 	// Mute and Deaf are imposed by moderators within this guild.
 	Mute     bool
 	Deaf     bool
@@ -130,6 +131,7 @@ type PublicState struct {
 	SelfMute   bool         `json:"self_mute"`
 	SelfDeaf   bool         `json:"self_deaf"`
 	SelfStream bool         `json:"self_stream"`
+	SelfVideo  bool         `json:"self_video"`
 	Mute       bool         `json:"mute"`
 	Deaf       bool         `json:"deaf"`
 	JoinedAt   string       `json:"joined_at"`
@@ -138,7 +140,7 @@ type PublicState struct {
 // Public returns the JSON form of st.
 func (st State) Public() PublicState {
 	return PublicState{GuildID: st.GuildID, ChannelID: st.ChannelID, UserID: st.UserID, SelfMute: st.SelfMute,
-		SelfDeaf: st.SelfDeaf, SelfStream: st.SelfStream, Mute: st.Mute, Deaf: st.Deaf,
+		SelfDeaf: st.SelfDeaf, SelfStream: st.SelfStream, SelfVideo: st.SelfVideo, Mute: st.Mute, Deaf: st.Deaf,
 		JoinedAt: httpx.FormatTime(st.JoinedAt)}
 }
 
@@ -207,8 +209,9 @@ type session struct {
 	// join is the participant's join generation; a cancelled move with no
 	// prior intent pins the user back to it.
 	join string
-	// screens are the SIDs of the screen share tracks published.
+	// screens and cameras are the SIDs of the screen share and camera tracks published.
 	screens map[string]bool
+	cameras map[string]bool
 }
 
 // intent is a user's latest join: the channel and the generation its

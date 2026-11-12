@@ -14,3 +14,7 @@ export const canRestrictOwnAudio = (): boolean =>
  */
 export const canShareScreen = (): boolean =>
   "mediaDevices" in navigator && typeof navigator.mediaDevices.getDisplayMedia === "function";
+
+/** The browser can open a camera (a secure page with getUserMedia). */
+export const canUseCamera = (): boolean =>
+  "mediaDevices" in navigator && typeof navigator.mediaDevices.getUserMedia === "function";

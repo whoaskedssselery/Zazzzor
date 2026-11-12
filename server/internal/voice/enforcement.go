@@ -192,9 +192,11 @@ func (s *Service) refreshParticipant(ctx context.Context, guildID, userID snowfl
 		return nil
 	}
 	s.touchLocked(userID)
-	if !p.Has(permissions.Stream) && captured.state.SelfStream {
+	// Losing STREAM takes the screen share and the camera, announced once.
+	if !p.Has(permissions.Stream) && (captured.state.SelfStream || captured.state.SelfVideo) {
 		captured.screens = map[string]bool{}
-		captured.state.SelfStream = false
+		captured.cameras = map[string]bool{}
+		captured.state.SelfStream, captured.state.SelfVideo = false, false
 		s.announceLocked(ctx, captured.state, false)
 	}
 	return nil

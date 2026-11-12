@@ -2900,8 +2900,9 @@ paths:
         10 minutes, with the caller's user ID as identity and display name as
         name. It may subscribe unless server-deafened; it may publish the
         microphone with `SPEAK` unless server-muted
-        and the screen share (video and audio) with `STREAM`, nothing with
-        neither, and never data, the camera or its own metadata. `url` is the
+        and the screen share (video and audio) and the camera with `STREAM`
+        (server mute and deafen leave the camera alone), nothing with
+        neither, and never data or its own metadata. `url` is the
         LiveKit signaling URL for this origin (`wss://` for an `https://`
         `Origin`, `ws://` for `http://`, same host and port).
 
@@ -4523,7 +4524,7 @@ components:
     VoiceState:
       type: object
       additionalProperties: false
-      required: [guild_id, channel_id, user_id, self_mute, self_deaf, self_stream, mute, deaf, joined_at]
+      required: [guild_id, channel_id, user_id, self_mute, self_deaf, self_stream, self_video, mute, deaf, joined_at]
       description: |
         A user in a voice channel; a user is in at most one. It is also the
         payload of VOICE_STATE_UPDATE, which adds `left`.
@@ -4543,6 +4544,9 @@ components:
         self_stream:
           type: boolean
           description: The user shares their screen (from LiveKit).
+        self_video:
+          type: boolean
+          description: The user has their camera on (from LiveKit).
         mute:
           type: boolean
           description: Server-muted in this guild; disables the microphone. Kept across voice reconnects until lifted, guild membership ends, the guild is deleted or the API restarts.
@@ -4822,7 +4826,8 @@ x-gateway:
     that guild's active participants without waiting for the periodic
     LiveKit reconciliation. Lost VIEW_CHANNEL or CONNECT removes the
     participant; lost SPEAK or STREAM revokes the corresponding publish
-    sources. Server mute and deaf restrictions remain overlaid. Failures
+    sources (STREAM: the screen share and the camera). Server mute and
+    deaf restrictions remain overlaid. Failures
     retry without blocking other participants; local changes are announced
     only after successful media enforcement, through channel viewers.
   ops:

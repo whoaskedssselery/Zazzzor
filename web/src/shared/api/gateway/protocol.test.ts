@@ -14,6 +14,7 @@ const voiceState = (over: Partial<VoiceState> = {}): VoiceState => ({
   self_mute: false,
   self_deaf: false,
   self_stream: true,
+  self_video: false,
   mute: false,
   deaf: false,
   joined_at: "2026-11-02T10:00:00Z",

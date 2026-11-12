@@ -19,6 +19,7 @@ func TestJoinGrantsFollowPermissions(t *testing.T) {
 		mic         = "microphone"
 		screen      = "screen_share"
 		screenAudio = "screen_share_audio"
+		camera      = "camera"
 	)
 	cases := []struct {
 		name    string
@@ -28,10 +29,10 @@ func TestJoinGrantsFollowPermissions(t *testing.T) {
 	}{
 		{name: "connect only", deny: permissions.Speak | permissions.Stream},
 		{name: "speak", deny: permissions.Stream, sources: []string{mic}},
-		{name: "stream", deny: permissions.Speak, sources: []string{screen, screenAudio}},
-		{name: "speak and stream", sources: []string{mic, screen, screenAudio}},
+		{name: "stream", deny: permissions.Speak, sources: []string{screen, screenAudio, camera}},
+		{name: "speak and stream", sources: []string{mic, screen, screenAudio, camera}},
 		{name: "administrator", deny: permissions.Connect | permissions.Speak | permissions.Stream, admin: true,
-			sources: []string{mic, screen, screenAudio}},
+			sources: []string{mic, screen, screenAudio, camera}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

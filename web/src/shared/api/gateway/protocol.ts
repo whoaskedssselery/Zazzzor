@@ -162,6 +162,7 @@ const voiceStateSchema: z.ZodMiniType<S["VoiceState"]> = z.object({
   self_mute: z.boolean(),
   self_deaf: z.boolean(),
   self_stream: z.boolean(),
+  self_video: z.boolean(),
   mute: z.boolean(),
   deaf: z.boolean(),
   joined_at: z.string(),

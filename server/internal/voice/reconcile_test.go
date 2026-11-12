@@ -28,13 +28,14 @@ func TestReconcileRebuildsStatesFromLiveKit(t *testing.T) {
 	joined := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
 	p := participant(a, "PA_1", joined)
 	p.Screens = []string{"TR_screen"}
+	p.Cameras = []string{"TR_cam"}
 	e.rooms.put(voice.Room{SID: "RM_1", Name: vc.ID}, p)
 	e.rooms.put(voice.Room{SID: "RM_2", Name: "connectivity"}, voice.Participant{SID: "PA_x", Identity: "tester"})
 
 	e.reconcile()
 	st, ok := e.stateOf(parseID(t, g.ID), a.id(t))
-	if !ok || st.ChannelID != vc.id(t) || !st.JoinedAt.Equal(joined) || !st.SelfStream {
-		t.Fatalf("state = %+v (%v), want alice streaming in %s since %v", st, ok, vc.ID, joined)
+	if !ok || st.ChannelID != vc.id(t) || !st.JoinedAt.Equal(joined) || !st.SelfStream || !st.SelfVideo {
+		t.Fatalf("state = %+v (%v), want alice streaming with a camera in %s since %v", st, ok, vc.ID, joined)
 	}
 	e.reconcile()
 	if n := len(e.pub.updates()); n != 1 {

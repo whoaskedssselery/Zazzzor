@@ -57,7 +57,8 @@ func TestRefreshKeepsSyncArrivingDuringWork(t *testing.T) {
 			if reads.Load() != 2 || len(s.refreshes) != 0 || !s.sessions[1].state.SelfStream {
 				t.Fatalf("newer sync lost or stale state committed: reads=%d stream=%v pending=%d", reads.Load(), s.sessions[1].state.SelfStream, len(s.refreshes))
 			}
-			if len(r.updates["1"].Sources) != 2 {
+			// The screen share, its sound and the camera.
+			if len(r.updates["1"].Sources) != 3 {
 				t.Fatalf("newest stream grants=%+v", r.updates["1"])
 			}
 		})

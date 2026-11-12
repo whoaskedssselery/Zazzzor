@@ -11,11 +11,13 @@ import {
   Room,
   RoomEvent,
   Track,
+  createLocalVideoTrack,
 } from "livekit-client";
-import type { CallLink, CallTransport, CallTransportEvents, ScreenShareResult } from "@/shared/lib";
+import type { CallLink, CallTransport, CallTransportEvents, CameraResult, ScreenShareResult } from "@/shared/lib";
 import type { VoicePrefs } from "../model/prefs";
 import { canRestrictOwnAudio, currentBrowser } from "./browser";
 import {
+  cameraOptions,
   connectOptions,
   endCause,
   microphoneOptions,
@@ -53,12 +55,21 @@ const MIC_ERRORS = new Set([
 
 const isMicError = (e: unknown): boolean => e instanceof DOMException && MIC_ERRORS.has(e.name);
 
+/** Why getUserMedia gave no camera, as the user is told. */
+const cameraFailure = (e: unknown): CameraResult => {
+  const name = e instanceof DOMException ? e.name : "";
+  if (name === "NotAllowedError" || name === "SecurityError") return { ok: false, reason: "denied" };
+  if (name === "NotFoundError" || name === "OverconstrainedError") return { ok: false, reason: "missing" };
+  return { ok: false, reason: "failed" };
+};
+
 /**
  * The call over LiveKit. Microphones are received as soon as they are
  * published; screen shares only while watched. Remote sound plays through
  * hidden audio elements, muted all at once when deafened. A screen share is
  * captured here (getDisplayMedia, for `restrictOwnAudio`) and published as
- * the ScreenShare sources.
+ * the ScreenShare sources. Cameras are received only while a tile shows
+ * them, each in the layer that fits its tile.
  */
 export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" | "noise">): CallTransport => {
   const listeners: Listeners = {
@@ -67,6 +78,8 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
     streams: new Set(),
     micDenied: new Set(),
     screenEnded: new Set(),
+    cameras: new Set(),
+    cameraEnded: new Set(),
     noise: new Set(),
   };
   const emit = <K extends keyof CallTransportEvents>(event: K, ...args: Parameters<CallTransportEvents[K]>) => {
@@ -77,12 +90,15 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
   let leaving = false;
   let listening = true;
   let screen: MediaStream | null = null;
+  let camera: LocalVideoTrack | null = null;
   /** Stops the 1080p/720p steering of the published screen share. */
   let stopSteering = () => {};
   /** After one overload DeepFilterNet3 is not tried again in this tab. */
   const noiseMemory = { overloaded: false };
   const watching = new Set<string>();
   const screens = new Map<string, HTMLVideoElement>();
+  /** The tiles showing others' cameras, and what stops following each tile's size. */
+  const cameraViews = new Map<string, { el: HTMLVideoElement; stop: () => void }>();
   const sounds = document.createElement("div");
   sounds.hidden = true;
 
@@ -97,10 +113,22 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
       .filter((p) => p.getTrackPublication(Track.Source.ScreenShare) !== undefined)
       .map((p) => p.identity);
 
-  /** Subscribes what this participant's publication should be received: microphones, and watched screens. */
+  const filming = (r: Room) =>
+    [...r.remoteParticipants.values()]
+      .filter((p) => p.getTrackPublication(Track.Source.Camera) !== undefined)
+      .map((p) => p.identity);
+
+  /** Tells the app who shares a screen and who has a camera on. */
+  const announce = (r: Room) => {
+    emit("streams", sharing(r));
+    emit("cameras", filming(r));
+  };
+
+  /** Subscribes what this participant's publication should be received: microphones, watched screens, shown cameras. */
   const follow = (pub: RemoteTrackPublication, participant: RemoteParticipant) => {
     if (pub.source === Track.Source.Microphone) pub.setSubscribed(true);
     else if (SCREEN.has(pub.source)) pub.setSubscribed(watching.has(participant.identity));
+    else if (pub.source === Track.Source.Camera) pub.setSubscribed(cameraViews.has(participant.identity));
   };
 
   /** Puts the chosen noise suppression on a new microphone track, and says what runs. */
@@ -132,6 +160,35 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
     if (el && track) track.attach(el);
   };
 
+  const showCamera = (participant: RemoteParticipant) => {
+    const view = cameraViews.get(participant.identity);
+    const track = participant.getTrackPublication(Track.Source.Camera)?.videoTrack;
+    if (view && track) track.attach(view.el);
+  };
+
+  /**
+   * Receives `participant`'s camera for a tile, in the layer that fits the
+   * tile as it is now and each time it changes size. Returns what stops
+   * following the size.
+   */
+  const subscribeCamera = (participant: RemoteParticipant, el: HTMLVideoElement): (() => void) => {
+    const pub = participant.getTrackPublication(Track.Source.Camera);
+    if (!pub) return () => {};
+    pub.setSubscribed(true);
+    const fit = () => {
+      if (el.clientWidth > 0 && el.clientHeight > 0) {
+        pub.setVideoDimensions({ width: el.clientWidth, height: el.clientHeight });
+      }
+    };
+    fit();
+    if (typeof ResizeObserver === "undefined") return () => {};
+    const observer = new ResizeObserver(fit);
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+    };
+  };
+
   const wire = (r: Room) => {
     r.on(RoomEvent.ConnectionStateChanged, (state) => {
       const link = LINK[state];
@@ -142,6 +199,8 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
         if (!leaving && room === r) {
           room = null;
           stopCapture();
+          stopCameraCapture();
+          dropCameraViews();
           sounds.replaceChildren();
           sounds.remove();
           watching.clear();
@@ -149,18 +208,24 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
         emit("link", "disconnected", leaving ? "left" : endCause(reason));
       })
       .on(RoomEvent.TrackPublished, (pub, participant) => {
-        follow(pub, participant);
-        emit("streams", sharing(r));
+        const view = cameraViews.get(participant.identity);
+        // A tile that waited for this camera (it was turned on, or came back after a reconnect).
+        if (pub.source === Track.Source.Camera && view) {
+          view.stop();
+          view.stop = subscribeCamera(participant, view.el);
+        } else follow(pub, participant);
+        announce(r);
       })
       .on(RoomEvent.TrackUnpublished, () => {
-        emit("streams", sharing(r));
+        announce(r);
       })
       .on(RoomEvent.ParticipantDisconnected, () => {
-        emit("streams", sharing(r));
+        announce(r);
       })
       .on(RoomEvent.TrackSubscribed, (track, pub, participant) => {
         playAudio(track);
         if (pub.source === Track.Source.ScreenShare) showScreen(participant);
+        if (pub.source === Track.Source.Camera) showCamera(participant);
       })
       .on(RoomEvent.TrackUnsubscribed, (track) => {
         for (const el of track.detach()) if (sounds.contains(el)) el.remove();
@@ -183,6 +248,16 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
         }
       })
       .on(RoomEvent.LocalTrackUnpublished, (pub: LocalTrackPublication) => {
+        if (pub.source === Track.Source.Camera && camera !== null) {
+          const track = camera;
+          // As for a screen: a reconnect publishes it again, the server taking it down does not.
+          setTimeout(() => {
+            if (camera !== track || r.localParticipant.getTrackPublication(Track.Source.Camera)) return;
+            stopCameraCapture();
+            emit("cameraEnded");
+          }, REPUBLISH_MS);
+          return;
+        }
         if (pub.source !== Track.Source.ScreenShare || screen === null) return;
         const stream = screen;
         // A full reconnect unpublishes every track and publishes it again; the server taking it down does not.
@@ -203,6 +278,31 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
     const stream = screen;
     screen = null;
     for (const t of stream?.getTracks() ?? []) t.stop();
+  };
+
+  /** Turns the camera off without touching the room. */
+  const stopCameraCapture = () => {
+    const track = camera;
+    camera = null;
+    track?.stop();
+  };
+
+  const unpublishCamera = async (r: Room) => {
+    const track = camera;
+    camera = null;
+    try {
+      if (track) await r.localParticipant.unpublishTrack(track);
+    } catch (e) {
+      console.warn("voice: the camera could not be unpublished", e);
+    } finally {
+      track?.stop();
+    }
+  };
+
+  /** Lets go of every camera tile: nothing is received any more. */
+  const dropCameraViews = () => {
+    for (const view of cameraViews.values()) view.stop();
+    cameraViews.clear();
   };
 
   const unpublishScreen = async (r: Room) => {
@@ -233,7 +333,7 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
       for (const participant of r.remoteParticipants.values()) {
         for (const pub of participant.trackPublications.values()) follow(pub, participant);
       }
-      emit("streams", sharing(r));
+      announce(r);
       // Joining is a click, so playback is allowed; this resumes it if a browser held it back.
       await r.startAudio().catch(() => undefined);
     },
@@ -244,10 +344,12 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
       room = null;
       leaving = true;
       await unpublishScreen(r).catch(() => undefined);
+      await unpublishCamera(r);
       await r.disconnect();
       sounds.replaceChildren();
       sounds.remove();
       watching.clear();
+      dropCameraViews();
     },
 
     async setMicrophone(on) {
@@ -339,6 +441,70 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
       // The captured stream itself, video only: the preview must not echo the shared sound.
       const video = screen?.getVideoTracks()[0];
       if (video) el.srcObject = new MediaStream([video]);
+      return () => {
+        el.srcObject = null;
+      };
+    },
+
+    async startCamera(): Promise<CameraResult> {
+      const r = room;
+      if (!r) return { ok: false, reason: "failed" };
+      if (camera) return { ok: true };
+      const { capture, publish } = cameraOptions();
+      let track: LocalVideoTrack;
+      try {
+        track = await createLocalVideoTrack(capture);
+      } catch (e) {
+        return cameraFailure(e);
+      }
+      // The call ended while the browser asked. (One request at a time is the session's: startCamera.)
+      if (room !== r) {
+        track.stop();
+        return { ok: false, reason: "failed" };
+      }
+      camera = track;
+      // Unplugged, or taken away by the system.
+      track.mediaStreamTrack.addEventListener("ended", () => {
+        if (camera !== track) return;
+        void unpublishCamera(r).then(() => {
+          emit("cameraEnded");
+        });
+      });
+      try {
+        await r.localParticipant.publishTrack(track, { ...publish, source: Track.Source.Camera });
+      } catch {
+        // Also what a voice token that does not allow the camera gives.
+        await unpublishCamera(r);
+        return { ok: false, reason: "failed" };
+      }
+      return { ok: true };
+    },
+
+    async stopCamera() {
+      if (room) await unpublishCamera(room);
+      else stopCameraCapture();
+    },
+
+    attachCamera(userId, el) {
+      const participant = room?.remoteParticipants.get(userId);
+      const view = { el, stop: () => {} };
+      cameraViews.set(userId, view);
+      if (participant) {
+        view.stop = subscribeCamera(participant, el);
+        showCamera(participant);
+      }
+      return () => {
+        view.stop();
+        if (cameraViews.get(userId) !== view) return;
+        cameraViews.delete(userId);
+        const pub = room?.remoteParticipants.get(userId)?.getTrackPublication(Track.Source.Camera);
+        pub?.videoTrack?.detach(el);
+        pub?.setSubscribed(false);
+      };
+    },
+
+    attachOwnCamera(el) {
+      if (camera) el.srcObject = new MediaStream([camera.mediaStreamTrack]);
       return () => {
         el.srcObject = null;
       };

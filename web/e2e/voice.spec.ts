@@ -139,3 +139,31 @@ test("enhanced noise suppression runs under the production CSP", async ({ browse
   else await expect(now).not.toHaveText(/загружается/, { timeout: 60_000 });
   expect(violations).toEqual([]);
 });
+
+test("a camera shows in its owner's tile", async ({ browser, browserName, people }) => {
+  test.skip(browserName === "firefox", "Firefox asks for the camera, Chromium's fake UI allows it");
+  const anna = await signUp(browser, "Аня");
+  const petr = await signUp(browser, "Пётр");
+  people.push(anna, petr);
+  const { guildId, channelId } = await createGuild(anna, "Посиделки");
+  await join(petr, await invite(anna, channelId));
+  const voice = await voiceChannel(anna, guildId);
+  await enter(anna.page, guildId, voice);
+  await enter(petr.page, guildId, voice);
+
+  await anna.page
+    .getByRole("toolbar", { name: "Управление звонком" })
+    .getByRole("button", { name: "Включить камеру" })
+    .click();
+  // Anna sees herself at once (a local preview); Petr receives her camera for her tile.
+  const own = anna.page.getByRole("listitem", { name: "Аня" }).locator("video");
+  await expect.poll(() => own.evaluate((v: HTMLVideoElement) => v.videoWidth), { timeout: 20_000 }).toBeGreaterThan(0);
+  const hers = petr.page.getByRole("listitem", { name: "Аня" }).locator("video");
+  await expect.poll(() => hers.evaluate((v: HTMLVideoElement) => v.videoWidth), { timeout: 20_000 }).toBeGreaterThan(0);
+
+  await anna.page
+    .getByRole("toolbar", { name: "Управление звонком" })
+    .getByRole("button", { name: "Выключить камеру" })
+    .click();
+  await expect(petr.page.getByRole("listitem", { name: "Аня" }).locator("video")).toHaveCount(0, { timeout: 20_000 });
+});

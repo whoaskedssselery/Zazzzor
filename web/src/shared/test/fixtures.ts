@@ -155,6 +155,7 @@ export function makeVoiceState(
     self_mute: false,
     self_deaf: false,
     self_stream: false,
+    self_video: false,
     mute: false,
     deaf: false,
     joined_at: "2026-10-23T18:00:00.000Z",

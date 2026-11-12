@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { PhoneOff } from "lucide-react";
 import { useCall } from "@/entities/call";
 import { useGuilds } from "@/entities/guild";
-import { leaveVoice, ScreenShareButton } from "@/features/voice-call";
+import { CameraButton, leaveVoice, ScreenShareButton } from "@/features/voice-call";
 import { cn, IconButton } from "@/shared/ui";
 
 const STATUS = {
@@ -41,6 +41,7 @@ export const VoicePanel = () => {
           {channel?.name ?? "Голосовой канал"} / {guild?.name ?? "Сервер"}
         </Link>
       </div>
+      <CameraButton />
       <ScreenShareButton />
       <IconButton
         label="Отключиться"

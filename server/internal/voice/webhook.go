@@ -127,8 +127,11 @@ func (s *Service) applyEvent(ctx context.Context, ev *livekit.WebhookEvent) erro
 	case eventLeft, eventAborted:
 		s.left(ctx, participantOf(ev.GetParticipant()))
 	case eventPublish, eventUnpub:
-		if t := ev.GetTrack(); isScreen(t) {
+		switch t := ev.GetTrack(); {
+		case isScreen(t):
 			s.screen(ctx, participantOf(ev.GetParticipant()), t.GetSid(), ev.GetEvent() == eventPublish)
+		case isCamera(t):
+			s.camera(ctx, participantOf(ev.GetParticipant()), t.GetSid(), ev.GetEvent() == eventPublish)
 		}
 	case eventFinished:
 		s.finished(ctx, channelID, room.SID)
@@ -313,7 +316,7 @@ func (s *Service) connectLocked(ctx context.Context, guildID, channelID snowflak
 		return
 	}
 	st := State{GuildID: guildID, ChannelID: channelID, UserID: userID, JoinedAt: p.JoinedAt,
-		SelfStream: len(p.Screens) > 0}
+		SelfStream: len(p.Screens) > 0, SelfVideo: len(p.Cameras) > 0}
 	flags := s.moderation[memberKey{guildID: guildID, userID: userID}]
 	st.Mute, st.Deaf = flags.mute, flags.deaf
 	if st.JoinedAt.IsZero() {
@@ -325,9 +328,12 @@ func (s *Service) connectLocked(ctx context.Context, guildID, channelID snowflak
 		s.dropLocked(ctx, userID, true)
 	}
 	sess := &session{state: st, room: room.Name, roomSID: room.SID, sid: p.SID, join: p.Join,
-		screens: map[string]bool{}}
+		screens: map[string]bool{}, cameras: map[string]bool{}}
 	for _, sid := range p.Screens {
 		sess.screens[sid] = true
+	}
+	for _, sid := range p.Cameras {
+		sess.cameras[sid] = true
 	}
 	s.setLocked(ctx, sess)
 }
@@ -370,6 +376,34 @@ func (s *Service) screen(ctx context.Context, p Participant, trackSID string, on
 	}
 	if streaming := len(sess.screens) > 0; streaming != sess.state.SelfStream {
 		sess.state.SelfStream = streaming
+		s.touchLocked(userID)
+		s.announceLocked(ctx, sess.state, false)
+	}
+}
+
+// camera handles a camera track of p being published (on) or unpublished;
+// self_video holds while any is published.
+func (s *Service) camera(ctx context.Context, p Participant, trackSID string, on bool) {
+	userID, ok := identityUser(p.Identity)
+	if !ok {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sess := s.sessions[userID]
+	if sess == nil || sess.sid != p.SID {
+		return
+	}
+	if sess.cameras == nil {
+		sess.cameras = map[string]bool{}
+	}
+	if on {
+		sess.cameras[trackSID] = true
+	} else {
+		delete(sess.cameras, trackSID)
+	}
+	if video := len(sess.cameras) > 0; video != sess.state.SelfVideo {
+		sess.state.SelfVideo = video
 		s.touchLocked(userID)
 		s.announceLocked(ctx, sess.state, false)
 	}

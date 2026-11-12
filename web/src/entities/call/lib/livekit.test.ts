@@ -13,7 +13,7 @@ interface FakeRoom {
 }
 
 /** The rooms the transport made, newest last. */
-const made = vi.hoisted(() => ({ rooms: [] as unknown[] }));
+const made = vi.hoisted(() => ({ rooms: [] as unknown[], camera: vi.fn() }));
 
 // A stand-in for livekit-client's Room: what livekit.ts calls, and events fired by hand.
 vi.mock("livekit-client", async (original) => {
@@ -50,7 +50,7 @@ vi.mock("livekit-client", async (original) => {
       for (const fn of this.handlers.get(event) ?? []) fn(...args);
     }
   }
-  return { ...real, Room };
+  return { ...real, Room, createLocalVideoTrack: made.camera };
 });
 
 const room = (): FakeRoom => {
@@ -248,5 +248,95 @@ describe("the second review's cases", () => {
     const t = await connected();
     room().switchActiveDevice.mockResolvedValueOnce(false);
     await expect(t.useDevice("audioinput", "mic-9")).rejects.toThrow();
+  });
+});
+
+describe("the camera", () => {
+  /** A camera track as createLocalVideoTrack gives it, its stop watched. */
+  const cameraTrack = () => ({ mediaStreamTrack: { addEventListener: vi.fn() }, stop: vi.fn() });
+
+  /** Someone in the room with a camera published, everything done to it watched. */
+  const filmingParticipant = (identity: string) => {
+    const pub = {
+      source: Track.Source.Camera,
+      setSubscribed: vi.fn(),
+      setVideoDimensions: vi.fn(),
+      videoTrack: { attach: vi.fn(), detach: vi.fn() },
+    };
+    const participant = {
+      identity,
+      trackPublications: new Map([[Track.Source.Camera, pub]]),
+      getTrackPublication: (source: Track.Source) => (source === Track.Source.Camera ? pub : undefined),
+    };
+    (room() as unknown as { remoteParticipants: Map<string, unknown> }).remoteParticipants.set(identity, participant);
+    return { pub, participant };
+  };
+
+  it("publishes the camera in three layers, and turning it off stops it", async () => {
+    const t = await connected();
+    const track = cameraTrack();
+    made.camera.mockResolvedValueOnce(track);
+    expect(await t.startCamera()).toEqual({ ok: true });
+    const [published, opts] = room().localParticipant.publishTrack.mock.calls[0] as [unknown, Record<string, unknown>];
+    expect(published).toBe(track);
+    expect(opts).toMatchObject({ source: Track.Source.Camera, simulcast: true, videoCodec: "vp8" });
+    await t.stopCamera();
+    expect(track.stop).toHaveBeenCalled();
+  });
+
+  it.each([
+    ["NotAllowedError", "denied"],
+    ["NotFoundError", "missing"],
+    ["NotReadableError", "failed"],
+  ])("says why there is no camera (%s)", async (name, reason) => {
+    const t = await connected();
+    made.camera.mockRejectedValueOnce(new DOMException("no camera", name));
+    expect(await t.startCamera()).toEqual({ ok: false, reason });
+    expect(room().localParticipant.publishTrack).not.toHaveBeenCalled();
+  });
+
+  it("stops the camera when publishing it is refused", async () => {
+    const t = await connected();
+    const track = cameraTrack();
+    made.camera.mockResolvedValueOnce(track);
+    room().localParticipant.publishTrack.mockRejectedValueOnce(new Error("403"));
+    expect(await t.startCamera()).toEqual({ ok: false, reason: "failed" });
+    expect(track.stop).toHaveBeenCalled();
+  });
+
+  it("stops the camera when the call ends", async () => {
+    const t = await connected();
+    const track = cameraTrack();
+    made.camera.mockResolvedValueOnce(track);
+    await t.startCamera();
+    await t.disconnect();
+    expect(track.stop).toHaveBeenCalled();
+  });
+
+  it("receives someone's camera only while a tile shows it", async () => {
+    const t = await connected();
+    const cameras = vi.fn();
+    t.on("cameras", cameras);
+    const { pub, participant } = filmingParticipant("200");
+    room().emit(RoomEvent.TrackPublished, pub, participant);
+    expect(cameras).toHaveBeenLastCalledWith(["200"]);
+    expect(pub.setSubscribed).toHaveBeenLastCalledWith(false);
+
+    const el = document.createElement("video");
+    const release = t.attachCamera("200", el);
+    expect(pub.setSubscribed).toHaveBeenLastCalledWith(true);
+    expect(pub.videoTrack.attach).toHaveBeenCalledWith(el);
+    release();
+    expect(pub.setSubscribed).toHaveBeenLastCalledWith(false);
+    expect(pub.videoTrack.detach).toHaveBeenCalledWith(el);
+  });
+
+  it("asks for the layer that fits the tile", async () => {
+    const t = await connected();
+    const { pub } = filmingParticipant("200");
+    const el = document.createElement("video");
+    Object.defineProperties(el, { clientWidth: { value: 320 }, clientHeight: { value: 180 } });
+    t.attachCamera("200", el);
+    expect(pub.setVideoDimensions).toHaveBeenCalledWith({ width: 320, height: 180 });
   });
 });

@@ -4,6 +4,8 @@ import {
   type RoomConnectOptions,
   type RoomOptions,
   type TrackPublishOptions,
+  type VideoCaptureOptions,
+  VideoPresets,
 } from "livekit-client";
 import type { EndCause } from "@/shared/lib";
 import type { VoicePrefs } from "../model/prefs";
@@ -11,8 +13,10 @@ import type { Browser } from "./browser";
 
 /**
  * The room: a stream nobody watches is paused (dynacast), and viewers get the
- * stream as it is sent rather than one sized to their tile. The only video
- * here is a screen share, watched on demand, sent as a single 1080p layer.
+ * stream as it is sent rather than one sized to their tile (a camera asks
+ * for its tile's size itself, lib/livekit.ts). The only video
+ * here is a screen share, watched on demand and sent as a single 1080p
+ * layer, and cameras, received only while their tile is on screen.
  */
 export const roomOptions = (): Partial<RoomOptions> => ({ adaptiveStream: false, dynacast: true });
 
@@ -93,3 +97,21 @@ export const endCause = (reason: DisconnectReason | undefined): EndCause => {
       return "failed";
   }
 };
+
+/**
+ * A camera: 720p at 30 fps from the front camera, sent as three VP8 layers
+ * (720p, 360p, 180p), so each viewer receives the one that fits the tile it
+ * is shown in: a grid of ten costs a viewer a few hundred kbit/s each,
+ * a camera brought to the front gets 720p. Unlike a screen, a face may
+ * lose sharpness rather than frames.
+ */
+export const cameraOptions = (): { capture: VideoCaptureOptions; publish: TrackPublishOptions } => ({
+  capture: { resolution: VideoPresets.h720.resolution, facingMode: "user" },
+  publish: {
+    videoCodec: "vp8",
+    simulcast: true,
+    videoSimulcastLayers: [VideoPresets.h180, VideoPresets.h360],
+    videoEncoding: { maxBitrate: 1_700_000, maxFramerate: 30 },
+    degradationPreference: "balanced",
+  },
+});
