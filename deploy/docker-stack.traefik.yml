@@ -31,6 +31,8 @@ services:
       ZAZZZOR_HTTP_ADDR: :8080
       ZAZZZOR_METRICS_ADDR: 127.0.0.1:9464
       ZAZZZOR_FILE_RETENTION: ${ZAZZZOR_FILE_RETENTION:-}
+      ZAZZZOR_ATTACHMENT_QUOTA_BYTES: ${ZAZZZOR_ATTACHMENT_QUOTA_BYTES:-}
+      ZAZZZOR_MIN_FREE_BYTES: ${ZAZZZOR_MIN_FREE_BYTES:-}
       ZAZZZOR_DATA_DIR: /data
       ZAZZZOR_LIVEKIT_URL: http://voice-sfu:7880
       # The API reads these two without the ZAZZZOR_ prefix (server/internal/config).

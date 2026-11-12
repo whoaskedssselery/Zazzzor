@@ -3,8 +3,10 @@ package messages_test
 import (
 	"bytes"
 	"errors"
+	"mime/multipart"
 	"net/http"
 	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 	"time"
@@ -13,6 +15,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/files"
 	"github.com/whoaskedssselery/zazzzor/server/internal/messages"
 	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/testkit"
 )
 
 func TestAttachmentUploadSize(t *testing.T) {
@@ -25,6 +28,42 @@ func TestAttachmentUploadSize(t *testing.T) {
 		t.Errorf("attachment size = %d, want %d", a.Size, files.MaxAttachmentBytes)
 	}
 	problemOf(t, uploadAttachment(t, c, ch.ID, "large.bin", data), http.StatusRequestEntityTooLarge, "file_too_large")
+}
+
+func TestRejectedMultipartDoesNotFillTrash(t *testing.T) {
+	root := t.TempDir()
+	disk, err := files.NewDisk(root, files.Options{})
+	if err != nil {
+		t.Fatalf("new files disk: %v", err)
+	}
+	e := newEnv(t, func(o *messages.Options) { o.Files = disk })
+	c, _ := e.user("alice")
+	_, ch, _ := newGuild(t, c, "club")
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	part, err := mw.CreateFormFile("file", "upload.txt")
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	if _, err = part.Write([]byte("uncommitted bytes")); err != nil {
+		t.Fatalf("write file part: %v", err)
+	}
+	if err = mw.WriteField("unexpected", "second part"); err != nil {
+		t.Fatalf("write trailing field: %v", err)
+	}
+	if err = mw.Close(); err != nil {
+		t.Fatalf("close form: %v", err)
+	}
+	res := c.Do(http.MethodPost, "/api/v1/channels/"+ch.ID+"/attachments", body.Bytes(),
+		testkit.WithHeader("Content-Type", mw.FormDataContentType()))
+	expect(t, res, http.StatusBadRequest)
+	trash, err := os.ReadDir(filepath.Join(root, "trash", "attachments"))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("read trash: %v", err)
+	}
+	if len(trash) != 0 {
+		t.Fatalf("rejected upload left %d entries in trash, want 0", len(trash))
+	}
 }
 
 func TestAttachmentUploadRate(t *testing.T) {

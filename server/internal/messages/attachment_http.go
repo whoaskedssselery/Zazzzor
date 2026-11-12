@@ -81,7 +81,7 @@ func (s *Service) handleUploadAttachment(w http.ResponseWriter, r *http.Request)
 	})
 	if err != nil {
 		if saved {
-			s.trashUncommitted(ref)
+			s.removeUncommitted(ref)
 		}
 		if errors.Is(err, files.ErrAttachmentTooLarge) {
 			return upload.TooLarge(files.MaxAttachmentBytes)
@@ -116,18 +116,16 @@ func (s *Service) handleUploadAttachment(w http.ResponseWriter, r *http.Request)
 	}
 	if err != nil {
 		if !attempted {
-			s.trashUncommitted(ref)
+			s.removeUncommitted(ref)
 			return fail(err)
 		}
 		if errors.Is(err, errAttachmentQuota) {
-			if removeErr := s.files.RemoveUncommittedAttachment(ref); removeErr != nil {
-				s.logger.Warn("remove quota-rejected attachment", "err", removeErr)
-			}
+			s.removeUncommitted(ref)
 			return &httpx.Problem{Status: http.StatusRequestEntityTooLarge, Code: "attachment_quota_exceeded",
 				Detail: "Достигнут лимит хранилища для ваших файлов. Удалите старые вложения или попросите администратора."}
 		}
 		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23503" {
-			s.trashUncommitted(ref)
+			s.removeUncommitted(ref)
 			return httpx.NotFound()
 		}
 		// A lost database response leaves the commit outcome unknown. Reconcile
@@ -138,10 +136,10 @@ func (s *Service) handleUploadAttachment(w http.ResponseWriter, r *http.Request)
 	return nil
 }
 
-// trashUncommitted removes a file whose metadata was never committed.
-func (s *Service) trashUncommitted(ref files.Reference) {
-	if err := s.files.DeleteAttachment(ref); err != nil {
-		s.logger.Warn("trash uncommitted attachment", "err", err)
+// removeUncommitted removes a file whose metadata was never committed.
+func (s *Service) removeUncommitted(ref files.Reference) {
+	if err := s.files.RemoveUncommittedAttachment(ref); err != nil {
+		s.logger.Warn("remove uncommitted attachment", "err", err)
 	}
 }
 

@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"time"
+
+	"golang.org/x/term"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
 	"github.com/whoaskedssselery/zazzzor/server/internal/config"
@@ -24,11 +27,9 @@ func createAdminCommand(args []string, env func(string) string, stdin io.Reader,
 		_, _ = fmt.Fprintf(stderr, "create-admin: %v\n", err)
 		return 1
 	}
-	_, _ = fmt.Fprintln(stderr, "Введите пароль администратора:")
-	input := bufio.NewScanner(stdin)
-	input.Buffer(make([]byte, 1024), 1024)
-	if !input.Scan() {
-		_, _ = fmt.Fprintln(stderr, "create-admin: не удалось прочитать строку с паролем из stdin")
+	password, err := readAdminPassword(stdin, stderr)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "create-admin: %v\n", err)
 		return 1
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), startupDBTimeout+migrateTimeout)
@@ -42,11 +43,34 @@ func createAdminCommand(args []string, env func(string) string, stdin io.Reader,
 	svc := auth.NewService(auth.Options{
 		Pool: pool, IDs: snowflake.NewGenerator(0, time.Now), AdminUsernames: cfg.AdminUsernames,
 	})
-	user, err := svc.CreateAdmin(ctx, args[0], input.Text())
+	user, err := svc.CreateAdmin(ctx, args[0], password)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "create-admin: %v\n", err)
 		return 1
 	}
 	_, _ = fmt.Fprintf(stdout, "Администратор %s создан.\n", user.Username)
 	return 0
+}
+
+// readAdminPassword accepts a line from a pipe or reads an interactive line without echo.
+func readAdminPassword(stdin io.Reader, stderr io.Writer) (string, error) {
+	if file, ok := stdin.(*os.File); ok && term.IsTerminal(int(file.Fd())) {
+		_, _ = fmt.Fprint(stderr, "Пароль администратора: ")
+		password, err := term.ReadPassword(int(file.Fd()))
+		_, _ = fmt.Fprintln(stderr)
+		if err != nil {
+			return "", fmt.Errorf("чтение пароля из терминала: %w", err)
+		}
+		return string(password), nil
+	}
+	input := bufio.NewScanner(stdin)
+	input.Buffer(make([]byte, 1024), 1024)
+	if input.Scan() {
+		return input.Text(), nil
+	}
+	err := input.Err()
+	if err == nil {
+		err = io.EOF
+	}
+	return "", fmt.Errorf("чтение строки с паролем из stdin: %w", err)
 }

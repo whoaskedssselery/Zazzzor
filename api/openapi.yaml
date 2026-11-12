@@ -1182,7 +1182,7 @@ paths:
         - $ref: "#/components/parameters/GuildEmojiID"
       responses:
         "200":
-          description: Raster image with private caching for 24 hours and nosniff.
+          description: Raster image with private cache revalidation and nosniff.
           content:
             image/png:
               schema:
@@ -2257,7 +2257,7 @@ paths:
         return 404. Supports byte ranges and conditional requests. PNG, JPEG,
         WebP, GIF, MP4, WebM, MP3, OGG and WAV are served inline when identified
         by their bytes. All other files download as application/octet-stream.
-        Successful responses use private immutable caching, an ETag,
+        Successful responses use private cache revalidation, an ETag,
         nosniff, and a sandboxed Content Security Policy.
       parameters:
         - $ref: "#/components/parameters/ChannelID"
