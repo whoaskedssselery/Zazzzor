@@ -1,9 +1,13 @@
 import { useRouter } from "@tanstack/react-router";
 import { useEffect } from "react";
 import {
+  alertLevel,
   type GuildEntry,
   getGuildsState,
   mentionsMe,
+  NOTIFY_LEVEL,
+  type NotifyLevel,
+  notifyOf,
   PRIVATE_TYPE,
   type PrivateEntry,
   privateName,
@@ -23,24 +27,36 @@ export interface Alert {
 }
 
 /**
- * Discord's rule. A message that mentions the user, by someone else, alerts:
- * with a sound unless they are looking at its channel, and with a system
- * notification too when the window is in the background.
+ * Discord's rule. A message by someone else alerts when the channel's level
+ * (alertLevel) lets it: every message, or only one that mentions the user
+ * (@everyone and @here count unless they hid them). It alerts with a sound
+ * unless they are looking at its channel, and with a system notification
+ * too when the window is in the background.
  */
 export const alertFor = ({
+  level,
   mentioned,
+  everyone = false,
+  suppressEveryone = false,
   own,
   windowActive,
   openChannelId,
   channelId,
 }: {
+  level: NotifyLevel;
+  /** The message names the user or one of their roles. */
   mentioned: boolean;
+  /** The message pings @everyone or @here. */
+  everyone?: boolean;
+  suppressEveryone?: boolean;
   own: boolean;
   windowActive: boolean;
   openChannelId: string | null;
   channelId: string;
 }): Alert | null => {
-  if (!mentioned || own) return null;
+  if (own || level === NOTIFY_LEVEL.NOTHING) return null;
+  const pinged = mentioned || (everyone && !suppressEveryone);
+  if (level === NOTIFY_LEVEL.MENTIONS && !pinged) return null;
   if (windowActive && openChannelId === channelId) return null;
   return { sound: true, desktop: !windowActive };
 };
@@ -111,7 +127,7 @@ export const openChannelOf = (pathname: string): string | null =>
 const windowActive = () => document.visibilityState === "visible" && document.hasFocus();
 
 /**
- * Alerts the user to messages that mention them, as long as the app runs
+ * Alerts the user to new messages, as their notification settings say, as long as the app runs
  * behind sign-in. A click on the notification brings the window to the
  * front at that channel.
  */
@@ -129,11 +145,14 @@ export const useMentionAlerts = (): void => {
         const notice = e ? () => notificationOf(e, m) : p ? () => privateNotificationOf(p, m) : null;
         if (notice === null) return;
         const authorId = m.author?.id;
+        // Nothing from someone the user blocked.
+        if (authorId !== undefined && s.relationships[authorId]?.type === RELATIONSHIP.BLOCKED) return;
         const alert = alertFor({
-          // In a DM or a group every message is for the user, as in Discord; not one from someone they blocked.
-          mentioned: e
-            ? mentionsMe(e, m)
-            : authorId === undefined || s.relationships[authorId]?.type !== RELATIONSHIP.BLOCKED,
+          level: alertLevel(s, guildId, m.channel_id),
+          // In a DM or a group every message is for the user, as in Discord.
+          mentioned: e ? mentionsMe(e, { ...m, mention_everyone: false }) : true,
+          everyone: m.mention_everyone,
+          suppressEveryone: notifyOf(s, guildId).suppress_everyone,
           own: authorId !== undefined && authorId === s.me?.id,
           windowActive: windowActive(),
           openChannelId: openChannelOf(router.state.location.pathname),

@@ -10,7 +10,7 @@ import {
   type PrivateEntry,
   privateList,
   privateName,
-  privateUnreadCount,
+  privateBadgeCount,
   useGuilds,
 } from "@/entities/guild";
 import { CreateGuildDialog } from "@/features/create-guild";
@@ -71,7 +71,7 @@ const GuildItem = ({ guildId, active }: { guildId: string; active: boolean }) =>
   const channelId = useChannelToOpen(guildId);
   const unread = useGuilds((s) => {
     const e = s.guilds[guildId];
-    return e !== undefined && isGuildUnread(e);
+    return e !== undefined && isGuildUnread(e, s);
   });
   const mentions = useGuilds((s) => {
     const e = s.guilds[guildId];
@@ -114,7 +114,7 @@ const GuildItem = ({ guildId, active }: { guildId: string; active: boolean }) =>
  */
 const PrivateItem = ({ entry }: { entry: PrivateEntry }) => {
   const { channel } = entry;
-  const count = privateUnreadCount(entry);
+  const count = useGuilds((s) => privateBadgeCount(s, entry));
   const name = privateName(channel);
   const peer = dmPeer(channel);
   return (
@@ -152,7 +152,11 @@ const PrivateItem = ({ entry }: { entry: PrivateEntry }) => {
 export const GuildRail = ({ activeGuildId }: { activeGuildId: string | null }) => {
   const order = useGuilds((s) => s.order);
   const privates = useGuilds((s) => s.privates);
-  const unreadPrivates = useMemo(() => privateList({ privates }).filter((p) => privateUnreadCount(p) > 0), [privates]);
+  const notify = useGuilds((s) => s.notify);
+  const unreadPrivates = useMemo(
+    () => privateList({ privates }).filter((p) => privateBadgeCount({ notify }, p) > 0),
+    [privates, notify],
+  );
   const requests = useGuilds((s) => incomingCount(s));
   const [dialog, setDialog] = useState<"create" | "join" | null>(null);
   const home = activeGuildId === null;

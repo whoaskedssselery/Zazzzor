@@ -1,4 +1,4 @@
-import { applyReady } from "@/entities/guild";
+import { applyReady, NOTIFY_LEVEL } from "@/entities/guild";
 import {
   makeChannel,
   makeDMChannel,
@@ -10,12 +10,31 @@ import {
 } from "@/shared/test";
 import { alertFor, notificationOf, openChannelOf, privateNotificationOf } from "./alerts";
 
-const base = { mentioned: true, own: false, windowActive: true, openChannelId: "1", channelId: "2" };
+const base = {
+  level: NOTIFY_LEVEL.MENTIONS,
+  mentioned: true,
+  own: false,
+  windowActive: true,
+  openChannelId: "1",
+  channelId: "2",
+} as const;
 
 describe("alertFor", () => {
-  it("is silent unless someone else mentions the user", () => {
+  it("at «only mentions» is silent unless someone else mentions the user", () => {
     expect(alertFor({ ...base, mentioned: false })).toBeNull();
     expect(alertFor({ ...base, own: true })).toBeNull();
+  });
+
+  it("counts @everyone unless the user hid it", () => {
+    const everyone = { ...base, mentioned: false, everyone: true };
+    expect(alertFor(everyone)).not.toBeNull();
+    expect(alertFor({ ...everyone, suppressEveryone: true })).toBeNull();
+  });
+
+  it("at «all» alerts to any message by someone else, at «nothing» to none", () => {
+    expect(alertFor({ ...base, level: NOTIFY_LEVEL.ALL, mentioned: false })).not.toBeNull();
+    expect(alertFor({ ...base, level: NOTIFY_LEVEL.ALL, own: true })).toBeNull();
+    expect(alertFor({ ...base, level: NOTIFY_LEVEL.NOTHING })).toBeNull();
   });
 
   it("is silent while the user looks at that channel, chimes in another, notifies in the background", () => {
