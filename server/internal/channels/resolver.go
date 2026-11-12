@@ -162,6 +162,18 @@ func (l *layout) visibleTo(sub permissions.Subject) []Channel {
 // Viewers implements Resolver: it loads the channel, its overwrites and the
 // whole guild's roles once and computes every member in memory.
 func (s *Service) Viewers(ctx context.Context, channelID snowflake.ID) ([]snowflake.ID, error) {
+	return s.channelViewers(ctx, channelID, nil)
+}
+
+// ViewersWithHistory resolves live recipients and history access together.
+func (s *Service) ViewersWithHistory(ctx context.Context, channelID snowflake.ID) ([]snowflake.ID, map[snowflake.ID]bool, error) {
+	readers := make(map[snowflake.ID]bool)
+	ids, err := s.channelViewers(ctx, channelID, readers)
+	return ids, readers, err
+}
+
+// channelViewers fills readers, when requested, in the same snapshot as viewers.
+func (s *Service) channelViewers(ctx context.Context, channelID snowflake.ID, readers map[snowflake.ID]bool) ([]snowflake.ID, error) {
 	var out []snowflake.ID
 	err := s.read(ctx, func(tx pgx.Tx) error {
 		c, err := s.channelIn(ctx, tx, channelID)
@@ -170,13 +182,18 @@ func (s *Service) Viewers(ctx context.Context, channelID snowflake.ID) ([]snowfl
 		}
 		if c.Type.Private() {
 			out, err = s.PrivateRecipientsIn(ctx, tx, channelID)
+			if readers != nil {
+				for _, id := range out {
+					readers[id] = true
+				}
+			}
 			return err
 		}
 		a, overwrites, err := s.mentionAccessFor(ctx, tx, c)
 		if err != nil {
 			return err
 		}
-		out = viewers(a, overwrites)
+		out = viewers(a, overwrites, readers)
 		return nil
 	})
 	if err != nil {
@@ -210,13 +227,17 @@ func (s *Service) mentionAccessFor(ctx context.Context, tx pgx.Tx, c Channel) (g
 }
 
 // viewers returns the members of a who may view a channel with the given
-// effective overwrites, ascending.
-func viewers(a guilds.Access, ows []permissions.Overwrite) []snowflake.ID {
+// effective overwrites, ascending. It optionally records history access.
+func viewers(a guilds.Access, ows []permissions.Overwrite, readers map[snowflake.ID]bool) []snowflake.ID {
 	out := []snowflake.ID{}
 	for _, id := range a.MemberIDs() {
 		sub, _ := a.Subject(id)
-		if permissions.InChannel(sub, ows).Has(permissions.ViewChannel) {
+		p := permissions.InChannel(sub, ows)
+		if p.Has(permissions.ViewChannel) {
 			out = append(out, id)
+			if readers != nil && p.Has(permissions.ReadMessageHistory) {
+				readers[id] = true
+			}
 		}
 	}
 	return out

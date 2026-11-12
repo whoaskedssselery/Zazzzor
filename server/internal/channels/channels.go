@@ -167,6 +167,8 @@ type Resolver interface {
 	VisibleChannels(ctx context.Context, userID, guildID snowflake.ID) ([]Channel, error)
 	// Viewers returns the members who may view channelID, ascending.
 	Viewers(ctx context.Context, channelID snowflake.ID) ([]snowflake.ID, error)
+	// ViewersWithHistory also identifies which viewers can read history.
+	ViewersWithHistory(ctx context.Context, channelID snowflake.ID) ([]snowflake.ID, map[snowflake.ID]bool, error)
 }
 
 var _ Resolver = (*Service)(nil)
