@@ -11,7 +11,7 @@
     "test": "vitest run",
     "lint": "eslint --max-warnings 0 .",
     "e2e": "playwright test",
-    "e2e:up": "docker compose -f e2e/compose.yml up -d --build --wait",
+    "e2e:up": "docker compose -f e2e/compose.yml up -d --build --wait && docker compose -f e2e/compose.yml exec -T postgres psql -U zazzzor -d zazzzor -v ON_ERROR_STOP=1 -q -c \"UPDATE instance SET registration_open = true\"",
     "e2e:down": "docker compose -f e2e/compose.yml down -v",
     "gen:api": "openapi-typescript ../api/openapi.yaml -o src/shared/api/schema.gen.ts"
   },

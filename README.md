@@ -121,10 +121,7 @@ API и LiveKit. Нужен Docker. Из `web/`:
 
 ```bash
 pnpm exec playwright install chromium firefox   # один раз
-pnpm e2e:up     # Postgres, API и LiveKit из web/e2e/compose.yml (API на :18080, LiveKit на :7880)
-# Открыть регистрацию в одноразовой базе браузерных тестов.
-docker compose -f e2e/compose.yml exec -T postgres psql -U zazzzor -d zazzzor \
-  -v ON_ERROR_STOP=1 -q -c 'UPDATE instance SET registration_open = true'
+pnpm e2e:up     # Postgres, API и LiveKit из web/e2e/compose.yml (API на :18080, LiveKit на :7880), регистрация открыта
 pnpm e2e        # сборка, vite preview на :4173 с CSP из Caddy, все сценарии
 pnpm e2e:down   # убрать стек вместе с базой
 ```
