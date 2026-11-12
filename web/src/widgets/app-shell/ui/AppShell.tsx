@@ -1,8 +1,8 @@
 import { useRouterState } from "@tanstack/react-router";
 import { Menu, Users } from "lucide-react";
 import { type CSSProperties, createContext, type ReactNode, use, useState } from "react";
+import { useMediaQuery } from "@/shared/lib";
 import { cn, IconButton, Sheet, SheetContent } from "@/shared/ui";
-import { useMediaQuery } from "../lib/useMediaQuery";
 
 /** From this width the member list sits beside the chat; below it, it slides over it. */
 const WIDE = "(min-width: 1100px)";
@@ -37,8 +37,14 @@ interface AppShellProps {
   children: ReactNode;
 }
 
-/** The open server (or home) in the rail: where focus starts in the slid-in navigation. */
-const openPlace = (panel: HTMLElement): HTMLElement | null => panel.querySelector<HTMLElement>('[aria-current="page"]');
+/**
+ * Where focus starts in the slid-in navigation: the open channel, else the
+ * open server (or home) in the rail. The channel first: a rail icon shows
+ * its tooltip on focus, which would cover the channel list.
+ */
+const openPlace = (panel: HTMLElement): HTMLElement | null =>
+  panel.querySelector<HTMLElement>('nav[aria-label="Каналы"] [aria-current="page"]') ??
+  panel.querySelector<HTMLElement>('[aria-current="page"]');
 
 const navColumns = (rail: ReactNode, sidebar: ReactNode, userPanel: ReactNode) => (
   <>
