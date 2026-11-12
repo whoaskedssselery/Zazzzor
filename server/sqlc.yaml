@@ -169,3 +169,14 @@ sql:
             go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
           - column: message_nonces.message_id
             go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+
+  - engine: postgresql
+    schema: internal/platform/db/migrations
+    queries: internal/relationships/queries.sql
+    gen:
+      go:
+        package: store
+        out: internal/relationships/store
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: true
+        omit_unused_structs: true

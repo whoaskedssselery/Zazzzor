@@ -29,12 +29,13 @@ ORDER BY guilds.id;
 SELECT guild_id FROM members WHERE user_id = @user_id ORDER BY guild_id;
 
 -- name: PeerIDs :many
--- Everyone sharing at least one guild with user_id (user_id included when
--- it is in any guild), ascending.
-SELECT DISTINCT other.user_id FROM members AS mine
+-- Everyone sharing a guild or a friendship with user_id, ascending.
+SELECT other.user_id FROM members AS mine
 JOIN members AS other ON other.guild_id = mine.guild_id
 WHERE mine.user_id = @user_id
-ORDER BY other.user_id;
+UNION
+SELECT rel.other_id FROM relationships AS rel WHERE rel.user_id = @user_id AND rel.type = 1
+ORDER BY user_id;
 
 -- name: RenameGuild :one
 UPDATE guilds SET name = @name WHERE id = @id RETURNING *;
@@ -173,12 +174,14 @@ SELECT * FROM guild_bans WHERE guild_id = @guild_id AND user_id = @user_id;
 SELECT * FROM guild_bans WHERE guild_id = @guild_id ORDER BY created_at, user_id LIMIT @lim;
 
 -- name: SharedPeers :many
--- The pairs (user, peer) with user among user_ids and peer among peer_ids
--- that share at least one guild (a user is its own peer when in a guild).
-SELECT DISTINCT mine.user_id, other.user_id AS peer_id FROM members AS mine
+-- The pairs (user, peer) that share a guild or a friendship.
+SELECT mine.user_id, other.user_id AS peer_id FROM members AS mine
 JOIN members AS other ON other.guild_id = mine.guild_id
 WHERE mine.user_id = ANY(@user_ids::bigint[]) AND other.user_id = ANY(@peer_ids::bigint[])
-ORDER BY mine.user_id, peer_id;
+UNION
+SELECT rel.user_id, rel.other_id FROM relationships AS rel
+WHERE rel.user_id = ANY(@user_ids::bigint[]) AND rel.other_id = ANY(@peer_ids::bigint[]) AND rel.type = 1
+ORDER BY user_id, peer_id;
 
 -- name: IconReferences :many
 SELECT id, COALESCE(icon_hash, '')::text AS hash FROM guilds WHERE icon_hash IS NOT NULL;
