@@ -1,6 +1,6 @@
 import { type KeyboardEvent, useLayoutEffect, useRef, useState } from "react";
 import type { Message } from "@/entities/message";
-import { runeLength, trimContent } from "@/shared/lib";
+import { runeLength, trimContent, useAutoHeight } from "@/shared/lib";
 import { cn } from "@/shared/ui";
 import { useEditMessage } from "../model/mutations";
 
@@ -16,12 +16,7 @@ export const MessageEditor = ({ message, onDone }: { message: Message; onDone: (
   const edit = useEditMessage();
   const field = useRef<HTMLTextAreaElement>(null);
 
-  useLayoutEffect(() => {
-    const el = field.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${String(Math.min(el.scrollHeight, 320))}px`;
-  }, [text]);
+  useAutoHeight(field, text, 320);
 
   // Opens with the caret at the end, like Discord.
   useLayoutEffect(() => {
