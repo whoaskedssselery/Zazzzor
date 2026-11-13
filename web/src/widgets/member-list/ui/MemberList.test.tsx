@@ -123,7 +123,7 @@ describe("MemberList", () => {
     applyGatewayDispatch("PRESENCE_UPDATE", { user_id: olya.id, status: "online", custom_status: "Пеку пироги" });
     server.use(
       apiHandler("get", "/users/{user_id}/profile", ({ params }) =>
-        HttpResponse.json({ user: olya, bio: `Привет, я ${String(params.user_id)}`, mutual_guild_ids: [G] }),
+        HttpResponse.json({ user: olya, bio: `Привет, я ${params.user_id}`, mutual_guild_ids: [G] }),
       ),
     );
     const { user } = await renderRouted(<MemberList guildId={G} />);
