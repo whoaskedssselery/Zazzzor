@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/time/rate"
 
+	"github.com/whoaskedssselery/zazzzor/server/internal/audit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/files"
@@ -348,6 +349,8 @@ type Options struct {
 	Files     files.Store
 	Publisher events.Publisher // nil: events are dropped
 	Hooks     Hooks
+	// Audit records moderation in the audit log; nil records nothing.
+	Audit audit.Recorder
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
 	// CreateLimiter limits guild creations per user; nil takes the default
@@ -360,6 +363,7 @@ type Options struct {
 
 // Service implements guilds, members and roles.
 type Service struct {
+	audit         audit.Recorder
 	pool          *pgxpool.Pool
 	q             *store.Queries
 	ids           *snowflake.Generator
@@ -380,7 +384,7 @@ type Service struct {
 
 // NewService builds a Service from o.
 func NewService(o Options) *Service {
-	s := &Service{pool: o.Pool, q: store.New(), ids: o.IDs, users: o.Users, files: o.Files, pub: o.Publisher,
+	s := &Service{audit: o.Audit, pool: o.Pool, q: store.New(), ids: o.IDs, users: o.Users, files: o.Files, pub: o.Publisher,
 		channels: o.Hooks.Channels, overwrites: o.Hooks.Overwrites, now: o.Now, createLimiter: o.CreateLimiter, writeLimiter: o.WriteLimiter}
 	if s.channels == nil {
 		s.channels = noChannels{}

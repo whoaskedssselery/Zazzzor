@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/whoaskedssselery/zazzzor/server/internal/audit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/files"
 	"github.com/whoaskedssselery/zazzzor/server/internal/guilds/store"
@@ -142,6 +143,10 @@ func (s *Service) CreateEmoji(ctx context.Context, guildID, actor snowflake.ID, 
 		if createErr != nil {
 			return store.GuildEmoji{}, false, fmt.Errorf("guilds: insert emoji: %w", createErr)
 		}
+		if recErr := s.record(writeCtx, tx, audit.Entry{GuildID: guildID, ActorID: actor, Action: audit.EmojiCreate,
+			TargetID: id, Changes: []audit.Change{{Key: "name", New: name}}}); recErr != nil {
+			return store.GuildEmoji{}, false, recErr
+		}
 		return row, true, nil
 	})
 }
@@ -159,9 +164,14 @@ func (s *Service) RenameEmoji(ctx context.Context, guildID, actor, id snowflake.
 		if row.Name == name {
 			return row, false, nil
 		}
+		old := row.Name
 		row, err = s.q.RenameGuildEmoji(ctx, tx, store.RenameGuildEmojiParams{ID: int64(id), GuildID: int64(guildID), Name: name})
 		if err != nil {
 			return store.GuildEmoji{}, false, fmt.Errorf("guilds: rename emoji: %w", err)
+		}
+		if err = s.record(ctx, tx, audit.Entry{GuildID: guildID, ActorID: actor, Action: audit.EmojiUpdate,
+			TargetID: id, Changes: []audit.Change{{Key: "name", Old: old, New: name}}}); err != nil {
+			return store.GuildEmoji{}, false, err
 		}
 		return row, true, nil
 	})
@@ -174,6 +184,10 @@ func (s *Service) DeleteEmoji(ctx context.Context, guildID, actor, id snowflake.
 		row, deleteErr := s.q.DeleteGuildEmoji(ctx, tx, store.DeleteGuildEmojiParams{ID: int64(id), GuildID: int64(guildID)})
 		if deleteErr != nil {
 			return store.GuildEmoji{}, false, fmt.Errorf("guilds: delete emoji: %w", deleteErr)
+		}
+		if recErr := s.record(ctx, tx, audit.Entry{GuildID: guildID, ActorID: actor, Action: audit.EmojiDelete,
+			TargetID: id, Changes: []audit.Change{{Key: "name", Old: row.Name}}}); recErr != nil {
+			return store.GuildEmoji{}, false, recErr
 		}
 		return row, true, nil
 	})

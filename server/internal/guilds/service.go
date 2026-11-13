@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/whoaskedssselery/zazzzor/server/internal/audit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/files"
@@ -257,14 +258,32 @@ func (s *Service) Rename(ctx context.Context, guildID, actorID snowflake.ID, nam
 	if err != nil {
 		return Guild{}, err
 	}
-	row, err := s.q.RenameGuild(ctx, s.pool, store.RenameGuildParams{ID: guildID, Name: name})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return Guild{}, ErrNotMember
-	}
+	var g Guild
+	err = db.InTx(ctx, s.pool, func(tx pgx.Tx) error {
+		before, loadErr := s.q.GuildByID(ctx, tx, guildID)
+		if errors.Is(loadErr, pgx.ErrNoRows) {
+			return ErrNotMember
+		}
+		if loadErr != nil {
+			return fmt.Errorf("guilds: load guild: %w", loadErr)
+		}
+		row, renameErr := s.q.RenameGuild(ctx, tx, store.RenameGuildParams{ID: guildID, Name: name})
+		if errors.Is(renameErr, pgx.ErrNoRows) {
+			return ErrNotMember
+		}
+		if renameErr != nil {
+			return fmt.Errorf("guilds: rename guild: %w", renameErr)
+		}
+		g = toGuild(row)
+		if before.Name == name {
+			return nil
+		}
+		return s.record(ctx, tx, audit.Entry{GuildID: guildID, ActorID: actorID, Action: audit.GuildUpdate,
+			Changes: []audit.Change{{Key: "name", Old: before.Name, New: name}}})
+	})
 	if err != nil {
-		return Guild{}, fmt.Errorf("guilds: rename guild: %w", err)
+		return Guild{}, err
 	}
-	g := toGuild(row)
 	s.publishGuildUpdate(ctx, g)
 	return g, nil
 }
@@ -323,6 +342,11 @@ func (s *Service) SetIcon(ctx context.Context, guildID, actorID snowflake.ID, im
 	if prev := row.PreviousHash; prev == nil || *prev != hash {
 		s.dropIcon(ctx, guildID, prev)
 		s.publishGuildUpdate(ctx, g)
+		// After the icon is in place; a failure here only loses the entry.
+		if err := s.record(context.WithoutCancel(ctx), s.pool, audit.Entry{GuildID: guildID, ActorID: actorID,
+			Action: audit.GuildUpdate, Changes: []audit.Change{{Key: "icon_hash", Old: prev, New: hash}}}); err != nil {
+			httpx.LoggerFrom(ctx).WarnContext(ctx, "audit guild icon", "guild_id", guildID.String(), "err", err.Error())
+		}
 	}
 	return g, nil
 }

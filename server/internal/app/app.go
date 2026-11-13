@@ -4,6 +4,7 @@
 package app
 
 import (
+	"context"
 	"log/slog"
 	"sync/atomic"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/admin"
+	"github.com/whoaskedssselery/zazzzor/server/internal/audit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
 	"github.com/whoaskedssselery/zazzzor/server/internal/channels"
 	"github.com/whoaskedssselery/zazzzor/server/internal/config"
@@ -25,6 +27,7 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/linkpreview"
 	"github.com/whoaskedssselery/zazzzor/server/internal/messages"
 	"github.com/whoaskedssselery/zazzzor/server/internal/notifysettings"
+	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/ratelimit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
@@ -52,8 +55,11 @@ type Modules struct {
 	Channels       *channels.Service
 	Invites        *invites.Service
 	Messages       *messages.Service
-	Admin          *admin.Service
-	Files          *files.Disk
+	// Audit is the servers' audit log; its RunPrune is started by the
+	// caller.
+	Audit *audit.Service
+	Admin *admin.Service
+	Files *files.Disk
 	// Voice is unavailable (every operation 503) without LiveKit
 	// credentials; its Run must be started by the caller.
 	Voice *voice.Service
@@ -88,12 +94,19 @@ func NewModules(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator,
 	// guilds runs the channels bootstrapper inside guild creation; channels
 	// reads guilds through its exported reads, invites both; messages asks
 	// channels what a member may do.
+	// The audit log asks guilds who may read it, and guilds records into
+	// it: the subjects are plugged in once guilds exists.
+	subjects := &guildSubjects{}
+	auditSvc := audit.NewService(audit.Options{Pool: pool, IDs: ids, Subjects: subjects, Users: authSvc})
 	guildSvc := guilds.NewService(guilds.Options{Pool: pool, IDs: ids, Users: authSvc, Files: disk, Publisher: cleanup,
+		Audit: auditSvc,
 		Hooks: guilds.Hooks{Channels: channels.NewBootstrapper(ids, nil), Overwrites: channels.NewCleaner()}})
-	channelSvc := channels.NewService(channels.Options{Pool: pool, IDs: ids, Guilds: guildSvc, Publisher: cleanup})
+	subjects.guilds = guildSvc
+	channelSvc := channels.NewService(channels.Options{Pool: pool, IDs: ids, Guilds: guildSvc, Publisher: cleanup,
+		Audit: auditSvc})
 	presence := new(atomic.Pointer[gateway.Gateway])
 	messageSvc := messages.NewService(messages.Options{Pool: pool, IDs: ids, Channels: channelSvc, Users: authSvc,
-		Publisher: pub, Files: disk, AttachmentQuotaBytes: cfg.AttachmentQuotaBytes, MinFreeBytes: cfg.MinFreeBytes,
+		Publisher: pub, Audit: auditSvc, Files: disk, AttachmentQuotaBytes: cfg.AttachmentQuotaBytes, MinFreeBytes: cfg.MinFreeBytes,
 		PreviewFetcher: linkpreview.New(), OnlineAmong: func(ids []snowflake.ID) []snowflake.ID {
 			if gw := presence.Load(); gw != nil {
 				return gw.OnlineAmong(ids)
@@ -115,8 +128,10 @@ func NewModules(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator,
 		Channels:      channelSvc,
 		NotifySettings: notifysettings.NewService(notifysettings.Options{Pool: pool, Channels: channelSvc,
 			Publisher: pub}),
-		Invites:     invites.NewService(invites.Options{Pool: pool, Channels: channelSvc, Guilds: guildSvc, Users: authSvc}),
+		Invites: invites.NewService(invites.Options{Pool: pool, Channels: channelSvc, Guilds: guildSvc, Users: authSvc,
+			Audit: auditSvc}),
 		Messages:    messageSvc,
+		Audit:       auditSvc,
 		Admin:       admin.NewService(admin.Options{Settings: settings, Accounts: authSvc}),
 		Files:       disk,
 		Voice:       cleanup.voice,
@@ -176,6 +191,15 @@ func (m *Modules) Routes(r chi.Router, gw *gateway.Gateway) {
 		channels.Mount(r, m.Channels)
 		invites.Mount(r, m.Invites)
 		messages.Mount(r, m.Messages)
+		audit.Mount(r, m.Audit)
 		voice.Mount(r, m.Voice)
 	})
+}
+
+// guildSubjects resolves members' permissions for the audit log through
+// guilds, which is built after the log.
+type guildSubjects struct{ guilds *guilds.Service }
+
+func (g *guildSubjects) Subject(ctx context.Context, guildID, userID snowflake.ID) (permissions.Subject, error) {
+	return g.guilds.Subject(ctx, guildID, userID)
 }

@@ -174,6 +174,8 @@ func serve(ctx context.Context, logger *slog.Logger, cfg config.Config, pool *pg
 		defer stopPreviews()
 		stopAttachments := startBackground(ctx, deps.Modules.Messages.RunAttachmentSweep)
 		defer stopAttachments()
+		stopAudit := startBackground(ctx, func(ctx context.Context) { deps.Modules.Audit.RunPrune(ctx, logger) })
+		defer stopAudit()
 		stopPurge := startFilePurge(ctx, deps.Modules.Files, logger)
 		defer stopPurge()
 		stopVoice := startVoice(ctx, deps.Modules.Voice, logger)

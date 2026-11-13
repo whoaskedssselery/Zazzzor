@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/whoaskedssselery/zazzzor/server/internal/audit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/guilds/store"
@@ -184,6 +185,10 @@ func (s *Service) Kick(ctx context.Context, guildID, targetID, actorID snowflake
 		if target, err = s.account(ctx, tx, targetID); err != nil {
 			return err
 		}
+		if err = s.record(ctx, tx, audit.Entry{GuildID: guildID, ActorID: actorID, Action: audit.MemberKick,
+			TargetID: targetID}); err != nil {
+			return err
+		}
 		return s.removeMember(ctx, tx, guildID, targetID)
 	})
 	if err != nil {
@@ -234,6 +239,12 @@ func (s *Service) Ban(ctx context.Context, guildID, targetID, actorID snowflake.
 			return fmt.Errorf("guilds: create ban: %w", err)
 		}
 		banned = n == 1
+		if banned {
+			if err = s.record(ctx, tx, audit.Entry{GuildID: guildID, ActorID: actorID, Action: audit.MemberBanAdd,
+				TargetID: targetID, Reason: reason}); err != nil {
+				return err
+			}
+		}
 		if removed {
 			return s.removeMember(ctx, tx, guildID, targetID)
 		}
@@ -269,8 +280,11 @@ func (s *Service) Unban(ctx context.Context, guildID, targetID, actorID snowflak
 		if n == 0 {
 			return ErrNotFound
 		}
-		target, err = s.account(ctx, tx, targetID)
-		return err
+		if target, err = s.account(ctx, tx, targetID); err != nil {
+			return err
+		}
+		return s.record(ctx, tx, audit.Entry{GuildID: guildID, ActorID: actorID, Action: audit.MemberBanRemove,
+			TargetID: targetID})
 	})
 	if err != nil {
 		return err
