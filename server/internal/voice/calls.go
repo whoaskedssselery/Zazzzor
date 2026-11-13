@@ -35,8 +35,12 @@ type CallDelete struct {
 type Private interface {
 	// PrepareCall checks that userID may call in private channel channelID
 	// (a 1:1 on the terms of a message), reopens a closed 1:1 for the
-	// other recipient, and returns every recipient.
+	// other recipient, and returns the recipients to ring: every one but
+	// those who blocked the caller or whom the caller blocked.
 	PrepareCall(ctx context.Context, channelID, userID snowflake.ID) ([]snowflake.ID, error)
+	// MayCall reports whether userID may still be in the call: a
+	// recipient, and in a 1:1 on the terms of a message.
+	MayCall(ctx context.Context, channelID, userID snowflake.ID) (bool, error)
 }
 
 var _ Private = (*channels.Service)(nil)

@@ -139,6 +139,7 @@ func (f *fakeRooms) waitRemoved(t *testing.T, want string) {
 
 type env struct {
 	t      *testing.T
+	auth   *auth.Service
 	pool   *pgxpool.Pool
 	guilds *guilds.Service
 	chans  *channels.Service
@@ -159,7 +160,9 @@ func newEnv(t *testing.T, opts ...func(*voice.Options)) *env {
 	e := &env{t: t, pool: testkit.Postgres(t), pub: &recorder{}, rooms: newFakeRooms()}
 	ids := snowflake.NewGenerator(0, time.Now)
 	authSvc := auth.NewService(auth.Options{Pool: e.pool, IDs: ids, CookieSecure: true,
-		RegisterLimiter: unlimited(), LoginLimiter: unlimited()})
+		RegisterLimiter: unlimited(), LoginLimiter: unlimited(),
+		OnDisabled: func(ctx context.Context, id snowflake.ID) { e.voice.RemoveUser(ctx, id) }})
+	e.auth = authSvc
 	disk, err := files.NewDisk(t.TempDir(), files.Options{})
 	if err != nil {
 		t.Fatalf("NewDisk: %v", err)
@@ -169,7 +172,7 @@ func newEnv(t *testing.T, opts ...func(*voice.Options)) *env {
 		CreateLimiter: unlimited(), WriteLimiter: unlimited()})
 	e.chans = channels.NewService(channels.Options{Pool: e.pool, IDs: ids, Guilds: e.guilds, Publisher: e.pub,
 		WriteLimiter: unlimited()})
-	o := voice.Options{Channels: e.chans, Members: e.guilds, Private: e.chans, Rooms: e.rooms, APIKey: testKey, APISecret: testSecret,
+	o := voice.Options{Channels: e.chans, Members: e.guilds, Private: e.chans, Accounts: authSvc, Rooms: e.rooms, APIKey: testKey, APISecret: testSecret,
 		Publisher: e.pub, WriteLimiter: unlimited()}
 	for _, opt := range opts {
 		opt(&o)

@@ -188,6 +188,8 @@ type Options struct {
 	Members  Members
 	// Private checks and prepares calls; without it a call is refused.
 	Private Private
+	// Accounts tells disabled accounts apart; nil admits every account.
+	Accounts Accounts
 	// RingFor is how long a call rings; zero means 60 seconds.
 	RingFor time.Duration
 	// Rooms is the LiveKit server API.
@@ -272,6 +274,7 @@ type Service struct {
 	channels     Channels
 	members      Members
 	private      Private
+	accounts     Accounts
 	ringFor      time.Duration
 	rooms        RoomClient
 	key, secret  string
@@ -321,7 +324,7 @@ type Service struct {
 
 // NewService builds a Service from o. It starts nothing and calls nothing.
 func NewService(o Options) *Service {
-	s := &Service{channels: o.Channels, members: o.Members, private: o.Private, calls: make(map[snowflake.ID]*call), rooms: o.Rooms, key: o.APIKey, secret: o.APISecret, pub: o.Publisher,
+	s := &Service{channels: o.Channels, members: o.Members, private: o.Private, accounts: o.Accounts, calls: make(map[snowflake.ID]*call), rooms: o.Rooms, key: o.APIKey, secret: o.APISecret, pub: o.Publisher,
 		log: o.Logger, now: o.Now, writeLimiter: o.WriteLimiter,
 		sessions: make(map[snowflake.ID]*session), intents: make(map[snowflake.ID]intent),
 		revs: make(map[snowflake.ID]uint64), seen: make(map[string]time.Time),

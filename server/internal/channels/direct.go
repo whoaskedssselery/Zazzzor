@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 
 	"github.com/jackc/pgx/v5"
 
@@ -193,8 +194,16 @@ func (s *Service) PrepareCall(ctx context.Context, id, userID snowflake.ID) ([]s
 		if err := s.CheckPrivateSendIn(ctx, tx, id, userID); err != nil {
 			return nil, err
 		}
+		// Nobody is rung by someone they blocked or who blocked them; in a
+		// group they still share the call if they join it themselves.
+		blocked, err := s.q.BlockedWith(ctx, tx, int64(userID))
+		if err != nil {
+			return nil, fmt.Errorf("channels: load blocks of caller: %w", err)
+		}
 		for _, m := range snapshot.members {
-			recipients = append(recipients, m.ID)
+			if !slices.Contains(blocked, int64(m.ID)) {
+				recipients = append(recipients, m.ID)
+			}
 		}
 		return s.ReopenPrivateIn(ctx, tx, id)
 	})
@@ -202,4 +211,49 @@ func (s *Service) PrepareCall(ctx context.Context, id, userID snowflake.ID) ([]s
 		return nil, err
 	}
 	return recipients, nil
+}
+
+// MayCall reports whether userID may be in the call of private channel id
+// now: a recipient, and in a 1:1 on the terms of a message, the rule
+// PrepareCall applies to a new token. Joins and reconciliation check it
+// again, so a block or a lost shared server ends a call already started.
+func (s *Service) MayCall(ctx context.Context, id, userID snowflake.ID) (bool, error) {
+	var ok bool
+	err := s.read(ctx, func(tx pgx.Tx) error {
+		row, err := s.q.ChannelByID(ctx, tx, id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("channels: load call channel: %w", err)
+		}
+		if !Type(row.Type).Private() {
+			return nil
+		}
+		ids, err := s.PrivateRecipientsIn(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if !slices.Contains(ids, userID) {
+			return nil
+		}
+		if Type(row.Type) == TypeGroupDM {
+			ok = true
+			return nil
+		}
+		if len(ids) != 2 {
+			return nil
+		}
+		other := ids[0]
+		if other == userID {
+			other = ids[1]
+		}
+		allowed, err := s.q.CanDirectMessage(ctx, tx, store.CanDirectMessageParams{ActorID: int64(userID), OtherID: int64(other)})
+		if err != nil {
+			return fmt.Errorf("channels: check call eligibility: %w", err)
+		}
+		ok = allowed.Valid && allowed.Bool
+		return nil
+	})
+	return ok, err
 }

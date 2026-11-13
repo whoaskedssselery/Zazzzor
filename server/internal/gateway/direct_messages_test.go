@@ -3,6 +3,7 @@ package gateway_test
 import (
 	"bytes"
 	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/gateway"
@@ -114,7 +115,14 @@ func TestDirectChannelBlockKeepsHistory(t *testing.T) {
 	e.join(g, b)
 	ch := openDM(t, alice, b.ID, http.StatusCreated)
 	path := "/api/v1/channels/" + ch.ID + "/messages"
-	dmExpect(t, alice.Do(http.MethodPost, path, map[string]string{"content": "from server mate"}), http.StatusCreated)
+	sent := alice.Do(http.MethodPost, path, map[string]string{"content": "from server mate"})
+	dmExpect(t, sent, http.StatusCreated)
+	var msg struct {
+		ID string `json:"id"`
+	}
+	sent.JSON(&msg)
+	thumbs := path + "/" + msg.ID + "/reactions/" + url.PathEscape("👍")
+	dmExpect(t, alice.Do(http.MethodPut, thumbs+"/@me", nil), http.StatusNoContent)
 	dmExpect(t, bob.Do(http.MethodPut, "/api/v1/users/@me/relationships/"+a.ID, map[string]int{"type": 2}), http.StatusNoContent)
 	for _, tc := range []struct {
 		c     *testkit.Client
@@ -126,10 +134,18 @@ func TestDirectChannelBlockKeepsHistory(t *testing.T) {
 			t.Errorf("send denial = %s", got.Body)
 		}
 		dmExpect(t, tc.c.Do(http.MethodGet, path, nil), http.StatusOK)
+		// No new reaction either.
+		got = tc.c.Do(http.MethodPut, path+"/"+msg.ID+"/reactions/"+url.PathEscape("🔥")+"/@me", nil)
+		dmExpect(t, got, http.StatusForbidden)
+		if dmCode(got) != "cannot_message_user" {
+			t.Errorf("reaction denial = %s", got.Body)
+		}
 		got = tc.c.Do(http.MethodPost, privateChannels, map[string]string{"recipient_id": tc.other})
 		dmExpect(t, got, http.StatusForbidden)
 		if dmCode(got) != "cannot_message_user" {
 			t.Errorf("open denial = %s", got.Body)
 		}
 	}
+	// Taking an old reaction back stays allowed.
+	dmExpect(t, alice.Do(http.MethodDelete, thumbs+"/@me", nil), http.StatusNoContent)
 }

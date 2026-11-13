@@ -16,6 +16,7 @@ import (
 	"github.com/livekit/protocol/livekit"
 	"google.golang.org/protobuf/encoding/protojson"
 
+	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
 	"github.com/whoaskedssselery/zazzzor/server/internal/channels"
 	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
@@ -199,6 +200,9 @@ func (s *Service) admitted(ctx context.Context, channelID snowflake.ID, p Partic
 	if !ok {
 		return 0, 0, false, nil
 	}
+	if active, err := s.accountActive(ctx, userID); err != nil || !active {
+		return 0, 0, false, err
+	}
 	c, err := s.channels.Lookup(ctx, channelID)
 	if errors.Is(err, channels.ErrNotFound) {
 		return 0, 0, false, nil
@@ -216,7 +220,36 @@ func (s *Service) admitted(ctx context.Context, channelID snowflake.ID, p Partic
 	if err != nil {
 		return 0, 0, false, err
 	}
+	if c.Type == channels.TypeDM {
+		// A 1:1 call keeps to the terms of a message: a block or a lost
+		// shared server ends it, as it refuses a new token.
+		if s.private == nil {
+			return 0, 0, false, nil
+		}
+		may, err := s.private.MayCall(ctx, channelID, userID)
+		if err != nil || !may {
+			return 0, 0, false, err
+		}
+	}
 	return guildID, perm, perm.Has(permissions.Connect), nil
+}
+
+// Accounts reads accounts (auth.Service).
+type Accounts interface {
+	UsersByIDs(ctx context.Context, ids []snowflake.ID) ([]auth.User, error)
+}
+
+// accountActive reports whether userID's account exists and is not
+// disabled; without Accounts every account is.
+func (s *Service) accountActive(ctx context.Context, userID snowflake.ID) (bool, error) {
+	if s.accounts == nil {
+		return true, nil
+	}
+	users, err := s.accounts.UsersByIDs(ctx, []snowflake.ID{userID})
+	if err != nil {
+		return false, fmt.Errorf("voice: load account: %w", err)
+	}
+	return len(users) == 1 && users[0].DisabledAt == nil, nil
 }
 
 // joined handles participant_joined: an admitted participant whose token

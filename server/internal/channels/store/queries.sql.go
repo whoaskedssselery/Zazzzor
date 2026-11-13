@@ -44,6 +44,33 @@ func (q *Queries) BindDirectPair(ctx context.Context, db DBTX, arg BindDirectPai
 	return err
 }
 
+const blockedWith = `-- name: BlockedWith :many
+SELECT (CASE WHEN user_id = $1::bigint THEN other_id ELSE user_id END)::bigint AS id
+FROM relationships
+WHERE type = 2 AND (user_id = $1::bigint OR other_id = $1::bigint)
+`
+
+// The users who blocked user_id or whom user_id blocked.
+func (q *Queries) BlockedWith(ctx context.Context, db DBTX, userID int64) ([]int64, error) {
+	rows, err := db.Query(ctx, blockedWith, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const canDirectMessage = `-- name: CanDirectMessage :one
 SELECT (
     EXISTS (SELECT 1 FROM relationships WHERE user_id = $1::bigint AND other_id = $2::bigint AND type = 1)

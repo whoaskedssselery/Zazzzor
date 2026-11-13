@@ -79,6 +79,9 @@ func NewModules(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator,
 	}
 	// auth asks the admin settings on every registration.
 	settings := admin.NewSettings(pool)
+	// Removals from guilds and channels take people out of voice; the
+	// voice service is plugged in below, before anything publishes.
+	cleanup := &voiceCleanup{next: pub}
 	authSvc := auth.NewService(auth.Options{
 		Pool:             pool,
 		IDs:              ids,
@@ -87,10 +90,8 @@ func NewModules(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator,
 		CookieSecure:     cfg.CookieSecure,
 		TrustedProxies:   cfg.TrustedProxies,
 		RegistrationOpen: settings.RegistrationOpen,
+		OnDisabled:       cleanup.accountDisabled,
 	})
-	// Removals from guilds and channels take people out of voice; the
-	// voice service is plugged in below, before anything publishes.
-	cleanup := &voiceCleanup{next: pub}
 	// guilds runs the channels bootstrapper inside guild creation; channels
 	// reads guilds through its exported reads, invites both; messages asks
 	// channels what a member may do.
@@ -113,7 +114,7 @@ func NewModules(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator,
 			}
 			return nil
 		}})
-	vo := voice.Options{Channels: channelSvc, Members: guildSvc, Private: channelSvc, Publisher: pub, Logger: slog.Default()}
+	vo := voice.Options{Channels: channelSvc, Members: guildSvc, Private: channelSvc, Accounts: authSvc, Publisher: pub, Logger: slog.Default()}
 	if cfg.VoiceEnabled() {
 		vo.Rooms = voice.NewLiveKit(cfg.LiveKitURL, cfg.LiveKitAPIKey, cfg.LiveKitAPISecret)
 		vo.APIKey, vo.APISecret = cfg.LiveKitAPIKey, cfg.LiveKitAPISecret
@@ -123,7 +124,7 @@ func NewModules(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator,
 		presence:      presence,
 		Auth:          authSvc,
 		Users:         users.NewService(users.Options{Accounts: authSvc, Files: disk, Publisher: pub, Peers: guildSvc}),
-		Relationships: relationships.NewService(relationships.Options{Pool: pool, Publisher: pub}),
+		Relationships: relationships.NewService(relationships.Options{Pool: pool, Publisher: cleanup}),
 		Guilds:        guildSvc,
 		Channels:      channelSvc,
 		NotifySettings: notifysettings.NewService(notifysettings.Options{Pool: pool, Channels: channelSvc,

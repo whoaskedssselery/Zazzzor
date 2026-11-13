@@ -153,6 +153,13 @@ func (s *Service) changeReaction(ctx context.Context, channelID, messageID, acto
 			return resolveErr
 		}
 		payload.Emoji = resolved
+		if add && guildID == 0 {
+			// A new reaction in a 1:1 is a message of sorts: a block or a
+			// lost shared server refuses it. Taking one back stays allowed.
+			if sendErr := s.channels.CheckPrivateSendIn(ctx, tx, channelID, actor); sendErr != nil {
+				return sendErr
+			}
+		}
 		if add {
 			n, addErr := s.addReactionIn(ctx, tx, p, payload, emojiKey)
 			changed = n
