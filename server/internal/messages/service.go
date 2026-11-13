@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/whoaskedssselery/zazzzor/server/internal/audit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
 	"github.com/whoaskedssselery/zazzzor/server/internal/channels"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
@@ -620,6 +621,13 @@ func (s *Service) Delete(ctx context.Context, channelID, messageID, userID snowf
 		}
 		if n == 0 {
 			return ErrNotFound
+		}
+		if !authoredBy(row, userID) && guildID != 0 && row.AuthorID != nil {
+			if recErr := audit.Record(ctx, s.audit, tx, audit.Entry{GuildID: guildID, ActorID: userID,
+				Action: audit.MessageDelete, TargetID: *row.AuthorID,
+				Options: map[string]string{"channel_id": channelID.String()}}); recErr != nil {
+				return recErr
+			}
 		}
 		marker, recomputeErr := s.q.RecomputeLastMessage(ctx, tx, channelID)
 		if recomputeErr != nil {

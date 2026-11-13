@@ -66,6 +66,7 @@ type env struct {
 	guilds *guilds.Service
 	svc    *channels.Service
 	pub    *recorder
+	log    *auditLog
 	h      http.Handler
 }
 
@@ -74,7 +75,7 @@ func unlimited() *ratelimit.Limiter { return ratelimit.New(rate.Inf, 1, time.Min
 func newEnv(t *testing.T) *env {
 	t.Helper()
 	pool := testkit.Postgres(t)
-	e := &env{t: t, pool: pool, pub: &recorder{}}
+	e := &env{t: t, pool: pool, pub: &recorder{}, log: &auditLog{}}
 	ids := snowflake.NewGenerator(0, time.Now)
 	e.auth = auth.NewService(auth.Options{Pool: pool, IDs: ids, CookieSecure: true,
 		RegisterLimiter: unlimited(), LoginLimiter: unlimited()})
@@ -86,7 +87,7 @@ func newEnv(t *testing.T) *env {
 		Hooks:         guilds.Hooks{Channels: channels.NewBootstrapper(ids, nil), Overwrites: channels.NewCleaner()},
 		CreateLimiter: unlimited(), WriteLimiter: unlimited()})
 	e.svc = channels.NewService(channels.Options{Pool: pool, IDs: ids, Guilds: e.guilds, Publisher: e.pub,
-		WriteLimiter: unlimited()})
+		Audit: e.log, WriteLimiter: unlimited()})
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	r := chi.NewRouter()

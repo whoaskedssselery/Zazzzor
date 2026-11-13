@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/time/rate"
 
+	"github.com/whoaskedssselery/zazzzor/server/internal/audit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/channels/store"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
@@ -188,6 +189,8 @@ type Options struct {
 	IDs       *snowflake.Generator
 	Guilds    Guilds
 	Publisher events.Publisher // nil: events are dropped
+	// Audit records channel changes in the audit log; nil records nothing.
+	Audit audit.Recorder
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
 	// WriteLimiter limits channel and overwrite writes per user; nil takes
@@ -197,6 +200,7 @@ type Options struct {
 
 // Service implements channels, categories and overwrites.
 type Service struct {
+	audit         audit.Recorder
 	pool          *pgxpool.Pool
 	q             *store.Queries
 	ids           *snowflake.Generator
@@ -212,7 +216,7 @@ type Service struct {
 
 // NewService builds a Service from o.
 func NewService(o Options) *Service {
-	s := &Service{pool: o.Pool, q: store.New(), ids: o.IDs, guilds: o.Guilds, pub: o.Publisher,
+	s := &Service{audit: o.Audit, pool: o.Pool, q: store.New(), ids: o.IDs, guilds: o.Guilds, pub: o.Publisher,
 		now: o.Now, writeLimiter: o.WriteLimiter,
 		directLimiter: ratelimit.New(rate.Every(2*time.Second), 30, 2*time.Minute),
 		groupLimiter:  ratelimit.New(rate.Every(6*time.Minute), 10, 2*time.Hour)}

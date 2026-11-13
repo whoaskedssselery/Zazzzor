@@ -5,9 +5,11 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strconv"
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/whoaskedssselery/zazzzor/server/internal/audit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
 	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
@@ -132,6 +134,9 @@ func (s *Service) changeOverwrite(ctx context.Context, channelID, targetID, acto
 		if err = authorizeOverwrites(a, actor, perm, eff, set); err != nil {
 			return err
 		}
+		if err = recordOverwrite(ctx, s.audit, tx, l.guildID, actorID, channelID, targetID, eff, i, next); err != nil {
+			return err
+		}
 		n.ch.Overwrites, n.ch.PermissionSynced, n.owDirty = set, false, true
 		if _, err = s.save(ctx, tx, l); err != nil {
 			return err
@@ -220,4 +225,31 @@ func authorizeOverwrites(a guilds.Access, actor permissions.Subject, perm permis
 		}
 	}
 	return nil
+}
+
+// recordOverwrite writes the audit entry of an overwrite change: old is the
+// effective set, i the index of targetID's overwrite in it (-1: none), next
+// the new one (nil: removed).
+func recordOverwrite(ctx context.Context, rec audit.Recorder, tx pgx.Tx, guildID, actorID, channelID, targetID snowflake.ID,
+	old []permissions.Overwrite, i int, next *permissions.Overwrite,
+) error {
+	mask := func(p permissions.Permission) string { return strconv.FormatUint(uint64(p), 10) }
+	e := audit.Entry{GuildID: guildID, ActorID: actorID, TargetID: channelID,
+		Options: map[string]string{"id": targetID.String()}}
+	switch {
+	case next == nil:
+		e.Action = audit.OverwriteDelete
+		e.Changes = []audit.Change{{Key: "allow", Old: mask(old[i].Allow)}, {Key: "deny", Old: mask(old[i].Deny)}}
+		e.Options["type"] = strconv.Itoa(int(old[i].Type))
+	case i < 0:
+		e.Action = audit.OverwriteCreate
+		e.Changes = []audit.Change{{Key: "allow", New: mask(next.Allow)}, {Key: "deny", New: mask(next.Deny)}}
+		e.Options["type"] = strconv.Itoa(int(next.Type))
+	default:
+		e.Action = audit.OverwriteUpdate
+		e.Changes = []audit.Change{{Key: "allow", Old: mask(old[i].Allow), New: mask(next.Allow)},
+			{Key: "deny", Old: mask(old[i].Deny), New: mask(next.Deny)}}
+		e.Options["type"] = strconv.Itoa(int(next.Type))
+	}
+	return audit.Record(ctx, rec, tx, e)
 }

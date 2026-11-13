@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/time/rate"
 
+	"github.com/whoaskedssselery/zazzzor/server/internal/audit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
 	"github.com/whoaskedssselery/zazzzor/server/internal/channels"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
@@ -289,6 +290,9 @@ var _ Users = (auth.Accounts)(nil)
 
 // Options configures a Service. Pool, IDs, Channels and Users are required.
 type Options struct {
+	// Audit records moderators deleting the messages of others; nil
+	// records nothing.
+	Audit audit.Recorder
 	// OnlineAmong snapshots which of the given guild members are online.
 	OnlineAmong          func([]snowflake.ID) []snowflake.ID
 	Pool                 *pgxpool.Pool
@@ -329,6 +333,7 @@ type Service struct {
 	pool            *pgxpool.Pool
 	q               *store.Queries
 	ids             *snowflake.Generator
+	audit           audit.Recorder
 	channels        Channels
 	users           Users
 	pub             events.Publisher
@@ -349,7 +354,7 @@ type Service struct {
 
 // NewService builds a Service from o.
 func NewService(o Options) *Service {
-	s := &Service{reactionLimiter: ratelimit.New(reactionRate, reactionBurst, reactionTTL), onlineAmong: o.OnlineAmong, ackLimiter: ratelimit.New(ackRate, ackBurst, ackTTL), pool: o.Pool, q: store.New(), ids: o.IDs, channels: o.Channels, users: o.Users,
+	s := &Service{reactionLimiter: ratelimit.New(reactionRate, reactionBurst, reactionTTL), onlineAmong: o.OnlineAmong, ackLimiter: ratelimit.New(ackRate, ackBurst, ackTTL), pool: o.Pool, q: store.New(), ids: o.IDs, audit: o.Audit, channels: o.Channels, users: o.Users,
 		pub: o.Publisher, files: o.Files, logger: o.Logger, now: o.Now,
 		uploadLimiter: ratelimit.New(uploadRate, uploadBurst, uploadTTL, ratelimit.WithClock(o.Now)), sendLimiter: o.SendLimiter, writeLimiter: o.WriteLimiter,
 		typingLimiter: o.TypingLimiter, typingCalls: o.TypingCallLimiter,
