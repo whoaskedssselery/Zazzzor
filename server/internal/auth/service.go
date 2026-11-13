@@ -206,6 +206,9 @@ type Options struct {
 	// RegistrationOpen reports whether new accounts may be created; nil
 	// means always.
 	RegistrationOpen func(context.Context) (bool, error)
+	// OnDisabled runs after an account was disabled (voice takes the user
+	// out); nil does nothing.
+	OnDisabled func(ctx context.Context, userID snowflake.ID)
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
 	// Per-IP limiters; nil takes the defaults (login 10/min, register 3/h).
@@ -235,6 +238,7 @@ type Service struct {
 	cookieSecure     bool
 	trusted          []netip.Prefix
 	registrationOpen func(context.Context) (bool, error)
+	onDisabled       func(ctx context.Context, userID snowflake.ID)
 	now              func() time.Time
 	loginLimiter     *ratelimit.Limiter
 	registerLimiter  *ratelimit.Limiter
@@ -257,6 +261,7 @@ func NewService(o Options) *Service {
 		cookieSecure:     o.CookieSecure,
 		trusted:          o.TrustedProxies,
 		registrationOpen: o.RegistrationOpen,
+		onDisabled:       o.OnDisabled,
 		now:              o.Now,
 		loginLimiter:     o.LoginLimiter,
 		registerLimiter:  o.RegisterLimiter,
@@ -1050,5 +1055,8 @@ func (s *Service) SetDisabled(ctx context.Context, userID snowflake.ID, disabled
 		return User{}, err
 	}
 	s.publishRevoked(ctx, userID, revoked)
+	if disabled && s.onDisabled != nil {
+		s.onDisabled(ctx, userID)
+	}
 	return s.toUser(row), nil
 }

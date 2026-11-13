@@ -236,11 +236,19 @@ export const Chat = ({ scope }: { scope: ChatScope }) => {
   // history any more (deleted) ends the request when the history ends.
   const focus = useFocusRequest(channelId);
   const historyReady = history.isSuccess;
+  // Found: scrolled to and marked while rendering (no extra render pass);
+  // the request itself is cleared by the effect below.
+  const [focused, setFocused] = useState<string | null>(null);
+  if (focus !== focused && (focus === null || (historyReady && loaded.has(focus)))) {
+    setFocused(focus);
+    if (focus !== null) {
+      setScrollTo({ id: focus });
+      setHighlighted(focus);
+    }
+  }
   useEffect(() => {
     if (focus === null || !historyReady) return;
     if (loaded.has(focus)) {
-      setScrollTo({ id: focus });
-      setHighlighted(focus);
       clearFocus(channelId);
     } else if (!hasOlder) {
       clearFocus(channelId);

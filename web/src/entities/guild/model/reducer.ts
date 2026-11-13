@@ -146,17 +146,17 @@ type Presences = Pick<GuildsState, "presences" | "statusLines">;
  */
 function withPresences(into: Presences, list: readonly Presence[], offline: readonly string[] = []): Presences {
   const presences = { ...into.presences };
-  const statusLines = { ...into.statusLines };
+  const lines = new Map(Object.entries(into.statusLines));
   for (const id of offline) {
     presences[id] = "offline";
-    delete statusLines[id];
+    lines.delete(id);
   }
   for (const p of list) {
     presences[p.user_id] = p.status;
-    if (p.status !== "offline" && p.custom_status !== null) statusLines[p.user_id] = p.custom_status;
-    else delete statusLines[p.user_id];
+    if (p.status !== "offline" && p.custom_status !== null) lines.set(p.user_id, p.custom_status);
+    else lines.delete(p.user_id);
   }
-  return { presences, statusLines };
+  return { presences, statusLines: Object.fromEntries(lines) };
 }
 
 /** The presences a GuildState tells: a member it holds who is not listed is offline. */

@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/livekit/protocol/livekit"
+
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/testkit"
@@ -187,5 +189,91 @@ SELECT x, y, 1, now() FROM (VALUES ($1::bigint,$2::bigint),($2,$1),($1,$3::bigin
 	e.voice.RecheckPrivate(t.Context(), group.ID, b.id(t))
 	if _, states = e.voice.PrivateCalls([]snowflake.ID{group.ID}); len(states) != 2 {
 		t.Fatal("a recipient still in the group was taken out")
+	}
+}
+
+// inCall reports whether userID is in the call of channelID.
+func (e *env) inCall(channelID, userID snowflake.ID) bool {
+	_, states := e.voice.PrivateCalls([]snowflake.ID{channelID})
+	return slices.ContainsFunc(states, func(s voice.State) bool { return s.UserID == userID })
+}
+
+func TestABlockDuringACallEndsItAndRefusesOlderTokens(t *testing.T) {
+	e := newEnv(t)
+	alice, a, bob, b, dm := dmPair(t, e)
+	dmID := parseID(t, dm)
+	e.connect(alice, a, dm, "RM_dm", "PA_alice")
+	// Bob holds a token from before the block and has not connected yet.
+	join := claims(t, joinVoice(t, bob, dm).Token).Attributes["zazzzor.join"]
+	if !e.inCall(dmID, a.id(t)) {
+		t.Fatal("alice is not in the call")
+	}
+
+	if _, err := e.pool.Exec(t.Context(), `INSERT INTO relationships(user_id,other_id,type,since) VALUES ($1,$2,2,now())`,
+		int64(b.id(t)), int64(a.id(t))); err != nil {
+		t.Fatalf("block: %v", err)
+	}
+	e.voice.RecheckCalls(t.Context(), []snowflake.ID{b.id(t), a.id(t)})
+	if e.inCall(dmID, a.id(t)) {
+		t.Fatal("the block left alice in the 1:1 call")
+	}
+	e.hook(&livekit.WebhookEvent{Event: "participant_joined", Room: lkRoom(dm, "RM_dm"),
+		Participant: lkParticipant(b, "PA_bob", join)})
+	if e.inCall(dmID, b.id(t)) {
+		t.Fatal("a token from before the block joined the call")
+	}
+}
+
+func TestADisabledAccountLeavesVoiceAndItsTokenStopsWorking(t *testing.T) {
+	e := newEnv(t)
+	alice, a := e.user("alice")
+	bob, b := e.user("bob")
+	g, _, vc := newGuild(t, alice, "home")
+	e.join(g, b)
+	e.connect(alice, a, vc.ID, "RM_vc", "PA_alice")
+	e.connect(bob, b, vc.ID, "RM_vc", "PA_bob")
+	oldJoin := claims(t, joinVoice(t, bob, vc.ID).Token).Attributes["zazzzor.join"]
+	if _, ok := e.stateOf(parseID(t, g.ID), b.id(t)); !ok {
+		t.Fatal("bob is not in voice")
+	}
+
+	if _, err := e.auth.SetDisabled(t.Context(), b.id(t), true); err != nil {
+		t.Fatalf("SetDisabled: %v", err)
+	}
+	if _, ok := e.stateOf(parseID(t, g.ID), b.id(t)); ok {
+		t.Fatal("a disabled account stayed in voice")
+	}
+	e.hook(&livekit.WebhookEvent{Event: "participant_joined", Room: lkRoom(vc.ID, "RM_vc"),
+		Participant: lkParticipant(b, "PA_bob2", oldJoin)})
+	if _, ok := e.stateOf(parseID(t, g.ID), b.id(t)); ok {
+		t.Fatal("a disabled account joined with a token issued before")
+	}
+	if _, ok := e.stateOf(parseID(t, g.ID), a.id(t)); !ok {
+		t.Fatal("alice was taken out too")
+	}
+}
+
+func TestAGroupCallDoesNotRingWhoBlockedTheCaller(t *testing.T) {
+	e := newEnv(t)
+	alice, a := e.user("alice")
+	_, b := e.user("bob")
+	_, c := e.user("carol")
+	if _, err := e.pool.Exec(t.Context(), `
+INSERT INTO relationships(user_id,other_id,type,since)
+SELECT x, y, 1, now() FROM (VALUES ($1::bigint,$2::bigint),($2,$1),($1,$3::bigint),($3,$1)) AS p(x,y)`,
+		int64(a.id(t)), int64(b.id(t)), int64(c.id(t))); err != nil {
+		t.Fatalf("friends: %v", err)
+	}
+	group, err := e.chans.CreateGroup(t.Context(), a.id(t), []snowflake.ID{b.id(t), c.id(t)})
+	if err != nil {
+		t.Fatalf("CreateGroup: %v", err)
+	}
+	if _, err = e.pool.Exec(t.Context(), `UPDATE relationships SET type = 2 WHERE user_id = $1 AND other_id = $2`,
+		int64(b.id(t)), int64(a.id(t))); err != nil {
+		t.Fatalf("block: %v", err)
+	}
+	joinVoice(t, alice, group.ID.String())
+	if got := ringing(e.lastCall()); !slices.Equal(got, []snowflake.ID{c.id(t)}) {
+		t.Fatalf("ringing = %v, want carol only", got)
 	}
 }

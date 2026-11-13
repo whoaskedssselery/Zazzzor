@@ -36,11 +36,8 @@ afterEach(() => {
   resetGuilds();
 });
 
-let focused: string | null = null;
-const Probe = () => {
-  focused = useFocusRequest(GENERAL);
-  return null;
-};
+/** Shows the message asked to be focused in #general. */
+const Probe = () => <output aria-label="Фокус">{useFocusRequest(GENERAL) ?? ""}</output>;
 
 describe("SearchButton", () => {
   it("searches the server and opens a result at its message", async () => {
@@ -76,7 +73,7 @@ describe("SearchButton", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe(`/channels/${G}/${GENERAL}`);
     });
-    expect(focused).toBe("500");
+    expect(screen.getByRole("status", { name: "Фокус" }).textContent).toBe("500");
   });
 
   it("does not search without a word or an author", async () => {

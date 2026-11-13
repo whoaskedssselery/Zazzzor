@@ -6,6 +6,8 @@ import (
 	"github.com/whoaskedssselery/zazzzor/server/internal/channels"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
+	"github.com/whoaskedssselery/zazzzor/server/internal/relationships"
 	"github.com/whoaskedssselery/zazzzor/server/internal/voice"
 )
 
@@ -19,6 +21,15 @@ type voiceCleanup struct {
 	// voice is set once the voice service exists, before anything
 	// publishes.
 	voice *voice.Service
+}
+
+// accountDisabled takes a disabled account out of voice at once: its
+// token may still be valid for a few minutes, and admission refuses it
+// from now on.
+func (p *voiceCleanup) accountDisabled(ctx context.Context, userID snowflake.ID) {
+	if p.voice != nil {
+		p.voice.RemoveUser(ctx, userID)
+	}
 }
 
 // Publish implements events.Publisher. GUILD_DELETE goes to the users who
@@ -38,6 +49,12 @@ func (p *voiceCleanup) Publish(ctx context.Context, e events.Event) {
 		case channels.PublicChannel:
 			if e.Type == events.ChannelDelete {
 				p.voice.RemoveChannel(ctx, pl.ID)
+			}
+		case relationships.Relationship:
+			// A block ends a 1:1 call between the two, as it refuses a new
+			// token. Off this goroutine: the check reads the database.
+			if e.Type == events.RelationshipAdd && pl.Type == relationships.Blocked && len(e.Audience.UserIDs) == 1 {
+				go p.voice.RecheckCalls(context.WithoutCancel(ctx), []snowflake.ID{e.Audience.UserIDs[0], pl.ID})
 			}
 		case channels.DMChannelDelete:
 			// Closed, left or removed: only the last two end the recipient's

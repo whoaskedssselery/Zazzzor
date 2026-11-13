@@ -56,7 +56,7 @@ case "$args" in
     step restore
     [[ "${FAIL_RESTORE:-0}" != 1 ]] || exit "${FAIL_RESTORE_CODE:-2}"
     ;;
-  *"files reconcile"*)
+  *"files reconcile --strict"*)
     step reconcile
     [[ "${FAIL_RECONCILE:-0}" != 1 ]] || exit 1
     ;;

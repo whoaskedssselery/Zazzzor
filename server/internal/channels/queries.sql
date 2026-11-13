@@ -150,3 +150,9 @@ UPDATE channels SET name = sqlc.narg(name) WHERE id = @id AND type = 3;
 
 -- name: RemovePrivateRecipient :exec
 DELETE FROM channel_recipients WHERE channel_id = @channel_id AND user_id = @user_id;
+
+-- name: BlockedWith :many
+-- The users who blocked user_id or whom user_id blocked.
+SELECT (CASE WHEN user_id = @user_id::bigint THEN other_id ELSE user_id END)::bigint AS id
+FROM relationships
+WHERE type = 2 AND (user_id = @user_id::bigint OR other_id = @user_id::bigint);

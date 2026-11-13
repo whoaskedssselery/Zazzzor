@@ -169,6 +169,18 @@ export const updateHistory = (qc: QueryClient, channelId: string, fn: (d: Messag
 };
 
 /**
+ * The changes the gateway made to each history being caught up, in order:
+ * they are made again on what the server returned, which may predate them.
+ */
+const catchingUp = new Map<string, ((h: MessagePages) => MessagePages)[]>();
+
+/** Applies `fn` to the history of `channelId` now, and again after a catch-up in flight. */
+const applyLive = (qc: QueryClient, channelId: string, fn: (d: MessagePages) => MessagePages): void => {
+  catchingUp.get(channelId)?.push(fn);
+  updateHistory(qc, channelId, fn);
+};
+
+/**
  * Applies a chat DISPATCH to the message caches: MESSAGE_CREATE, _UPDATE,
  * _DELETE and the reactions change the history of their channel when it is
  * loaded (a channel never opened is left to load fresh). An own
@@ -181,18 +193,18 @@ export function applyMessageDispatch(qc: QueryClient, t: string, d: unknown, meI
     case "MESSAGE_CREATE": {
       const m = parseChatEvent(t, d);
       if (m === null) return;
-      updateHistory(qc, m.channel_id, (h) => upsertMessage(h, m, historyEnded(m.channel_id, h)));
+      applyLive(qc, m.channel_id, (h) => upsertMessage(h, m, historyEnded(m.channel_id, h)));
       if (m.nonce !== undefined) confirmPending(m.channel_id, m.nonce);
       return;
     }
     case "MESSAGE_UPDATE": {
       const m = parseChatEvent(t, d);
-      if (m !== null) updateHistory(qc, m.channel_id, (h) => replaceMessage(h, m));
+      if (m !== null) applyLive(qc, m.channel_id, (h) => replaceMessage(h, m));
       return;
     }
     case "MESSAGE_DELETE": {
       const e = parseChatEvent(t, d);
-      if (e !== null) updateHistory(qc, e.channel_id, (h) => removeMessage(h, e.id));
+      if (e !== null) applyLive(qc, e.channel_id, (h) => removeMessage(h, e.id));
       return;
     }
     case "MESSAGE_REACTION_ADD":
@@ -200,7 +212,7 @@ export function applyMessageDispatch(qc: QueryClient, t: string, d: unknown, meI
       const e = parseChatEvent(t, d);
       if (e === null) return;
       const add = t === "MESSAGE_REACTION_ADD";
-      updateHistory(qc, e.channel_id, (h) =>
+      applyLive(qc, e.channel_id, (h) =>
         updateMessage(h, e.message_id, (m) => withReaction(m, e.emoji, e.user_id === meId, add)),
       );
       return;
@@ -238,8 +250,9 @@ const asPages = (channelId: string, messages: Message[], ended: boolean): Messag
  * while away touch messages already loaded too (edits, deletions,
  * reactions), so the whole loaded span and everything after it is fetched
  * again with `after`, page by page until a short one, and replaces the
- * history; a message the gateway delivered meanwhile, newer than the
- * fetch, stays. A history too long for that (more than CATCH_UP_PAGES
+ * history as a snapshot: what the server no longer has goes, and the
+ * gateway's changes made while the fetch was in flight (new messages,
+ * edits, deletions, reactions) are made again on top of it. A history too long for that (more than CATCH_UP_PAGES
  * pages), or empty, loads again from the newest page instead; a history no
  * screen shows is dropped, to load fresh when opened. A channel that cannot
  * be read any more is left to the page, which leaves it.
@@ -258,27 +271,26 @@ export async function catchUpMessages(qc: QueryClient): Promise<void> {
       const oldest = oldestId(data);
       const ended = historyEnded(channelId, data);
       const fetched: Message[] = [];
-      let after = oldest === undefined ? undefined : justBefore(oldest);
-      for (let n = 0; after !== undefined && n < CATCH_UP_PAGES; n++) {
-        let page: Message[];
-        try {
-          page = await fetchMessages(channelId, { after, limit: CATCH_UP_SIZE });
-        } catch {
-          return;
+      const live: ((h: MessagePages) => MessagePages)[] = [];
+      catchingUp.set(channelId, live);
+      try {
+        let after = oldest === undefined ? undefined : justBefore(oldest);
+        for (let n = 0; after !== undefined && n < CATCH_UP_PAGES; n++) {
+          let page: Message[];
+          try {
+            page = await fetchMessages(channelId, { after, limit: CATCH_UP_SIZE });
+          } catch {
+            return;
+          }
+          fetched.push(...page);
+          if (page.length < CATCH_UP_SIZE) {
+            updateHistory(qc, channelId, () => live.reduce((h, fn) => fn(h), asPages(channelId, fetched, ended)));
+            return;
+          }
+          after = page.at(-1)?.id;
         }
-        fetched.push(...page);
-        if (page.length < CATCH_UP_SIZE) {
-          const newest = fetched.at(-1)?.id;
-          updateHistory(qc, channelId, (now) => {
-            const later = now.pages
-              .flat()
-              .filter((m) => newest === undefined || compareIds(m.id, newest) > 0)
-              .reverse();
-            return asPages(channelId, [...fetched, ...later], ended);
-          });
-          return;
-        }
-        after = page.at(-1)?.id;
+      } finally {
+        if (catchingUp.get(channelId) === live) catchingUp.delete(channelId);
       }
       await qc.resetQueries({ queryKey: q.queryKey, exact: true });
     }),
