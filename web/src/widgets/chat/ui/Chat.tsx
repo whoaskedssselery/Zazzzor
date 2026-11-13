@@ -6,6 +6,7 @@ import {
   clearFocus,
   emojiOfKey,
   inOrder,
+  justArrived,
   type Message,
   MessageItem,
   type PendingMessage,
@@ -371,40 +372,47 @@ export const Chat = ({ scope }: { scope: ChatScope }) => {
       case "new":
         return <NewDivider />;
       case "message":
-        return renderMessage(row.message, row.grouped);
+        // Someone else's message that just came in settles into place.
+        return justArrived(row.message.id) ? (
+          <div className="animate-enter">{renderMessage(row.message, row.grouped)}</div>
+        ) : (
+          renderMessage(row.message, row.grouped)
+        );
       case "pending": {
         const p = row.pending;
         return (
-          <MessageItem
-            message={{
-              id: p.nonce,
-              content: p.content,
-              created_at: now.toISOString(),
-              edited_at: null,
-              reply_to_id: p.replyTo?.id ?? null,
-              referenced_message: p.replyTo,
-            }}
-            attachments={p.attachments}
-            mentions={scope.mentions}
-            author={me ? scope.author(me) : null}
-            replyAuthor={p.replyTo ? authorOf(p.replyTo.author) : null}
-            grouped={row.grouped}
-            now={now}
-            state={p.status}
-            footer={
-              p.status === "failed" ? (
-                <FailedFooter
-                  pending={p}
-                  onRetry={() => {
-                    sender.retry(p.nonce);
-                  }}
-                  onDiscard={() => {
-                    sender.discard(p.nonce);
-                  }}
-                />
-              ) : undefined
-            }
-          />
+          <div className="animate-enter">
+            <MessageItem
+              message={{
+                id: p.nonce,
+                content: p.content,
+                created_at: now.toISOString(),
+                edited_at: null,
+                reply_to_id: p.replyTo?.id ?? null,
+                referenced_message: p.replyTo,
+              }}
+              attachments={p.attachments}
+              mentions={scope.mentions}
+              author={me ? scope.author(me) : null}
+              replyAuthor={p.replyTo ? authorOf(p.replyTo.author) : null}
+              grouped={row.grouped}
+              now={now}
+              state={p.status}
+              footer={
+                p.status === "failed" ? (
+                  <FailedFooter
+                    pending={p}
+                    onRetry={() => {
+                      sender.retry(p.nonce);
+                    }}
+                    onDiscard={() => {
+                      sender.discard(p.nonce);
+                    }}
+                  />
+                ) : undefined
+              }
+            />
+          </div>
         );
       }
     }
@@ -453,7 +461,7 @@ export const Chat = ({ scope }: { scope: ChatScope }) => {
   }
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col" {...(can.send ? drop.handlers : {})}>
+    <div className="relative flex min-h-0 flex-1 animate-fade-in flex-col" {...(can.send ? drop.handlers : {})}>
       {body}
       <Composer
         channelId={channelId}

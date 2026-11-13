@@ -1,4 +1,5 @@
 export { useMessages } from "./api/useMessages";
+export { justArrived, reactionKey } from "./model/arrival";
 export {
   type Attachment,
   type AttachmentKind,

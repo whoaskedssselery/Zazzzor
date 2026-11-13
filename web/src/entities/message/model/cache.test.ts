@@ -1,6 +1,7 @@
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { HttpResponse } from "msw";
 import { apiHandler, makeMessage, makeUser, problem, server } from "@/shared/test";
+import { justArrived, reactionKey } from "./arrival";
 import {
   applyMessageDispatch,
   catchUpMessages,
@@ -310,5 +311,34 @@ describe("the end of the history", () => {
     };
     expect(order(upsertMessage(shrunk, msg(10), false))).not.toContain(10);
     expect(order(upsertMessage(shrunk, msg(10), true))).toContain(10);
+  });
+});
+
+describe("what just arrived", () => {
+  it("marks someone else's new message and a new reaction, not an own confirmed send", () => {
+    const qc = new QueryClient();
+    qc.setQueryData(messagesKey(C), pages([9001]));
+    applyMessageDispatch(qc, "MESSAGE_CREATE", msg(9002));
+    expect(justArrived("9002")).toBe(true);
+    addPending({
+      nonce: "n-9003",
+      channelId: C,
+      content: "моё",
+      replyTo: null,
+      attachments: [],
+      status: "sending",
+      error: null,
+    });
+    applyMessageDispatch(qc, "MESSAGE_CREATE", msg(9003, { nonce: "n-9003" }));
+    expect(justArrived("9003")).toBe(false);
+    applyMessageDispatch(qc, "MESSAGE_REACTION_ADD", {
+      channel_id: C,
+      message_id: "9002",
+      user_id: "77",
+      guild_id: null,
+      emoji: { id: null, name: "👍" },
+    });
+    expect(justArrived(reactionKey("9002", "👍"))).toBe(true);
+    expect(justArrived("9001")).toBe(false);
   });
 });

@@ -1,8 +1,9 @@
 import type { InfiniteData, QueryClient } from "@tanstack/react-query";
 import { api, type components, isChatEvent, parseChatEvent, unwrap } from "@/shared/api";
 import { compareIds } from "@/shared/lib";
-import { confirmPending } from "./pending";
-import { withReaction } from "./reactions";
+import { markArrived, reactionKey } from "./arrival";
+import { confirmPending, isPending } from "./pending";
+import { emojiKey, withReaction } from "./reactions";
 
 export type Message = components["schemas"]["Message"];
 export type MessageStub = components["schemas"]["MessageStub"];
@@ -193,6 +194,8 @@ export function applyMessageDispatch(qc: QueryClient, t: string, d: unknown, meI
     case "MESSAGE_CREATE": {
       const m = parseChatEvent(t, d);
       if (m === null) return;
+      // An own message already showed as pending: only others' arrive.
+      if (m.nonce === undefined || !isPending(m.channel_id, m.nonce)) markArrived(m.id);
       applyLive(qc, m.channel_id, (h) => upsertMessage(h, m, historyEnded(m.channel_id, h)));
       if (m.nonce !== undefined) confirmPending(m.channel_id, m.nonce);
       return;
@@ -212,6 +215,7 @@ export function applyMessageDispatch(qc: QueryClient, t: string, d: unknown, meI
       const e = parseChatEvent(t, d);
       if (e === null) return;
       const add = t === "MESSAGE_REACTION_ADD";
+      if (add) markArrived(reactionKey(e.message_id, emojiKey(e.emoji)));
       applyLive(qc, e.channel_id, (h) =>
         updateMessage(h, e.message_id, (m) => withReaction(m, e.emoji, e.user_id === meId, add)),
       );
