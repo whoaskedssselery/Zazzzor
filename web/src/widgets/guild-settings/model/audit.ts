@@ -123,6 +123,23 @@ const KEY_TITLE: Record<string, string> = {
   $remove: "Сняты роли",
 };
 
+const plural = new Intl.PluralRules("ru-RU");
+const DAY_WORDS: Record<string, string> = { one: "день", few: "дня", many: "дней", other: "дня" };
+const HOUR_WORDS: Record<string, string> = { one: "час", few: "часа", many: "часов", other: "часа" };
+
+/** An invite lifetime in words: «7 дней», «12 часов», «30 минут». */
+export const durationText = (seconds: number): string => {
+  if (seconds % 86400 === 0) {
+    const n = seconds / 86400;
+    return `${String(n)} ${DAY_WORDS[plural.select(n)] ?? "дн."}`;
+  }
+  if (seconds % 3600 === 0) {
+    const n = seconds / 3600;
+    return `${String(n)} ${HOUR_WORDS[plural.select(n)] ?? "ч"}`;
+  }
+  return `${String(Math.round(seconds / 60))} мин`;
+};
+
 const MASK_KEYS = new Set(["permissions", "allow", "deny"]);
 
 const PERMISSION_NAMES = new Map(PERMISSION_GROUPS.flatMap((g) => g.items.map((i) => [i.bit, i.name] as const)));
@@ -150,7 +167,7 @@ const formatValue = (key: string, v: AuditValue, names: AuditNames): string => {
   if (key === "parent_id" && typeof v === "string") return names.channel(v) ?? "удалённая категория";
   if (key === "color" && typeof v === "number") return v === 0 ? "без цвета" : `#${v.toString(16).padStart(6, "0")}`;
   if (key === "max_uses" && v === 0) return "без ограничений";
-  if (key === "max_age" && typeof v === "number") return v === 0 ? "бессрочно" : `${String(Math.round(v / 3600))} ч`;
+  if (key === "max_age" && typeof v === "number") return v === 0 ? "бессрочно" : durationText(v);
   if (key === "icon_hash") return "картинка";
   if (key === "type" && typeof v === "number") return v === 2 ? "голосовой" : v === 4 ? "категория" : "текстовый";
   return String(v);
