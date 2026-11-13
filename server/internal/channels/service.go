@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/whoaskedssselery/zazzzor/server/internal/audit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/channels/store"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
@@ -167,7 +168,12 @@ func (s *Service) CreateChannel(ctx context.Context, guildID, actorID snowflake.
 		n.ch.Overwrites = []permissions.Overwrite{}
 		l.nodes[n.ch.ID] = n
 		created = l.view(n)
-		return nil
+		changes := []audit.Change{{Key: "name", New: created.Name}, {Key: "type", New: created.Type}}
+		if created.ParentID != nil {
+			changes = append(changes, audit.Change{Key: "parent_id", New: created.ParentID.String()})
+		}
+		return audit.Record(ctx, s.audit, tx, audit.Entry{GuildID: guildID, ActorID: actorID,
+			Action: audit.ChannelCreate, TargetID: created.ID, Changes: changes})
 	})
 	if err != nil {
 		return Channel{}, err
@@ -212,6 +218,7 @@ func (s *Service) UpdateChannel(ctx context.Context, channelID, actorID snowflak
 		if !perm.Has(permissions.ManageChannels) {
 			return ErrMissingPerm
 		}
+		before := n.ch
 		if f.SyncPermissions != nil && !perm.Has(permissions.ManageRoles) {
 			return ErrMissingPerm
 		}
@@ -266,6 +273,10 @@ func (s *Service) UpdateChannel(ctx context.Context, channelID, actorID snowflak
 		result = l.view(n)
 		if infoDirty && !slices.ContainsFunc(changed, func(c Channel) bool { return c.ID == n.ch.ID }) {
 			changed = append(changed, result)
+		}
+		if diff := channelChanges(before, n.ch); len(diff) > 0 {
+			return audit.Record(ctx, s.audit, tx, audit.Entry{GuildID: l.guildID, ActorID: actorID,
+				Action: audit.ChannelUpdate, TargetID: n.ch.ID, Changes: diff})
 		}
 		return nil
 	})
@@ -476,7 +487,9 @@ func (s *Service) DeleteChannel(ctx context.Context, channelID, actorID snowflak
 		if err = s.q.DeleteChannel(ctx, tx, n.ch.ID); err != nil {
 			return fmt.Errorf("channels: delete channel: %w", err)
 		}
-		return nil
+		return audit.Record(ctx, s.audit, tx, audit.Entry{GuildID: l.guildID, ActorID: actorID,
+			Action: audit.ChannelDelete, TargetID: n.ch.ID,
+			Changes: []audit.Change{{Key: "name", Old: deleted.Name}, {Key: "type", Old: deleted.Type}}})
 	})
 	if err != nil {
 		return err
@@ -491,4 +504,32 @@ func (s *Service) DeleteChannel(ctx context.Context, channelID, actorID snowflak
 		s.publishSync(ctx, deleted.GuildID)
 	}
 	return nil
+}
+
+// channelChanges lists what an update changed in a channel, for the audit
+// log.
+func channelChanges(before, after Channel) []audit.Change {
+	var out []audit.Change
+	if before.Name != after.Name {
+		out = append(out, audit.Change{Key: "name", Old: before.Name, New: after.Name})
+	}
+	if !equalPtr(before.Topic, after.Topic) {
+		out = append(out, audit.Change{Key: "topic", Old: before.Topic, New: after.Topic})
+	}
+	if !equalPtr(before.ParentID, after.ParentID) {
+		out = append(out, audit.Change{Key: "parent_id", Old: idText(before.ParentID), New: idText(after.ParentID)})
+	}
+	if before.PermissionSynced != after.PermissionSynced {
+		out = append(out, audit.Change{Key: "permission_synced", Old: before.PermissionSynced, New: after.PermissionSynced})
+	}
+	return out
+}
+
+// idText is an optional ID as a string, nil for none.
+func idText(id *snowflake.ID) *string {
+	if id == nil {
+		return nil
+	}
+	s := id.String()
+	return &s
 }

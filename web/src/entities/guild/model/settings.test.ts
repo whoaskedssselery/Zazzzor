@@ -41,7 +41,8 @@ describe("guildSettingsTabs", () => {
     ["KICK_MEMBERS", PERM.KICK_MEMBERS, ["members"]],
     ["MANAGE_NICKNAMES", PERM.MANAGE_NICKNAMES, ["members"]],
     ["MANAGE_EXPRESSIONS", PERM.MANAGE_EXPRESSIONS, ["emoji"]],
-    ["ADMINISTRATOR", PERM.ADMINISTRATOR, ["overview", "roles", "emoji", "members", "bans", "invites"]],
+    ["VIEW_AUDIT_LOG", PERM.VIEW_AUDIT_LOG, ["audit"]],
+    ["ADMINISTRATOR", PERM.ADMINISTRATOR, ["overview", "roles", "emoji", "members", "bans", "invites", "audit"]],
   ])("opens the sections %s allows", (_, perms, tabs) => {
     const { entry, userId } = entryWith(perms);
     expect(guildSettingsTabs(entry, userId)).toEqual(tabs);
@@ -49,6 +50,6 @@ describe("guildSettingsTabs", () => {
 
   it("opens everything to the owner", () => {
     const { entry } = entryWith(0n);
-    expect(guildSettingsTabs(entry, owner.id)).toHaveLength(6);
+    expect(guildSettingsTabs(entry, owner.id)).toHaveLength(7);
   });
 });

@@ -760,6 +760,28 @@ export interface paths {
         patch: operations["updateGuildMember"];
         trace?: never;
     };
+    "/guilds/{guild_id}/audit-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the audit log of a server
+         * @description Needs `VIEW_AUDIT_LOG`. Newest first: kicks, bans, nicknames, roles,
+         *     channels and their overwrites, invites, emoji, server renames and the
+         *     messages moderators deleted. Entries are kept for 90 days.
+         */
+        get: operations["listGuildAuditLog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/guilds/{guild_id}/bans": {
         parameters: {
             query?: never;
@@ -1973,6 +1995,7 @@ export interface components {
          *     Discord (e.g. `ADMINISTRATOR` = 8, `MANAGE_ROLES` = 268435456).
          *     `ADD_REACTIONS` is bit 6 (64) and is granted to `@everyone` by default.
          *     MANAGE_EXPRESSIONS is bit 30 (1073741824) and is not granted by default.
+         *     VIEW_AUDIT_LOG is bit 7 (128) and is not granted by default.
          *       Bits the server does not define are refused when set.
          * @example 268435456
          */
@@ -2505,6 +2528,56 @@ export interface components {
         MemberEvent: {
             guild_id: components["schemas"]["Snowflake"];
             member: components["schemas"]["Member"];
+        };
+        /**
+         * @description What an entry records, numbered as in Discord: 1 server update, 10–12
+         *     channel create/update/delete, 13–15 overwrite create/update/delete,
+         *     20 kick, 22 ban, 23 unban, 24 member update (nickname), 25 member
+         *     roles, 26 member moved, 27 member disconnected, 30–32 role
+         *     create/update/delete, 40 invite create, 42 invite delete, 60–62 emoji
+         *     create/update/delete, 72 message deleted by a moderator.
+         * @enum {integer}
+         */
+        AuditLogAction: 1 | 10 | 11 | 12 | 13 | 14 | 15 | 20 | 22 | 23 | 24 | 25 | 26 | 27 | 30 | 31 | 32 | 40 | 42 | 60 | 61 | 62 | 72;
+        /**
+         * @description One changed field. `old_value` is absent for a creation and
+         *     `new_value` for a deletion. Member roles use the keys `$add` and
+         *     `$remove` with arrays of role IDs; permission masks are decimal
+         *     strings.
+         */
+        AuditLogChange: {
+            key: string;
+            old_value?: components["schemas"]["AuditLogValue"];
+            new_value?: components["schemas"]["AuditLogValue"];
+        };
+        AuditLogValue: string | number | boolean | string[] | null;
+        AuditLogEntry: {
+            id: components["schemas"]["Snowflake"];
+            action_type: components["schemas"]["AuditLogAction"];
+            /** @description Who did it; null once their account is gone. */
+            user_id: components["schemas"]["Snowflake"] | null;
+            /**
+             * @description What was acted on: a user, channel, role or emoji (by
+             *     `action_type`); null for the server itself and invites.
+             */
+            target_id: components["schemas"]["Snowflake"] | null;
+            changes: components["schemas"]["AuditLogChange"][];
+            /**
+             * @description Extra facts: `channel_id` of a deleted message or an invite,
+             *     `code` of an invite, `id` and `type` (0 role, 1 member) of an
+             *     overwrite.
+             */
+            options: {
+                [key: string]: string;
+            };
+            reason: string | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        AuditLog: {
+            audit_log_entries: components["schemas"]["AuditLogEntry"][];
+            /** @description The users the page names that still exist. */
+            users: components["schemas"]["User"][];
         };
         Ban: {
             /** @description Null only while the account is being removed (its bans go with it). */
@@ -3903,6 +3976,47 @@ export interface operations {
             404: components["responses"]["Problem"];
             /** @description `unsupported_media_type`. */
             415: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    listGuildAuditLog: {
+        parameters: {
+            query?: {
+                /** @description Only what this user did. */
+                user_id?: components["schemas"]["Snowflake"];
+                /** @description Only entries of this action (see `AuditLogEntry.action_type`). */
+                action_type?: components["schemas"]["AuditLogAction"];
+                /** @description Only entries with an ID below this one (the next page). */
+                before?: components["schemas"]["Snowflake"];
+                /** @description Page size, 1 to 100 (default 50). */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                guild_id: components["parameters"]["GuildID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of entries and the users they name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditLog"];
+                };
+            };
+            /** @description `validation_failed` (with `errors`). */
+            400: components["responses"]["Problem"];
+            /** @description `unauthenticated`. */
+            401: components["responses"]["Problem"];
+            /** @description `missing_permission`. */
+            403: components["responses"]["Problem"];
+            /** @description `not_found`: no such server, or not a member. */
+            404: components["responses"]["Problem"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["Problem"];
         };

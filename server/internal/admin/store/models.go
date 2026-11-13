@@ -16,6 +16,18 @@ type AttachmentTrash struct {
 	ChannelID int64
 }
 
+type AuditLog struct {
+	ID         int64
+	GuildID    int64
+	ActorID    pgtype.Int8
+	ActionType int16
+	TargetID   pgtype.Int8
+	Changes    []byte
+	Options    []byte
+	Reason     *string
+	CreatedAt  time.Time
+}
+
 type Channel struct {
 	ID               int64
 	GuildID          pgtype.Int8

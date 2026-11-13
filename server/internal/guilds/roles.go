@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/whoaskedssselery/zazzzor/server/internal/audit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/guilds/store"
 	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
@@ -120,7 +121,8 @@ func (s *Service) CreateRole(ctx context.Context, guildID, actorID snowflake.ID,
 			return fmt.Errorf("guilds: create role: %w", err)
 		}
 		created = toRole(row)
-		return nil
+		return s.record(ctx, tx, audit.Entry{GuildID: guildID, ActorID: actorID, Action: audit.RoleCreate,
+			TargetID: created.ID, Changes: roleChanges(Role{}, created)})
 	})
 	if err != nil {
 		return Role{}, err
@@ -223,6 +225,10 @@ func (s *Service) UpdateRole(ctx context.Context, guildID, roleID, actorID snowf
 			return fmt.Errorf("guilds: update role: %w", err)
 		}
 		updated, changed = toRole(row), true
+		if err = s.record(ctx, tx, audit.Entry{GuildID: guildID, ActorID: actorID, Action: audit.RoleUpdate,
+			TargetID: roleID, Changes: roleChanges(old, updated)}); err != nil {
+			return err
+		}
 		if next.Permissions != old.Permissions {
 			return s.pruneReadStates(ctx, tx, guildID)
 		}
@@ -374,6 +380,10 @@ func (s *Service) DeleteRole(ctx context.Context, guildID, roleID, actorID snowf
 		}
 		if _, err = s.q.DeleteRole(ctx, tx, store.DeleteRoleParams{GuildID: guildID, ID: roleID}); err != nil {
 			return fmt.Errorf("guilds: delete role: %w", err)
+		}
+		if err = s.record(ctx, tx, audit.Entry{GuildID: guildID, ActorID: actorID, Action: audit.RoleDelete,
+			TargetID: roleID, Changes: roleChanges(r, Role{})}); err != nil {
+			return err
 		}
 		if err = s.overwrites.RoleDeleted(ctx, tx, guildID, roleID); err != nil {
 			return fmt.Errorf("guilds: drop role overwrites: %w", err)

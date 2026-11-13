@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/whoaskedssselery/zazzzor/server/internal/audit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/guilds/store"
 	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
@@ -86,6 +87,12 @@ func (s *Service) UpdateMember(ctx context.Context, guildID, targetID, actorID s
 			if _, err = s.q.SetNick(ctx, tx, store.SetNickParams{GuildID: guildID, UserID: targetID, Nick: nick}); err != nil {
 				return fmt.Errorf("guilds: set nick: %w", err)
 			}
+			if deref(target.Nick) != deref(nick) {
+				if err = s.record(ctx, tx, audit.Entry{GuildID: guildID, ActorID: actorID, Action: audit.MemberUpdate,
+					TargetID: targetID, Changes: []audit.Change{{Key: "nick", Old: target.Nick, New: nick}}}); err != nil {
+					return err
+				}
+			}
 		}
 		if f.Roles != nil {
 			if rolesChanged, err = s.replaceRoles(ctx, tx, actor, guildID, targetID, target.Roles, want); err != nil {
@@ -93,6 +100,10 @@ func (s *Service) UpdateMember(ctx context.Context, guildID, targetID, actorID s
 			}
 		}
 		if rolesChanged {
+			if err = s.record(ctx, tx, audit.Entry{GuildID: guildID, ActorID: actorID, Action: audit.MemberRoleUpdate,
+				TargetID: targetID, Changes: roleDiff(target.Roles, want)}); err != nil {
+				return err
+			}
 			if err = s.pruneReadStates(ctx, tx, guildID); err != nil {
 				return err
 			}

@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/time/rate"
 
+	"github.com/whoaskedssselery/zazzzor/server/internal/audit"
 	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
 	"github.com/whoaskedssselery/zazzzor/server/internal/channels"
 	"github.com/whoaskedssselery/zazzzor/server/internal/guilds"
@@ -181,6 +182,8 @@ type Options struct {
 	Channels Channels
 	Guilds   Guilds
 	Users    guilds.Users
+	// Audit records invite creations and deletions; nil records nothing.
+	Audit audit.Recorder
 	// CreateLimiter limits invite creations per user; nil takes the default
 	// (20 per hour).
 	CreateLimiter *ratelimit.Limiter
@@ -191,6 +194,7 @@ type Options struct {
 
 // Service implements invites.
 type Service struct {
+	audit         audit.Recorder
 	pool          *pgxpool.Pool
 	q             *store.Queries
 	channels      Channels
@@ -202,7 +206,7 @@ type Service struct {
 
 // NewService builds a Service from o.
 func NewService(o Options) *Service {
-	s := &Service{pool: o.Pool, q: store.New(), channels: o.Channels, guilds: o.Guilds, users: o.Users,
+	s := &Service{audit: o.Audit, pool: o.Pool, q: store.New(), channels: o.Channels, guilds: o.Guilds, users: o.Users,
 		createLimiter: o.CreateLimiter, lookupLimiter: o.LookupLimiter}
 	if s.createLimiter == nil {
 		s.createLimiter = ratelimit.New(createRate, createBurst, createTTL)
@@ -298,6 +302,9 @@ create:
 			return Invite{}, fmt.Errorf("invites: create invite: %w", err)
 		}
 	}
+	s.record(ctx, audit.Entry{GuildID: guildID, ActorID: actor.ID, Action: audit.InviteCreate,
+		Options: map[string]string{"code": row.Code, "channel_id": channelID.String()},
+		Changes: []audit.Change{{Key: "max_uses", New: maxUses}, {Key: "max_age", New: maxAge}}})
 	return s.complete(ctx, row)
 }
 
@@ -492,8 +499,22 @@ func (s *Service) Delete(ctx context.Context, code string, actorID snowflake.ID)
 	if row.InviterID != actorID && !permissions.Base(sub).Has(permissions.ManageGuild) {
 		return ErrMissingPerm
 	}
-	if _, err = s.q.DeleteInvite(ctx, s.pool, code); err != nil {
+	n, err := s.q.DeleteInvite(ctx, s.pool, code)
+	if err != nil {
 		return fmt.Errorf("invites: delete invite: %w", err)
 	}
+	if n > 0 {
+		s.record(ctx, audit.Entry{GuildID: row.GuildID, ActorID: actorID, Action: audit.InviteDelete,
+			Options: map[string]string{"code": code, "channel_id": row.ChannelID.String()}})
+	}
 	return nil
+}
+
+// record writes an audit entry after the change committed (invites are
+// written outside a transaction); a failure only loses the entry and is
+// logged.
+func (s *Service) record(ctx context.Context, e audit.Entry) {
+	if err := audit.Record(context.WithoutCancel(ctx), s.audit, s.pool, e); err != nil {
+		httpx.LoggerFrom(ctx).WarnContext(ctx, "audit invite", "guild_id", e.GuildID.String(), "err", err.Error())
+	}
 }

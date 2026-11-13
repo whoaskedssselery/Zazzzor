@@ -2,7 +2,7 @@ import { computeBase, computeChannel, has, PERM } from "./permissions";
 import type { GuildEntry } from "./reducer";
 
 /** The sections of a server's settings, in the order the settings list them. */
-export const GUILD_SETTINGS_TABS = ["overview", "roles", "emoji", "members", "bans", "invites"] as const;
+export const GUILD_SETTINGS_TABS = ["overview", "roles", "emoji", "members", "bans", "invites", "audit"] as const;
 export type GuildSettingsTab = (typeof GUILD_SETTINGS_TABS)[number];
 
 export const GUILD_SETTINGS_TITLES: Record<GuildSettingsTab, string> = {
@@ -12,6 +12,7 @@ export const GUILD_SETTINGS_TITLES: Record<GuildSettingsTab, string> = {
   members: "Участники",
   bans: "Баны",
   invites: "Приглашения",
+  audit: "Журнал действий",
 };
 
 /** What each section needs: any one of the bits. */
@@ -22,6 +23,7 @@ const NEEDS: Record<GuildSettingsTab, bigint[]> = {
   members: [PERM.KICK_MEMBERS, PERM.BAN_MEMBERS, PERM.MANAGE_ROLES, PERM.MANAGE_NICKNAMES],
   bans: [PERM.BAN_MEMBERS],
   invites: [PERM.MANAGE_GUILD],
+  audit: [PERM.VIEW_AUDIT_LOG],
 };
 
 export const isGuildSettingsTab = (s: string): s is GuildSettingsTab =>

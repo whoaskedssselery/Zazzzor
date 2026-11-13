@@ -92,18 +92,20 @@ func (h *channelsHook) CreateDefaultChannels(ctx context.Context, tx pgx.Tx, gui
 }
 
 type env struct {
-	t     *testing.T
-	pool  *pgxpool.Pool
-	auth  *auth.Service
-	svc   *guilds.Service
-	disk  *files.Disk
-	dir   string
-	bus   *events.Bus
-	pub   *recorder
-	hook  *channelsHook
-	h     http.Handler
-	seq   int
-	seqMu sync.Mutex
+	t    *testing.T
+	pool *pgxpool.Pool
+	auth *auth.Service
+	svc  *guilds.Service
+	disk *files.Disk
+	dir  string
+	bus  *events.Bus
+	pub  *recorder
+	hook *channelsHook
+	h    http.Handler
+	// authed is the signed-in API router, for mounting more modules.
+	authed chi.Router
+	seq    int
+	seqMu  sync.Mutex
 }
 
 func unlimited() *ratelimit.Limiter { return ratelimit.New(rate.Inf, 1, time.Minute) }
@@ -150,6 +152,7 @@ func newEnvOn(t *testing.T, pool *pgxpool.Pool, opts ...func(*guilds.Options)) *
 			r.Use(auth.Middleware(e.auth))
 			auth.Mount(r, e.auth)
 			guilds.Mount(r, e.svc)
+			e.authed = r
 		})
 	})
 	e.h = r
