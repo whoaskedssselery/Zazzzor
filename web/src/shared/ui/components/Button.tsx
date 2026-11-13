@@ -23,7 +23,8 @@ const sizes: Record<ButtonSize, string> = {
 
 export const buttonBase =
   "inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md font-medium whitespace-nowrap select-none " +
-  "transition-colors duration-(--duration-fast) disabled:cursor-not-allowed disabled:opacity-50 aria-busy:cursor-progress " +
+  "transition-[color,background-color,border-color,box-shadow,scale] duration-(--duration-fast) active:scale-[0.97] " +
+  "disabled:active:scale-100 aria-disabled:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 aria-busy:cursor-progress " +
   "aria-disabled:cursor-not-allowed aria-disabled:opacity-50";
 
 export interface ButtonProps extends ComponentProps<"button"> {

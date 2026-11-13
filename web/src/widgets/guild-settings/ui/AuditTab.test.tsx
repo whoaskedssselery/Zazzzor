@@ -14,7 +14,7 @@ import {
   server,
 } from "@/shared/test";
 import { UiProviders } from "@/shared/ui";
-import type { AuditEntry, AuditLog } from "../model/audit";
+import { type AuditEntry, type AuditLog, durationText } from "../model/audit";
 import { AUDIT_PAGE, AuditTab } from "./AuditTab";
 
 const G = "10";
@@ -134,5 +134,15 @@ describe("AuditTab", () => {
     );
     renderTab();
     expect(await screen.findByText("Пока ничего не происходило.")).toBeTruthy();
+  });
+});
+
+describe("durationText", () => {
+  it("says an invite lifetime in days, hours or minutes", () => {
+    expect(durationText(604800)).toBe("7 дней");
+    expect(durationText(86400)).toBe("1 день");
+    expect(durationText(172800)).toBe("2 дня");
+    expect(durationText(43200)).toBe("12 часов");
+    expect(durationText(1800)).toBe("30 мин");
   });
 });

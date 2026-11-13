@@ -1,7 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
-import { Search } from "lucide-react";
-import { type SubmitEvent, useMemo, useState } from "react";
-import { useGuilds, userDisplay } from "@/entities/guild";
+import { Paperclip, Search } from "lucide-react";
+import { type ReactNode, type SubmitEvent, useMemo, useState } from "react";
+import { RELATIONSHIP, useGuilds, userDisplay } from "@/entities/guild";
 import { requestFocus } from "@/entities/message";
 import { errorText } from "@/shared/api";
 import { formatMessageTime, markdownText, snowflakeTime } from "@/shared/lib";
@@ -68,10 +68,29 @@ const useFilters = (scope: SearchScope) => {
   }, [entry, priv, me]);
 };
 
-const Result = ({ m, names, onOpen }: { m: FoundMessage; names: Names; onOpen: (m: FoundMessage) => void }) => {
+interface ResultProps {
+  m: FoundMessage;
+  names: Names;
+  /** The author is blocked: their text stays hidden here too, as in the chat. */
+  blocked: boolean;
+  onOpen: (m: FoundMessage) => void;
+}
+
+const Result = ({ m, names, blocked, onOpen }: ResultProps) => {
   const who = names.author(m);
   const where = names.channel(m.channel_id);
-  const text = markdownText(m.content) || (m.attachments.length > 0 ? "📎 Вложение" : "");
+  const words = markdownText(m.content);
+  let text: ReactNode = words;
+  if (blocked) {
+    text = <span className="text-fg-muted italic">Сообщение заблокированного пользователя</span>;
+  } else if (words === "" && m.attachments.length > 0) {
+    text = (
+      <span className="inline-flex items-center gap-1 text-fg-muted">
+        <Paperclip aria-hidden className="size-3.5" />
+        Вложение
+      </span>
+    );
+  }
   return (
     <li>
       <button
@@ -104,6 +123,7 @@ const Result = ({ m, names, onOpen }: { m: FoundMessage; names: Names; onOpen: (
  */
 export const SearchButton = ({ scope, placeholder }: { scope: SearchScope; placeholder: string }) => {
   const [open, setOpen] = useState(false);
+  const relationships = useGuilds((st) => st.relationships);
   const [content, setContent] = useState("");
   const [authorId, setAuthorId] = useState("");
   const [channelId, setChannelId] = useState("");
@@ -150,6 +170,10 @@ export const SearchButton = ({ scope, placeholder }: { scope: SearchScope; place
                 autoFocus
                 onChange={(e) => {
                   setContent(e.currentTarget.value);
+                }}
+                // Escape closes the search at once, not first clears the field.
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setOpen(false);
                 }}
               />
               <Button
@@ -204,7 +228,13 @@ export const SearchButton = ({ scope, placeholder }: { scope: SearchScope; place
               </p>
               <ul aria-label="Результаты поиска">
                 {found.map((m) => (
-                  <Result key={m.id} m={m} names={names} onOpen={openResult} />
+                  <Result
+                    key={m.id}
+                    m={m}
+                    names={names}
+                    blocked={m.author !== null && relationships[m.author.id]?.type === RELATIONSHIP.BLOCKED}
+                    onOpen={openResult}
+                  />
                 ))}
               </ul>
               {results.hasNextPage && (

@@ -1,7 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { SmilePlus } from "lucide-react";
 import type { GuildEmoji } from "@/entities/guild";
-import { emojiKey, emojiOfKey, type Message, type Reaction, reactionsOf, sameEmoji } from "@/entities/message";
+import {
+  emojiKey,
+  emojiOfKey,
+  justArrived,
+  type Message,
+  type Reaction,
+  reactionKey,
+  reactionsOf,
+  sameEmoji,
+} from "@/entities/message";
 import { api, type components, unwrap } from "@/shared/api";
 import { cn, Tooltip } from "@/shared/ui";
 import { EmojiGlyph, emojiLabel } from "./EmojiGlyph";
@@ -88,7 +97,10 @@ export const ReactionBar = ({
               aria-pressed={r.me}
               aria-label={`${emojiLabel(emojiKey(r.emoji), emojis)} ${String(r.count)}`}
               className={cn(
-                "flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2 text-sm font-semibold tabular-nums ring-1 transition-colors duration-(--duration-fast)",
+                "flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2 text-sm font-semibold tabular-nums ring-1 pointer-coarse:h-9 pointer-coarse:px-2.5",
+                "transition-[color,background-color,box-shadow,scale] duration-(--duration-fast) active:scale-95",
+                // A reaction that just came in pops: a new chip, or one more on it.
+                justArrived(reactionKey(message.id, emojiKey(r.emoji))) && "animate-pop-in",
                 r.me
                   ? "bg-accent/15 text-fg ring-accent hover:bg-accent/25"
                   : "bg-control text-fg-muted ring-transparent hover:ring-border-strong",
@@ -115,7 +127,7 @@ export const ReactionBar = ({
             <button
               type="button"
               aria-label="Добавить реакцию"
-              className="flex h-7 cursor-pointer items-center rounded-md bg-control px-2 text-fg-muted transition-colors hover:text-fg"
+              className="flex h-7 cursor-pointer items-center rounded-md bg-control px-2 text-fg-muted transition-[color,scale] duration-(--duration-fast) hover:text-fg active:scale-95 pointer-coarse:h-9 pointer-coarse:px-2.5"
             >
               <SmilePlus aria-hidden className="size-4.5" />
             </button>

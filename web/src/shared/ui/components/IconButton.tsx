@@ -16,7 +16,12 @@ export interface IconButtonProps extends Omit<ComponentProps<"button">, "childre
   tooltipSide?: "top" | "right" | "bottom" | "left";
 }
 
-const sizes = { sm: "size-7 [&>svg]:size-4", md: "size-8 [&>svg]:size-5" };
+// On a touch screen the target grows to 44px (40px for the small one), the
+// glyph a little with it.
+const sizes = {
+  sm: "size-7 [&>svg]:size-4 pointer-coarse:size-10 pointer-coarse:[&>svg]:size-5",
+  md: "size-8 [&>svg]:size-5 pointer-coarse:size-11 pointer-coarse:[&>svg]:size-6",
+};
 
 export const IconButton = ({
   label,
@@ -36,7 +41,7 @@ export const IconButton = ({
       aria-label={label}
       aria-pressed={pressed}
       className={cn(
-        "inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md transition-colors duration-(--duration-fast)",
+        "inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md transition-[color,background-color,scale] duration-(--duration-fast) active:scale-[0.92] disabled:active:scale-100",
         "disabled:cursor-not-allowed disabled:opacity-50",
         variant === "danger" ? "text-fg-danger hover:bg-hover" : "text-fg-muted hover:bg-hover hover:text-fg",
         pressed && "bg-selected text-fg",

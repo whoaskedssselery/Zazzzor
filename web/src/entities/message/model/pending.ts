@@ -59,6 +59,10 @@ export const updatePending = (channelId: string, nonce: string, patch: Partial<P
 };
 
 /** The message with `nonce` reached the server: it leaves the pending list (the history has it now). */
+/** Whether a send with `nonce` is pending in `channelId`. */
+export const isPending = (channelId: string, nonce: string): boolean =>
+  store.getState().byChannel[channelId]?.some((p) => p.nonce === nonce) ?? false;
+
 export const confirmPending = (channelId: string, nonce: string): void => {
   const list = store.getState().byChannel[channelId];
   if (!list?.some((p) => p.nonce === nonce)) return;

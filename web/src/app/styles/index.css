@@ -138,13 +138,24 @@
     font-size: 0.875em;
   }
 
+  /*
+   * Reduced motion keeps every change of state but nothing travels: the
+   * keyframes scale their movement by --zz-move (0 here), so things still
+   * fade in and out, sheets and toasts just appear, nothing loops and
+   * nothing is pressed in.
+   */
   @media (prefers-reduced-motion: reduce) {
+    :root {
+      --zz-move: 0;
+    }
     *,
     ::before,
     ::after {
-      animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
-      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+    :active {
+      scale: none !important;
     }
   }
 }
@@ -179,56 +190,57 @@
 @keyframes zz-pop-in {
   from {
     opacity: 0;
-    transform: scale(0.96) translateY(4px);
+    transform: scale(calc(1 - 0.04 * var(--zz-move, 1))) translateY(calc(4px * var(--zz-move, 1)));
   }
 }
 @keyframes zz-pop-out {
   to {
     opacity: 0;
-    transform: scale(0.97);
+    transform: scale(calc(1 - 0.03 * var(--zz-move, 1)));
   }
 }
 /* A menu or tooltip comes from its trigger: --zz-dx/--zz-dy point away from it. */
 @keyframes zz-float-in {
   from {
     opacity: 0;
-    transform: translate(var(--zz-dx, 0), var(--zz-dy, 0)) scale(0.97);
+    transform: translate(calc(var(--zz-dx, 0px) * var(--zz-move, 1)), calc(var(--zz-dy, 0px) * var(--zz-move, 1)))
+      scale(calc(1 - 0.03 * var(--zz-move, 1)));
   }
 }
 @keyframes zz-rise-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(calc(8px * var(--zz-move, 1)));
   }
 }
 @keyframes zz-slide-in-left {
   from {
-    transform: translateX(-100%);
+    transform: translateX(calc(-100% * var(--zz-move, 1)));
   }
 }
 @keyframes zz-slide-out-left {
   to {
-    transform: translateX(-100%);
+    transform: translateX(calc(-100% * var(--zz-move, 1)));
   }
 }
 @keyframes zz-slide-in-right {
   from {
-    transform: translateX(100%);
+    transform: translateX(calc(100% * var(--zz-move, 1)));
   }
 }
 @keyframes zz-slide-out-right {
   to {
-    transform: translateX(100%);
+    transform: translateX(calc(100% * var(--zz-move, 1)));
   }
 }
 @keyframes zz-slide-in-bottom {
   from {
-    transform: translateY(100%);
+    transform: translateY(calc(100% * var(--zz-move, 1)));
   }
 }
 @keyframes zz-slide-out-bottom {
   to {
-    transform: translateY(100%);
+    transform: translateY(calc(100% * var(--zz-move, 1)));
   }
 }
 
@@ -298,6 +310,16 @@
 
 @utility animate-fade-in {
   animation: zz-fade-in var(--duration-base) var(--ease-out);
+}
+/* A message that just arrived settles into the list from a little below. */
+@keyframes zz-enter {
+  from {
+    opacity: 0;
+    transform: translateY(calc(6px * var(--zz-move, 1)));
+  }
+}
+@utility animate-enter {
+  animation: zz-enter var(--duration-slow) var(--ease-out);
 }
 @utility animate-pop-in {
   animation: zz-pop-in var(--duration-base) var(--ease-out);
