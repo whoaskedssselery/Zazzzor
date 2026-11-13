@@ -3,7 +3,6 @@ import { HeadphoneOff, Headphones, Mic, MicOff, Settings } from "lucide-react";
 import type { CSSProperties } from "react";
 import { PRESENCE_LABEL, useConnectionStatus } from "@/entities/guild";
 import { useSession } from "@/entities/session";
-import { LogoutButton } from "@/features/auth";
 import { StatusMenu } from "@/features/edit-profile";
 import { useSelfSwitches } from "@/features/voice-call";
 import { Avatar, cn, IconButton } from "@/shared/ui";
@@ -69,7 +68,6 @@ export const UserPanel = () => {
         className={cn(sound.off && "text-fg-danger")}
         onClick={sound.toggle}
       />
-      <LogoutButton iconOnly />
       <IconButton
         label="Настройки пользователя"
         icon={Settings}

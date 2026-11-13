@@ -58,13 +58,15 @@ describe("MessageItem", () => {
     expect(screen.getByText("вопрос")).toBeTruthy();
   });
 
-  it("previews the answered message as one line of plain text", () => {
+  it("previews the answered message on one line, keeping its marks and hiding spoilers", () => {
     const m = makeMessage("6", "101", anna, {
       reply_to_id: "5",
       referenced_message: { id: "5", author: anna, content: "**важно**\n> цитата ||тайна||" },
     });
     renderUi(<MessageItem message={m} author={view} replyAuthor={view} grouped={false} now={now} />);
-    expect(screen.getByText(`важно цитата ${SPOILER_TEXT}`)).toBeTruthy();
+    const bold = screen.getByText("важно");
+    expect(bold.tagName).toBe("STRONG");
+    expect(bold.parentElement?.textContent.replace(/\s+/g, " ").trim()).toBe(`важно цитата ${SPOILER_TEXT}`);
     expect(screen.queryByText(/\*\*|тайна/)).toBeNull();
   });
 

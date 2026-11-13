@@ -1,7 +1,7 @@
 import { CirclePlus, SendHorizontal } from "lucide-react";
-import { type ClipboardEvent, type KeyboardEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type ClipboardEvent, type KeyboardEvent, useMemo, useRef, useState } from "react";
 import type { MessageStub } from "@/entities/message";
-import { runeLength, trimContent } from "@/shared/lib";
+import { runeLength, trimContent, useAutoHeight } from "@/shared/lib";
 import { cn, IconButton, useToast } from "@/shared/ui";
 import { getDraft, setDraft, useDraft } from "../model/drafts";
 import { type ComposerEmoji, emojiQuery, encodeEmoji, rankEmoji } from "../model/emoji";
@@ -156,13 +156,8 @@ export const Composer = ({
     replaceQuery(`:${e.name}: `);
   };
 
-  // Grows with its text, then scrolls.
-  useLayoutEffect(() => {
-    const el = field.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${String(Math.min(el.scrollHeight, MAX_HEIGHT_PX))}px`;
-  }, [text]);
+  // Grows with its text, then scrolls; follows the width of the window too.
+  useAutoHeight(field, text, MAX_HEIGHT_PX);
 
   if (!canSend) {
     return (

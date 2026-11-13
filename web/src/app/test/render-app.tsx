@@ -1,5 +1,5 @@
 import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
-import { render } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
 import { initSession } from "@/entities/session";
@@ -42,6 +42,13 @@ export const renderApp = (path: string) => {
     </AppProviders>,
   );
   return { user, router, queryClient };
+};
+
+/** Signs out as a user does: user settings, «Выйти», then the confirmation. */
+export const signOut = async (user: ReturnType<typeof userEvent.setup>): Promise<void> => {
+  await user.click(screen.getByRole("button", { name: "Настройки пользователя" }));
+  await user.click(await screen.findByRole("button", { name: "Выйти" }));
+  await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Выйти" }));
 };
 
 /** Pathname plus search of the router's current location, e.g. "/login?next=%2Finvite%2Fabc". */

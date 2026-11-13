@@ -4,6 +4,7 @@ export {
   DELETED_ROLE,
   isJumbo,
   Markdown,
+  MarkdownLine,
   type MentionNames,
   type MentionTarget,
   mentionText,

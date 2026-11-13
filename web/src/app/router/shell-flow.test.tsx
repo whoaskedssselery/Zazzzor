@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import type { WebSocketHandlerConnection } from "msw";
 import { HttpResponse } from "msw";
-import { currentHref, renderApp, sessionHandler, testUser } from "@/app/test";
+import { currentHref, renderApp, sessionHandler, signOut, testUser } from "@/app/test";
 import { resetChannelUi } from "@/entities/channel";
 import { getGuildsState, resetGuilds } from "@/entities/guild";
 import {
@@ -303,7 +303,7 @@ describe("loss of access, more cases", () => {
     server.use(apiHandler("post", "/auth/logout", () => new HttpResponse(null, { status: 204 })));
     const { user } = renderApp(`/channels/${G}/101`);
     expect(await channelHeading("общий")).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Выйти" }));
+    await signOut(user);
     expect(await screen.findByRole("heading", { name: "С возвращением!" })).toBeTruthy();
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.queryByText("Сервер больше недоступен")).toBeNull();

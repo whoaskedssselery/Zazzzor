@@ -1,6 +1,6 @@
 import { CornerUpLeft } from "lucide-react";
 import type { ReactNode } from "react";
-import { formatMessageTime, Markdown, type MentionNames, markdownText } from "@/shared/lib";
+import { formatMessageTime, Markdown, MarkdownLine, type MentionNames } from "@/shared/lib";
 import { Avatar, cn, roleTextStyle, Tooltip } from "@/shared/ui";
 import type { Attachment } from "../model/attachment";
 import type { Message } from "../model/cache";
@@ -79,7 +79,9 @@ const ReplyPreview = ({
         <bdi className="role-text shrink-0 font-semibold" style={roleTextStyle(author?.color ?? 0)}>
           @{author?.name ?? DELETED_USER}
         </bdi>
-        <span className="truncate">{markdownText(original.content, mentions)}</span>
+        <span className="truncate">
+          <MarkdownLine source={original.content} {...(mentions === undefined ? {} : { mentions })} />
+        </span>
       </>
     );
   return (

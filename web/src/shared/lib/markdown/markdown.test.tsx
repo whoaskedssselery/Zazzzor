@@ -1,7 +1,7 @@
-import { screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { renderUi } from "@/shared/test";
 import { MAX_DEPTH, type MdNode, parseMarkdown } from "./parse";
-import { Markdown } from "./render";
+import { Markdown, MarkdownLine } from "./render";
 
 const text = (value: string): MdNode => ({ type: "text", value });
 const cp = (...codes: number[]) => String.fromCodePoint(...codes);
@@ -242,5 +242,18 @@ describe("custom emoji", () => {
   it("shows a message of only emoji large", () => {
     renderUi(<Markdown source="<:vasya:77> <:vasya:77>" mentions={here} />);
     for (const img of screen.getAllByRole("img", { name: ":vasya:" })) expect(img.className).toContain("size-12");
+  });
+});
+
+describe("MarkdownLine", () => {
+  it("keeps the inline marks on one line, hides spoilers and leaves links inert", () => {
+    const { container } = render(
+      <MarkdownLine source={"**Важно:** `Настройки → Профиль`\nсм. https://example.com ||сюрприз||"} />,
+    );
+    expect(container.querySelector("strong")?.textContent).toBe("Важно:");
+    expect(container.querySelector("code")?.textContent).toBe("Настройки → Профиль");
+    expect(container.querySelector("a")).toBeNull();
+    expect(container.textContent).not.toContain("сюрприз");
+    expect(container.textContent).not.toContain("\n");
   });
 });
