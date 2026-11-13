@@ -20,6 +20,7 @@ const (
 	ManageChannels     Permission = 1 << 4
 	ManageGuild        Permission = 1 << 5
 	AddReactions       Permission = 1 << 6
+	ViewAuditLog       Permission = 1 << 7
 	Stream             Permission = 1 << 9
 	ViewChannel        Permission = 1 << 10
 	SendMessages       Permission = 1 << 11
@@ -42,7 +43,7 @@ const (
 // All is the union of every defined permission. Unknown bits are never part
 // of it.
 const All = CreateInvite | KickMembers | BanMembers | Administrator |
-	ManageChannels | ManageGuild | AddReactions | Stream | ViewChannel | SendMessages |
+	ManageChannels | ManageGuild | AddReactions | ViewAuditLog | Stream | ViewChannel | SendMessages |
 	ManageMessages | AttachFiles | ReadMessageHistory | MentionEveryone |
 	Connect | Speak | MuteMembers | DeafenMembers | MoveMembers |
 	UseVoiceActivity | ChangeNickname | ManageNicknames | ManageRoles | ManageExpressions
