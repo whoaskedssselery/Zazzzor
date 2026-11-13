@@ -40,10 +40,14 @@ export const UserPanel = () => {
         >
           <Avatar name={user.display_name} src={user.avatar_url} size={32} status={shown} />
           <span className="min-w-0">
-            <span data-user-name className="block truncate text-sm leading-4 font-semibold">
+            <span data-user-name title={user.display_name} className="block truncate text-sm leading-4 font-semibold">
               {user.display_name}
             </span>
-            <span data-user-status className="block truncate text-xs text-fg-faint">
+            <span
+              data-user-status
+              title={connected && user.custom_status !== null ? user.custom_status : statusText}
+              className="block truncate text-xs text-fg-faint"
+            >
               {connected && user.custom_status !== null ? user.custom_status : statusText}
             </span>
           </span>
