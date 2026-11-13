@@ -390,6 +390,37 @@ func (q *Queries) ClearMentionRecipients(ctx context.Context, db DBTX, messageID
 	return err
 }
 
+const countSearchMessages = `-- name: CountSearchMessages :one
+SELECT count(*) FROM (
+    SELECT 1 FROM messages
+    WHERE channel_id = ANY($1::bigint[])
+        AND ($2::text = '' OR to_tsvector('russian', content) @@ to_tsquery('russian', $2::text))
+        AND ($3::bigint = 0 OR author_id = $3::bigint)
+    LIMIT $4
+) AS found
+`
+
+type CountSearchMessagesParams struct {
+	ChannelIds []int64
+	Query      string
+	AuthorID   int64
+	Cap        int32
+}
+
+// How many messages SearchMessages would find without before and limit,
+// counting at most cap.
+func (q *Queries) CountSearchMessages(ctx context.Context, db DBTX, arg CountSearchMessagesParams) (int64, error) {
+	row := db.QueryRow(ctx, countSearchMessages,
+		arg.ChannelIds,
+		arg.Query,
+		arg.AuthorID,
+		arg.Cap,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createAttachment = `-- name: CreateAttachment :one
 INSERT INTO message_attachments (id, channel_id, uploader_id, filename, content_type, size, width, height, digest, created_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -1209,6 +1240,65 @@ func (q *Queries) SavePreview(ctx context.Context, db DBTX, arg SavePreviewParam
 		arg.Embed,
 	)
 	return err
+}
+
+const searchMessages = `-- name: SearchMessages :many
+SELECT id, channel_id, author_id, content, reply_to_id, edited_at, created_at, mention_user_ids, mention_role_ids, mention_everyone, mention_here, embeds FROM messages
+WHERE channel_id = ANY($1::bigint[])
+    AND ($2::text = '' OR to_tsvector('russian', content) @@ to_tsquery('russian', $2::text))
+    AND ($3::bigint = 0 OR author_id = $3::bigint)
+    AND ($4::bigint = 0 OR id < $4::bigint)
+ORDER BY id DESC
+LIMIT $5
+`
+
+type SearchMessagesParams struct {
+	ChannelIds []int64
+	Query      string
+	AuthorID   int64
+	Before     int64
+	Lim        int32
+}
+
+// Newest first among channel_ids: the text matches query (a to_tsquery
+// the service builds), from author_id if set, older than before if set.
+func (q *Queries) SearchMessages(ctx context.Context, db DBTX, arg SearchMessagesParams) ([]Message, error) {
+	rows, err := db.Query(ctx, searchMessages,
+		arg.ChannelIds,
+		arg.Query,
+		arg.AuthorID,
+		arg.Before,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Message
+	for rows.Next() {
+		var i Message
+		if err := rows.Scan(
+			&i.ID,
+			&i.ChannelID,
+			&i.AuthorID,
+			&i.Content,
+			&i.ReplyToID,
+			&i.EditedAt,
+			&i.CreatedAt,
+			&i.MentionUserIds,
+			&i.MentionRoleIds,
+			&i.MentionEveryone,
+			&i.MentionHere,
+			&i.Embeds,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const setLastMessage = `-- name: SetLastMessage :exec

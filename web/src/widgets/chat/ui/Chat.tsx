@@ -3,6 +3,7 @@ import { type DragEvent, type ReactNode, useCallback, useEffect, useMemo, useRef
 import { getGuildsState, unreadFrom, useGuilds } from "@/entities/guild";
 import {
   attachmentsOf,
+  clearFocus,
   emojiOfKey,
   inOrder,
   type Message,
@@ -10,6 +11,7 @@ import {
   type PendingMessage,
   reactionsOf,
   sameEmoji,
+  useFocusRequest,
   useMessages,
   usePendingMessages,
 } from "@/entities/message";
@@ -228,6 +230,24 @@ export const Chat = ({ scope }: { scope: ChatScope }) => {
   const loadOlder = useCallback(() => {
     void fetchNextPage();
   }, [fetchNextPage]);
+
+  // A message asked for elsewhere (a search result): older pages load until
+  // it is there, then it is scrolled to and marked. One that is not in the
+  // history any more (deleted) ends the request when the history ends.
+  const focus = useFocusRequest(channelId);
+  const historyReady = history.isSuccess;
+  useEffect(() => {
+    if (focus === null || !historyReady) return;
+    if (loaded.has(focus)) {
+      setScrollTo({ id: focus });
+      setHighlighted(focus);
+      clearFocus(channelId);
+    } else if (!hasOlder) {
+      clearFocus(channelId);
+    } else if (!isFetchingNextPage) {
+      void fetchNextPage();
+    }
+  }, [focus, historyReady, loaded, hasOlder, isFetchingNextPage, fetchNextPage, channelId]);
 
   const authorOf = (user: Message["author"]) => (user === null ? null : scope.author(user));
   const name = (u: Message["author"]) => authorOf(u)?.name ?? "Удалённый пользователь";

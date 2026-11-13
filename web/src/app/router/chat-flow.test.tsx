@@ -4,7 +4,7 @@ import { HttpResponse } from "msw";
 import { renderApp, sessionHandler, testUser } from "@/app/test";
 import { resetChannelUi } from "@/entities/channel";
 import { resetGuilds } from "@/entities/guild";
-import { resetPending } from "@/entities/message";
+import { requestFocus, resetPending } from "@/entities/message";
 import { resetDrafts } from "@/features/send-message";
 import type { components } from "@/shared/api";
 import {
@@ -104,6 +104,23 @@ describe("chat", () => {
     const messages = await list();
     expect(await within(messages).findByText("привет всем")).toBeTruthy();
     expect(within(messages).getByText("Аня")).toBeTruthy();
+  });
+
+  it("loads older pages until a message asked for (a search result) is there, and marks it", async () => {
+    const h = history(
+      Array.from({ length: 120 }, (_, i) =>
+        makeMessage(String(i + 1), C, anna, { content: `сообщение ${String(i + 1)}` }),
+      ),
+    );
+    signedIn();
+    requestFocus(C, "5");
+    renderApp(`/channels/${G}/${C}`);
+    const messages = await list();
+    const found = await within(messages).findByText("сообщение 5", {}, { timeout: 3000 });
+    expect(h.queries.filter((q) => q.includes("before=")).length).toBeGreaterThanOrEqual(2);
+    await waitFor(() => {
+      expect(found.closest(".bg-mention")).not.toBeNull();
+    });
   });
 
   it("sends a message and shows it once, whatever comes first", async () => {

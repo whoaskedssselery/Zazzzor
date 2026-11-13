@@ -25,6 +25,7 @@ export {
   updateMessage,
   upsertMessage,
 } from "./model/cache";
+export { clearFocus, requestFocus, useFocusRequest } from "./model/focus";
 export {
   addPending,
   confirmPending,

@@ -58,9 +58,14 @@ var (
 	sendBurst   = 10
 	sendTTL     = time.Minute
 	// Edits and deletions, shared: 10 per second, bursts of 20.
-	ackRate    = rate.Limit(10)
-	ackBurst   = 20
-	ackTTL     = time.Minute
+	ackRate  = rate.Limit(10)
+	ackBurst = 20
+	ackTTL   = time.Minute
+	// Searches per user: 2 a second, 10 at once.
+	searchRate  = rate.Limit(2)
+	searchBurst = 10
+	searchTTL   = time.Minute
+
 	writeRate  = rate.Limit(10)
 	writeBurst = 20
 	writeTTL   = time.Minute
@@ -270,6 +275,7 @@ type Channels interface {
 	MentionAccessIn(ctx context.Context, tx pgx.Tx, channelID snowflake.ID) (guilds.Access, []permissions.Overwrite, error)
 	Permissions(ctx context.Context, userID, channelID snowflake.ID) (permissions.Permission, snowflake.ID, error)
 	Lookup(ctx context.Context, channelID snowflake.ID) (channels.Channel, error)
+	SearchableChannels(ctx context.Context, userID, guildID snowflake.ID) ([]snowflake.ID, error)
 }
 
 var _ Channels = (*channels.Service)(nil)
@@ -336,6 +342,7 @@ type Service struct {
 	now             func() time.Time
 	sendLimiter     *ratelimit.Limiter
 	writeLimiter    *ratelimit.Limiter
+	searchLimiter   *ratelimit.Limiter
 	typingLimiter   *ratelimit.Limiter
 	typingCalls     *ratelimit.Limiter
 }
@@ -345,7 +352,8 @@ func NewService(o Options) *Service {
 	s := &Service{reactionLimiter: ratelimit.New(reactionRate, reactionBurst, reactionTTL), onlineAmong: o.OnlineAmong, ackLimiter: ratelimit.New(ackRate, ackBurst, ackTTL), pool: o.Pool, q: store.New(), ids: o.IDs, channels: o.Channels, users: o.Users,
 		pub: o.Publisher, files: o.Files, logger: o.Logger, now: o.Now,
 		uploadLimiter: ratelimit.New(uploadRate, uploadBurst, uploadTTL, ratelimit.WithClock(o.Now)), sendLimiter: o.SendLimiter, writeLimiter: o.WriteLimiter,
-		typingLimiter: o.TypingLimiter, typingCalls: o.TypingCallLimiter}
+		typingLimiter: o.TypingLimiter, typingCalls: o.TypingCallLimiter,
+		searchLimiter: ratelimit.New(searchRate, searchBurst, searchTTL)}
 	s.attachmentQuota, s.minFreeBytes, s.freeBytes = o.AttachmentQuotaBytes, o.MinFreeBytes, o.FreeBytes
 	if s.freeBytes == nil && s.files != nil {
 		s.freeBytes = s.files.AvailableBytes
