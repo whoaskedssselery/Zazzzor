@@ -1,6 +1,6 @@
 import { screen } from "@testing-library/react";
 import { HttpResponse } from "msw";
-import { currentHref, renderApp, sessionHandler, testUser } from "@/app/test";
+import { currentHref, renderApp, sessionHandler, signOut, testUser } from "@/app/test";
 import { api } from "@/shared/api";
 import { apiHandler, problem, server } from "@/shared/test";
 
@@ -110,7 +110,7 @@ describe("session", () => {
     await screen.findByRole("heading", { level: 1, name: "Друзья" });
     queryClient.setQueryData(["guilds", "1"], { stale: true });
 
-    await user.click(screen.getByRole("button", { name: "Выйти" }));
+    await signOut(user);
 
     expect(await screen.findByRole("heading", { name: "С возвращением!" })).toBeTruthy();
     expect(loggedOut).toBe(true);
@@ -127,10 +127,11 @@ describe("session", () => {
     const { user, router } = renderApp("/channels/@me");
     await screen.findByRole("heading", { level: 1, name: "Друзья" });
 
-    await user.click(screen.getByRole("button", { name: "Выйти" }));
+    await signOut(user);
 
     // The connection banner is a live region too; the toast is the one with the text.
     expect(await screen.findByText(/Слишком много запросов/)).toBeTruthy();
-    expect(router.state.location.pathname).toBe("/channels/@me");
+    // Still signed in: the settings stay open.
+    expect(router.state.location.pathname).toBe("/settings/profile");
   });
 });

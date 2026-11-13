@@ -3,7 +3,7 @@ import { LogOut } from "lucide-react";
 import { useState } from "react";
 import { logout } from "@/entities/session";
 import { errorText } from "@/shared/api";
-import { Button, ConfirmDialog, cn, IconButton, useToast } from "@/shared/ui";
+import { Button, ConfirmDialog, cn, useToast } from "@/shared/ui";
 
 export const LOGOUT_CONFIRM = "Выйти из аккаунта?";
 
@@ -20,19 +20,14 @@ const useLogout = () => {
 
 interface LogoutButtonProps {
   className?: string;
-  /** An icon with a tooltip (the user panel) instead of a text button. */
-  iconOnly?: boolean;
 }
 
 /** «Выйти»: signs out and goes to sign-in; a failed request shows a toast and keeps the session. */
-export const LogoutButton = ({ className, iconOnly = false }: LogoutButtonProps) => {
+export const LogoutButton = ({ className }: LogoutButtonProps) => {
   const signOut = useLogout();
   const run = () => {
     if (!signOut.isPending) signOut.mutate();
   };
-  if (iconOnly) {
-    return <IconButton label="Выйти" icon={LogOut} className={className} disabled={signOut.isPending} onClick={run} />;
-  }
   return (
     <Button variant="secondary" className={className} loading={signOut.isPending} onClick={run}>
       Выйти

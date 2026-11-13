@@ -1,6 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import { HttpResponse } from "msw";
-import { renderApp, sessionHandler, testUser } from "@/app/test";
+import { renderApp, sessionHandler, signOut, testUser } from "@/app/test";
 import { useChannelUi } from "@/entities/channel";
 import { EMPTY_GUILDS, getGuildsState } from "@/entities/guild";
 import { apiHandler, dispatchFrame, gateway, makeGuildState, makeReady, readyGateway, server } from "@/shared/test";
@@ -115,7 +115,7 @@ describe("gateway", () => {
     });
     useChannelUi.getState().setLastChannel("10", "101");
 
-    await user.click(screen.getByRole("button", { name: "Выйти" }));
+    await signOut(user);
 
     expect(await screen.findByRole("heading", { name: "С возвращением!" })).toBeTruthy();
     expect(getGuildsState()).toEqual(EMPTY_GUILDS);

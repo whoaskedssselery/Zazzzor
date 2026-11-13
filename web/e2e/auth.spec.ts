@@ -16,7 +16,10 @@ test("signs up, signs out and signs back in", async ({ browser }) => {
   const panel = page.getByRole("region", { name: "Ваш профиль" });
   await expect(panel.getByText("Аня")).toBeVisible();
 
-  await panel.getByRole("button", { name: "Выйти" }).click();
+  // Signing out lives in the user settings, as in Discord, and asks first.
+  await panel.getByRole("button", { name: "Настройки пользователя" }).click();
+  await page.getByRole("button", { name: "Выйти" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Выйти" }).click();
   await expect(page).toHaveURL(/\/login$/);
 
   await page.getByLabel("Логин").fill(login);

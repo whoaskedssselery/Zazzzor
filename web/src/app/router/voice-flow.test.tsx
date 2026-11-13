@@ -1,7 +1,7 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import type { WebSocketHandlerConnection } from "msw";
 import { HttpResponse } from "msw";
-import { renderApp, sessionHandler, testUser } from "@/app/test";
+import { renderApp, sessionHandler, signOut, testUser } from "@/app/test";
 import { getCall, resetCall, setCall } from "@/entities/call";
 import { DEFAULT_EVERYONE, formatMask, PERM, resetGuilds } from "@/entities/guild";
 import {
@@ -132,7 +132,7 @@ describe("voice in the app", () => {
 
   it("drops the call when the user signs out", async () => {
     const { user } = await inLounge();
-    await user.click(screen.getByRole("button", { name: "Выйти" }));
+    await signOut(user);
     await waitFor(() => {
       expect(getCall().status).toBe("idle");
     });
