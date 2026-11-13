@@ -207,3 +207,63 @@ const MarkdownBody = ({ source, after, mentions }: { source: string; after: Reac
     </div>
   );
 };
+
+/** Stands in for a hidden spoiler in a one-line preview (as markdownText does). */
+const LINE_SPOILER = "▒▒▒▒";
+
+/** Nodes as one line: blocks flatten to inline, line breaks become spaces, links and spoilers stay inert. */
+const renderLine = (nodes: MdNode[], names: MentionNames): ReactNode[] => nodes.map((n, i) => lineNode(n, i, names));
+
+const lineNode = (n: MdNode, key: number, names: MentionNames): ReactNode => {
+  switch (n.type) {
+    case "text":
+      return n.value.replace(/\s+/g, " ");
+    case "bold":
+      return <strong key={key}>{renderLine(n.children, names)}</strong>;
+    case "italic":
+      return <em key={key}>{renderLine(n.children, names)}</em>;
+    case "underline":
+      return <u key={key}>{renderLine(n.children, names)}</u>;
+    case "strike":
+      return <s key={key}>{renderLine(n.children, names)}</s>;
+    case "spoiler":
+      return LINE_SPOILER;
+    case "code":
+      return (
+        <code key={key} className="rounded-xs bg-code px-1 font-mono text-[0.85em]">
+          {n.value.replace(/\s+/g, " ")}
+        </code>
+      );
+    // Blocks stand apart from the text around them.
+    case "codeBlock":
+      return (
+        <span key={key}>
+          {" "}
+          <code className="rounded-xs bg-code px-1 font-mono text-[0.85em]">
+            {n.value.trim().replace(/\s+/g, " ")}
+          </code>{" "}
+        </span>
+      );
+    case "quote":
+      return <span key={key}> {renderLine(n.children, names)} </span>;
+    case "link":
+      return <span key={key}>{renderLine(n.children, names)}</span>;
+    case "mention":
+      return (
+        <span key={key} className="text-fg-mention">
+          {mentionText(names, n.kind, n.id)}
+        </span>
+      );
+    case "emoji":
+      return `:${n.name}:`;
+  }
+};
+
+/**
+ * A message as one line with its inline marks (bold, italic, code,
+ * mentions), for the message a reply answers. Nothing in it is
+ * interactive: the whole line is the way to the original.
+ */
+export const MarkdownLine = ({ source, mentions = NO_NAMES }: { source: string; mentions?: MentionNames }) => (
+  <>{renderLine(parseMarkdown(source), mentions)}</>
+);
