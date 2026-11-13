@@ -459,6 +459,7 @@ describe("permission bits (TestPermissionBits)", () => {
     MANAGE_CHANNELS: 1n << 4n,
     MANAGE_GUILD: 1n << 5n,
     ADD_REACTIONS: 1n << 6n,
+    VIEW_AUDIT_LOG: 1n << 7n,
     STREAM: 1n << 9n,
     VIEW_CHANNEL: 1n << 10n,
     SEND_MESSAGES: 1n << 11n,
