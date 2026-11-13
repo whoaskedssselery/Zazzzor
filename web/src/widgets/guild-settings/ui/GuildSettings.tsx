@@ -10,6 +10,7 @@ import {
 } from "@/entities/guild";
 import { DeleteGuild } from "@/features/delete-guild";
 import { SettingsFrame, settingsNavItemClass, useLeaveGuard } from "@/shared/ui";
+import { AuditTab } from "./AuditTab";
 import { BansTab } from "./BansTab";
 import { EmojiTab } from "./EmojiTab";
 import { InvitesTab } from "./InvitesTab";
@@ -42,6 +43,8 @@ const TabContent = ({
       return <BansTab guildId={entry.guild.id} />;
     case "invites":
       return <InvitesTab guildId={entry.guild.id} />;
+    case "audit":
+      return <AuditTab entry={entry} />;
   }
 };
 
