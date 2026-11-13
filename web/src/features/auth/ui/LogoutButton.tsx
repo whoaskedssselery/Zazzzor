@@ -3,7 +3,7 @@ import { LogOut } from "lucide-react";
 import { useState } from "react";
 import { logout } from "@/entities/session";
 import { errorText } from "@/shared/api";
-import { Button, ConfirmDialog, IconButton, useToast } from "@/shared/ui";
+import { Button, ConfirmDialog, cn, IconButton, useToast } from "@/shared/ui";
 
 export const LOGOUT_CONFIRM = "Выйти из аккаунта?";
 
@@ -51,7 +51,7 @@ export const LogoutItem = ({ className }: { className?: string }) => {
     <>
       <button
         type="button"
-        className={className}
+        className={cn("flex items-center gap-2", className)}
         onClick={() => {
           setOpen(true);
         }}

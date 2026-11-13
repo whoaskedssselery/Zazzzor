@@ -5,6 +5,7 @@ import react from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 import tseslint from "typescript-eslint";
+import local from "./eslint-rules/icon-text-gap.js";
 
 // HTML from strings is how markup injection happens. Messages are rendered as
 // React elements from our own markdown AST, so none of these is ever needed.
@@ -265,6 +266,18 @@ export default defineConfig([
         { namedComponents: "arrow-function", unnamedComponents: "arrow-function" },
       ],
       "func-style": ["error", "expression"],
+    },
+  },
+  {
+    // An icon beside text never touches it (eslint-rules/icon-text-gap.js).
+    files: ["src/**/*.tsx"],
+    ignores: ["src/pages/dev-design/**"],
+    plugins: { local },
+    rules: {
+      "local/icon-text-gap": [
+        "error",
+        { spacedComponents: ["Button", "DropdownMenuItem", "ContextMenuItem", "Menu.SubTrigger", "Row", "MenuRow"] },
+      ],
     },
   },
   {
