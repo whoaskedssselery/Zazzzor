@@ -201,3 +201,31 @@ sql:
         sql_package: pgx/v5
         emit_methods_with_db_argument: true
         omit_unused_structs: true
+
+  - engine: postgresql
+    schema: internal/platform/db/migrations
+    queries: internal/audit/queries.sql
+    gen:
+      go:
+        package: store
+        out: internal/audit/store
+        sql_package: pgx/v5
+        emit_methods_with_db_argument: true
+        omit_unused_structs: true
+        overrides:
+          - column: audit_log.id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: audit_log.guild_id
+            go_type: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake.ID
+          - column: audit_log.actor_id
+            go_type:
+              import: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake
+              type: ID
+              pointer: true
+            nullable: true
+          - column: audit_log.target_id
+            go_type:
+              import: github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake
+              type: ID
+              pointer: true
+            nullable: true
