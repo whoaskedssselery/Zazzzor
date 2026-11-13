@@ -8,7 +8,7 @@ import { apiHandler, problem } from "@/shared/test";
 import { AppProviders } from "../providers";
 import { type AppRouter, createAppRouter } from "../router";
 
-export type User = components["schemas"]["User"];
+export type User = components["schemas"]["CurrentUser"];
 
 /** The signed-in account of the app tests. */
 export const testUser: User = {
@@ -17,6 +17,9 @@ export const testUser: User = {
   display_name: "Вася",
   avatar_url: null,
   created_at: "2026-10-21T12:00:00.000Z",
+  bio: "",
+  status: "online",
+  custom_status: null,
 };
 
 /** GET /users/@me answers as for a signed-in `user`, or 401 when it is null. */

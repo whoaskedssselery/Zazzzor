@@ -23,6 +23,16 @@ WHERE id = @id AND password_hash = @verified_hash AND disabled_at IS NULL;
 -- name: SetDisplayName :one
 UPDATE users SET display_name = @display_name WHERE id = @id RETURNING *;
 
+-- name: ChangeProfile :one
+-- Changes the fields given (a null leaves one as it is); custom_status is
+-- written only with set_custom_status, so it can be cleared.
+UPDATE users SET
+    display_name  = COALESCE(sqlc.narg(display_name)::text, display_name),
+    bio           = COALESCE(sqlc.narg(bio)::text, bio),
+    status        = COALESCE(sqlc.narg(status)::text, status),
+    custom_status = CASE WHEN @set_custom_status::bool THEN sqlc.narg(custom_status)::text ELSE custom_status END
+WHERE id = @id RETURNING *;
+
 -- name: CreateSession :exec
 INSERT INTO sessions (id, user_id, token_hash, created_at, last_used_at, expires_at, user_agent, ip)
 VALUES (@id, @user_id, @token_hash, @created_at, @created_at, @expires_at, @user_agent, @ip);

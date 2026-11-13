@@ -2,6 +2,7 @@ import type { components } from "@/shared/api";
 
 type S = components["schemas"];
 type User = S["User"];
+type CurrentUser = S["CurrentUser"];
 type Guild = S["Guild"];
 type Role = S["Role"];
 type Channel = S["Channel"];
@@ -18,6 +19,20 @@ const AT = "2026-10-21T12:00:00.000Z";
 
 export function makeUser(id: string, over: Partial<User> = {}): User {
   return { id, username: `user${id}`, display_name: `Пользователь ${id}`, avatar_url: null, created_at: AT, ...over };
+}
+
+/** `user` as their own account: no "about me", online, no status line. */
+export const asMe = (user: User, over: Partial<CurrentUser> = {}): CurrentUser => ({
+  bio: "",
+  status: "online",
+  custom_status: null,
+  ...user,
+  ...over,
+});
+
+/** The signed-in user's own account (GET /users/@me, READY). */
+export function makeMe(id: string, over: Partial<CurrentUser> = {}): CurrentUser {
+  return asMe(makeUser(id), over);
 }
 
 export function makeGuild(id: string, ownerId: string, over: Partial<Guild> = {}): Guild {
@@ -62,7 +77,7 @@ export function makeGuildState(guildId: string, me: User, over: Partial<GuildSta
     channels: [makeChannel(`${guildId}1`, guildId)],
     members: [myMember],
     my_member: myMember,
-    presences: [{ user_id: me.id, status: "online" }],
+    presences: [{ user_id: me.id, status: "online", custom_status: null }],
     voice_states: [],
     read_states: [],
     emojis: [],
@@ -86,9 +101,9 @@ export function makeGuildEmoji(id: string, guildId: string, name: string, over: 
 
 export function makeReady(me: User, guilds: GuildState[] = []): GatewayReady {
   return {
-    user: me,
+    user: asMe(me),
     guilds,
-    presences: [{ user_id: me.id, status: "online" }],
+    presences: [{ user_id: me.id, status: "online", custom_status: null }],
     read_states: guilds.flatMap((g) => g.read_states),
     relationships: [],
     private_channels: [],

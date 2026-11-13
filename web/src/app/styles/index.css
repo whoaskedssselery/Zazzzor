@@ -79,6 +79,8 @@
   --color-badge-count: var(--badge-count);
   --color-online: var(--status-online);
   --color-offline: var(--status-offline);
+  --color-idle: var(--status-idle);
+  --color-dnd: var(--status-dnd);
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
   --color-border-control: var(--border-control);

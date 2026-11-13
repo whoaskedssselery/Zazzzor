@@ -92,6 +92,8 @@ const (
 // Presence statuses.
 const (
 	StatusOnline  = "online"
+	StatusIdle    = "idle"
+	StatusDND     = "dnd"
 	StatusOffline = "offline"
 )
 
@@ -107,8 +109,9 @@ type Hello struct {
 
 // Presence is the payload of PRESENCE_UPDATE and an entry of READY.
 type Presence struct {
-	UserID snowflake.ID `json:"user_id"`
-	Status string       `json:"status"`
+	UserID       snowflake.ID `json:"user_id"`
+	Status       string       `json:"status"`
+	CustomStatus *string      `json:"custom_status"`
 }
 
 // GuildState is a guild as one member sees it: the payload of GUILD_CREATE
@@ -139,7 +142,7 @@ type Ready struct {
 	// UserGuildSettings are the user's notification settings that differ from the defaults.
 	UserGuildSettings []notifysettings.Settings    `json:"user_guild_settings"`
 	Relationships     []relationships.Relationship `json:"relationships"`
-	User              auth.PublicUser              `json:"user"`
+	User              auth.SelfUser                `json:"user"`
 	Guilds            []GuildState                 `json:"guilds"`
 	Presences         []Presence                   `json:"presences"`
 	// ReadStates are the user's stored read states across all visible channels.

@@ -540,8 +540,9 @@ type (
 		User userBody `json:"user"`
 	}
 	presenceBody struct {
-		UserID string `json:"user_id"`
-		Status string `json:"status"`
+		UserID       string  `json:"user_id"`
+		Status       string  `json:"status"`
+		CustomStatus *string `json:"custom_status"`
 	}
 )
 

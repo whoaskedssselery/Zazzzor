@@ -17,9 +17,9 @@ import { CallButton, PrivateCallStage } from "@/widgets/voice-stage";
 export const DirectMessagePage = ({ channelId }: { channelId: string }) => {
   const channel = useGuilds((s) => s.privates[channelId]?.channel);
   const ready = useConnectionStatus() === "ready";
-  const peerOnline = useGuilds((s) => {
+  const peerStatus = useGuilds((s) => {
     const peer = channel ? dmPeer(channel) : null;
-    return peer !== null && s.presences[peer.id] === "online";
+    return (peer ? s.presences[peer.id] : undefined) ?? "offline";
   });
   const [renaming, setRenaming] = useState(false);
   if (!channel) {
@@ -46,7 +46,7 @@ export const DirectMessagePage = ({ channelId }: { channelId: string }) => {
               name={peer.display_name}
               src={peer.avatar_url}
               size={24}
-              status={peerOnline ? "online" : "offline"}
+              status={peerStatus}
               className="max-sm:hidden"
             />
             <h1 className="min-w-0 truncate text-base font-semibold">{peer.display_name}</h1>

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { cn } from "../cn";
 
-export type Presence = "online" | "offline";
+export type Presence = "online" | "idle" | "dnd" | "offline";
 export type AvatarSize = 20 | 24 | 32 | 40 | 80;
 
 const graphemes = new Intl.Segmenter("ru", { granularity: "grapheme" });
@@ -26,7 +26,19 @@ export const avatarTone = (name: string): string => {
   return `var(--avatar-${String((h % 6) + 1)})`;
 };
 
-const presenceText: Record<Presence, string> = { online: "в сети", offline: "не в сети" };
+const presenceText: Record<Presence, string> = {
+  online: "в сети",
+  idle: "нет на месте",
+  dnd: "не беспокоить",
+  offline: "не в сети",
+};
+
+const dotFill: Record<Presence, string> = {
+  online: "bg-online",
+  idle: "bg-idle",
+  dnd: "bg-dnd",
+  offline: "bg-offline",
+};
 
 interface AvatarProps {
   name: string;
@@ -84,26 +96,51 @@ export const Avatar = ({ name, src, size = 40, status, className }: AvatarProps)
         </span>
       )}
       {status && (
+        <StatusDot
+          status={status}
+          size={dot}
+          ring={size >= 40 ? 3 : 2}
+          className="absolute right-0 bottom-0 translate-x-[12%] translate-y-[12%]"
+        />
+      )}
+    </span>
+  );
+};
+
+/**
+ * A presence dot alone: green online, an amber crescent away, a red disc
+ * with a bar for do not disturb, a grey ring offline. The shapes differ, so
+ * it reads without colour. `ring` is the cut-out border in the colour of
+ * `--avatar-cutout` (the surface behind it).
+ */
+export const StatusDot = ({
+  status,
+  size = 10,
+  ring = 0,
+  className,
+}: {
+  status: Presence;
+  size?: number;
+  ring?: number;
+  className?: string;
+}) => {
+  const cutout = "var(--avatar-cutout, var(--bg-sidebar))";
+  return (
+    <span
+      aria-hidden
+      data-status={status}
+      className={cn("relative inline-block shrink-0 overflow-hidden rounded-full", dotFill[status], className)}
+      style={{ width: size, height: size, boxShadow: ring > 0 ? `0 0 0 ${String(ring)}px ${cutout}` : undefined }}
+    >
+      {status === "offline" && <span className="absolute inset-[28%] rounded-full" style={{ background: cutout }} />}
+      {status === "idle" && (
+        <span className="absolute -top-[12%] -left-[12%] size-[62%] rounded-full" style={{ background: cutout }} />
+      )}
+      {status === "dnd" && (
         <span
-          aria-hidden
-          data-status={status}
-          className={cn(
-            "absolute right-0 bottom-0 translate-x-[12%] translate-y-[12%] rounded-full",
-            status === "online" ? "bg-online" : "bg-offline",
-          )}
-          style={{
-            width: dot,
-            height: dot,
-            boxShadow: `0 0 0 ${String(size >= 40 ? 3 : 2)}px var(--avatar-cutout, var(--bg-sidebar))`,
-          }}
-        >
-          {status === "offline" && (
-            <span
-              className="absolute inset-[28%] rounded-full"
-              style={{ background: "var(--avatar-cutout, var(--bg-sidebar))" }}
-            />
-          )}
-        </span>
+          className="absolute inset-x-[22%] top-1/2 h-[24%] -translate-y-1/2 rounded-full"
+          style={{ background: cutout }}
+        />
       )}
     </span>
   );

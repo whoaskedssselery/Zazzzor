@@ -1,5 +1,6 @@
 import { applyReady, formatMask, PERM } from "@/entities/guild";
 import {
+  asMe,
   makeChannel,
   makeEveryone,
   makeGuild,
@@ -30,7 +31,7 @@ const entry = (perms: bigint) => {
     my_member: mine,
   });
   const e = applyReady({
-    user: me,
+    user: asMe(me),
     guilds: [state],
     presences: [],
     read_states: [],
@@ -118,7 +119,7 @@ describe("voiceActions", () => {
       voice_states: [makeVoiceState(G, LOUNGE, junior.id, { mute: true }), makeVoiceState(G, LOUNGE, peer.id)],
     });
     const e = applyReady({
-      user: me,
+      user: asMe(me),
       guilds: [state],
       presences: [],
       read_states: [],

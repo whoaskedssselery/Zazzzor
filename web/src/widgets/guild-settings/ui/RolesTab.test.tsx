@@ -5,6 +5,7 @@ import { HttpResponse } from "msw";
 import { applyReady, formatMask, PERM } from "@/entities/guild";
 import {
   apiHandler,
+  asMe,
   makeEveryone,
   makeGuild,
   makeGuildState,
@@ -39,7 +40,7 @@ const entry = () => {
     my_member: mine,
   });
   const e = applyReady({
-    user: me,
+    user: asMe(me),
     guilds: [state],
     presences: [],
     read_states: [],

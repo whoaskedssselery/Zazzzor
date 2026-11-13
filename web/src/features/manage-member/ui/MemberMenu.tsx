@@ -10,7 +10,7 @@ import {
   UserMinus,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
-import { type GuildEntry, useGuilds } from "@/entities/guild";
+import { type GuildEntry, PRESENCE_LABEL, useGuilds, usePresence, useProfile } from "@/entities/guild";
 import {
   Avatar,
   ContextMenu,
@@ -26,6 +26,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   IconButton,
+  StatusDot,
 } from "@/shared/ui";
 import { memberActions, useVoiceModeration, type VoiceActions, voiceActions } from "../model/actions";
 import { BlockDialog, FriendItems } from "./FriendItems";
@@ -119,19 +120,45 @@ const VoiceItems = ({
   );
 };
 
-/** The card at the top of the menu: who it is about. */
+/** "About me" from the profile, once it has come; nothing while it loads or if it fails. */
+const About = ({ userId }: { userId: string }) => {
+  const profile = useProfile(userId);
+  const bio = profile.data?.bio ?? "";
+  if (bio === "") return null;
+  return (
+    <span className="mt-2 block border-t border-border pt-2 font-normal">
+      <span className="block text-xs font-semibold text-fg-faint uppercase">О себе</span>
+      <span className="mt-0.5 line-clamp-6 block text-sm break-words whitespace-pre-line text-fg">{bio}</span>
+    </span>
+  );
+};
+
+/**
+ * The card at the top of the menu: who it is about, their presence (or
+ * status line) and "about me".
+ */
 const Card = ({ entry, userId, kind }: { entry: GuildEntry; userId: string; kind: "context" | "dropdown" }) => {
+  const { status, line } = usePresence(userId);
   const member = entry.members[userId];
   if (!member) return null;
   const Label = kind === "context" ? ContextMenuLabel : DropdownMenuLabel;
   const name = member.nick ?? member.user.display_name;
   return (
-    <Label className="flex items-center gap-2.5 py-2">
-      <Avatar name={name} src={member.user.avatar_url} size={32} />
-      <span className="min-w-0">
-        <bdi className="block truncate text-base font-semibold text-fg">{name}</bdi>
-        <span className="block truncate text-xs font-normal text-fg-muted">@{member.user.username}</span>
+    <Label className="block max-w-72 py-2">
+      <span className="flex items-center gap-2.5">
+        <Avatar name={name} src={member.user.avatar_url} size={40} status={status} />
+        <span className="min-w-0">
+          <bdi className="block truncate text-base font-semibold text-fg">{name}</bdi>
+          <span className="block truncate text-xs font-normal text-fg-muted">@{member.user.username}</span>
+        </span>
       </span>
+      <span data-profile-status className="mt-2 flex items-center gap-1.5 text-sm font-normal text-fg-muted">
+        <StatusDot status={status} size={8} />
+        <span className="min-w-0 break-words">
+          {status !== "offline" && line !== null ? line : PRESENCE_LABEL[status]}
+        </span>
+      </span>
+      <About userId={userId} />
     </Label>
   );
 };

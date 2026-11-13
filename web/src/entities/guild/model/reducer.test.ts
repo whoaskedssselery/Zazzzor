@@ -1,4 +1,5 @@
 import {
+  asMe,
   makeChannel,
   makeEveryone,
   makeGuild,
@@ -26,8 +27,8 @@ function ready(): GuildsState {
     channels: [makeChannel("101", G1), makeChannel("102", G1, { position: 1 })],
     members: [makeMember(me), makeMember(petya, { roles: ["11"] })],
     presences: [
-      { user_id: me.id, status: "online" },
-      { user_id: petya.id, status: "online" },
+      { user_id: me.id, status: "online", custom_status: null },
+      { user_id: petya.id, status: "online", custom_status: null },
     ],
   });
   const g2 = makeGuildState(G2, me);
@@ -45,7 +46,7 @@ function applyTwice(s: GuildsState, t: string, d: unknown): GuildsState {
 describe("applyReady", () => {
   it("fills the store from READY", () => {
     const s = ready();
-    expect(s.me).toEqual(me);
+    expect(s.me).toEqual(asMe(me));
     expect(s.order).toEqual([G1, G2]);
     const g1 = s.guilds[G1];
     expect(g1?.guild.id).toBe(G1);
@@ -100,8 +101,8 @@ describe("applyEvent", () => {
       channels: [makeChannel("102", G1)],
       members: [makeMember(me), makeMember(petya), makeMember(masha)],
       presences: [
-        { user_id: me.id, status: "online" },
-        { user_id: masha.id, status: "online" },
+        { user_id: me.id, status: "online", custom_status: null },
+        { user_id: masha.id, status: "online", custom_status: null },
       ],
     });
     const next = applyTwice(s, "GUILD_SYNC", sync);
@@ -234,16 +235,27 @@ describe("applyEvent", () => {
   });
 
   it("PRESENCE_UPDATE sets a user's status", () => {
-    let s = applyTwice(ready(), "PRESENCE_UPDATE", { user_id: petya.id, status: "offline" });
+    let s = applyTwice(ready(), "PRESENCE_UPDATE", { user_id: petya.id, status: "offline", custom_status: null });
     expect(s.presences[petya.id]).toBe("offline");
-    s = applyTwice(s, "PRESENCE_UPDATE", { user_id: masha.id, status: "online" });
+    s = applyTwice(s, "PRESENCE_UPDATE", { user_id: masha.id, status: "online", custom_status: null });
     expect(s.presences[masha.id]).toBe("online");
+  });
+
+  it("PRESENCE_UPDATE keeps the status line of who shows online, and drops it offline", () => {
+    let s = applyTwice(ready(), "PRESENCE_UPDATE", { user_id: petya.id, status: "dnd", custom_status: "Сплю" });
+    expect(s.presences[petya.id]).toBe("dnd");
+    expect(s.statusLines[petya.id]).toBe("Сплю");
+    s = applyTwice(s, "PRESENCE_UPDATE", { user_id: petya.id, status: "idle", custom_status: null });
+    expect(s.statusLines[petya.id]).toBeUndefined();
+    s = applyTwice(s, "PRESENCE_UPDATE", { user_id: petya.id, status: "online", custom_status: "Тут" });
+    s = applyTwice(s, "PRESENCE_UPDATE", { user_id: petya.id, status: "offline", custom_status: null });
+    expect(s.statusLines[petya.id]).toBeUndefined();
   });
 
   it("USER_UPDATE of me changes me and me in every server", () => {
     const renamed = { ...me, display_name: "Новое имя" };
-    const s = applyTwice(ready(), "USER_UPDATE", renamed);
-    expect(s.me).toEqual(renamed);
+    const s = applyTwice(ready(), "USER_UPDATE", asMe(renamed, { bio: "о себе" }));
+    expect(s.me).toEqual(asMe(renamed, { bio: "о себе" }));
     expect(s.guilds[G1]?.members[me.id]?.user).toEqual(renamed);
     expect(s.guilds[G2]?.members[me.id]?.user).toEqual(renamed);
     expect(s.guilds[G1]?.myMember.user).toEqual(renamed);
@@ -252,7 +264,7 @@ describe("applyEvent", () => {
   it("USER_UPDATE of someone else changes them in every server and leaves me", () => {
     const renamed = { ...petya, display_name: "Пётр" };
     const s = applyTwice(ready(), "USER_UPDATE", renamed);
-    expect(s.me).toEqual(me);
+    expect(s.me).toEqual(asMe(me));
     expect(s.guilds[G1]?.members[petya.id]?.user).toEqual(renamed);
     expect(s.guilds[G2]?.members[petya.id]).toBeUndefined();
   });

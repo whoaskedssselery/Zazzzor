@@ -70,7 +70,7 @@ func TestUpdateDisplayName(t *testing.T) {
 	problemOf(t, patch(map[string]string{"username": "x"}), http.StatusBadRequest, "invalid_body")
 
 	// An empty patch changes nothing and announces nothing.
-	before := len(e.pub.ofType(events.UserUpdate))
+	before := len(e.pub.peerUpdates())
 	if resp := patch(map[string]string{}); resp.Status != http.StatusOK {
 		t.Fatalf("empty patch = %d", resp.Status)
 	}
@@ -78,7 +78,7 @@ func TestUpdateDisplayName(t *testing.T) {
 	if resp := patch(map[string]string{"display_name": "a"}); resp.Status != http.StatusOK {
 		t.Fatalf("same name = %d", resp.Status)
 	}
-	evs := e.pub.ofType(events.UserUpdate)
+	evs := e.pub.peerUpdates()
 	if before != 3 || len(evs) != 3 {
 		t.Fatalf("USER_UPDATE events = %d then %d, want 3 and 3", before, len(evs))
 	}
@@ -200,7 +200,7 @@ func TestAvatarUploadNormalizes(t *testing.T) {
 		t.Fatalf("served avatar is %v, want 256x256", b)
 	}
 
-	if evs := e.pub.ofType(events.UserUpdate); len(evs) != 1 || evs[0].Audience.Kind != events.AudiencePeers {
+	if evs := e.pub.peerUpdates(); len(evs) != 1 || evs[0].Audience.Kind != events.AudiencePeers {
 		t.Fatalf("USER_UPDATE events = %+v", evs)
 	}
 
@@ -215,7 +215,7 @@ func TestAvatarUploadNormalizes(t *testing.T) {
 	if c.Do(http.MethodGet, *got.AvatarURL, nil).Status != http.StatusOK {
 		t.Fatal("re-uploading the same image removed it")
 	}
-	if n := len(e.pub.ofType(events.UserUpdate)); n != 1 {
+	if n := len(e.pub.peerUpdates()); n != 1 {
 		t.Fatalf("USER_UPDATE events after same upload = %d, want 1", n)
 	}
 
@@ -243,7 +243,7 @@ func TestAvatarUploadNormalizes(t *testing.T) {
 	if _, err := os.Stat(avatarPath(e, next)); !os.IsNotExist(err) {
 		t.Fatalf("deleted avatar file still exists: %v", err)
 	}
-	if n := len(e.pub.ofType(events.UserUpdate)); n != 3 {
+	if n := len(e.pub.peerUpdates()); n != 3 {
 		t.Fatalf("USER_UPDATE events = %d, want 3", n)
 	}
 	if resp := c.Do(http.MethodDelete, "/api/v1/users/@me/avatar", nil); resp.Status != http.StatusOK {
@@ -273,7 +273,7 @@ func TestAvatarRejectsNonImage(t *testing.T) {
 	if m := me(t, c); m.AvatarURL != nil {
 		t.Fatalf("a rejected upload set avatar %q", *m.AvatarURL)
 	}
-	if n := len(e.pub.ofType(events.UserUpdate)); n != 0 {
+	if n := len(e.pub.peerUpdates()); n != 0 {
 		t.Fatalf("USER_UPDATE events = %d, want 0", n)
 	}
 }

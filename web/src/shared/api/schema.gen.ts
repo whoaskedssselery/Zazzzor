@@ -137,15 +137,45 @@ export interface paths {
         /**
          * Change the profile
          * @description Changes the fields that are present; an empty object changes nothing.
+         *     `bio` ("about me") is trimmed and may then be up to 190 characters,
+         *     with line breaks but no other control or bidirectional control
+         *     characters. `status` is the status the user chooses: `invisible`
+         *     shows them offline to everyone else. `custom_status` is a status line
+         *     of up to 128 characters, trimmed; null, or a line with nothing visible
+         *     left, clears it.
          *     `display_name` is trimmed and must then be 1 to 32 characters with a
          *     visible character and no control or bidirectional control characters.
-         *     A change is announced as `USER_UPDATE` to the user and everyone
-         *     sharing a server with them.
+         *     A change is announced as `USER_UPDATE` with `CurrentUser` to the
+         *     user, and, if the display name changed, with `User` to everyone
+         *     sharing a server or a friendship with them. A new status or status
+         *     line reaches them as `PRESENCE_UPDATE` while the user is connected.
          *
          *     Profile writes (this operation and the avatar PUT and DELETE) share a
          *     limit of 10 per 10 minutes per user.
          */
         patch: operations["updateCurrentUser"];
+        trace?: never;
+    };
+    "/users/{user_id}/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Someone's profile
+         * @description The profile of a user the caller shares a server, a friendship, a
+         *     pending friend request or a direct message with, or the caller's own.
+         *     Anyone else is `404`, as is an unknown user.
+         */
+        get: operations["getUserProfile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/users/@me/channels": {
@@ -1825,6 +1855,38 @@ export interface components {
         };
         UpdateUserRequest: {
             display_name?: string;
+            bio?: string;
+            status?: components["schemas"]["ChosenStatus"];
+            custom_status?: string | null;
+        };
+        /**
+         * @description What the user chose; `invisible` shows as offline to everyone else.
+         * @enum {string}
+         */
+        ChosenStatus: "online" | "idle" | "dnd" | "invisible";
+        /** @description The signed-in user's own account, with the fields only they see. */
+        CurrentUser: {
+            id: components["schemas"]["Snowflake"];
+            username: string;
+            display_name: string;
+            avatar_url: string | null;
+            /**
+             * Format: date-time
+             * @example 2026-10-21T12:00:00.000Z
+             */
+            created_at: string;
+            /** @description "About me"; empty when not set. */
+            bio: string;
+            status: components["schemas"]["ChosenStatus"];
+            custom_status: string | null;
+        };
+        /** @description `CurrentUser` to the user themself, `User` to everyone else. */
+        UserUpdateEvent: components["schemas"]["CurrentUser"] | components["schemas"]["User"];
+        UserProfile: {
+            user: components["schemas"]["User"];
+            bio: string;
+            /** @description Servers both users are members of, ascending. */
+            mutual_guild_ids: components["schemas"]["Snowflake"][];
         };
         ChangePasswordRequest: {
             current_password: string;
@@ -2281,7 +2343,7 @@ export interface components {
             t?: string;
             s?: number;
             /** @description The payload; null for HEARTBEAT_ACK. */
-            d: null | components["schemas"]["GatewayHello"] | components["schemas"]["GatewayReady"] | components["schemas"]["GuildState"] | components["schemas"]["GuildEmojisUpdate"] | components["schemas"]["Relationship"] | components["schemas"]["RelationshipRemove"] | components["schemas"]["DMChannel"] | components["schemas"]["DMChannelDeleteEvent"] | components["schemas"]["Call"] | components["schemas"]["CallDeleteEvent"] | components["schemas"]["UserGuildSettings"] | components["schemas"]["Guild"] | components["schemas"]["GuildDeleteEvent"] | components["schemas"]["MemberEvent"] | components["schemas"]["MemberRemoveEvent"] | components["schemas"]["RoleEvent"] | components["schemas"]["RoleDeleteEvent"] | components["schemas"]["Channel"] | components["schemas"]["Message"] | components["schemas"]["MessageDeleteEvent"] | components["schemas"]["MessageReactionEvent"] | components["schemas"]["ReadState"] | components["schemas"]["TypingStartEvent"] | components["schemas"]["Presence"] | components["schemas"]["User"] | components["schemas"]["VoiceState"] | components["schemas"]["VoiceMove"];
+            d: null | components["schemas"]["GatewayHello"] | components["schemas"]["GatewayReady"] | components["schemas"]["GuildState"] | components["schemas"]["GuildEmojisUpdate"] | components["schemas"]["Relationship"] | components["schemas"]["RelationshipRemove"] | components["schemas"]["DMChannel"] | components["schemas"]["DMChannelDeleteEvent"] | components["schemas"]["Call"] | components["schemas"]["CallDeleteEvent"] | components["schemas"]["UserGuildSettings"] | components["schemas"]["Guild"] | components["schemas"]["GuildDeleteEvent"] | components["schemas"]["MemberEvent"] | components["schemas"]["MemberRemoveEvent"] | components["schemas"]["RoleEvent"] | components["schemas"]["RoleDeleteEvent"] | components["schemas"]["Channel"] | components["schemas"]["Message"] | components["schemas"]["MessageDeleteEvent"] | components["schemas"]["MessageReactionEvent"] | components["schemas"]["ReadState"] | components["schemas"]["TypingStartEvent"] | components["schemas"]["Presence"] | components["schemas"]["User"] | components["schemas"]["UserUpdateEvent"] | components["schemas"]["VoiceState"] | components["schemas"]["VoiceMove"];
         };
         GatewayHello: {
             /** @description Send HEARTBEAT this often (30000); 150 s without one closes the connection with 4009, allowing for throttled timers in hidden browser tabs. */
@@ -2297,7 +2359,7 @@ export interface components {
             private_channels: components["schemas"]["DMChannel"][];
             /** @description Relationships visible to the receiving user. */
             relationships: components["schemas"]["Relationship"][];
-            user: components["schemas"]["User"];
+            user: components["schemas"]["CurrentUser"];
             guilds: components["schemas"]["GuildState"][];
             /** @description Online friends and people who share a server with the user, including the user. */
             presences: components["schemas"]["Presence"][];
@@ -2379,8 +2441,13 @@ export interface components {
         };
         Presence: {
             user_id: components["schemas"]["Snowflake"];
-            /** @enum {string} */
-            status: "online" | "offline";
+            /**
+             * @description An invisible user is offline here.
+             * @enum {string}
+             */
+            status: "online" | "idle" | "dnd" | "offline";
+            /** @description The user's status line; always null when offline. */
+            custom_status: string | null;
         };
         GuildDeleteEvent: {
             id: components["schemas"]["Snowflake"];
@@ -2618,7 +2685,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["User"];
+                    "application/json": components["schemas"]["CurrentUser"];
                 };
             };
             /** @description `invalid_body`, `body_too_large` or `validation_failed` (with `errors`). */
@@ -2654,7 +2721,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["User"];
+                    "application/json": components["schemas"]["CurrentUser"];
                 };
             };
             /** @description `invalid_body` or `body_too_large`. */
@@ -2709,7 +2776,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["User"];
+                    "application/json": components["schemas"]["CurrentUser"];
                 };
             };
             /** @description `unauthenticated`: no valid session. */
@@ -2737,7 +2804,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["User"];
+                    "application/json": components["schemas"]["CurrentUser"];
                 };
             };
             /** @description `invalid_body`, `body_too_large` or `validation_failed` (with `errors`). */
@@ -2748,6 +2815,34 @@ export interface operations {
             403: components["responses"]["Problem"];
             /** @description `unsupported_media_type`. */
             415: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    getUserProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: components["schemas"]["Snowflake"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The profile. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserProfile"];
+                };
+            };
+            /** @description `unauthenticated`. */
+            401: components["responses"]["Problem"];
+            /** @description `not_found`: no such user, or not one the caller knows. */
+            404: components["responses"]["Problem"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["Problem"];
         };
@@ -2984,7 +3079,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["User"];
+                    "application/json": components["schemas"]["CurrentUser"];
                 };
             };
             /**
@@ -3021,7 +3116,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["User"];
+                    "application/json": components["schemas"]["CurrentUser"];
                 };
             };
             /** @description `unauthenticated`. */

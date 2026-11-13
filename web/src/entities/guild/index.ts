@@ -9,6 +9,7 @@ export {
   useRemoveRecipient,
   useRenameGroup,
 } from "./api/privates";
+export { profileKey, type UserProfile, useProfile } from "./api/profile";
 export {
   NO_SUCH_USER,
   requestErrorText,
@@ -51,6 +52,7 @@ export {
   PERM,
   parseMask,
 } from "./model/permissions";
+export { isShownOnline, PRESENCE_LABEL, usePresence } from "./model/presence";
 export {
   dmPeer,
   homeUnreadCount,

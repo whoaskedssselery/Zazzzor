@@ -3,9 +3,12 @@ import { type ChangeEvent, useEffect, useRef, useState } from "react";
 import { type User, updateSignedIn } from "@/entities/session";
 import { ApiError, api, errorText, fieldErrorText, unwrap } from "@/shared/api";
 import { fileForm, IMAGE_ACCEPT, imageProblem, runeLength, trimContent, useObjectUrl } from "@/shared/lib";
-import { Avatar, Button, Field, FormAlert, Input, SaveBar, useToast } from "@/shared/ui";
+import { Avatar, Button, Field, FormAlert, Input, SaveBar, Textarea, useToast } from "@/shared/ui";
 
 export const NAME_RULE = fieldErrorText("display_name");
+
+/** "About me" is at most this many characters. */
+export const BIO_MAX = 190;
 
 /** The avatar as the form holds it: unchanged, a new file, or removed. */
 type AvatarChange = File | "remove" | null;
@@ -14,7 +17,7 @@ const uploadAvatar = async (file: File) =>
   unwrap(await api.PUT("/users/@me/avatar", { body: { file: "" }, bodySerializer: fileForm(file) }));
 
 /**
- * The user's display name and avatar. Changes wait in the form until
+ * The user's display name, "about me" and avatar. Changes wait in the form until
  * «Сохранить изменения», as in the server settings (`onDirtyChange` lets
  * the screen ask before they are left). Each answer goes into the session
  * at once; the USER_UPDATE the server sends brings the same user, and the
@@ -24,6 +27,8 @@ export const ProfileTab = ({ user, onDirtyChange }: { user: User; onDirtyChange:
   const queryClient = useQueryClient();
   const toast = useToast();
   const [name, setName] = useState(user.display_name);
+  const [bio, setBio] = useState(user.bio);
+  const [bioError, setBioError] = useState<string | undefined>(undefined);
   const [avatar, setAvatar] = useState<AvatarChange>(null);
   const [nameError, setNameError] = useState<string | undefined>(undefined);
   const [avatarError, setAvatarError] = useState<string | null>(null);
@@ -36,8 +41,13 @@ export const ProfileTab = ({ user, onDirtyChange }: { user: User; onDirtyChange:
     setBase(user.display_name);
     if (trimContent(name) === base) setName(user.display_name);
   }
+  const [bioBase, setBioBase] = useState(user.bio);
+  if (bioBase !== user.bio) {
+    setBioBase(user.bio);
+    if (bio.trim() === bioBase) setBio(user.bio);
+  }
 
-  const dirty = trimContent(name) !== user.display_name || avatar !== null;
+  const dirty = trimContent(name) !== user.display_name || bio.trim() !== user.bio || avatar !== null;
   useEffect(() => {
     onDirtyChange(dirty);
   }, [dirty, onDirtyChange]);
@@ -46,8 +56,13 @@ export const ProfileTab = ({ user, onDirtyChange }: { user: User; onDirtyChange:
     // Takes the avatar it sends: another may be picked while this one uploads.
     mutationFn: async (sent: AvatarChange) => {
       const value = trimContent(name);
-      if (value !== user.display_name) {
-        updateSignedIn(queryClient, unwrap(await api.PATCH("/users/@me", { body: { display_name: value } })));
+      const about = bio.trim();
+      const body = {
+        ...(value !== user.display_name ? { display_name: value } : {}),
+        ...(about !== user.bio ? { bio: about } : {}),
+      };
+      if (Object.keys(body).length > 0) {
+        updateSignedIn(queryClient, unwrap(await api.PATCH("/users/@me", { body })));
       }
       if (sent === "remove") updateSignedIn(queryClient, unwrap(await api.DELETE("/users/@me/avatar")));
       else if (sent !== null) updateSignedIn(queryClient, await uploadAvatar(sent));
@@ -58,6 +73,7 @@ export const ProfileTab = ({ user, onDirtyChange }: { user: User; onDirtyChange:
     },
     onError: (e) => {
       if (e instanceof ApiError && "display_name" in e.fields) setNameError(NAME_RULE);
+      if (e instanceof ApiError && "bio" in e.fields) setBioError(`Не длиннее ${String(BIO_MAX)} символов`);
     },
   });
 
@@ -77,19 +93,28 @@ export const ProfileTab = ({ user, onDirtyChange }: { user: User; onDirtyChange:
       return;
     }
     setNameError(undefined);
+    if (runeLength(bio.trim()) > BIO_MAX) {
+      setBioError(`Не длиннее ${String(BIO_MAX)} символов`);
+      return;
+    }
+    setBioError(undefined);
     save.mutate(avatar);
   };
 
   const reset = () => {
     setName(user.display_name);
+    setBio(user.bio);
     setAvatar(null);
     setNameError(undefined);
+    setBioError(undefined);
     setAvatarError(null);
     save.reset();
   };
 
   const shown = avatar === "remove" ? null : (preview ?? user.avatar_url);
-  const failed = save.isError && !(save.error instanceof ApiError && "display_name" in save.error.fields);
+  const failed =
+    save.isError &&
+    !(save.error instanceof ApiError && ("display_name" in save.error.fields || "bio" in save.error.fields));
   return (
     <section aria-labelledby="profile-title">
       <h2 id="profile-title" className="mb-5 text-xl font-semibold">
@@ -151,6 +176,21 @@ export const ProfileTab = ({ user, onDirtyChange }: { user: User; onDirtyChange:
               autoComplete="nickname"
               onChange={(e) => {
                 setName(e.currentTarget.value);
+              }}
+            />
+          </Field>
+          <Field
+            htmlFor="profile-bio"
+            label="О себе"
+            hint={`Видят друзья и участники ваших серверов. ${String(runeLength(bio.trim()))} из ${String(BIO_MAX)}.`}
+            error={bioError}
+            className="mt-5"
+          >
+            <Textarea
+              value={bio}
+              rows={4}
+              onChange={(e) => {
+                setBio(e.currentTarget.value);
               }}
             />
           </Field>

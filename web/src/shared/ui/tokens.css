@@ -67,9 +67,12 @@
   --warning: #e6b04f;
   --badge-count: var(--danger);
 
-  /* Presence: online is the accent ("here"), offline a quiet grey. */
+  /* Presence: online is the accent ("here"), away the warning amber, do not
+     disturb the alarm red, offline a quiet grey. */
   --status-online: var(--accent);
   --status-offline: #7a746c;
+  --status-idle: var(--warning);
+  --status-dnd: var(--danger);
 
   /* Lines and focus. */
   --border: #2f2d2a;
@@ -145,6 +148,8 @@
 
   --status-online: #1d8a5a;
   --status-offline: #7c766e;
+  --status-idle: var(--warning);
+  --status-dnd: var(--danger);
 
   --border: #d6d2cc;
   --border-strong: #b5afa7;

@@ -668,6 +668,31 @@ func (q *Queries) IsMember(ctx context.Context, db DBTX, arg IsMemberParams) (bo
 	return exists, err
 }
 
+const knowsOutsideGuilds = `-- name: KnowsOutsideGuilds :one
+SELECT (EXISTS (
+    SELECT 1 FROM relationships AS rel
+    WHERE rel.user_id = $1 AND rel.other_id = $2 AND rel.type IN (1, 3, 4)
+) OR EXISTS (
+    SELECT 1 FROM channel_recipients AS mine
+    JOIN channel_recipients AS other ON other.channel_id = mine.channel_id
+    WHERE mine.user_id = $1 AND other.user_id = $2
+))::bool AS known
+`
+
+type KnowsOutsideGuildsParams struct {
+	UserID  int64
+	OtherID int64
+}
+
+// Whether user_id is a friend of other_id, has a pending request with them
+// either way, or shares a direct message or group with them.
+func (q *Queries) KnowsOutsideGuilds(ctx context.Context, db DBTX, arg KnowsOutsideGuildsParams) (bool, error) {
+	row := db.QueryRow(ctx, knowsOutsideGuilds, arg.UserID, arg.OtherID)
+	var known bool
+	err := row.Scan(&known)
+	return known, err
+}
+
 const listGuildEmojis = `-- name: ListGuildEmojis :many
 SELECT id, guild_id, name, animated, creator_id, created_at, deleted_at FROM guild_emojis WHERE guild_id = $1 AND deleted_at IS NULL ORDER BY id
 `
@@ -901,6 +926,39 @@ func (q *Queries) MembersWithRoles(ctx context.Context, db DBTX, guildID snowfla
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const mutualGuildIDs = `-- name: MutualGuildIDs :many
+SELECT mine.guild_id FROM members AS mine
+JOIN members AS other ON other.guild_id = mine.guild_id
+WHERE mine.user_id = $1 AND other.user_id = $2
+ORDER BY mine.guild_id
+`
+
+type MutualGuildIDsParams struct {
+	UserID  snowflake.ID
+	OtherID snowflake.ID
+}
+
+// The guilds both users are members of, ascending.
+func (q *Queries) MutualGuildIDs(ctx context.Context, db DBTX, arg MutualGuildIDsParams) ([]snowflake.ID, error) {
+	rows, err := db.Query(ctx, mutualGuildIDs, arg.UserID, arg.OtherID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []snowflake.ID
+	for rows.Next() {
+		var guild_id snowflake.ID
+		if err := rows.Scan(&guild_id); err != nil {
+			return nil, err
+		}
+		items = append(items, guild_id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

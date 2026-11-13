@@ -105,6 +105,19 @@ const userSchema: z.ZodMiniType<S["User"]> = z.object({
   created_at: z.string(),
 });
 
+const chosenStatus = z.enum(["online", "idle", "dnd", "invisible"]);
+
+const currentUserSchema: z.ZodMiniType<S["CurrentUser"]> = z.object({
+  id: snowflake,
+  username: z.string(),
+  display_name: z.string(),
+  avatar_url: nullableString,
+  created_at: z.string(),
+  bio: z.string(),
+  status: chosenStatus,
+  custom_status: nullableString,
+});
+
 const guildSchema: z.ZodMiniType<S["Guild"]> = z.object({
   id: snowflake,
   name: z.string(),
@@ -152,7 +165,8 @@ const memberSchema: z.ZodMiniType<S["Member"]> = z.object({
 
 const presenceSchema: z.ZodMiniType<S["Presence"]> = z.object({
   user_id: snowflake,
-  status: z.enum(["online", "offline"]),
+  status: z.enum(["online", "idle", "dnd", "offline"]),
+  custom_status: nullableString,
 });
 
 const voiceStateSchema: z.ZodMiniType<S["VoiceState"]> = z.object({
@@ -255,7 +269,7 @@ export interface GatewayEvents {
   CHANNEL_UPDATE: S["Channel"];
   CHANNEL_DELETE: S["Channel"];
   PRESENCE_UPDATE: S["Presence"];
-  USER_UPDATE: S["User"];
+  USER_UPDATE: S["CurrentUser"] | S["User"];
   RELATIONSHIP_ADD: S["Relationship"];
   RELATIONSHIP_REMOVE: S["RelationshipRemove"];
   DM_CHANNEL_CREATE: S["DMChannel"];
@@ -274,7 +288,7 @@ const roleEventSchema: z.ZodMiniType<S["RoleEvent"]> = z.object({ guild_id: snow
 
 const eventSchemas: { [K in keyof GatewayEvents]: z.ZodMiniType<GatewayEvents[K]> } = {
   READY: z.object({
-    user: userSchema,
+    user: currentUserSchema,
     guilds: z.array(guildStateSchema),
     presences: z.array(presenceSchema),
     read_states: z.array(readStateSchema),
@@ -299,7 +313,8 @@ const eventSchemas: { [K in keyof GatewayEvents]: z.ZodMiniType<GatewayEvents[K]
   CHANNEL_UPDATE: channelSchema,
   CHANNEL_DELETE: channelSchema,
   PRESENCE_UPDATE: presenceSchema,
-  USER_UPDATE: userSchema,
+  // The user's own account comes with the fields only they see.
+  USER_UPDATE: z.union([currentUserSchema, userSchema]),
   RELATIONSHIP_ADD: relationshipSchema,
   RELATIONSHIP_REMOVE: z.object({ id: snowflake, type: relationshipType }),
   DM_CHANNEL_CREATE: dmChannelSchema,

@@ -109,7 +109,7 @@ func NewModules(cfg config.Config, pool *pgxpool.Pool, ids *snowflake.Generator,
 	return &Modules{
 		presence:      presence,
 		Auth:          authSvc,
-		Users:         users.NewService(users.Options{Accounts: authSvc, Files: disk, Publisher: pub}),
+		Users:         users.NewService(users.Options{Accounts: authSvc, Files: disk, Publisher: pub, Peers: guildSvc}),
 		Relationships: relationships.NewService(relationships.Options{Pool: pool, Publisher: pub}),
 		Guilds:        guildSvc,
 		Channels:      channelSvc,

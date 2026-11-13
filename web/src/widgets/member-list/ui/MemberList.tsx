@@ -6,6 +6,7 @@ import { groupMembers, type MemberGroup, type MemberRow } from "../model/groups"
 
 const Row = ({ guildId, member }: { guildId: string; member: MemberRow }) => {
   const offline = member.status === "offline";
+  const line = useGuilds((s) => (offline ? undefined : s.statusLines[member.userId]));
   return (
     <li>
       <MemberMenu guildId={guildId} userId={member.userId} mode="dropdown">
@@ -20,12 +21,19 @@ const Row = ({ guildId, member }: { guildId: string; member: MemberRow }) => {
             status={member.status}
             className={cn(offline && "opacity-45")}
           />
-          <span
-            data-member-name
-            className={cn("min-w-0 truncate text-base font-medium", offline ? "text-fg-faint" : "role-text")}
-            style={offline ? undefined : roleTextStyle(member.color)}
-          >
-            {member.name}
+          <span className="min-w-0">
+            <span
+              data-member-name
+              className={cn("block truncate text-base leading-5 font-medium", offline ? "text-fg-faint" : "role-text")}
+              style={offline ? undefined : roleTextStyle(member.color)}
+            >
+              {member.name}
+            </span>
+            {line !== undefined && (
+              <span data-member-line className="block truncate text-xs text-fg-muted">
+                {line}
+              </span>
+            )}
           </span>
         </button>
       </MemberMenu>
