@@ -1420,6 +1420,63 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/Problem"
+  /guilds/{guild_id}/audit-logs:
+    get:
+      tags: [guilds]
+      operationId: listGuildAuditLog
+      summary: Read the audit log of a server
+      description: |
+        Needs `VIEW_AUDIT_LOG`. Newest first: kicks, bans, nicknames, roles,
+        channels and their overwrites, invites, emoji, server renames and the
+        messages moderators deleted. Entries are kept for 90 days.
+      parameters:
+        - $ref: "#/components/parameters/GuildID"
+        - name: user_id
+          in: query
+          description: Only what this user did.
+          schema:
+            $ref: "#/components/schemas/Snowflake"
+        - name: action_type
+          in: query
+          description: Only entries of this action (see `AuditLogEntry.action_type`).
+          schema:
+            $ref: "#/components/schemas/AuditLogAction"
+        - name: before
+          in: query
+          description: Only entries with an ID below this one (the next page).
+          schema:
+            $ref: "#/components/schemas/Snowflake"
+        - name: limit
+          in: query
+          description: Page size, 1 to 100 (default 50).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: A page of entries and the users they name.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditLog"
+        "400":
+          description: "`validation_failed` (with `errors`)."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`missing_permission`."
+          $ref: "#/components/responses/Problem"
+        "404":
+          description: "`not_found`: no such server, or not a member."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
   /guilds/{guild_id}/bans:
     get:
       tags: [guilds]
@@ -3907,6 +3964,7 @@ components:
         Discord (e.g. `ADMINISTRATOR` = 8, `MANAGE_ROLES` = 268435456).
         `ADD_REACTIONS` is bit 6 (64) and is granted to `@everyone` by default.
         MANAGE_EXPRESSIONS is bit 30 (1073741824) and is not granted by default.
+        VIEW_AUDIT_LOG is bit 7 (128) and is not granted by default.
           Bits the server does not define are refused when set.
       examples: ["268435456"]
     Guild:
@@ -4996,6 +5054,92 @@ components:
           $ref: "#/components/schemas/Snowflake"
         member:
           $ref: "#/components/schemas/Member"
+    AuditLogAction:
+      type: integer
+      description: |
+        What an entry records, numbered as in Discord: 1 server update, 10–12
+        channel create/update/delete, 13–15 overwrite create/update/delete,
+        20 kick, 22 ban, 23 unban, 24 member update (nickname), 25 member
+        roles, 26 member moved, 27 member disconnected, 30–32 role
+        create/update/delete, 40 invite create, 42 invite delete, 60–62 emoji
+        create/update/delete, 72 message deleted by a moderator.
+      enum: [1, 10, 11, 12, 13, 14, 15, 20, 22, 23, 24, 25, 26, 27, 30, 31, 32, 40, 42, 60, 61, 62, 72]
+    AuditLogChange:
+      type: object
+      additionalProperties: false
+      required: [key]
+      description: |
+        One changed field. `old_value` is absent for a creation and
+        `new_value` for a deletion. Member roles use the keys `$add` and
+        `$remove` with arrays of role IDs; permission masks are decimal
+        strings.
+      properties:
+        key:
+          type: string
+          maxLength: 64
+        old_value:
+          $ref: "#/components/schemas/AuditLogValue"
+        new_value:
+          $ref: "#/components/schemas/AuditLogValue"
+    AuditLogValue:
+      type: [string, number, boolean, array, "null"]
+      items:
+        type: string
+    AuditLogEntry:
+      type: object
+      additionalProperties: false
+      required: [id, action_type, user_id, target_id, changes, options, reason, created_at]
+      properties:
+        id:
+          $ref: "#/components/schemas/Snowflake"
+        action_type:
+          $ref: "#/components/schemas/AuditLogAction"
+        user_id:
+          description: Who did it; null once their account is gone.
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
+        target_id:
+          description: |
+            What was acted on: a user, channel, role or emoji (by
+            `action_type`); null for the server itself and invites.
+          oneOf:
+            - $ref: "#/components/schemas/Snowflake"
+            - type: "null"
+        changes:
+          type: array
+          maxItems: 64
+          items:
+            $ref: "#/components/schemas/AuditLogChange"
+        options:
+          type: object
+          description: |
+            Extra facts: `channel_id` of a deleted message or an invite,
+            `code` of an invite, `id` and `type` (0 role, 1 member) of an
+            overwrite.
+          additionalProperties:
+            type: string
+        reason:
+          type: [string, "null"]
+          maxLength: 512
+        created_at:
+          type: string
+          format: date-time
+    AuditLog:
+      type: object
+      additionalProperties: false
+      required: [audit_log_entries, users]
+      properties:
+        audit_log_entries:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/AuditLogEntry"
+        users:
+          description: The users the page names that still exist.
+          type: array
+          items:
+            $ref: "#/components/schemas/User"
     Ban:
       type: object
       additionalProperties: false
