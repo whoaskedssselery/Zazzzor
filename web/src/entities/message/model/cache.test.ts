@@ -236,6 +236,35 @@ describe("catchUpMessages", () => {
     expect(order(qc.getQueryData<MessagePages>(messagesKey(C)) ?? pages())).toEqual([1, 2, 5]);
   });
 
+  it("drops what the server no longer has, even when it has nothing left", async () => {
+    serve(() => []);
+    const qc = new QueryClient();
+    const stop = shown(qc, C, pages([1, 2, 3]));
+    await catchUpMessages(qc);
+    stop();
+    expect(order(qc.getQueryData<MessagePages>(messagesKey(C)) ?? pages([9]))).toEqual([]);
+  });
+
+  it("keeps a deletion and an edit that arrived while the answer was in flight", async () => {
+    let qc = new QueryClient();
+    server.use(
+      apiHandler("get", "/channels/{channel_id}/messages", () => {
+        // The answer was read before these two reached the gateway.
+        const answer = [msg(1), msg(2), msg(3)];
+        applyMessageDispatch(qc, "MESSAGE_DELETE", { id: "2", channel_id: C, guild_id: "10", last_message_id: "3" });
+        applyMessageDispatch(qc, "MESSAGE_UPDATE", msg(3, { content: "новое", edited_at: "2026-10-23T19:00:00.000Z" }));
+        return HttpResponse.json(answer);
+      }),
+    );
+    qc = new QueryClient();
+    const stop = shown(qc, C, pages([1, 2, 3]));
+    await catchUpMessages(qc);
+    stop();
+    const d = qc.getQueryData<MessagePages>(messagesKey(C)) ?? pages();
+    expect(order(d)).toEqual([1, 3]);
+    expect(inOrder(d).at(-1)?.content).toBe("новое");
+  });
+
   it("drops a history no screen shows, to load fresh when opened", async () => {
     const qc = new QueryClient();
     qc.setQueryData(messagesKey(C), pages([1]));
