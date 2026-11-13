@@ -267,11 +267,11 @@ if ((status == 3 && resume == 0)); then
 fi
 ((status == 0)) || exit "$status"
 
-echo 'Сверяю изображения с базой (files reconcile).'
+echo 'Сверяю изображения с базой (files reconcile --strict).'
 if [[ "$mode" == compose ]]; then
-  "${compose[@]}" run --rm --no-deps -T api files reconcile
+  "${compose[@]}" run --rm --no-deps -T api files reconcile --strict
 else
-  docker run --rm --network "$job_network" --env-file "$api_env" -v "$volume:/data" "$ZAZZZOR_APP_IMAGE" files reconcile
+  docker run --rm --network "$job_network" --env-file "$api_env" -v "$volume:/data" "$ZAZZZOR_APP_IMAGE" files reconcile --strict
 fi
 run_job finish-restore "$name"
 restored=1
