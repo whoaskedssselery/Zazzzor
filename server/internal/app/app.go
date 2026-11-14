@@ -5,6 +5,8 @@ package app
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"sync/atomic"
 	"time"
@@ -202,5 +204,9 @@ func (m *Modules) Routes(r chi.Router, gw *gateway.Gateway) {
 type guildSubjects struct{ guilds *guilds.Service }
 
 func (g *guildSubjects) Subject(ctx context.Context, guildID, userID snowflake.ID) (permissions.Subject, error) {
-	return g.guilds.Subject(ctx, guildID, userID)
+	sub, err := g.guilds.Subject(ctx, guildID, userID)
+	if errors.Is(err, guilds.ErrNotMember) {
+		return sub, fmt.Errorf("%w: %w", audit.ErrNotFound, err)
+	}
+	return sub, err
 }

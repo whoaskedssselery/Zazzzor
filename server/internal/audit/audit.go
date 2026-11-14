@@ -102,7 +102,9 @@ func Record(ctx context.Context, rec Recorder, tx Tx, e Entry) error {
 	return rec.Record(ctx, tx, e)
 }
 
-// Subjects resolves a member's permissions (guilds.Service).
+// Subjects resolves a member's permissions (guilds.Service). For someone
+// who is not a member of the guild the error wraps ErrNotFound; any other
+// error is a failure.
 type Subjects interface {
 	Subject(ctx context.Context, guildID, userID snowflake.ID) (permissions.Subject, error)
 }
@@ -220,7 +222,7 @@ var (
 func (s *Service) List(ctx context.Context, guildID, viewerID snowflake.ID, f Filter) (Page, error) {
 	sub, err := s.subjects.Subject(ctx, guildID, viewerID)
 	if err != nil {
-		return Page{}, fmt.Errorf("%w: %w", ErrNotFound, err)
+		return Page{}, fmt.Errorf("audit: load viewer: %w", err)
 	}
 	if !permissions.Base(sub).Has(permissions.ViewAuditLog) {
 		return Page{}, ErrMissingPerm
