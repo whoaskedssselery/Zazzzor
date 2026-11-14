@@ -917,13 +917,19 @@ GHCR, так что на сервере их можно не собирать:
 | `ghcr.io/whoaskedssselery/zazzzor-api` | API (`server/Dockerfile`) |
 | `ghcr.io/whoaskedssselery/zazzzor-caddy` | Caddy с DuckDNS и статическими страницами (`deploy/caddy/Dockerfile`) |
 
+Если в репозитории заданы переменная `DOCKERHUB_USERNAME` и секрет
+`DOCKERHUB_TOKEN` (токен Docker Hub с правом записи), те же образы с теми
+же тегами публикуются и в Docker Hub: `<DOCKERHUB_USERNAME>/zazzzor-api` и
+`<DOCKERHUB_USERNAME>/zazzzor-caddy`. Публичные образы оттуда сервер
+скачивает без входа.
+
 Теги:
 
 | Событие | Теги |
 |---|---|
-| push в `main` | `sha-<12 знаков коммита>`, `main`, `latest` |
-| git-тег `v1.2.3` | `sha-<...>`, `1.2.3`, `1.2` |
-| ручной запуск (Actions → Images → Run workflow) | `sha-<...>` |
+| Успешный CI на `main` | `sha-<12 знаков коммита>`, `main`, `latest` |
+| git-тег `v1.2.3` на коммите с успешным CI в `main` | `sha-<...>`, `1.2.3`, `1.2` |
+| Аварийный запуск (Actions → Images → Run workflow, укажите причину) | `sha-<...>` |
 
 Разворачивайте по `sha-<...>` или по версии: эти теги не меняются, поэтому
 Swarm видит каждое обновление, а откат идёт на конкретный образ. `latest` и
