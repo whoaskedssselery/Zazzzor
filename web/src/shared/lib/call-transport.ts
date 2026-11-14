@@ -53,6 +53,11 @@ export interface CallTransport {
   setMicrophone(on: boolean): Promise<void>;
   /** Hear the others (false = deafened, screen share sound included). */
   setListening(on: boolean): void;
+  /**
+   * How loud `userId` is heard: their voice or the sound of their screen
+   * share, from 0 (silent) through 1 (as sent) to 2. Kept across joins.
+   */
+  setVolume(userId: string, source: "voice" | "stream", volume: number): void;
   startScreenShare(): Promise<ScreenShareResult>;
   stopScreenShare(): Promise<void>;
   /** Receive `userId`'s screen share (video and sound) or stop receiving it. */

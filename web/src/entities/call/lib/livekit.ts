@@ -102,10 +102,66 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
   const sounds = document.createElement("div");
   sounds.hidden = true;
 
-  const playAudio = (track: RemoteTrack) => {
+  /** How loud each person's voice and screen share is, 0–2; one never set is 1. */
+  const volumes = { voice: new Map<string, number>(), stream: new Map<string, number>() };
+  /** The speakers chosen in the settings, for the sound that goes through `boost`. */
+  let outputId: string | null = null;
+  /**
+   * Carries the tracks turned up past 1: an audio element cannot play louder
+   * than it was sent, a gain node can. Made with the first such track, so a
+   * call where nobody is turned up plays as before, through elements alone.
+   */
+  let boost: AudioContext | null = null;
+
+  /** Sends the boosted sound to the chosen speakers, where the browser can. */
+  const routeBoost = () => {
+    // Not every browser can choose the speakers of an audio context (Firefox): there it plays on the default ones.
+    const ctx: (AudioContext & { setSinkId?: (id: string) => Promise<void> }) | null = boost;
+    if (ctx?.setSinkId === undefined || outputId === null) return;
+    void ctx.setSinkId(outputId === "default" ? "" : outputId).catch(() => undefined);
+  };
+
+  const boostContext = (): AudioContext | null => {
+    if (boost === null && typeof AudioContext !== "undefined") {
+      boost = new AudioContext();
+      routeBoost();
+    }
+    // A context made outside a click starts suspended; the next click resumes it.
+    if (boost?.state === "suspended") void boost.resume().catch(() => undefined);
+    return boost;
+  };
+
+  const dropBoost = () => {
+    void boost?.close().catch(() => undefined);
+    boost = null;
+  };
+
+  /** Plays `track` of `userId` at its volume, or silent while deafened. */
+  const applyVolume = (track: RemoteAudioTrack, userId: string, source: Track.Source) => {
+    const kind = source === Track.Source.ScreenShareAudio ? "stream" : "voice";
+    const wanted = listening ? (volumes[kind].get(userId) ?? 1) : 0;
+    const ctx = wanted > 1 ? boostContext() : null;
+    if (ctx !== null) {
+      track.setAudioContext(ctx);
+      track.setVolume(wanted);
+      return;
+    }
+    // The volume first: the elements take it over when the track leaves the gain node.
+    track.setVolume(Math.min(wanted, 1));
+    track.setAudioContext(undefined);
+  };
+
+  const playAudio = (track: RemoteTrack, pub: RemoteTrackPublication, participant: RemoteParticipant) => {
     if (track.kind !== Track.Kind.Audio) return;
     sounds.append(track.attach());
-    if (track instanceof RemoteAudioTrack) track.setVolume(listening ? 1 : 0);
+    if (track instanceof RemoteAudioTrack) applyVolume(track, participant.identity, pub.source);
+  };
+
+  /** Applies the volumes again to everything `participant` plays. */
+  const applyVolumes = (participant: RemoteParticipant) => {
+    for (const pub of participant.audioTrackPublications.values()) {
+      if (pub.audioTrack instanceof RemoteAudioTrack) applyVolume(pub.audioTrack, participant.identity, pub.source);
+    }
   };
 
   const sharing = (r: Room) =>
@@ -238,6 +294,7 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
           sounds.replaceChildren();
           sounds.remove();
           watching.clear();
+          dropBoost();
         }
         emit("link", "disconnected", leaving ? "left" : endCause(reason));
       })
@@ -257,7 +314,7 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
         announce(r);
       })
       .on(RoomEvent.TrackSubscribed, (track, pub, participant) => {
-        playAudio(track);
+        playAudio(track, pub, participant);
         if (pub.source === Track.Source.ScreenShare) showScreen(participant);
         if (pub.source === Track.Source.Camera) showCamera(participant);
       })
@@ -386,6 +443,7 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
       sounds.remove();
       watching.clear();
       dropCameraViews();
+      dropBoost();
     },
 
     async setMicrophone(on) {
@@ -403,11 +461,13 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
 
     setListening(on) {
       listening = on;
-      for (const participant of room?.remoteParticipants.values() ?? []) {
-        for (const pub of participant.audioTrackPublications.values()) {
-          if (pub.audioTrack instanceof RemoteAudioTrack) pub.audioTrack.setVolume(on ? 1 : 0);
-        }
-      }
+      for (const participant of room?.remoteParticipants.values() ?? []) applyVolumes(participant);
+    },
+
+    setVolume(userId, source, volume) {
+      volumes[source].set(userId, Math.min(2, Math.max(0, volume)));
+      const participant = room?.remoteParticipants.get(userId);
+      if (participant) applyVolumes(participant);
     },
 
     async startScreenShare(): Promise<ScreenShareResult> {
@@ -562,6 +622,10 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
       // "default" follows the system's choice; an exact match would pin today's default device.
       const switched = await room?.switchActiveDevice(kind, deviceId, deviceId !== "default");
       if (switched === false) throw new Error(`voice: could not switch ${kind} to ${deviceId}`);
+      if (kind === "audiooutput") {
+        outputId = deviceId;
+        routeBoost();
+      }
     },
 
     on(event, fn) {

@@ -1,6 +1,6 @@
 import { HttpResponse } from "msw";
 
-import { DEFAULT_VOICE_PREFS, getCall, resetCall, writeVoicePrefs } from "@/entities/call";
+import { DEFAULT_VOICE_PREFS, getCall, reloadVolumes, resetCall, setVolume, writeVoicePrefs } from "@/entities/call";
 import { applyGatewayDispatch, DEFAULT_EVERYONE, formatMask, PERM, resetGuilds } from "@/entities/guild";
 import { ApiError, errorText } from "@/shared/api";
 import {
@@ -105,9 +105,27 @@ beforeEach(() => {
 afterEach(() => {
   resetCall();
   resetGuilds();
+  localStorage.clear();
+  reloadVolumes();
 });
 
 describe("voice session", () => {
+  it("tells the call the volumes kept on this device, and each change as it is made", async () => {
+    setVolume("voice", "7", 150);
+    setVolume("stream", "8", 0);
+    await joinVoice(G, LOUNGE);
+    expect(fake.argsOf("setVolume")).toEqual([
+      ["7", "voice", 1.5],
+      ["8", "stream", 0],
+    ]);
+    setVolume("voice", "7", 60);
+    expect(fake.argsOf("setVolume").at(-1)).toEqual(["7", "voice", 0.6]);
+    // Back to 100 %: forgotten on the device, and the call is told all the same.
+    setVolume("voice", "7", 100);
+    expect(fake.argsOf("setVolume").at(-1)).toEqual(["7", "voice", 1]);
+    expect(fake.argsOf("setVolume")).toHaveLength(4);
+  });
+
   it("joins with a fresh token and turns the microphone and sound on", async () => {
     await joinVoice(G, LOUNGE);
     expect(tokens).toEqual([LOUNGE]);

@@ -6,10 +6,13 @@ import {
   currentBrowser,
   type EndCause,
   getCall,
+  getVolumes,
   loadLiveKitTransport,
+  onVolumes,
   readVoicePrefs,
   type ScreenShareResult,
   setCall,
+  VOLUME_DEFAULT,
 } from "@/entities/call";
 import { computeChannel, getGuildsState, has, myVoice, PERM } from "@/entities/guild";
 import { api, errorText, unwrap } from "@/shared/api";
@@ -48,7 +51,28 @@ export const setTransportFactory = (f: Factory): void => {
   factory = f;
   transport = null;
   transportPromise = null;
+  sentVolumes = { voice: {}, stream: {} };
 };
+
+/** The volumes the transport was told last: only what differs is sent again. */
+let sentVolumes: ReturnType<typeof getVolumes> = { voice: {}, stream: {} };
+
+/** Tells the transport every volume that changed since it was told last (one never set is 100 %). */
+const syncVolumes = (t: CallTransport): void => {
+  const next = getVolumes();
+  for (const kind of ["voice", "stream"] as const) {
+    for (const id of new Set([...Object.keys(sentVolumes[kind]), ...Object.keys(next[kind])])) {
+      const now = next[kind][id] ?? VOLUME_DEFAULT;
+      if ((sentVolumes[kind][id] ?? VOLUME_DEFAULT) !== now) t.setVolume(id, kind, now / 100);
+    }
+  }
+  sentVolumes = next;
+};
+
+// A slider moved, in a call or not: the call hears it at once.
+onVolumes(() => {
+  if (transport) syncVolumes(transport);
+});
 
 /** Calls `fn` with each message the user should see about the call (a toast). */
 export const onCallNotice = (fn: (text: string) => void): (() => void) => {
@@ -185,6 +209,7 @@ const wire = (t: CallTransport): CallTransport => {
   t.on("noise", (noise) => {
     if (getCall().status !== "idle") setCall({ noise });
   });
+  syncVolumes(t);
   transport = t;
   return t;
 };

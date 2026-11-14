@@ -62,6 +62,10 @@ export class FakeTransport implements CallTransport {
     this.record("setListening", on);
   }
 
+  setVolume(userId: string, source: "voice" | "stream", volume: number): void {
+    this.record("setVolume", userId, source, volume);
+  }
+
   startScreenShare(): Promise<ScreenShareResult> {
     this.record("startScreenShare");
     return Promise.resolve(this.screenResult);
