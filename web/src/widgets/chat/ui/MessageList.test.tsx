@@ -93,6 +93,30 @@ describe("MessageList", () => {
     expect(screen.queryByRole("button", { name: "Новые сообщения" })).toBeNull();
   });
 
+  it("goes down to the user's own message being sent, wherever they were reading", () => {
+    const onAtBottom = vi.fn();
+    const { rerender } = render(<MessageList {...props({ onAtBottom })} />);
+    scrollTo(1000);
+    const pending: ChatRow = {
+      kind: "pending",
+      key: "nonce-1",
+      pending: {
+        nonce: "nonce-1",
+        channelId: "101",
+        content: "привет",
+        replyTo: null,
+        attachments: [],
+        status: "sending",
+        error: null,
+      },
+      grouped: true,
+    };
+    rerender(<MessageList {...props({ onAtBottom, rows: [...rowsOf(100, 200), pending] })} />);
+    expect(atBottom()).toBe(true);
+    expect(onAtBottom).toHaveBeenLastCalledWith(true);
+    expect(screen.queryByRole("button", { name: "Новые сообщения" })).toBeNull();
+  });
+
   it("keeps the first visible message in place when older history loads above", () => {
     const { rerender } = render(<MessageList {...props()} />);
     scrollTo(1000);

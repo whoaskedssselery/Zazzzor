@@ -2,6 +2,8 @@ package guilds_test
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"testing"
@@ -19,7 +21,11 @@ import (
 type lateSubjects struct{ svc *guilds.Service }
 
 func (l *lateSubjects) Subject(ctx context.Context, guildID, userID snowflake.ID) (permissions.Subject, error) {
-	return l.svc.Subject(ctx, guildID, userID)
+	sub, err := l.svc.Subject(ctx, guildID, userID)
+	if errors.Is(err, guilds.ErrNotMember) {
+		return sub, fmt.Errorf("%w: %w", audit.ErrNotFound, err)
+	}
+	return sub, err
 }
 
 // newAuditEnv is an env whose guilds record into an audit log served at
