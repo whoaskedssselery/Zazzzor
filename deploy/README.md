@@ -916,6 +916,7 @@ GHCR, так что на сервере их можно не собирать:
 |---|---|
 | `ghcr.io/whoaskedssselery/zazzzor-api` | API (`server/Dockerfile`) |
 | `ghcr.io/whoaskedssselery/zazzzor-caddy` | Caddy с DuckDNS и статическими страницами (`deploy/caddy/Dockerfile`) |
+| `ghcr.io/whoaskedssselery/zazzzor-backup` | Postgres со скриптами резервного копирования (`deploy/backup/Dockerfile`); сервис `backup` стека за Traefik |
 
 Если в репозитории заданы переменная `DOCKERHUB_USERNAME` и секрет
 `DOCKERHUB_TOKEN` (токен Docker Hub с правом записи), те же образы с теми
@@ -999,6 +1000,7 @@ Edge Caddy и DuckDNS не запускаются: TLS и порт 443 оста�
    TRAEFIK_SUBNET=<CIDR сети traefik>
    ZAZZZOR_API_REPOSITORY=ghcr.io/whoaskedssselery/zazzzor-api
    ZAZZZOR_CADDY_REPOSITORY=ghcr.io/whoaskedssselery/zazzzor-caddy
+   ZAZZZOR_BACKUP_REPOSITORY=ghcr.io/whoaskedssselery/zazzzor-backup
    ```
 
    Не дописывайте эти строки в конец файла: если ключ встретится дважды,
@@ -1051,8 +1053,11 @@ Edge Caddy и DuckDNS не запускаются: TLS и порт 443 оста�
    `ZAZZZOR_API_IMAGE` по-прежнему означает полный образ с тегом.
    `config` печатает секреты — не публикуйте его вывод.
 
-4. Для обновления подтяните код (в том числе backup-скрипты), задайте новую
-   пару тегов и повторите deploy. Ошибка обновления откатывает сервис.
+4. Для обновления подтяните код, задайте новую пару тегов и повторите
+   deploy. Сервис `backup` берёт скрипты из образа `zazzzor-backup` с тем же
+   тегом, что у API (другой тег задаёт `ZAZZZOR_BACKUP_TAG`), поэтому стек,
+   развёрнутый из готового файла (например, в Portainer), каталог с кодом
+   на сервере не читает. Ошибка обновления откатывает сервис.
    Для ручного отката задайте предыдущие два тега и повторите deploy.
    Миграции идут только вперёд: предыдущая версия должна понимать текущую
    схему. Восстановление данных — отдельная операция по §12.
