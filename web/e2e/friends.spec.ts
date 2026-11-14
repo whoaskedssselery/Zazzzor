@@ -14,7 +14,7 @@ test("friends: a request from the member list, accepted at home, seen online on 
   await openChannel(anna, guildId, channelId, channelName);
   await anna.page.getByRole("complementary", { name: "Участники" }).getByRole("button", { name: /Пётр/ }).click();
   await anna.page.getByRole("menuitem", { name: "Добавить в друзья" }).click();
-  await expect(anna.page.getByText("Заявка в друзья отправлена")).toBeVisible();
+  await expect(anna.page.getByText("Заявка в друзья отправлена", { exact: true })).toBeVisible();
 
   // Petr sees it waiting at home and accepts it.
   await petr.page.goto("/channels/@me");

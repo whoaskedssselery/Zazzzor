@@ -15,7 +15,7 @@ test("profiles: a status, a status line and «О себе» reach the other memb
   await petr.page.getByRole("button", { name: "Настройки пользователя" }).click();
   await petr.page.getByRole("textbox", { name: "О себе" }).fill("Люблю кино");
   await petr.page.getByRole("button", { name: "Сохранить изменения" }).click();
-  await expect(petr.page.getByText("Изменения сохранены")).toBeVisible();
+  await expect(petr.page.getByText("Изменения сохранены", { exact: true })).toBeVisible();
   await petr.page.keyboard.press("Escape");
 
   // …then picks «Не беспокоить» and a status line from his panel.
