@@ -55,7 +55,8 @@ export interface MessageListProps {
  * Scrolling follows Discord:
  * - it opens at the bottom and, while the user is there, follows new messages;
  * - while they read history, new messages do not move it: a «Новые
- *   сообщения» button appears and takes them down;
+ *   сообщения» button appears and takes them down; their own message being
+ *   sent does take them down;
  * - older history loads as they near the top, and the row they were looking
  *   at stays exactly where it was.
  * Both come from one rule: after any change, a list at the bottom goes to
@@ -112,6 +113,11 @@ export const MessageList = ({
     setUnseen(false);
   };
 
+  const followOwn = useEffectEvent(() => {
+    setAtBottom(true);
+    setUnseen(false);
+  });
+
   // After the rows change: follow the bottom, or keep the first visible row in place.
   useLayoutEffect(() => {
     const el = scroller.current;
@@ -119,6 +125,8 @@ export const MessageList = ({
     const grew = newest !== lastKey.current;
     lastKey.current = newest;
     if (!el) return;
+    // A message the user just sent takes them down to it, wherever they were reading.
+    if (grew && rows.at(-1)?.kind === "pending") followOwn();
     if (atBottom.current) {
       el.scrollTop = el.scrollHeight;
       return;
