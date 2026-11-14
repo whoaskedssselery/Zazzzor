@@ -1,6 +1,6 @@
 import { HeadphoneOff, MicOff } from "lucide-react";
 import { type CSSProperties, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
-import { getCall, useCall } from "@/entities/call";
+import { getCall, useCall, VolumeSlider } from "@/entities/call";
 import {
   type Channel,
   computeChannel,
@@ -13,7 +13,7 @@ import {
   voiceMembers,
 } from "@/entities/guild";
 import { joinVoice, NO_CONNECT, watchStream } from "@/features/voice-call";
-import { Avatar, Badge, Button, cn } from "@/shared/ui";
+import { Avatar, Badge, Button, ContextMenu, ContextMenuContent, ContextMenuTrigger, cn } from "@/shared/ui";
 import { CallControls } from "./CallControls";
 import { CameraView } from "./CameraView";
 import { OwnStreamTile, StreamTile } from "./StreamTile";
@@ -122,6 +122,8 @@ interface Tile {
   render: (compact: boolean, front: () => void) => ReactNode;
   /** What else bringing it to the front does (an unwatched stream starts playing). */
   onFocus?: () => void;
+  /** What a right click on the tile offers (someone else's volume). */
+  menu?: ReactNode;
 }
 
 /**
@@ -142,23 +144,32 @@ const TileSlot = ({
   onToggle: () => void;
   className: string;
   style?: CSSProperties;
-}) => (
-  <li aria-label={tile.name} className={cn("relative min-w-0 animate-pop-in list-none", className)} style={style}>
-    {tile.render(compact, () => {
-      if (!focused) onToggle();
-    })}
-    <button
-      type="button"
-      aria-label={focused ? `Вернуть в сетку: ${tile.name}` : `Развернуть: ${tile.name}`}
-      aria-pressed={focused}
-      className={cn(
-        "absolute inset-0 cursor-zoom-in rounded-lg ring-inset transition-shadow duration-(--duration-fast) hover:ring-2 hover:ring-border-strong focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none",
-        focused && "cursor-zoom-out",
-      )}
-      onClick={onToggle}
-    />
-  </li>
-);
+}) => {
+  const slot = (
+    <li aria-label={tile.name} className={cn("relative min-w-0 animate-pop-in list-none", className)} style={style}>
+      {tile.render(compact, () => {
+        if (!focused) onToggle();
+      })}
+      <button
+        type="button"
+        aria-label={focused ? `Вернуть в сетку: ${tile.name}` : `Развернуть: ${tile.name}`}
+        aria-pressed={focused}
+        className={cn(
+          "absolute inset-0 cursor-zoom-in rounded-lg ring-inset transition-shadow duration-(--duration-fast) hover:ring-2 hover:ring-border-strong focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none",
+          focused && "cursor-zoom-out",
+        )}
+        onClick={onToggle}
+      />
+    </li>
+  );
+  if (tile.menu === undefined) return slot;
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{slot}</ContextMenuTrigger>
+      <ContextMenuContent className="w-60">{tile.menu}</ContextMenuContent>
+    </ContextMenu>
+  );
+};
 
 const GAP = 12;
 const PAD = 16;
@@ -310,6 +321,15 @@ const useCallTiles = (members: VoiceState[], person: (userId: string) => StagePe
       (v): Tile => ({
         key: `user:${v.user_id}`,
         name: person(v.user_id).name,
+        menu:
+          v.user_id === meId ? undefined : (
+            <>
+              <VolumeSlider kind="voice" userId={v.user_id} label="Громкость пользователя" />
+              {streams.includes(v.user_id) && (
+                <VolumeSlider kind="stream" userId={v.user_id} label="Громкость трансляции" />
+              )}
+            </>
+          ),
         render: (compact) => (
           <PersonTile
             person={person(v.user_id)}
@@ -335,6 +355,7 @@ const useCallTiles = (members: VoiceState[], person: (userId: string) => StagePe
       return {
         key: `stream:${id}`,
         name: `${name} — демонстрация экрана`,
+        menu: <VolumeSlider kind="stream" userId={id} label="Громкость трансляции" />,
         render: (compact, front) => (
           <StreamTile userId={id} name={name} watching={watching.includes(id)} compact={compact} onWatch={front} />
         ),

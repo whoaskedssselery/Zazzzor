@@ -19,3 +19,15 @@ export {
 /** The LiveKit transport, in a chunk of its own: it loads with the first voice call. */
 export const loadLiveKitTransport = async () => (await import("./lib/livekit")).createLiveKitTransport;
 export { type CallState, clearCall, getCall, resetCall, setCall, useCall } from "./model/store";
+export {
+  getVolumes,
+  onVolumes,
+  reloadVolumes,
+  setVolume,
+  useVolume,
+  VOLUME_DEFAULT,
+  VOLUME_MAX,
+  VOLUMES_KEY,
+  type VolumeKind,
+} from "./model/volumes";
+export { snapVolume, VolumeSlider } from "./ui/VolumeSlider";

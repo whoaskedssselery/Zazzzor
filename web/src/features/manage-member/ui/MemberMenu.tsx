@@ -10,6 +10,7 @@ import {
   UserMinus,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
+import { VolumeSlider } from "@/entities/call";
 import { type GuildEntry, PRESENCE_LABEL, useGuilds, usePresence, useProfile } from "@/entities/guild";
 import {
   Avatar,
@@ -198,6 +199,10 @@ export const MemberMenu = ({
   const voice = voiceActions(entry, meId, userId);
   // Mounted only while one is open: a list has a menu on every row.
   const self = userId === meId;
+  // Someone else in a voice channel here: how loud the user hears them, and their screen share.
+  const theirVoice = self ? undefined : entry.voice[userId];
+  const inVoice = theirVoice !== undefined;
+  const streaming = theirVoice?.self_stream === true;
   const withFriends = friends && !self;
   const shownName = member.nick ?? member.user.display_name;
   const dialogs = (
@@ -243,6 +248,13 @@ export const MemberMenu = ({
             <i.icon aria-hidden />
           </Row>
         ))}
+        {inVoice && (
+          <>
+            <Separator />
+            <VolumeSlider kind="voice" userId={userId} label="Громкость пользователя" />
+            {streaming && <VolumeSlider kind="stream" userId={userId} label="Громкость трансляции" />}
+          </>
+        )}
         {voice && (
           <>
             <Separator />
@@ -288,7 +300,7 @@ export const MemberMenu = ({
       </>
     );
   }
-  if (items.length === 0 && !voice && !withFriends) return null;
+  if (items.length === 0 && !voice && !withFriends && !inVoice) return null;
   return (
     <>
       <DropdownMenu>
