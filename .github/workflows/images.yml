@@ -127,6 +127,29 @@ jobs:
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
+      # Layer cache. On GitHub's runners it is GitHub's cache service; a
+      # self-hosted runner keeps it in a folder of its own, which it keeps
+      # between jobs: the service is a download over a home link, and when it
+      # did not answer the build failed.
+      - id: cache
+        env:
+          IMAGE: ${{ matrix.image }}
+          SELF_HOSTED: ${{ vars.CI_RUNNER != '' }}
+        run: |
+          if [ "$SELF_HOSTED" = true ]; then
+            dir="$HOME/.cache/zazzzor-buildx/$IMAGE"
+            {
+              echo "from=type=local,src=$dir"
+              echo "to=type=local,dest=$dir.new,mode=max"
+              echo "dir=$dir"
+            } >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo "from=type=gha,scope=$IMAGE"
+              echo "to=type=gha,mode=max,scope=$IMAGE"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
@@ -173,8 +196,15 @@ jobs:
             POSTGRES_VERSION=${{ steps.versions.outputs.postgres }}
           provenance: mode=max
           sbom: true
-          cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+          cache-from: ${{ steps.cache.outputs.from }}
+          cache-to: ${{ steps.cache.outputs.to }}
+
+      # A local cache is written whole to a new folder (the old one would only
+      # grow); the new one replaces it.
+      - if: steps.cache.outputs.dir != ''
+        env:
+          DIR: ${{ steps.cache.outputs.dir }}
+        run: rm -rf "$DIR" && mv "$DIR.new" "$DIR"
 
       - name: Summary
         env:
