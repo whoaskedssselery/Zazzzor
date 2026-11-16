@@ -1,10 +1,51 @@
 import { Phone } from "lucide-react";
-import { useMemo } from "react";
-import { useCall } from "@/entities/call";
+import { type ReactElement, useMemo } from "react";
+import { useCall, VolumeSlider } from "@/entities/call";
 import { callMembers, type DMChannel, useGuilds } from "@/entities/guild";
 import { joinVoice } from "@/features/voice-call";
-import { Avatar, Button, IconButton } from "@/shared/ui";
+import {
+  Avatar,
+  Button,
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+  IconButton,
+} from "@/shared/ui";
 import { CallTiles, type StagePerson } from "./VoiceStage";
+
+/**
+ * What a right click on someone's tile in a DM or group call opens: who it
+ * is and how loud the user hears them (not for the user themself).
+ */
+const PrivateTileMenu = ({
+  trigger,
+  userId,
+  name,
+  self,
+  streaming,
+}: {
+  trigger: ReactElement;
+  userId: string;
+  name: string;
+  self: boolean;
+  streaming: boolean;
+}) => (
+  <ContextMenu>
+    <ContextMenuTrigger asChild>{trigger}</ContextMenuTrigger>
+    <ContextMenuContent className="w-64">
+      <ContextMenuLabel className="truncate text-sm text-fg">{name}</ContextMenuLabel>
+      {!self && (
+        <>
+          <ContextMenuSeparator />
+          <VolumeSlider kind="voice" userId={userId} label="Громкость пользователя" />
+          {streaming && <VolumeSlider kind="stream" userId={userId} label="Громкость трансляции" />}
+        </>
+      )}
+    </ContextMenuContent>
+  </ContextMenu>
+);
 
 /** Whether the user is in the call of DM or group `channelId`. */
 const useInCall = (channelId: string) =>
@@ -48,7 +89,19 @@ export const PrivateCallStage = ({ channel }: { channel: DMChannel }) => {
   if (inCall) {
     return (
       <section aria-label="Звонок" className="flex h-[min(28rem,50dvh)] shrink-0 flex-col border-b border-border">
-        <CallTiles members={members} person={person} />
+        <CallTiles
+          members={members}
+          person={person}
+          menuOf={(id) => (trigger) => (
+            <PrivateTileMenu
+              trigger={trigger}
+              userId={id}
+              name={person(id).name}
+              self={id === me?.id}
+              streaming={voice?.[id]?.self_stream === true}
+            />
+          )}
+        />
       </section>
     );
   }

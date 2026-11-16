@@ -173,12 +173,15 @@ const Card = ({ entry, userId, kind }: { entry: GuildEntry; userId: string; kind
  * the user also gets the friendship items (add, accept, block…). Without
  * children it is a «…» button, shown only when some action is allowed. A
  * member the store does not hold (a former member's message) gets no menu.
+ * In a call's tile it also has `volume`: how loud the user hears them and
+ * their screen share.
  */
 export const MemberMenu = ({
   guildId,
   userId,
   mode = "context",
   friends = true,
+  volume = false,
   children,
 }: {
   guildId: string;
@@ -186,6 +189,8 @@ export const MemberMenu = ({
   mode?: "context" | "dropdown";
   /** The friendship items; off where the menu is only about running the server (its settings). */
   friends?: boolean;
+  /** The volume sliders: only in the call itself, and never for the user. */
+  volume?: boolean;
   children?: ReactNode;
 }) => {
   const entry = useGuilds((s) => s.guilds[guildId]);
@@ -199,10 +204,8 @@ export const MemberMenu = ({
   const voice = voiceActions(entry, meId, userId);
   // Mounted only while one is open: a list has a menu on every row.
   const self = userId === meId;
-  // Someone else in a voice channel here: how loud the user hears them, and their screen share.
-  const theirVoice = self ? undefined : entry.voice[userId];
-  const inVoice = theirVoice !== undefined;
-  const streaming = theirVoice?.self_stream === true;
+  const withVolume = volume && !self;
+  const streaming = entry.voice[userId]?.self_stream === true;
   const withFriends = friends && !self;
   const shownName = member.nick ?? member.user.display_name;
   const dialogs = (
@@ -235,6 +238,13 @@ export const MemberMenu = ({
     return (
       <>
         <Card entry={entry} userId={userId} kind={kind} />
+        {withVolume && (
+          <>
+            <Separator />
+            <VolumeSlider kind="voice" userId={userId} label="Громкость пользователя" />
+            {streaming && <VolumeSlider kind="stream" userId={userId} label="Громкость трансляции" />}
+          </>
+        )}
         {items.length > 0 && <Separator />}
         {items.map((i) => (
           <Row
@@ -248,13 +258,6 @@ export const MemberMenu = ({
             <i.icon aria-hidden />
           </Row>
         ))}
-        {inVoice && (
-          <>
-            <Separator />
-            <VolumeSlider kind="voice" userId={userId} label="Громкость пользователя" />
-            {streaming && <VolumeSlider kind="stream" userId={userId} label="Громкость трансляции" />}
-          </>
-        )}
         {voice && (
           <>
             <Separator />
@@ -300,7 +303,7 @@ export const MemberMenu = ({
       </>
     );
   }
-  if (items.length === 0 && !voice && !withFriends && !inVoice) return null;
+  if (items.length === 0 && !voice && !withFriends) return null;
   return (
     <>
       <DropdownMenu>

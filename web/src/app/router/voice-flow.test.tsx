@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type { WebSocketHandlerConnection } from "msw";
 import { HttpResponse } from "msw";
 import { renderApp, sessionHandler, signOut, testUser } from "@/app/test";
@@ -329,6 +329,37 @@ describe("the voice channel screen", () => {
     await user.click(within(view).getByRole("button", { name: "Вернуть в сетку: Петя" }));
     expect(within(view).queryByRole("list", { name: "Остальные в звонке" })).toBeNull();
     expect(within(view).getByRole("button", { name: "Развернуть: Петя" })).toBeTruthy();
+  });
+
+  it("opens a person's menu with their volume on a right click on their tile", async () => {
+    renderApp(`/channels/${G}/${LOUNGE}`);
+    const view = await stage();
+    await act(() => joinVoice(G, LOUNGE));
+    fireEvent.contextMenu(within(view).getByRole("button", { name: "Развернуть: Петя" }));
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).getByRole("slider", { name: "Громкость пользователя" })).toBeTruthy();
+    expect(within(menu).queryByRole("slider", { name: "Громкость трансляции" })).toBeNull();
+    // The tile stays where it was: a right click is not a click.
+    expect(within(view).queryByRole("list", { name: "Остальные в звонке" })).toBeNull();
+  });
+
+  it("offers a screen share's volume in the menu of the person sharing it", async () => {
+    renderApp(`/channels/${G}/${LOUNGE}`);
+    const view = await stage();
+    await act(() => joinVoice(G, LOUNGE));
+    fireEvent.contextMenu(within(view).getByRole("button", { name: "Развернуть: Маша" }));
+    expect(within(await screen.findByRole("menu")).getByRole("slider", { name: "Громкость трансляции" })).toBeTruthy();
+  });
+
+  it("sets volumes only in the call, not from the sidebar", async () => {
+    renderApp(`/channels/${G}/${LOUNGE}`);
+    await stage();
+    await act(() => joinVoice(G, LOUNGE));
+    const row = within(screen.getByRole("list", { name: "В канале Лаунж" })).getAllByRole("listitem")[0];
+    if (!row) throw new Error("no voice row");
+    fireEvent.contextMenu(row);
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).queryByRole("slider")).toBeNull();
   });
 
   it("has the call's controls under the stage", async () => {

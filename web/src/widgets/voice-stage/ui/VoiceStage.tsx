@@ -1,6 +1,14 @@
 import { HeadphoneOff, MicOff } from "lucide-react";
-import { type CSSProperties, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
-import { getCall, useCall, VolumeSlider } from "@/entities/call";
+import {
+  type CSSProperties,
+  type ReactElement,
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { getCall, useCall } from "@/entities/call";
 import {
   type Channel,
   computeChannel,
@@ -12,8 +20,9 @@ import {
   type VoiceState,
   voiceMembers,
 } from "@/entities/guild";
+import { MemberMenu } from "@/features/manage-member";
 import { joinVoice, NO_CONNECT, watchStream } from "@/features/voice-call";
-import { Avatar, Badge, Button, ContextMenu, ContextMenuContent, ContextMenuTrigger, cn } from "@/shared/ui";
+import { Avatar, Badge, Button, cn } from "@/shared/ui";
 import { CallControls } from "./CallControls";
 import { CameraView } from "./CameraView";
 import { OwnStreamTile, StreamTile } from "./StreamTile";
@@ -122,13 +131,17 @@ interface Tile {
   render: (compact: boolean, front: () => void) => ReactNode;
   /** What else bringing it to the front does (an unwatched stream starts playing). */
   onFocus?: () => void;
-  /** What a right click on the tile offers (someone else's volume). */
-  menu?: ReactNode;
+  /** A person's tile: their menu on a right click, around `trigger` (the tile). */
+  menu?: TileMenu;
 }
+
+/** The menu a right click on a person's tile opens, around `trigger`, as in Discord. */
+export type TileMenu = (trigger: ReactElement) => ReactNode;
 
 /**
  * A tile's place on the stage. A click on it (behind its own buttons)
- * brings it to the front; a click on the front one sends it back.
+ * brings it to the front; a click on the front one sends it back. A right
+ * click on a person's tile opens their menu.
  */
 const TileSlot = ({
   tile,
@@ -146,7 +159,11 @@ const TileSlot = ({
   style?: CSSProperties;
 }) => {
   const slot = (
-    <li aria-label={tile.name} className={cn("relative min-w-0 animate-pop-in list-none", className)} style={style}>
+    <li
+      aria-label={tile.name}
+      className={cn("group/tile relative min-w-0 animate-pop-in list-none", className)}
+      style={style}
+    >
       {tile.render(compact, () => {
         if (!focused) onToggle();
       })}
@@ -155,42 +172,50 @@ const TileSlot = ({
         aria-label={focused ? `Вернуть в сетку: ${tile.name}` : `Развернуть: ${tile.name}`}
         aria-pressed={focused}
         className={cn(
-          "absolute inset-0 cursor-zoom-in rounded-lg ring-inset transition-shadow duration-(--duration-fast) hover:ring-2 hover:ring-border-strong focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none",
+          "absolute inset-0 cursor-zoom-in rounded-lg ring-inset transition-shadow duration-(--duration-fast) group-data-[state=open]/tile:ring-2 group-data-[state=open]/tile:ring-border-strong hover:ring-2 hover:ring-border-strong focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none",
           focused && "cursor-zoom-out",
         )}
         onClick={onToggle}
       />
     </li>
   );
-  if (tile.menu === undefined) return slot;
-  return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>{slot}</ContextMenuTrigger>
-      <ContextMenuContent className="w-60">{tile.menu}</ContextMenuContent>
-    </ContextMenu>
-  );
+  return tile.menu ? tile.menu(slot) : slot;
 };
 
 const GAP = 12;
 const PAD = 16;
-/** Below this a tile is unreadable: the grid scrolls instead of shrinking further. */
+/**
+ * Below this a tile is unreadable: the grid scrolls instead of shrinking
+ * further. Until then any number of tiles fits the stage without a scroll,
+ * the grid only changing its columns.
+ */
 const MIN_TILE = 176;
+/**
+ * Room left over for rounding: the browser lays tiles out in fractions of a
+ * pixel, and a row that is too wide by a fraction wraps its last tile under
+ * the others (and brings a scroll bar with it).
+ */
+const SLACK = 2;
 
 /**
  * The width of 16:9 tiles that fit `count` of them in `width` × `height`
  * as large as possible, as Discord lays out a call: every column count is
- * tried and the one giving the widest tile wins.
+ * tried and the one giving the widest tile wins. On a wide stage the tiles
+ * stand side by side, with at least as many columns as rows (two people
+ * are a row of two, not a column); only a tall one (a phone) stacks them.
  */
 export const fitTileWidth = (count: number, width: number, height: number): number => {
   if (count === 0 || width <= 0 || height <= 0) return MIN_TILE;
   let best = 0;
+  const wide = width >= height;
   for (let cols = 1; cols <= count; cols++) {
     const rows = Math.ceil(count / cols);
-    const byWidth = (width - GAP * (cols - 1)) / cols;
-    const byHeight = ((height - GAP * (rows - 1)) / rows) * (16 / 9);
+    if (wide && rows > cols) continue;
+    const byWidth = (width - SLACK - GAP * (cols - 1)) / cols;
+    const byHeight = ((height - SLACK - GAP * (rows - 1)) / rows) * (16 / 9);
     best = Math.max(best, Math.min(byWidth, byHeight));
   }
-  return Math.max(MIN_TILE, Math.min(Math.floor(best), width));
+  return Math.max(MIN_TILE, Math.min(Math.floor(best), Math.floor(width)));
 };
 
 /** Follows the grid area's size and gives the tile width that fits them all. */
@@ -199,8 +224,10 @@ const useFitWidth = (area: RefObject<HTMLElement | null>, count: number, on: boo
   useEffect(() => {
     const el = area.current;
     if (!el || !on || typeof ResizeObserver === "undefined") return;
+    // The exact box, not clientWidth/Height: those round, up as often as down.
     const observer = new ResizeObserver(() => {
-      setSize({ w: el.clientWidth - PAD * 2, h: el.clientHeight - PAD * 2 });
+      const box = el.getBoundingClientRect();
+      setSize({ w: Math.floor(box.width) - PAD * 2, h: Math.floor(box.height) - PAD * 2 });
     });
     observer.observe(el);
     return () => {
@@ -304,7 +331,11 @@ const CallStage = ({ tiles }: { tiles: Tile[] }) => {
  * the user's own screen share, then a tile per other screen share (watched
  * on demand). `person` says how each user shows.
  */
-const useCallTiles = (members: VoiceState[], person: (userId: string) => StagePerson): Tile[] => {
+const useCallTiles = (
+  members: VoiceState[],
+  person: (userId: string) => StagePerson,
+  menuOf: (userId: string) => TileMenu,
+): Tile[] => {
   const meId = useGuilds((s) => s.me?.id ?? null);
   const speaking = useCall((s) => s.speaking);
   const streams = useCall((s) => s.streams);
@@ -321,15 +352,7 @@ const useCallTiles = (members: VoiceState[], person: (userId: string) => StagePe
       (v): Tile => ({
         key: `user:${v.user_id}`,
         name: person(v.user_id).name,
-        menu:
-          v.user_id === meId ? undefined : (
-            <>
-              <VolumeSlider kind="voice" userId={v.user_id} label="Громкость пользователя" />
-              {streams.includes(v.user_id) && (
-                <VolumeSlider kind="stream" userId={v.user_id} label="Громкость трансляции" />
-              )}
-            </>
-          ),
+        menu: menuOf(v.user_id),
         render: (compact) => (
           <PersonTile
             person={person(v.user_id)}
@@ -355,7 +378,6 @@ const useCallTiles = (members: VoiceState[], person: (userId: string) => StagePe
       return {
         key: `stream:${id}`,
         name: `${name} — демонстрация экрана`,
-        menu: <VolumeSlider kind="stream" userId={id} label="Громкость трансляции" />,
         render: (compact, front) => (
           <StreamTile userId={id} name={name} watching={watching.includes(id)} compact={compact} onWatch={front} />
         ),
@@ -369,9 +391,16 @@ const useCallTiles = (members: VoiceState[], person: (userId: string) => StagePe
 };
 
 /** The stage of the call the user is in, with its controls: the tiles of `members`. */
-export const CallTiles = ({ members, person }: { members: VoiceState[]; person: (userId: string) => StagePerson }) => (
-  <CallStage tiles={useCallTiles(members, person)} />
-);
+export const CallTiles = ({
+  members,
+  person,
+  menuOf,
+}: {
+  members: VoiceState[];
+  person: (userId: string) => StagePerson;
+  /** The menu a right click on someone's tile opens. */
+  menuOf: (userId: string) => TileMenu;
+}) => <CallStage tiles={useCallTiles(members, person, menuOf)} />;
 
 /**
  * A voice channel's own screen. Outside the call: who is there and a way
@@ -393,7 +422,15 @@ export const VoiceStage = ({ guildId, channel }: { guildId: string; channel: Cha
       className={cn("flex min-h-0 flex-1 flex-col", !inCall && "overflow-y-auto p-4")}
     >
       {inCall ? (
-        <CallTiles members={members} person={(id) => nameOf(entry, id)} />
+        <CallTiles
+          members={members}
+          person={(id) => nameOf(entry, id)}
+          menuOf={(id) => (trigger) => (
+            <MemberMenu guildId={guildId} userId={id} volume>
+              {trigger}
+            </MemberMenu>
+          )}
+        />
       ) : (
         <div className="m-auto flex max-w-md flex-col items-center gap-4 text-center">
           <p className="text-base text-fg-muted">{members.length === 0 ? "Здесь пока никого нет." : "Сейчас здесь:"}</p>
