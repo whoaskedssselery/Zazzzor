@@ -38,6 +38,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: server/go.mod
+          # Self-hosted runners keep the module and build caches between
+          # jobs; downloading GitHub's copy over a home link cost 1-2 minutes.
+          cache: ${{ vars.CI_RUNNER == '' }}
           cache-dependency-path: server/go.sum
       - name: Verify go.mod and go.sum are tidy
         run: |
@@ -65,6 +68,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: server/go.mod
+          # Self-hosted runners keep the module and build caches between
+          # jobs; downloading GitHub's copy over a home link cost 1-2 minutes.
+          cache: ${{ vars.CI_RUNNER == '' }}
           cache-dependency-path: server/go.sum
       - name: Scan reachable vulnerabilities
         working-directory: server
@@ -146,7 +152,8 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-          cache: pnpm
+          # Self-hosted runners keep the pnpm store between jobs.
+          cache: ${{ vars.CI_RUNNER == '' && 'pnpm' || '' }}
       - run: pnpm install --frozen-lockfile
       # New advisories show up here even when no dependency changed.
       - name: Known vulnerabilities in dependencies (pnpm audit)
@@ -180,7 +187,8 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-          cache: pnpm
+          # Self-hosted runners keep the pnpm store between jobs.
+          cache: ${{ vars.CI_RUNNER == '' && 'pnpm' || '' }}
       - run: pnpm install --frozen-lockfile
       - name: Playwright's Chromium and Firefox
         run: pnpm --filter @zazzzor/web exec playwright install --with-deps chromium firefox
