@@ -1,8 +1,12 @@
 name: CI
 
 on:
+  # A branch with a pull request is checked once, by the pull_request run;
+  # push runs only for main, whose green CI publishes the images.
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -132,7 +136,7 @@ jobs:
   web:
     name: Web packages (lint, test, build)
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
