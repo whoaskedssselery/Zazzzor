@@ -1,8 +1,12 @@
 name: CI
 
 on:
+  # A branch with a pull request is checked once, by the pull_request run;
+  # push runs only for main, whose green CI publishes the images.
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
