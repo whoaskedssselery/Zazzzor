@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Refuses commits that break the repository's rules mechanically
+# (AGENTS.md, tools/agents/STYLE.md). Installed by tools/agents/setup.sh.
+set -uo pipefail
+
+staged="$(git diff --cached --name-only --diff-filter=ACMR)"
+bad=0
+
+# Agent and editor state stays local; of .claude/ only workspace.yaml is shared.
+private_paths='^(docs/|\.codex/|\.superpowers/|\.codegraph/|\.impeccable/|\.agents/|\.idea/|\.vscode/)|^\.claude/(?!workspace\.yaml$)|(^|/)\.check\.log$'
+if grep -P "$private_paths" <<<"$staged"; then
+  echo "pre-commit: ^ these paths must never be committed" >&2
+  bad=1
+fi
+if grep -E '\.go$' <<<"$staged" | grep -v '^server/'; then
+  echo "pre-commit: ^ Go code outside server/ (STYLE §2)" >&2
+  bad=1
+fi
+if git diff --cached | LC_ALL=C.UTF-8 grep -nP '^\+.*[\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2066}-\x{2069}\x{FEFF}]'; then
+  echo "pre-commit: ^ invisible or bidi characters" >&2
+  bad=1
+fi
+go_files="$(grep -E '^server/.*\.go$' <<<"$staged" || true)"
+if [[ -n "$go_files" ]]; then
+  # shellcheck disable=SC2086 # one path per word
+  unformatted="$(cd server && gofmt -l ${go_files//server\//} 2>&1)"
+  if [[ -n "$unformatted" ]]; then
+    echo "pre-commit: gofmt needed: $unformatted" >&2
+    bad=1
+  fi
+fi
+while IFS= read -r f; do
+  [[ -n "$f" ]] || continue
+  if [[ "$(git ls-files -s -- "$f" | cut -c1-6)" != 100755 ]]; then
+    echo "pre-commit: $f is not executable (git update-index --chmod=+x $f)" >&2
+    bad=1
+  fi
+done < <(grep -E '\.sh$' <<<"$staged" || true)
+exit "$bad"
