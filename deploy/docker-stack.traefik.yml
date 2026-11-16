@@ -234,7 +234,9 @@ services:
 
   # Same retained-file backup protocol as the edge stack, on the DB overlay.
   backup:
-    image: postgres:${POSTGRES_VERSION:?заполните POSTGRES_VERSION в deploy/.env (см. deploy/.env.example)}
+    # Postgres with the job scripts inside (deploy/backup/Dockerfile), so the
+    # stack reads nothing from a checkout on the server.
+    image: ${ZAZZZOR_BACKUP_REPOSITORY:-zazzzor-backup}:${ZAZZZOR_BACKUP_TAG:?запускайте через stack.sh или задайте тег образа копий}
     user: "65532:65532"
     entrypoint: ["/bin/bash", "/opt/backup/backup-job.sh"]
     command: ["schedule"]
@@ -255,7 +257,6 @@ services:
       BACKUP_HOST_DIR: ${ZAZZZOR_BACKUP_DIR:?заполните ZAZZZOR_BACKUP_DIR в deploy/.env (см. deploy/.env.example)}
     volumes:
       - apidata:/data:ro
-      - ${ZAZZZOR_DEPLOY_DIR:?запускайте через deploy/scripts/stack.sh}/scripts:/opt/backup:ro
       - ${ZAZZZOR_BACKUP_DIR:?заполните ZAZZZOR_BACKUP_DIR в deploy/.env (см. deploy/.env.example)}:/backups
       - type: tmpfs
         target: /tmp

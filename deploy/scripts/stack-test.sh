@@ -96,7 +96,7 @@ apply_readme() {
 echo '- .env.example: настройки варианта закомментированы'
 # Активная строка варианта в примере столкнулась бы с той, которую владелец
 # впишет ниже (STYLE §16): раньше она молча побеждала, теперь это повтор.
-reject "$deploy_dir/.env.example" '^\(ZAZZZOR_EDGE\|TRAEFIK_[A-Z_]*\|LIVEKIT_TURN_[A-Z_]*\|ZAZZZOR_\(API\|CADDY\)_REPOSITORY\)=' \
+reject "$deploy_dir/.env.example" '^\(ZAZZZOR_EDGE\|TRAEFIK_[A-Z_]*\|LIVEKIT_TURN_[A-Z_]*\|ZAZZZOR_\(API\|CADDY\|BACKUP\)_REPOSITORY\)=' \
   'в .env.example активна строка варианта; закомментируйте её со значением по умолчанию'
 
 echo '- .env: повтор ключа — ошибка, а не тихий выбор одного из значений'
@@ -128,6 +128,9 @@ expect "$tmp/traefik" 'traefik.http.routers.zazzzor-web.priority: "1"' 'у route
 expect "$tmp/traefik" '172.16.0.0/12' 'LiveKit не ограничен docker_gwbridge'
 expect "$tmp/traefik" 'mode: host' 'медиа-порты не в режиме host'
 expect "$tmp/traefik" 'PGHOST: postgres' 'backup ищет Postgres не по имени сервиса'
+# The job scripts come from the image, not from a checkout on the server.
+expect "$tmp/traefik" 'image: zazzzor-backup:ci' 'backup не из образа со скриптами'
+reject "$tmp/traefik" 'target: /opt/backup''backup за Traefik читает скрипты с хоста'
 expect "$tmp/traefik" 'enabled: false' 'TURN не выключен по умолчанию'
 reject "$tmp/traefik" 'traefik.tcp.routers.zazzzor-turn' 'TCP-router TURN есть при выключенном TURN'
 # Traefik v3 skips a service whose labels mix both providers ("both Docker and Swarm labels are defined").
@@ -143,11 +146,13 @@ done
 
 echo '- Traefik, TURN включён, образы GHCR'
 render "$tmp/turn" ZAZZZOR_EDGE=traefik LIVEKIT_NODE_IP="$node_ip" LIVEKIT_TURN_ENABLED=true \
-  ZAZZZOR_API_REPOSITORY=ghcr.io/example/api ZAZZZOR_CADDY_REPOSITORY=ghcr.io/example/web
+  ZAZZZOR_API_REPOSITORY=ghcr.io/example/api ZAZZZOR_CADDY_REPOSITORY=ghcr.io/example/web \
+  ZAZZZOR_BACKUP_REPOSITORY=ghcr.io/example/backup
 expect "$tmp/turn" 'enabled: true' 'TURN не включился'
 expect "$tmp/turn" 'external_tls: true' 'TURN без external_tls'
 expect "$tmp/turn" 'traefik.tcp.routers.zazzzor-turn.rule: HostSNI' 'нет TCP-router TURN'
 expect "$tmp/turn" 'image: ghcr.io/example/api:ci' 'API не из заданного репозитория'
+expect "$tmp/turn" 'image: ghcr.io/example/backup:ci' 'backup не из заданного репозитория'
 expect "$tmp/turn" 'image: ghcr.io/example/web:ci' 'web не из заданного репозитория'
 
 echo '- приватный голосовой control path с TURN и без него'

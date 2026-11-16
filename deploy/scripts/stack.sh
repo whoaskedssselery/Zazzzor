@@ -72,7 +72,8 @@ build_image() {
 # Стандартные ли имена образов. Сборка создаёт только их, и только их знает
 # edge-стек docker-stack.yml.
 default_repositories() {
-  [[ "${ZAZZZOR_API_REPOSITORY:-zazzzor-api}" == zazzzor-api && "${ZAZZZOR_CADDY_REPOSITORY:-zazzzor-caddy}" == zazzzor-caddy ]]
+  [[ "${ZAZZZOR_API_REPOSITORY:-zazzzor-api}" == zazzzor-api && "${ZAZZZOR_CADDY_REPOSITORY:-zazzzor-caddy}" == zazzzor-caddy &&
+    "${ZAZZZOR_BACKUP_REPOSITORY:-zazzzor-backup}" == zazzzor-backup ]]
 }
 
 build() {
@@ -86,26 +87,35 @@ build() {
     --build-arg "CADDY_VERSION=${CADDY_VERSION:?заполните CADDY_VERSION в $env_file}" \
     --build-arg "DUCKDNS_PLUGIN_VERSION=${DUCKDNS_PLUGIN_VERSION:?заполните DUCKDNS_PLUGIN_VERSION в $env_file}" \
     "$repo_dir")"
-  export ZAZZZOR_API_TAG ZAZZZOR_CADDY_TAG
-  echo "Образы: zazzzor-api:$ZAZZZOR_API_TAG zazzzor-caddy:$ZAZZZOR_CADDY_TAG" >&2
+  ZAZZZOR_BACKUP_TAG="$(build_image zazzzor-backup -f "$deploy_dir/backup/Dockerfile" \
+    --build-arg "POSTGRES_VERSION=${POSTGRES_VERSION:?заполните POSTGRES_VERSION в $env_file}" "$deploy_dir")"
+  export ZAZZZOR_API_TAG ZAZZZOR_CADDY_TAG ZAZZZOR_BACKUP_TAG
+  echo "Образы: zazzzor-api:$ZAZZZOR_API_TAG zazzzor-caddy:$ZAZZZOR_CADDY_TAG zazzzor-backup:$ZAZZZOR_BACKUP_TAG" >&2
 }
 
 # Образы из окружения (ZAZZZOR_API_TAG, ZAZZZOR_CADDY_TAG) или сборка.
+# ZAZZZOR_BACKUP_TAG без значения берётся равным ZAZZZOR_API_TAG: реестр
+# публикует все три образа под одним тегом. Образ копий нужен только стеку
+# за Traefik; edge-стек читает скрипты из этого каталога.
 images() {
   if [[ -n "${ZAZZZOR_API_TAG:-}" || -n "${ZAZZZOR_CADDY_TAG:-}" ]]; then
     [[ -n "${ZAZZZOR_API_TAG:-}" && -n "${ZAZZZOR_CADDY_TAG:-}" ]] ||
       die "задайте оба тега: ZAZZZOR_API_TAG и ZAZZZOR_CADDY_TAG"
+    ZAZZZOR_BACKUP_TAG="${ZAZZZOR_BACKUP_TAG:-$ZAZZZOR_API_TAG}"
     local image
-    for image in "${ZAZZZOR_API_REPOSITORY:-zazzzor-api}:$ZAZZZOR_API_TAG" "${ZAZZZOR_CADDY_REPOSITORY:-zazzzor-caddy}:$ZAZZZOR_CADDY_TAG"; do
+    local -a wanted=("${ZAZZZOR_API_REPOSITORY:-zazzzor-api}:$ZAZZZOR_API_TAG" "${ZAZZZOR_CADDY_REPOSITORY:-zazzzor-caddy}:$ZAZZZOR_CADDY_TAG")
+    [[ "$ZAZZZOR_EDGE" != traefik ]] || wanted+=("${ZAZZZOR_BACKUP_REPOSITORY:-zazzzor-backup}:$ZAZZZOR_BACKUP_TAG")
+    for image in "${wanted[@]}"; do
       if ! docker image inspect "$image" >/dev/null 2>&1; then
-        if [[ "$image" == ghcr.io/* ]]; then
+        # Имя с «/» — образ из реестра (GHCR, Docker Hub): его можно скачать.
+        if [[ "${image%:*}" == */* ]]; then
           docker pull "$image"
         else
           die "нет образа $image (bash deploy/scripts/stack.sh build)"
         fi
       fi
     done
-    export ZAZZZOR_API_TAG ZAZZZOR_CADDY_TAG
+    export ZAZZZOR_API_TAG ZAZZZOR_CADDY_TAG ZAZZZOR_BACKUP_TAG
   else
     build
   fi
@@ -196,6 +206,7 @@ case "$cmd" in
     prepare
     export ZAZZZOR_API_TAG="${ZAZZZOR_API_TAG:-<собирается при deploy>}"
     export ZAZZZOR_CADDY_TAG="${ZAZZZOR_CADDY_TAG:-<собирается при deploy>}"
+    export ZAZZZOR_BACKUP_TAG="${ZAZZZOR_BACKUP_TAG:-$ZAZZZOR_API_TAG}"
     # Без Swarm (например, в CI) у узла нет ID: показываем заглушку.
     export ZAZZZOR_NODE_ID="${ZAZZZOR_NODE_ID:-<ID этого узла Swarm>}"
     docker stack config "${stack_files[@]}"
