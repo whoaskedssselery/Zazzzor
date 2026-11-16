@@ -1,57 +1,94 @@
 # Zazzzor
 
-Самостоятельно размещаемый аналог Discord для небольшой компании друзей:
-серверы, текстовые каналы, роли и права, приглашения, а дальше — голос и
-демонстрация экрана. Всё работает на одном домашнем Linux-сервере в Docker,
-без облачных сервисов.
+[![CI](https://github.com/whoaskedssselery/Zazzzor/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/whoaskedssselery/Zazzzor/actions/workflows/ci.yml)
+[![Images](https://github.com/whoaskedssselery/Zazzzor/actions/workflows/images.yml/badge.svg)](https://github.com/whoaskedssselery/Zazzzor/actions/workflows/images.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-## Статус
+Свой Discord для компании друзей на одном домашнем сервере: серверы и
+каналы, чат, голос и демонстрация экрана в 1080p/60, без облачных сервисов и
+без VPN. Всё запускается в Docker; образы публикуются на Docker Hub.
 
-| Этап | Что | Состояние |
-|---|---|---|
-| 1.1 | Проверка связи: LiveKit, Caddy, DuckDNS, страница теста голоса и демки | готово |
-| 1.2a | Бэкенд: REST API, realtime-шлюз WebSocket, Postgres, развёртывание | готово: API и шлюз реального времени |
-| 1.2b | Веб-клиент | готово: вход, серверы, каналы, чат, роли и права, настройки, администрирование |
-| 1.3 | Голос и демка в приложении | в работе: голос, демка и «Улучшенное» шумоподавление в браузере готовы; впереди приёмка на сервере |
-| 1.4 | Десктоп-клиент | впереди |
-| 1.5 | Эксплуатация: бэкапы, обновления, релизы | впереди |
+## Возможности
 
-Веб-клиент работает в актуальных Chrome, Edge и Firefox: чат, голосовые каналы
-и демонстрация экрана. Звук демки браузер даёт не всегда: из вкладки Chrome и
-Edge — да, из отдельного окна и из Firefox — нет; полный звук окна будет в
-приложении для Windows (этап 1.4).
-Шумоподавление «Улучшенное» — нейросеть DeepFilterNet3 на компьютере
-пользователя (около 23 МБ при первом звонке), с запасным RNNoise.
+**Общение**
+- Серверы с текстовыми и голосовыми каналами, категориями и приглашениями.
+- Сообщения с ответами, правкой, удалением, реакциями, упоминаниями,
+  эмодзи, вложениями и превью ссылок; поиск по сообщениям.
+- Друзья, личные сообщения и группы; блокировка.
+- Индикатор «печатает», непрочитанное, уведомления об упоминаниях со звуком.
+
+**Голос и экран**
+- Голосовые каналы и личные звонки со звонком собеседнику.
+- Демонстрация экрана до 1080p/60 с автоматическим снижением до 720p, когда
+  не держится 30 fps; звук вкладки в Chrome и Edge.
+- Громкость каждого человека и каждой демонстрации от 0 до 200 %.
+- Шумоподавление на компьютере пользователя: DeepFilterNet3, с запасным
+  RNNoise.
+- Кольцо говорящего по реальному звуку, звуки входа, выхода и микрофона.
+
+**Управление**
+- Роли и права на уровне сервера и канала, журнал аудита.
+- Администрирование инстанса: пользователи, регистрация, настройки.
+
+**Эксплуатация**
+- Один стек Docker: API, Postgres, LiveKit, Caddy с HTTPS.
+- Резервные копии по расписанию и проверенное восстановление.
+- Готовые образы на каждый зелёный коммит в `main`.
 
 ## Стек
 
-- Сервер: Go (модульный монолит), PostgreSQL, WebSocket
-  ([coder/websocket](https://github.com/coder/websocket)), sqlc, goose.
-- Голос и видео: [LiveKit](https://livekit.io).
-- HTTPS: Caddy с сертификатами Let's Encrypt через DuckDNS (DNS-01).
-- Веб-клиент: React 19, Vite, TypeScript, TanStack Router и Query, Tailwind CSS;
-  типы API генерируются из `api/openapi.yaml`.
-- Страница проверки связи: TypeScript, Vite, pnpm.
+| Часть | Технологии |
+|---|---|
+| Сервер | Go (модульный монолит), PostgreSQL, sqlc, goose, WebSocket ([coder/websocket](https://github.com/coder/websocket)) |
+| Голос и видео | [LiveKit](https://livekit.io) (SFU, TURN) |
+| Веб-клиент | React 19, TypeScript, Vite, TanStack Router и Query, Tailwind CSS; архитектура Feature-Sliced Design |
+| Контракт | OpenAPI 3.1 в `api/openapi.yaml`: типы клиента генерируются из него, тесты сервера сверяют с ним каждый ответ |
+| Развёртывание | Docker Compose или Swarm, Caddy (Let's Encrypt), Traefik |
+| Проверки | Go race-тесты с настоящим Postgres (testcontainers), Vitest, Playwright в Chromium и Firefox, govulncheck, gitleaks |
+
+## Состояние
+
+| Этап | Что | Состояние |
+|---|---|---|
+| 1.1 | Проверка связи у друзей: LiveKit, Caddy, страница теста | готово |
+| 1.2 | Бэкенд и веб-клиент: серверы, каналы, чат, роли, администрирование | готово |
+| 1.3 | Голос, звонки и демонстрация экрана в браузере | готово, проверено на живом сервере |
+| 1.4 | Десктоп-клиент для Windows (Tauri, нативный захват экрана и звука) | впереди |
+
+Веб-клиент работает в актуальных Chrome, Edge и Firefox. Звук демонстрации
+браузер отдаёт только из вкладки Chrome и Edge; полный звук окна и игр будет
+в десктоп-клиенте.
 
 ## Структура
 
 | Каталог | Что |
 |---|---|
-| `server/` | сервер API (`go.mod`, `cmd/zazzzor`, `internal/`) |
-| `api/openapi.yaml` | описание REST API; тесты сверяют с ним каждый ответ |
-| `web/` | веб-клиент (пакет `@zazzzor/web`) |
-| `deploy/` | Docker Compose, Caddy, скрипты и [инструкция по запуску на сервере](deploy/README.md) |
-| `tools/connectivity-test/` | страница проверки связи (этап 1.1) |
+| [`server/`](server) | API и realtime-шлюз (`cmd/zazzzor`, модули в `internal/`) |
+| [`web/`](web) | веб-клиент (`@zazzzor/web`), сценарии Playwright в `web/e2e/` |
+| [`api/openapi.yaml`](api/openapi.yaml) | описание REST API |
+| [`deploy/`](deploy) | стеки Docker, Caddy, образ резервных копий, скрипты и [инструкция по запуску](deploy/README.md) |
+| [`tools/connectivity-test/`](tools/connectivity-test) | страница проверки связи до сервера |
 
 ## Запуск на сервере
 
 Пошагово, от установки Docker до первого администратора и резервных копий:
-[deploy/README.md](deploy/README.md).
+[deploy/README.md](deploy/README.md). Готовые образы:
+
+```
+ssselery/zazzzor-api
+ssselery/zazzzor-caddy
+ssselery/zazzzor-backup
+```
+
+с тегами `sha-<коммит>`, `main` и `latest`; те же образы есть в
+`ghcr.io/whoaskedssselery/`.
 
 ## Разработка
 
-Нужны Go (версия из `server/go.mod`) и Docker: тесты поднимают настоящий
-Postgres через testcontainers.
+Нужны Go (версия из `server/go.mod`), Node 22 с pnpm (`corepack enable`) и
+Docker: тесты сервера поднимают настоящий Postgres.
+
+### Сервер
 
 ```bash
 cd server
@@ -59,8 +96,8 @@ go vet ./...
 go test ./...
 ```
 
-Запуск сервера локально с Postgres в Docker (порт 55432, чтобы не мешать
-другому Postgres на 5432):
+Локальный запуск с Postgres в Docker (порт 55432, чтобы не мешать другому
+Postgres на 5432):
 
 ```bash
 docker run -d --name zazzzor-dev-pg -e POSTGRES_USER=zazzzor -e POSTGRES_PASSWORD=dev \
@@ -75,65 +112,46 @@ go run ./cmd/zazzzor
 ```
 
 Сервер слушает `:8080` (API) и `:9090` (метрики Prometheus) и сам применяет
-миграции. Проверка: `curl http://127.0.0.1:8080/api/v1/readyz`. Сквозная
-проверка: `go run ./cmd/zazzzor smoke http://127.0.0.1:8080` (с тем же
-`ZAZZZOR_ALLOWED_ORIGINS`). Удалить базу: `docker rm -f zazzzor-dev-pg`.
-
-Остальные переменные (`ZAZZZOR_ADMIN_USERNAMES`, `ZAZZZOR_TRUSTED_PROXIES`,
-адреса) описаны в `server/internal/config`.
+миграции. Проверка: `curl http://127.0.0.1:8080/api/v1/readyz`; сквозная
+проверка: `go run ./cmd/zazzzor smoke http://127.0.0.1:8080`. Остальные
+переменные описаны в `server/internal/config`.
 
 ### Веб-клиент
 
-Нужны Node 22 и pnpm из `package.json` (`corepack enable` его поставит).
-Из корня репозитория:
+Из корня репозитория, рядом с запущенным сервером:
 
 ```bash
 pnpm install
 pnpm dev        # http://localhost:5173
 ```
 
-Dev-сервер Vite пересылает `/api` (включая WebSocket шлюза) на
-`http://127.0.0.1:8080`, поэтому рядом должен работать сервер из раздела выше,
-запущенный именно с `ZAZZZOR_ALLOWED_ORIGINS=http://localhost:5173` (иначе
-API отвечает `403 origin_not_allowed`) и `ZAZZZOR_COOKIE_SECURE=false` (иначе
-браузер не сохранит cookie сессии на http). Порт 5173 фиксирован: если он
-занят, Vite не стартует, а не уходит молча на другой порт, который API не
-разрешает. Открывайте именно `http://localhost:5173`, не `127.0.0.1`.
+Vite пересылает `/api` и WebSocket шлюза на `http://127.0.0.1:8080`, поэтому
+сервер должен быть запущен с `ZAZZZOR_ALLOWED_ORIGINS=http://localhost:5173`
+и `ZAZZZOR_COOKIE_SECURE=false`. Открывайте именно `http://localhost:5173`.
 
 Проверки (их же запускает CI):
 
 ```bash
 pnpm lint       # ESLint
 pnpm test       # Vitest во всех пакетах
-pnpm build      # проверка типов и сборка всех пакетов
-pnpm gen:api    # перегенерировать web/src/shared/api/schema.gen.ts из api/openapi.yaml
+pnpm build      # проверка типов и сборка
+pnpm gen:api    # перегенерировать типы из api/openapi.yaml
 ```
 
-После любого изменения `api/openapi.yaml` запустите `pnpm gen:api` и
-закоммитьте `web/src/shared/api/schema.gen.ts`: CI падает, если файл расходится с
-контрактом.
+После изменения `api/openapi.yaml` запустите `pnpm gen:api` и закоммитьте
+`web/src/shared/api/schema.gen.ts`: CI сверяет его с контрактом.
 
 ### Браузерные тесты
 
-Сценарии Playwright в `web/e2e/` (вход, чат двух друзей, права, переподключение,
-голос и демка) идут в Chromium и Firefox против собранного клиента, настоящего
-API и LiveKit. Нужен Docker. Из `web/`:
+Сценарии Playwright идут в Chromium и Firefox против собранного клиента,
+настоящего API и LiveKit. Из `web/`:
 
 ```bash
 pnpm exec playwright install chromium firefox   # один раз
-pnpm e2e:up     # Postgres, API и LiveKit из web/e2e/compose.yml (API на :18080, LiveKit на :7880), регистрация открыта
-pnpm e2e        # сборка, vite preview на :4173 с CSP из Caddy, все сценарии
+pnpm e2e:up     # Postgres, API и LiveKit из web/e2e/compose.yml
+pnpm e2e        # сборка, vite preview с CSP из Caddy, все сценарии
 pnpm e2e:down   # убрать стек вместе с базой
 ```
-
-Если Firefox от Playwright не запускается (так бывает на некоторых сборках
-Windows), его можно запустить в Linux-образе Playwright: команда есть в
-комментарии к проекту `firefox` в `web/playwright.config.ts`.
-
-### Страница проверки связи
-
-`pnpm --filter @zazzzor/connectivity-test test` и `... build`; инструкция по
-ней — в [deploy/README.md](deploy/README.md#проверка-связи-этап-11).
 
 ## Лицензия
 
