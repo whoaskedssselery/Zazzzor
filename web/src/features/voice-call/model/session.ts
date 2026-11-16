@@ -16,6 +16,7 @@ import {
 } from "@/entities/call";
 import { computeChannel, getGuildsState, has, myVoice, PERM } from "@/entities/guild";
 import { api, errorText, unwrap } from "@/shared/api";
+import { playSound } from "@/shared/lib";
 import { shareNotice } from "./notice";
 import { startPushToTalk } from "./push-to-talk";
 
@@ -157,6 +158,7 @@ const forgetRemoval = () => {
 const ended = (cause: EndCause) => {
   if (getCall().status === "idle") return;
   clearCall();
+  playSound("leave");
   applyVoicePrefs();
   if (cause === "replaced") notify(CALL_REPLACED);
   else if (cause === "failed") notify(CALL_FAILED);
@@ -187,7 +189,9 @@ const wire = (t: CallTransport): CallTransport => {
     setCall({ speaking });
   });
   t.on("streams", (streams) => {
-    const { watching } = getCall();
+    const { watching, streams: before } = getCall();
+    if (streams.some((id) => !before.includes(id))) playSound("streamStart");
+    else if (before.some((id) => !streams.includes(id))) playSound("streamStop");
     setCall({ streams, watching: watching.filter((id) => streams.includes(id)) });
     // A share that ends is not received again when it comes back, until «Смотреть».
     for (const id of watching) if (!streams.includes(id)) t.watch(id, false);
@@ -199,6 +203,7 @@ const wire = (t: CallTransport): CallTransport => {
   });
   t.on("screenEnded", () => {
     setCall({ sharing: false });
+    playSound("streamStop");
   });
   t.on("cameras", (cameras) => {
     setCall({ cameras });
@@ -271,6 +276,7 @@ export const joinVoice = async (guildId: string | null, channelId: string): Prom
     // Connected: from here a disconnect is this call's own, and ends it.
     joining = false;
     setCall({ status: "connected" });
+    playSound("join");
     t.setListening(!getCall().selfDeaf);
     const { outputId } = readVoicePrefs();
     if (outputId !== null) {
@@ -294,6 +300,7 @@ export const leaveVoice = async (): Promise<void> => {
   generation += 1;
   joining = false;
   forgetRemoval();
+  if (getCall().status !== "idle") playSound("leave");
   clearCall();
   applyVoicePrefs();
   await transport?.disconnect();
@@ -331,6 +338,7 @@ export const declineCall = async (channelId: string): Promise<void> => {
 
 /** The microphone switch; applied at once in a call. */
 export const setSelfMute = (on: boolean): void => {
+  if (getCall().selfMute !== on) playSound(on ? "mute" : "unmute");
   setCall({ selfMute: on });
   if (getCall().status !== "idle") void transport?.setMicrophone(micOn());
   void reconcileVoiceFlags();
@@ -338,6 +346,7 @@ export const setSelfMute = (on: boolean): void => {
 
 /** The sound switch; deafened also means no microphone, as in Discord. */
 export const setSelfDeaf = (on: boolean): void => {
+  if (getCall().selfDeaf !== on) playSound(on ? "deafen" : "undeafen");
   setCall({ selfDeaf: on });
   if (getCall().status !== "idle") {
     transport?.setListening(!on);
@@ -434,11 +443,13 @@ export const startScreenShare = async (): Promise<void> => {
     return;
   }
   setCall({ sharing: true });
+  playSound("streamStart");
   const notice = shareNotice(result, currentBrowser(), canRestrictOwnAudio());
   if (notice !== null) notify(notice);
 };
 
 export const stopScreenShare = async (): Promise<void> => {
+  if (getCall().sharing) playSound("streamStop");
   setCall({ sharing: false });
   await transport?.stopScreenShare();
 };

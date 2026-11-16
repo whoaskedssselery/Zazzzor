@@ -41,6 +41,9 @@ import {
   watchStream,
 } from "./session";
 
+const played = vi.hoisted(() => [] as string[]);
+vi.mock("@/shared/lib/sounds", () => ({ playSound: (name: string) => played.push(name), resetSounds: () => {} }));
+
 const me = makeUser("100");
 const G = "10";
 const LOUNGE = "102";
@@ -110,6 +113,18 @@ afterEach(() => {
 });
 
 describe("voice session", () => {
+  it("plays the call's sounds: joining, the switches, leaving", async () => {
+    played.length = 0;
+    await joinVoice(G, LOUNGE);
+    setSelfMute(true);
+    setSelfMute(true);
+    setSelfDeaf(true);
+    setSelfDeaf(false);
+    setSelfMute(false);
+    await leaveVoice();
+    expect(played).toEqual(["join", "mute", "deafen", "undeafen", "unmute", "leave"]);
+  });
+
   it("tells the call the volumes kept on this device, and each change as it is made", async () => {
     setVolume("voice", "7", 150);
     setVolume("stream", "8", 0);

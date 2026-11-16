@@ -1,4 +1,5 @@
 export { startRingtone } from "./lib/ringtone";
+export { useCallSounds } from "./model/call-sounds";
 export { ECHO_RISK, FIREFOX_NO_AUDIO, shareNotice, WINDOW_NO_AUDIO } from "./model/notice";
 export {
   applyVoicePrefs,
