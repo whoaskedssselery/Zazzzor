@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# The commit message follows the house style (STYLE §14). Installed by
+# tools/agents/setup.sh.
+set -uo pipefail
+
+msg="$(grep -v '^#' "$1")"
+subject="$(head -1 <<<"$msg")"
+body="$(tail -n +3 <<<"$msg")"
+lines="$(git diff --cached --numstat | awk '{s += $1 + $2} END {print s + 0}')"
+bad=0
+
+# fixup!, squash! and amend! commits are folded away by git rebase --autosquash;
+# the commit they land in is the one that has to follow the rules.
+if grep -qE "^(fixup|squash|amend)! " <<<"$subject"; then
+  exit 0
+fi
+
+if ! grep -qE '^(feat|fix|refactor|perf|test|docs|build|ci|chore|style)(\([a-z0-9-]+\))?: [a-z].{0,70}$' <<<"$subject"; then
+  echo "commit-msg: subject must be Conventional Commits, imperative, lower-case, <= 72 chars: $subject" >&2
+  bad=1
+fi
+if [[ -n "$(sed -n 2p <<<"$msg")" ]]; then
+  echo "commit-msg: leave line 2 empty between subject and body" >&2
+  bad=1
+fi
+if grep -qiE 'co-authored-by|generated (with|by)|\bcodex\b|\bclaude\b|\bopenai\b|\bai[- ]generated' <<<"$msg"; then
+  echo "commit-msg: no AI attribution or tool names" >&2
+  bad=1
+fi
+if [[ "$subject" =~ ^(feat|fix|refactor|perf) && "$lines" -gt 40 && -z "${body//[[:space:]]/}" ]]; then
+  echo "commit-msg: $lines changed lines need a body that explains why" >&2
+  bad=1
+fi
+if [[ "$lines" -gt 600 ]]; then
+  echo "commit-msg: $lines changed lines; split into logical commits" >&2
+  bad=1
+fi
+if awk 'NR > 2 && length > 72 {exit 1}' <<<"$msg"; then :; else
+  echo "commit-msg: wrap the body at 72 columns" >&2
+  bad=1
+fi
+exit "$bad"

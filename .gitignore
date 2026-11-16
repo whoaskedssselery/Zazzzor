@@ -14,3 +14,27 @@ deploy/.env.*
 # Playwright output.
 test-results/
 playwright-report/
+# Output of tools/agents/check.sh.
+.check.log
+
+# Shared agent harness (tools/agents/README.md). These lines win over a
+# personal global ignore that hides agent files. Shared: the instructions,
+# the skill manifests, agent definitions, hooks and project config. Not
+# shared: the skills themselves (tools/agents/setup.sh downloads them),
+# personal settings, caches and logs.
+!/AGENTS.md
+!/CLAUDE.md
+!/skills-lock.json
+!/.claude/
+/.claude/*
+!/.claude/workspace.yaml
+!/.claude/hide.yaml
+!/.claude/launch.json
+!/.claude/agents/
+!/.codex/
+/.codex/*
+!/.codex/agents/
+!/.codex/hooks.json
+!/.impeccable/
+/.impeccable/*
+!/.impeccable/config.json

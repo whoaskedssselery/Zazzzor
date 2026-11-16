@@ -1,0 +1,33 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@zazzzor/web",
+        "dev"
+      ],
+      "port": 5173
+    },
+    {
+      "name": "web-e2e",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@zazzzor/web",
+        "exec",
+        "vite",
+        "--port",
+        "4173",
+        "--strictPort"
+      ],
+      "env": {
+        "ZAZZZOR_API_TARGET": "http://127.0.0.1:18080",
+        "ZAZZZOR_LIVEKIT_TARGET": "http://127.0.0.1:7880"
+      },
+      "port": 4173
+    }
+  ]
+}

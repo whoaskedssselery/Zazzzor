@@ -1,0 +1,35 @@
+version: 1
+toolVersion: 1.0.3
+
+preset: project
+
+core:
+  - health-review
+  - commit-discipline
+  - codegraph
+
+skills:
+  []
+
+external:
+  - impeccable
+  - taste
+  - ui-ux-pro-max
+  - superpowers
+
+# Skills pulled in from an arbitrary repo via "claude-workspace add <url>"
+# (through `npx skills`), as "name=source" — not part of this package's own
+# catalog, so `sync` re-fetches each one from its recorded source instead.
+remote:
+  - react-expert=Jeffallan/claude-skills
+  - api-designer=Jeffallan/claude-skills
+  - database-optimizer=Jeffallan/claude-skills
+  - security-reviewer=Jeffallan/claude-skills
+  - websocket-engineer=Jeffallan/claude-skills
+  - fullstack-guardian=Jeffallan/claude-skills
+  - cloud-architect=Jeffallan/claude-skills
+  - devops-engineer=Jeffallan/claude-skills
+  - code-reviewer=Jeffallan/claude-skills
+  - debugging-wizard=Jeffallan/claude-skills
+  - test-master=Jeffallan/claude-skills
+  - feature-forge=Jeffallan/claude-skills

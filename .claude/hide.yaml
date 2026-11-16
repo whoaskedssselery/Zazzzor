@@ -1,0 +1,9 @@
+paths:
+  - .claude
+  - CLAUDE.md
+  - .codegraph
+  - .impeccable
+  - .superpowers
+  - .agents
+  - specs
+  - skills-lock.json
