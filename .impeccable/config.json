@@ -1,0 +1,26 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "web/src/entities/message/ui/MessageItem.tsx"
+        ],
+        "createdAt": "2026-11-03T14:00:09.495Z",
+        "reason": "Claude: L74 is the reply connector line (top+left border with a rounded corner joining the reply preview to the avatar), not a card accent"
+      },
+      {
+        "rule": "border-accent-on-rounded",
+        "value": "*",
+        "files": [
+          "web/src/entities/message/ui/MessageItem.tsx"
+        ],
+        "createdAt": "2026-11-03T14:00:09.693Z",
+        "reason": "Claude: L74 is the reply connector line (top+left border with a rounded corner joining the reply preview to the avatar), not a card accent"
+      }
+    ]
+  }
+}
