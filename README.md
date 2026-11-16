@@ -4,75 +4,76 @@
 [![Images](https://github.com/whoaskedssselery/Zazzzor/actions/workflows/images.yml/badge.svg)](https://github.com/whoaskedssselery/Zazzzor/actions/workflows/images.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-Свой Discord для компании друзей на одном домашнем сервере: серверы и
-каналы, чат, голос и демонстрация экрана в 1080p/60, без облачных сервисов и
-без VPN. Всё запускается в Docker; образы публикуются на Docker Hub.
+A Discord of your own for a group of friends, on one home server: servers
+and channels, chat, voice and 1080p60 screen sharing, with no cloud
+services and no VPN. Everything runs in Docker; images are published to
+Docker Hub.
 
-## Возможности
+## Features
 
-**Общение**
-- Серверы с текстовыми и голосовыми каналами, категориями и приглашениями.
-- Сообщения с ответами, правкой, удалением, реакциями, упоминаниями,
-  эмодзи, вложениями и превью ссылок; поиск по сообщениям.
-- Друзья, личные сообщения и группы; блокировка.
-- Индикатор «печатает», непрочитанное, уведомления об упоминаниях со звуком.
+**Talking**
+- Servers with text and voice channels, categories and invites.
+- Messages with replies, edits, deletion, reactions, mentions, emoji,
+  attachments and link previews; message search.
+- Friends, direct messages and group chats; blocking.
+- Typing indicators, unread state, mention notifications with sound.
 
-**Голос и экран**
-- Голосовые каналы и личные звонки со звонком собеседнику.
-- Демонстрация экрана до 1080p/60 с автоматическим снижением до 720p, когда
-  не держится 30 fps; звук вкладки в Chrome и Edge.
-- Громкость каждого человека и каждой демонстрации от 0 до 200 %.
-- Шумоподавление на компьютере пользователя: DeepFilterNet3, с запасным
-  RNNoise.
-- Кольцо говорящего по реальному звуку, звуки входа, выхода и микрофона.
+**Voice and screen**
+- Voice channels and private calls that ring the other side.
+- Screen sharing up to 1080p at 60 fps, dropping to 720p when 30 fps can't
+  be held; tab audio in Chrome and Edge.
+- Volume for each person and each screen share, from 0 to 200 %.
+- Noise suppression on the user's own computer: DeepFilterNet3, with
+  RNNoise as the fallback.
+- A speaking ring driven by the sound actually heard; join, leave and
+  mute sounds.
 
-**Управление**
-- Роли и права на уровне сервера и канала, журнал аудита.
-- Администрирование инстанса: пользователи, регистрация, настройки.
+**Running it**
+- Roles and permissions per server and per channel, an audit log.
+- Instance administration: users, registration, settings.
+- One Docker stack: API, Postgres, LiveKit and Caddy with HTTPS.
+- Scheduled backups with a tested restore.
+- Images for every green commit on `main`.
 
-**Эксплуатация**
-- Один стек Docker: API, Postgres, LiveKit, Caddy с HTTPS.
-- Резервные копии по расписанию и проверенное восстановление.
-- Готовые образы на каждый зелёный коммит в `main`.
+## Stack
 
-## Стек
-
-| Часть | Технологии |
+| Part | Technologies |
 |---|---|
-| Сервер | Go (модульный монолит), PostgreSQL, sqlc, goose, WebSocket ([coder/websocket](https://github.com/coder/websocket)) |
-| Голос и видео | [LiveKit](https://livekit.io) (SFU, TURN) |
-| Веб-клиент | React 19, TypeScript, Vite, TanStack Router и Query, Tailwind CSS; архитектура Feature-Sliced Design |
-| Контракт | OpenAPI 3.1 в `api/openapi.yaml`: типы клиента генерируются из него, тесты сервера сверяют с ним каждый ответ |
-| Развёртывание | Docker Compose или Swarm, Caddy (Let's Encrypt), Traefik |
-| Проверки | Go race-тесты с настоящим Postgres (testcontainers), Vitest, Playwright в Chromium и Firefox, govulncheck, gitleaks |
+| Server | Go (modular monolith), PostgreSQL, sqlc, goose, WebSocket ([coder/websocket](https://github.com/coder/websocket)) |
+| Voice and video | [LiveKit](https://livekit.io) (SFU, TURN) |
+| Web client | React 19, TypeScript, Vite, TanStack Router and Query, Tailwind CSS; Feature-Sliced Design |
+| Contract | OpenAPI 3.1 in `api/openapi.yaml`: the client's types are generated from it, and the server's tests check every response against it |
+| Deployment | Docker Compose or Swarm, Caddy (Let's Encrypt), Traefik |
+| Checks | Go race tests against real Postgres (testcontainers), Vitest, Playwright in Chromium and Firefox, govulncheck, gitleaks |
 
-## Состояние
+## Status
 
-| Этап | Что | Состояние |
+| Stage | What | State |
 |---|---|---|
-| 1.1 | Проверка связи у друзей: LiveKit, Caddy, страница теста | готово |
-| 1.2 | Бэкенд и веб-клиент: серверы, каналы, чат, роли, администрирование | готово |
-| 1.3 | Голос, звонки и демонстрация экрана в браузере | готово, проверено на живом сервере |
-| 1.4 | Десктоп-клиент для Windows (Tauri, нативный захват экрана и звука) | впереди |
+| 1.1 | Connectivity check from friends' networks: LiveKit, Caddy, a test page | done |
+| 1.2 | Backend and web client: servers, channels, chat, roles, administration | done |
+| 1.3 | Voice, calls and screen sharing in the browser | done, used on the live server |
+| 1.4 | Windows desktop client (Tauri, native screen and audio capture) | next |
 
-Веб-клиент работает в актуальных Chrome, Edge и Firefox. Звук демонстрации
-браузер отдаёт только из вкладки Chrome и Edge; полный звук окна и игр будет
-в десктоп-клиенте.
+The web client runs in current Chrome, Edge and Firefox. Browsers share
+screen audio only from a Chrome or Edge tab; full window and game audio
+comes with the desktop client.
 
-## Структура
+## Layout
 
-| Каталог | Что |
+| Path | What |
 |---|---|
-| [`server/`](server) | API и realtime-шлюз (`cmd/zazzzor`, модули в `internal/`) |
-| [`web/`](web) | веб-клиент (`@zazzzor/web`), сценарии Playwright в `web/e2e/` |
-| [`api/openapi.yaml`](api/openapi.yaml) | описание REST API |
-| [`deploy/`](deploy) | стеки Docker, Caddy, образ резервных копий, скрипты и [инструкция по запуску](deploy/README.md) |
-| [`tools/connectivity-test/`](tools/connectivity-test) | страница проверки связи до сервера |
+| [`server/`](server) | API and realtime gateway (`cmd/zazzzor`, modules in `internal/`) |
+| [`web/`](web) | Web client (`@zazzzor/web`), Playwright scenarios in `web/e2e/` |
+| [`api/openapi.yaml`](api/openapi.yaml) | The REST and gateway contract |
+| [`deploy/`](deploy) | Docker stacks, Caddy, the backup image, scripts and the [server guide](deploy/README.md) (in Russian) |
+| [`tools/connectivity-test/`](tools/connectivity-test) | A page that checks the connection to the server |
+| [`tools/agents/`](tools/agents) | The shared setup for coding agents: rules, checks, hooks, skills |
 
-## Запуск на сервере
+## Running a server
 
-Пошагово, от установки Docker до первого администратора и резервных копий:
-[deploy/README.md](deploy/README.md). Готовые образы:
+Step by step, from installing Docker to the first administrator and
+backups: [deploy/README.md](deploy/README.md). Ready-made images:
 
 ```
 ssselery/zazzzor-api
@@ -80,15 +81,15 @@ ssselery/zazzzor-caddy
 ssselery/zazzzor-backup
 ```
 
-с тегами `sha-<коммит>`, `main` и `latest`; те же образы есть в
+tagged `sha-<commit>`, `main` and `latest`; the same images are in
 `ghcr.io/whoaskedssselery/`.
 
-## Разработка
+## Development
 
-Нужны Go (версия из `server/go.mod`), Node 22 с pnpm (`corepack enable`) и
-Docker: тесты сервера поднимают настоящий Postgres.
+You need Go (the version in `server/go.mod`), Node 22 with pnpm
+(`corepack enable`) and Docker: the server's tests start a real Postgres.
 
-### Сервер
+### Server
 
 ```bash
 cd server
@@ -96,8 +97,8 @@ go vet ./...
 go test ./...
 ```
 
-Локальный запуск с Postgres в Docker (порт 55432, чтобы не мешать другому
-Postgres на 5432):
+Running it locally with Postgres in Docker (port 55432, so it doesn't
+clash with another Postgres on 5432):
 
 ```bash
 docker run -d --name zazzzor-dev-pg -e POSTGRES_USER=zazzzor -e POSTGRES_PASSWORD=dev \
@@ -111,48 +112,61 @@ ZAZZZOR_DATA_DIR=/tmp/zazzzor-data \
 go run ./cmd/zazzzor
 ```
 
-Сервер слушает `:8080` (API) и `:9090` (метрики Prometheus) и сам применяет
-миграции. Проверка: `curl http://127.0.0.1:8080/api/v1/readyz`; сквозная
-проверка: `go run ./cmd/zazzzor smoke http://127.0.0.1:8080`. Остальные
-переменные описаны в `server/internal/config`.
+The server listens on `:8080` (API) and `:9090` (Prometheus metrics) and
+applies its migrations itself. Check it with
+`curl http://127.0.0.1:8080/api/v1/readyz`, or end to end with
+`go run ./cmd/zazzzor smoke http://127.0.0.1:8080`. The other settings are
+described in `server/internal/config`.
 
-### Веб-клиент
+### Web client
 
-Из корня репозитория, рядом с запущенным сервером:
+From the repository root, next to a running server:
 
 ```bash
 pnpm install
 pnpm dev        # http://localhost:5173
 ```
 
-Vite пересылает `/api` и WebSocket шлюза на `http://127.0.0.1:8080`, поэтому
-сервер должен быть запущен с `ZAZZZOR_ALLOWED_ORIGINS=http://localhost:5173`
-и `ZAZZZOR_COOKIE_SECURE=false`. Открывайте именно `http://localhost:5173`.
+Vite forwards `/api` and the gateway's WebSocket to `http://127.0.0.1:8080`,
+so the server must run with `ZAZZZOR_ALLOWED_ORIGINS=http://localhost:5173`
+and `ZAZZZOR_COOKIE_SECURE=false`. Open `http://localhost:5173` exactly.
 
-Проверки (их же запускает CI):
+The checks CI runs too:
 
 ```bash
 pnpm lint       # ESLint
-pnpm test       # Vitest во всех пакетах
-pnpm build      # проверка типов и сборка
-pnpm gen:api    # перегенерировать типы из api/openapi.yaml
+pnpm test       # Vitest in every package
+pnpm build      # type check and build
+pnpm gen:api    # regenerate the client types from api/openapi.yaml
 ```
 
-После изменения `api/openapi.yaml` запустите `pnpm gen:api` и закоммитьте
-`web/src/shared/api/schema.gen.ts`: CI сверяет его с контрактом.
+After changing `api/openapi.yaml`, run `pnpm gen:api` and commit
+`web/src/shared/api/schema.gen.ts`: CI compares it with the contract.
 
-### Браузерные тесты
+### Browser tests
 
-Сценарии Playwright идут в Chromium и Firefox против собранного клиента,
-настоящего API и LiveKit. Из `web/`:
+Playwright scenarios run in Chromium and Firefox against the built client,
+the real API and LiveKit. From `web/`:
 
 ```bash
-pnpm exec playwright install chromium firefox   # один раз
-pnpm e2e:up     # Postgres, API и LiveKit из web/e2e/compose.yml
-pnpm e2e        # сборка, vite preview с CSP из Caddy, все сценарии
-pnpm e2e:down   # убрать стек вместе с базой
+pnpm exec playwright install chromium firefox   # once
+pnpm e2e:up     # Postgres, API and LiveKit from web/e2e/compose.yml
+pnpm e2e        # build, vite preview with Caddy's CSP, every scenario
+pnpm e2e:down   # remove the stack with its database
 ```
 
-## Лицензия
+### Coding agents
+
+The repository carries a shared setup for Claude Code and Codex: the rules
+in [`AGENTS.md`](AGENTS.md), the house style, a check script, git hooks and
+pinned skills. After a clone:
+
+```bash
+bash tools/agents/setup.sh
+```
+
+Details: [`tools/agents/README.md`](tools/agents/README.md).
+
+## License
 
 [Apache License 2.0](LICENSE).
