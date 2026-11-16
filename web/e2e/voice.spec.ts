@@ -167,3 +167,69 @@ test("a camera shows in its owner's tile", async ({ browser, browserName, people
     .click();
   await expect(petr.page.getByRole("listitem", { name: "Аня" }).locator("video")).toHaveCount(0, { timeout: 20_000 });
 });
+
+test("someone's volume goes from 0 to 200 % and is kept", async ({ browser, people }) => {
+  const anna = await signUp(browser, "Аня");
+  const petr = await signUp(browser, "Пётр");
+  people.push(anna, petr);
+  const { guildId, channelId } = await createGuild(anna, "Громкий вечер");
+  await join(petr, await invite(anna, channelId));
+  const voice = await voiceChannel(anna, guildId);
+  await noiseMode(anna, "off");
+  await noiseMode(petr, "off");
+  const errors: string[] = [];
+  petr.page.on("pageerror", (e) => errors.push(e.message));
+
+  await enter(anna.page, guildId, voice);
+  await enter(petr.page, guildId, voice);
+  const stage = petr.page.getByRole("region", { name: `Голосовой канал ${voice.name}` });
+  const slider = petr.page.getByRole("slider", { name: "Громкость пользователя" });
+
+  // Two people fit the stage side by side, with no scroll bar.
+  const annaTile = stage.getByRole("listitem", { name: "Аня" });
+  const petrTile = stage.getByRole("listitem", { name: "Пётр" });
+  await expect(petrTile).toBeVisible();
+  const [a, p] = [await annaTile.boundingBox(), await petrTile.boundingBox()];
+  expect(Math.abs((a?.y ?? 0) - (p?.y ?? 1))).toBeLessThan(1);
+  const scrolls = await stage.locator(".overflow-y-auto").evaluate((el) => el.scrollHeight > el.clientHeight);
+  expect(scrolls).toBe(false);
+
+  // Petr hears Anna (her fake microphone plays a tone), then turns her up past 100 %: the sound
+  // moves to a gain node and she is still heard speaking.
+  await expect(row(petr.page, voice.name, "Аня").locator("[data-speaking]")).toBeVisible({ timeout: 20_000 });
+  await stage.getByRole("listitem", { name: "Аня" }).click({ button: "right" });
+  await expect(slider).toHaveValue("100");
+  await slider.press("End");
+  await expect(slider).toHaveValue("200");
+  await expect(petr.page.getByText("200%")).toBeVisible();
+  await petr.page.keyboard.press("Escape");
+  await expect(row(petr.page, voice.name, "Аня").locator("[data-speaking]")).toBeVisible({ timeout: 20_000 });
+
+  // His own tile offers no volume; a left click on hers still brings it to the front.
+  await stage.getByRole("listitem", { name: "Пётр" }).click({ button: "right" });
+  await expect(petr.page.getByRole("menu")).toBeVisible();
+  await expect(slider).toHaveCount(0);
+  await petr.page.keyboard.press("Escape");
+  await stage.getByRole("button", { name: "Развернуть: Аня" }).click();
+  await expect(stage.getByRole("list", { name: "Остальные в звонке" })).toBeVisible();
+  await stage.getByRole("button", { name: "Вернуть в сетку: Аня" }).click();
+
+  // The sidebar offers no volume: it is set in the call only.
+  await row(petr.page, voice.name, "Аня").click({ button: "right" });
+  await expect(petr.page.getByRole("menu")).toBeVisible();
+  await expect(slider).toHaveCount(0);
+  await petr.page.keyboard.press("Escape");
+
+  // Down to silence, and it is kept on this device across a reload.
+  await stage.getByRole("listitem", { name: "Аня" }).click({ button: "right" });
+  await slider.press("Home");
+  await expect(slider).toHaveValue("0");
+  await petr.page.keyboard.press("Escape");
+  await enter(petr.page, guildId, voice);
+  await petr.page
+    .getByRole("region", { name: `Голосовой канал ${voice.name}` })
+    .getByRole("listitem", { name: "Аня" })
+    .click({ button: "right" });
+  await expect(petr.page.getByRole("slider", { name: "Громкость пользователя" })).toHaveValue("0");
+  expect(errors).toEqual([]);
+});

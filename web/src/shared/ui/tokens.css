@@ -177,7 +177,7 @@
 :root {
   /* Layout, Discord's proportions. */
   --rail-width: 72px;
-  --sidebar-width: 272px;
+  --sidebar-width: 300px;
   --members-width: 240px;
   --header-height: 48px;
   --user-panel-height: 52px;

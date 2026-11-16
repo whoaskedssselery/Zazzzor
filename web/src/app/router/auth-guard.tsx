@@ -3,7 +3,7 @@ import { Outlet, type ParsedLocation, redirect } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { loadSession, onUnauthorized, safeNext, useSession } from "@/entities/session";
 import { NotificationPrompt, useMentionAlerts, useUnreadBadge } from "@/features/notify";
-import { CallNotices } from "@/features/voice-call";
+import { CallNotices, useCallSounds } from "@/features/voice-call";
 import { ConnectionBanner } from "@/widgets/connection-banner";
 import { IncomingCalls } from "@/widgets/incoming-call";
 import { useGatewaySession } from "./gateway-session";
@@ -64,6 +64,7 @@ export const AuthGuard = () => {
   useGatewaySession(authenticated);
   useMentionAlerts();
   useUnreadBadge();
+  useCallSounds();
   if (!authenticated) return null;
   return (
     <div className="flex h-dvh flex-col">

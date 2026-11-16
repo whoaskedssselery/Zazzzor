@@ -1,4 +1,4 @@
-import { DisconnectReason, LocalAudioTrack, RoomEvent, Track } from "livekit-client";
+import { DisconnectReason, LocalAudioTrack, RemoteAudioTrack, RoomEvent, Track } from "livekit-client";
 import type { Mock } from "vitest";
 import { createLiveKitTransport } from "./livekit";
 
@@ -411,5 +411,102 @@ describe("the camera", () => {
     Object.defineProperties(el, { clientWidth: { value: 320 }, clientHeight: { value: 180 } });
     t.attachCamera("200", el);
     expect(pub.setVideoDimensions).toHaveBeenCalledWith({ width: 320, height: 180 });
+  });
+});
+
+describe("volumes", () => {
+  /** A remote sound track as livekit.ts tells one: by its class. */
+  const sound = () => {
+    const track = Object.create(RemoteAudioTrack.prototype) as RemoteAudioTrack;
+    const spies = { setVolume: vi.fn(), setAudioContext: vi.fn() };
+    Object.assign(track, { kind: Track.Kind.Audio, attach: () => document.createElement("audio"), ...spies });
+    return { track, ...spies };
+  };
+
+  /** Puts `userId` in the room with a subscribed voice or screen share sound. */
+  const heard = (userId: string, source: Track.Source) => {
+    const s = sound();
+    const pub = { source, audioTrack: s.track };
+    const participant = { identity: userId, audioTrackPublications: new Map([[source, pub]]) };
+    (room() as unknown as { remoteParticipants: Map<string, unknown> }).remoteParticipants.set(userId, participant);
+    room().emit(RoomEvent.TrackSubscribed, s.track, pub, participant);
+    return s;
+  };
+
+  /** A browser audio context, as far as the transport touches one. */
+  const context = { state: "running", close: vi.fn(() => Promise.resolve()) };
+  beforeEach(() => {
+    context.close.mockClear();
+    vi.stubGlobal(
+      "AudioContext",
+      vi.fn(function AudioContext() {
+        return context;
+      }),
+    );
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("plays everyone as sent until told otherwise, through the elements alone", async () => {
+    await connected();
+    const voice = heard("7", Track.Source.Microphone);
+    expect(voice.setVolume).toHaveBeenLastCalledWith(1);
+    expect(voice.setAudioContext).toHaveBeenLastCalledWith(undefined);
+    expect(AudioContext).not.toHaveBeenCalled();
+  });
+
+  it("turns one person down or off without touching the others or their screen share", async () => {
+    const t = await connected();
+    const voice = heard("7", Track.Source.Microphone);
+    const other = heard("8", Track.Source.Microphone);
+    t.setVolume("7", "voice", 0.3);
+    expect(voice.setVolume).toHaveBeenLastCalledWith(0.3);
+    expect(other.setVolume).toHaveBeenCalledTimes(1);
+    const share = heard("7", Track.Source.ScreenShareAudio);
+    expect(share.setVolume).toHaveBeenLastCalledWith(1);
+  });
+
+  it("turns a person up past 100 % through a gain node, and back through the elements", async () => {
+    const t = await connected();
+    const voice = heard("7", Track.Source.Microphone);
+    t.setVolume("7", "voice", 2);
+    expect(voice.setAudioContext).toHaveBeenLastCalledWith(context);
+    expect(voice.setVolume).toHaveBeenLastCalledWith(2);
+    t.setVolume("7", "voice", 0.8);
+    // The volume before the elements take the sound back: they cannot be set above 1.
+    expect(voice.setVolume).toHaveBeenLastCalledWith(0.8);
+    expect(voice.setAudioContext).toHaveBeenLastCalledWith(undefined);
+    expect(voice.setVolume.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      voice.setAudioContext.mock.invocationCallOrder.at(-1) ?? 0,
+    );
+  });
+
+  it("keeps a volume for someone who joins later, and a screen share's apart from the voice's", async () => {
+    const t = await connected();
+    t.setVolume("7", "stream", 1.5);
+    const voice = heard("7", Track.Source.Microphone);
+    const share = heard("7", Track.Source.ScreenShareAudio);
+    expect(voice.setVolume).toHaveBeenLastCalledWith(1);
+    expect(share.setVolume).toHaveBeenLastCalledWith(1.5);
+  });
+
+  it("silences everyone while deafened and brings each volume back after", async () => {
+    const t = await connected();
+    t.setVolume("7", "voice", 1.5);
+    const voice = heard("7", Track.Source.Microphone);
+    t.setListening(false);
+    expect(voice.setVolume).toHaveBeenLastCalledWith(0);
+    expect(voice.setAudioContext).toHaveBeenLastCalledWith(undefined);
+    t.setListening(true);
+    expect(voice.setVolume).toHaveBeenLastCalledWith(1.5);
+  });
+
+  it("closes the audio context with the call", async () => {
+    const t = await connected();
+    heard("7", Track.Source.Microphone);
+    t.setVolume("7", "voice", 2);
+    await t.disconnect();
+    expect(context.close).toHaveBeenCalledTimes(1);
   });
 });

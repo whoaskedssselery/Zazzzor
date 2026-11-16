@@ -1,5 +1,6 @@
 import { Maximize, Monitor } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
+import { VolumeSlider } from "@/entities/call";
 import { attachOwnStream, attachStream, stopScreenShare, watchStream } from "@/features/voice-call";
 import { Badge, Button, cn } from "@/shared/ui";
 
@@ -133,6 +134,7 @@ export const StreamTile = ({
               compact && "hidden",
             )}
           >
+            <VolumeSlider inline kind="stream" userId={userId} label="Громкость трансляции" />
             <Button
               size="sm"
               variant="secondary"
