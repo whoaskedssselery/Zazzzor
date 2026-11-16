@@ -28,6 +28,7 @@ import {
 import { browserNoiseSuppression, createNoiseProcessor } from "./noise";
 import { noiseEngines } from "./noise-engines";
 import { steerScreenQuality } from "./screen-quality";
+import { createSpeakingDetector, type SpeakingDetector } from "./speaking";
 
 type Listeners = { [K in keyof CallTransportEvents]: Set<CallTransportEvents[K]> };
 
@@ -279,6 +280,13 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
     };
   };
 
+  /** Who speaks, measured here (lib/speaking); null without Web Audio, when the server tells instead. */
+  let detector: SpeakingDetector | null = null;
+  const stopDetector = () => {
+    detector?.stop();
+    detector = null;
+  };
+
   const wire = (r: Room) => {
     r.on(RoomEvent.ConnectionStateChanged, (state) => {
       const link = LINK[state];
@@ -295,6 +303,7 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
           sounds.remove();
           watching.clear();
           dropBoost();
+          stopDetector();
         }
         emit("link", "disconnected", leaving ? "left" : endCause(reason));
       })
@@ -310,18 +319,23 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
       .on(RoomEvent.TrackUnpublished, () => {
         announce(r);
       })
-      .on(RoomEvent.ParticipantDisconnected, () => {
+      .on(RoomEvent.ParticipantDisconnected, (participant) => {
+        detector?.unwatch(participant.identity);
         announce(r);
       })
       .on(RoomEvent.TrackSubscribed, (track, pub, participant) => {
         playAudio(track, pub, participant);
+        if (pub.source === Track.Source.Microphone) detector?.watch(participant.identity, track.mediaStreamTrack);
         if (pub.source === Track.Source.ScreenShare) showScreen(participant);
         if (pub.source === Track.Source.Camera) showCamera(participant);
       })
-      .on(RoomEvent.TrackUnsubscribed, (track) => {
+      .on(RoomEvent.TrackUnsubscribed, (track, pub, participant) => {
+        if (pub.source === Track.Source.Microphone) detector?.unwatch(participant.identity);
         for (const el of track.detach()) if (sounds.contains(el)) el.remove();
       })
       .on(RoomEvent.ActiveSpeakersChanged, (speakers: Participant[]) => {
+        // The server's answer comes late (see lib/speaking): only without our own measure.
+        if (detector !== null) return;
         emit(
           "speaking",
           speakers.map((p) => p.identity),
@@ -330,6 +344,7 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
       .on(RoomEvent.LocalTrackPublished, (pub: LocalTrackPublication) => {
         if (pub.source === Track.Source.Microphone && pub.track instanceof LocalAudioTrack) {
           void cleanMicrophone(pub.track);
+          detector?.watch(r.localParticipant.identity, pub.track.mediaStreamTrack);
         }
         // Also after a reconnect, which publishes the share again on a new sender.
         const sender = pub.track instanceof LocalVideoTrack ? pub.track.sender : undefined;
@@ -339,6 +354,7 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
         }
       })
       .on(RoomEvent.LocalTrackUnpublished, (pub: LocalTrackPublication) => {
+        if (pub.source === Track.Source.Microphone) detector?.unwatch(r.localParticipant.identity);
         if (pub.source === Track.Source.Camera && camera !== null) {
           const track = camera;
           // As for a screen: a reconnect publishes it again, the server taking it down does not.
@@ -421,6 +437,10 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
       const r = new Room(roomOptions());
       room = r;
       document.body.append(sounds);
+      stopDetector();
+      detector = createSpeakingDetector((ids) => {
+        if (room === r) emit("speaking", ids);
+      });
       wire(r);
       await r.connect(url, token, connectOptions());
       for (const participant of r.remoteParticipants.values()) {
@@ -444,6 +464,7 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
       watching.clear();
       dropCameraViews();
       dropBoost();
+      stopDetector();
     },
 
     async setMicrophone(on) {
