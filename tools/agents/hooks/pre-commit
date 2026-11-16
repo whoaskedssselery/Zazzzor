@@ -6,8 +6,9 @@ set -uo pipefail
 staged="$(git diff --cached --name-only --diff-filter=ACMR)"
 bad=0
 
-# Agent and editor state stays local; of .claude/ only workspace.yaml is shared.
-private_paths='^(docs/|\.codex/|\.superpowers/|\.codegraph/|\.impeccable/|\.agents/|\.idea/|\.vscode/)|^\.claude/(?!workspace\.yaml$)|(^|/)\.check\.log$'
+# Agent and editor state stays local (the shared files: tools/agents/README.md).
+private_paths='^(docs/|\.superpowers/|\.codegraph/|\.agents/|\.idea/|\.vscode/)|^\.claude/(?!workspace\.yaml$|hide\.yaml$|launch\.json$|agents/)|^\.codex/(?!agents/|hooks\.json$)|^\.impeccable/(?!config\.json$)|(^|/)\.check\.log$'
+
 if grep -P "$private_paths" <<<"$staged"; then
   echo "pre-commit: ^ these paths must never be committed" >&2
   bad=1

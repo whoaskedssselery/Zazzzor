@@ -69,9 +69,10 @@ ci_value() { grep -E "^\s+$1:" "$ci" | head -1 | sed -E 's/.*:\s*//'; }
 gomodcache="$(go env GOMODCACHE)"
 
 # --- hygiene: files that must never be committed ---------------------------
-# Agent and editor state stays local; of .claude/ only the skill manifest,
-# workspace.yaml, is shared (tools/agents/README.md).
-private_paths='^(docs/|\.codex/|\.superpowers/|\.codegraph/|\.impeccable/|\.agents/|\.idea/|\.vscode/)|^\.claude/(?!workspace\.yaml$)'
+# Agent and editor state stays local; the shared harness files are listed
+# in .gitignore and tools/agents/README.md (skills are downloaded, never
+# committed).
+private_paths='^(docs/|\.superpowers/|\.codegraph/|\.agents/|\.idea/|\.vscode/)|^\.claude/(?!workspace\.yaml$|hide\.yaml$|launch\.json$|agents/)|^\.codex/(?!agents/|hooks\.json$)|^\.impeccable/(?!config\.json$)'
 hygiene() {
   local bad=0
   if git diff --name-only "$base"...HEAD | grep -P "$private_paths"; then
