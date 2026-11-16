@@ -121,6 +121,13 @@ describe("the speaking detector", () => {
     expect(closed).toHaveBeenCalledTimes(1);
   });
 
+  it("is live only while its audio context runs, and tries to resume a suspended one", () => {
+    const d = createSpeakingDetector(() => {});
+    expect(d?.live()).toBe(false);
+    d?.watch("7", track("a"));
+    expect(d?.live()).toBe(true);
+  });
+
   it("is not made without Web Audio, so the server's speakers are used", () => {
     vi.stubGlobal("AudioContext", undefined);
     expect(createSpeakingDetector(() => {})).toBeNull();

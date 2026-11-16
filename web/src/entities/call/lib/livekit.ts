@@ -334,8 +334,8 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
         for (const el of track.detach()) if (sounds.contains(el)) el.remove();
       })
       .on(RoomEvent.ActiveSpeakersChanged, (speakers: Participant[]) => {
-        // The server's answer comes late (see lib/speaking): only without our own measure.
-        if (detector !== null) return;
+        // The server's answer comes late (see lib/speaking): only while our own measure does not run.
+        if (detector?.live()) return;
         emit(
           "speaking",
           speakers.map((p) => p.identity),

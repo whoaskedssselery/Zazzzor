@@ -20,6 +20,12 @@ export interface SpeakingDetector {
   watch(userId: string, track: MediaStreamTrack): void;
   /** Stops measuring `userId`. */
   unwatch(userId: string): void;
+  /**
+   * Whether it measures now: its audio context runs. A browser may keep a
+   * context suspended (Firefox's autoplay rules); until it runs the server's
+   * active speakers are used.
+   */
+  live(): boolean;
   /** Stops everything and lets the audio context go. */
   stop(): void;
 }
@@ -64,6 +70,7 @@ export const createSpeakingDetector = (
   };
 
   const tick = () => {
+    if (ctx?.state === "suspended") void ctx.resume().catch(() => undefined);
     const t = now();
     const next: string[] = [];
     for (const [id, w] of watched) {
@@ -118,6 +125,10 @@ export const createSpeakingDetector = (
       release(held);
       watched.delete(userId);
       tick();
+    },
+
+    live() {
+      return ctx?.state === "running";
     },
 
     stop() {
