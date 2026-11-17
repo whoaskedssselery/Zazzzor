@@ -21,27 +21,38 @@ import (
 // Smoke check: `zazzzor smoke <base_url>` walks a running API through the
 // main path a client takes (register, create a server, send and read a
 // message, open the gateway) and cleans up the server it created. It talks
-// to the API over HTTP only, so it runs inside the distroless image
-// (deploy/scripts/smoke-api.sh) and needs no database access. Messages are
+// to the API without database access and runs inside the distroless image
+// (deploy/scripts/smoke-api.sh). --voice also connects to LiveKit. Messages are
 // in Russian: they are read by whoever runs the server.
 
 const (
 	smokeRequestTimeout = 15 * time.Second
 	smokeGatewayTimeout = 10 * time.Second
+	smokeVoiceTimeout   = 15 * time.Second
 	smokeReadLimit      = 1 << 20
-	smokeUsage          = "использование: zazzzor smoke <base_url>, например zazzzor smoke http://127.0.0.1:8080"
+	smokeUsage          = "использование: zazzzor smoke [--voice] <base_url>, например zazzzor smoke --voice https://zazzzor.example\n" +
+		"--voice проверяет сигнализацию, токен и вебхуки LiveKit. Качество звука, RTP через NAT и демонстрацию экрана проверяйте отдельно."
 )
 
 type smokeOptions struct {
 	// GatewayTimeout bounds the wait for HELLO and READY; zero means
 	// smokeGatewayTimeout.
 	GatewayTimeout time.Duration
+	// Voice also checks LiveKit admission and departure through the gateway.
+	Voice bool
+	// VoiceTimeout bounds each connection or voice-state wait; zero takes the default.
+	VoiceTimeout time.Duration
 }
 
-// smokeCommand parses `smoke <base_url>`. The Origin sent with writes and the
+// smokeCommand parses `smoke [--voice] <base_url>`. The Origin sent with writes and the
 // WebSocket upgrade is the first of ZAZZZOR_ALLOWED_ORIGINS, so inside the
 // api container it matches the server's own setting.
 func smokeCommand(args []string, env func(string) string, stdout, stderr io.Writer) int {
+	opts := smokeOptions{}
+	if len(args) > 0 && args[0] == "--voice" {
+		opts.Voice = true
+		args = args[1:]
+	}
 	if len(args) != 1 {
 		_, _ = fmt.Fprintln(stderr, smokeUsage)
 		return 2
@@ -58,7 +69,7 @@ func smokeCommand(args []string, env func(string) string, stdout, stderr io.Writ
 		_, _ = fmt.Fprintln(stderr, "не задан ZAZZZOR_ALLOWED_ORIGINS: из него берётся заголовок Origin для проверки")
 		return 2
 	}
-	return runSmoke(context.Background(), base, origin, smokeOptions{}, stdout, stderr)
+	return runSmoke(context.Background(), base, origin, opts, stdout, stderr)
 }
 
 // runSmoke runs every step against base and prints one line per step to
@@ -66,6 +77,9 @@ func smokeCommand(args []string, env func(string) string, stdout, stderr io.Writ
 func runSmoke(ctx context.Context, base, origin string, opts smokeOptions, stdout, stderr io.Writer) int {
 	if opts.GatewayTimeout <= 0 {
 		opts.GatewayTimeout = smokeGatewayTimeout
+	}
+	if opts.VoiceTimeout <= 0 {
+		opts.VoiceTimeout = smokeVoiceTimeout
 	}
 	s := &smokeSession{
 		base:   base,
@@ -109,7 +123,11 @@ func (s *smokeSession) run(ctx context.Context, opts smokeOptions) (err error) {
 	if err = s.step("регистрация", s.register(ctx, "smoke_"+randomHex(4), randomHex(16))); err != nil {
 		return err
 	}
-	defer func() { _ = s.do(ctx, http.MethodPost, "/api/v1/auth/logout", nil, http.StatusNoContent, nil) }()
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), smokeRequestTimeout)
+		defer cancel()
+		_ = s.do(cleanup, http.MethodPost, "/api/v1/auth/logout", nil, http.StatusNoContent, nil)
+	}()
 
 	var guild struct{ ID string }
 	if err = s.step("создание сервера", s.do(ctx, http.MethodPost, "/api/v1/guilds",
@@ -118,7 +136,9 @@ func (s *smokeSession) run(ctx context.Context, opts smokeOptions) (err error) {
 	}
 	// The server is deleted whatever happens next.
 	defer func() {
-		derr := s.do(ctx, http.MethodDelete, "/api/v1/guilds/"+guild.ID, nil, http.StatusNoContent, nil)
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), smokeRequestTimeout)
+		defer cancel()
+		derr := s.do(cleanup, http.MethodDelete, "/api/v1/guilds/"+guild.ID, nil, http.StatusNoContent, nil)
 		switch {
 		case err == nil:
 			err = s.step("удаление сервера", derr)
@@ -139,7 +159,13 @@ func (s *smokeSession) run(ctx context.Context, opts smokeOptions) (err error) {
 	if err = s.step("чтение истории", s.findMessage(ctx, channelID, msg.ID, "")); err != nil {
 		return err
 	}
-	return s.step("WebSocket", s.gateway(ctx, opts.GatewayTimeout))
+	var follow func(context.Context, *websocket.Conn, json.RawMessage) error
+	if opts.Voice {
+		follow = func(ctx context.Context, c *websocket.Conn, ready json.RawMessage) error {
+			return s.step("голос", s.voice(ctx, c, ready, guild.ID, opts.VoiceTimeout))
+		}
+	}
+	return s.step("WebSocket", s.gateway(ctx, opts.GatewayTimeout, follow))
 }
 
 // register creates the account user and keeps its session.
@@ -214,8 +240,10 @@ func (s *smokeSession) findMessage(ctx context.Context, channelID, messageID, at
 }
 
 // gateway opens /api/v1/gateway with the session cookie and expects HELLO
-// (op 10) and then READY (op 0, t READY) within timeout.
-func (s *smokeSession) gateway(ctx context.Context, timeout time.Duration) error {
+// (op 10) and then READY (op 0, t READY) within timeout. When follow is set,
+// it runs on the ready connection, kept alive until the check finishes.
+func (s *smokeSession) gateway(parent context.Context, timeout time.Duration, follow func(context.Context, *websocket.Conn, json.RawMessage) error) error {
+	ctx := parent
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	h := http.Header{}
@@ -238,8 +266,9 @@ func (s *smokeSession) gateway(ctx context.Context, timeout time.Duration) error
 	c.SetReadLimit(smokeReadLimit)
 
 	type frame struct {
-		Op int    `json:"op"`
-		T  string `json:"t"`
+		Op int             `json:"op"`
+		T  string          `json:"t"`
+		D  json.RawMessage `json:"d"`
 	}
 	read := func(what string) (frame, error) {
 		var f frame
@@ -262,12 +291,46 @@ func (s *smokeSession) gateway(ctx context.Context, timeout time.Duration) error
 	if f.Op != 10 {
 		return fmt.Errorf("первый кадр op %d, ожидался HELLO (op 10)", f.Op)
 	}
+	var hello struct {
+		HeartbeatIntervalMS int64 `json:"heartbeat_interval_ms"`
+	}
+	_ = json.Unmarshal(f.D, &hello)
 	f, err = read("READY")
 	if err != nil {
 		return err
 	}
 	if f.Op != 0 || f.T != "READY" {
 		return fmt.Errorf("после HELLO пришёл кадр op %d t %q, ожидался READY", f.Op, f.T)
+	}
+	if follow != nil {
+		if hello.HeartbeatIntervalMS <= 0 || hello.HeartbeatIntervalMS > int64(time.Hour/time.Millisecond) {
+			return errors.New("HELLO не содержит допустимый интервал heartbeat")
+		}
+		alive, stop := context.WithCancel(parent)
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			tick := time.NewTicker(time.Duration(hello.HeartbeatIntervalMS) * time.Millisecond)
+			defer tick.Stop()
+			for {
+				select {
+				case <-alive.Done():
+					return
+				case <-tick.C:
+					if err := c.Write(alive, websocket.MessageText, []byte(`{"op":1,"d":null}`)); err != nil {
+						_ = c.CloseNow()
+						return
+					}
+				}
+			}
+		}()
+		defer func() {
+			stop()
+			<-done
+		}()
+		if err := follow(parent, c, f.D); err != nil {
+			return err
+		}
 	}
 	if err := c.Close(websocket.StatusNormalClosure, "smoke done"); err != nil {
 		return fmt.Errorf("закрытие соединения: %w", err)
