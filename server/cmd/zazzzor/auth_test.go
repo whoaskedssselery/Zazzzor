@@ -14,6 +14,7 @@ import (
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/app"
 	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
+	"github.com/whoaskedssselery/zazzzor/server/internal/config"
 	"github.com/whoaskedssselery/zazzzor/server/internal/events"
 	"github.com/whoaskedssselery/zazzzor/server/internal/gateway"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
@@ -46,12 +47,15 @@ func newAuthRouter(t *testing.T) (http.Handler, *lockedBuffer) {
 	return newModulesRouter(t, httpx.DeadlineOptions{})
 }
 
-func newModulesRouter(t *testing.T, deadlines httpx.DeadlineOptions) (http.Handler, *lockedBuffer) {
+func newModulesRouter(t *testing.T, deadlines httpx.DeadlineOptions, configure ...func(*config.Config)) (http.Handler, *lockedBuffer) {
 	t.Helper()
 	cfg := testConfig()
 	cfg.AllowedOrigins = []string{testkit.DefaultOrigin}
 	cfg.AdminUsernames = []string{"boss"}
 	cfg.DataDir = t.TempDir()
+	for _, apply := range configure {
+		apply(&cfg)
+	}
 	logs := &lockedBuffer{}
 	reg := prometheus.NewRegistry()
 	bus := events.NewBus(reg)

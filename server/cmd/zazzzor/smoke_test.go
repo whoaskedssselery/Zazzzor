@@ -135,7 +135,7 @@ func (f *fakeAPI) serveGateway(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if f.gateway == gatewayReady {
-		if err = c.Write(ctx, websocket.MessageText, []byte(`{"op":0,"t":"READY","s":1,"d":{"guilds":[]}}`)); err != nil {
+		if err = c.Write(ctx, websocket.MessageText, []byte(`{"op":0,"t":"READY","s":1,"d":{"user":{"id":"1"},"guilds":[]}}`)); err != nil {
 			return
 		}
 	}
