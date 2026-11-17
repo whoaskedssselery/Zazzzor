@@ -159,13 +159,20 @@ func (s *smokeSession) run(ctx context.Context, opts smokeOptions) (err error) {
 	if err = s.step("чтение истории", s.findMessage(ctx, channelID, msg.ID, "")); err != nil {
 		return err
 	}
-	var follow func(context.Context, *websocket.Conn, json.RawMessage) error
-	if opts.Voice {
-		follow = func(ctx context.Context, c *websocket.Conn, ready json.RawMessage) error {
-			return s.step("голос", s.voice(ctx, c, ready, guild.ID, opts.VoiceTimeout))
-		}
+	if !opts.Voice {
+		return s.step("WebSocket", s.gateway(ctx, opts.GatewayTimeout, nil))
 	}
-	return s.step("WebSocket", s.gateway(ctx, opts.GatewayTimeout, follow))
+	// The voice step runs on the gateway connection once READY arrives, so
+	// the WebSocket step is reported passed at that point, before it; a
+	// failure is then named by the step it happened in, not by both.
+	err = s.gateway(ctx, opts.GatewayTimeout, func(ctx context.Context, c *websocket.Conn, ready json.RawMessage) error {
+		_ = s.step("WebSocket", nil)
+		return s.step("голос", s.voice(ctx, c, ready, guild.ID, opts.VoiceTimeout))
+	})
+	if _, named := errors.AsType[*stepError](err); err == nil || named {
+		return err
+	}
+	return s.step("WebSocket", err)
 }
 
 // register creates the account user and keeps its session.

@@ -131,6 +131,62 @@ func TestSmokeVoiceStateFiltersEvents(t *testing.T) {
 	}
 }
 
+func TestSmokeVoiceStateSkipsFramesOfOtherShapes(t *testing.T) {
+	frames := []string{
+		`{"op":0,"t":"SOME_LIST","d":[1,2,3]}`,
+		`{"op":0,"t":"VOICE_STATE_UPDATE","d":{"guild_id":"100","channel_id":"103","user_id":"1","left":"no"}}`,
+		`{"op":11,"d":null}`,
+		`{"op":0,"t":"VOICE_STATE_UPDATE","d":{"guild_id":"100","channel_id":"103","user_id":"1","left":false}}`,
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer func() { _ = c.CloseNow() }()
+		for _, f := range frames {
+			if err := c.Write(r.Context(), websocket.MessageText, []byte(f)); err != nil {
+				return
+			}
+		}
+		_, _, _ = c.Read(r.Context())
+	}))
+	defer srv.Close()
+	c, response, err := websocket.Dial(t.Context(), srv.URL, nil)
+	if response != nil && response.Body != nil {
+		_ = response.Body.Close()
+	}
+	if err != nil {
+		t.Fatalf("dial voice gateway: %v", err)
+	}
+	defer func() { _ = c.CloseNow() }()
+	if err := smokeVoiceState(context.Background(), c, "100", "103", "1", false, time.Second); err != nil {
+		t.Errorf("voice state after frames of other shapes = %v, want nil", err)
+	}
+}
+
+func TestSmokeVoiceStepFollowsWebSocketInOutput(t *testing.T) {
+	f := &fakeAPI{t: t}
+	code, out, errOut := runSmokeAgainst(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method + " " + r.URL.Path {
+		case "POST /api/v1/guilds/" + fakeGuild + "/channels":
+			writeJSON(w, http.StatusCreated, map[string]string{"id": "103"})
+		case "POST /api/v1/channels/103/voice":
+			problem(w, http.StatusServiceUnavailable, "voice_unavailable")
+		case "DELETE /api/v1/users/@me/voice":
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			f.ServeHTTP(w, r)
+		}
+	}), smokeOptions{Voice: true})
+	if code != 1 || !strings.Contains(out, "WebSocket: ok") {
+		t.Fatalf("smoke = %d, stdout %q, want 1 with the WebSocket step passed", code, out)
+	}
+	if !strings.Contains(errOut, "шаг «голос»") || strings.Contains(errOut, "шаг «WebSocket»") {
+		t.Errorf("stderr %q, want the failure named by the voice step alone", errOut)
+	}
+}
+
 func TestSmokeUsageExplainsVoiceLimits(t *testing.T) {
 	for _, want := range []string{"--voice", "сигнализац", "вебхук", "NAT", "звук", "экран"} {
 		if !strings.Contains(smokeUsage, want) {

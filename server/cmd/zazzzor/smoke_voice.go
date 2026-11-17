@@ -105,21 +105,27 @@ func smokeVoiceState(parent context.Context, c *websocket.Conn, guildID, channel
 			}
 			return errors.New("шлюз закрылся при ожидании голосового состояния")
 		}
+		// Other events share the connection and may have other shapes: a frame
+		// that is not the awaited voice state is skipped, never an error.
 		var event struct {
 			Op int
 			T  string
-			D  struct {
-				GuildID   string `json:"guild_id"`
-				ChannelID string `json:"channel_id"`
-				UserID    string `json:"user_id"`
-				Left      *bool  `json:"left"`
-			}
+			D  json.RawMessage
 		}
-		if json.Unmarshal(data, &event) != nil {
-			return errors.New("шлюз прислал некорректный кадр голосового состояния")
+		if json.Unmarshal(data, &event) != nil || event.Op != 0 || event.T != "VOICE_STATE_UPDATE" {
+			continue
 		}
-		if event.Op == 0 && event.T == "VOICE_STATE_UPDATE" && event.D.GuildID == guildID &&
-			event.D.ChannelID == channelID && event.D.UserID == userID && event.D.Left != nil && *event.D.Left == left {
+		var state struct {
+			GuildID   string `json:"guild_id"`
+			ChannelID string `json:"channel_id"`
+			UserID    string `json:"user_id"`
+			Left      *bool  `json:"left"`
+		}
+		if json.Unmarshal(event.D, &state) != nil {
+			continue
+		}
+		if state.GuildID == guildID && state.ChannelID == channelID && state.UserID == userID &&
+			state.Left != nil && *state.Left == left {
 			return nil
 		}
 	}
