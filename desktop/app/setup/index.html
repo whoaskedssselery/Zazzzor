@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Zazzzor</title>
+    <link rel="stylesheet" href="setup.css" />
+  </head>
+  <body>
+    <main>
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="9" fill="#3dba86" />
+        <path d="M9 8.5h14v3.3L13.9 20.5H23v3H9v-3.3l9.1-8.7H9z" fill="#0b1a13" />
+      </svg>
+      <h1>Подключение к серверу</h1>
+      <p class="hint">Адрес, по которому Zazzzor открывается в браузере.</p>
+      <form id="form" novalidate>
+        <label for="url">Адрес сервера</label>
+        <input
+          id="url"
+          name="url"
+          type="url"
+          inputmode="url"
+          autocomplete="url"
+          spellcheck="false"
+          placeholder="https://zazzzor.example.org"
+          required
+          aria-describedby="error"
+        />
+        <p id="error" class="error" role="alert"></p>
+        <div class="actions">
+          <button type="button" id="cancel" hidden>Отмена</button>
+          <button type="submit" id="submit">Подключиться</button>
+        </div>
+      </form>
+    </main>
+    <script src="setup.js"></script>
+  </body>
+</html>
