@@ -259,12 +259,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Put the user's Rust toolchain on PATH (self-hosted)
-        run: |
-          $cargo = Join-Path $env:USERPROFILE '.cargo\bin'
-          if (-not (Get-Command cargo -ErrorAction SilentlyContinue) -and (Test-Path $cargo)) {
-            Add-Content -Path $env:GITHUB_PATH -Value $cargo
-          }
+      - uses: ./.github/actions/desktop-rust
       # Every crate under desktop/, each with a build folder of its own: their
       # flags differ (the capture links the C runtime statically), and one
       # shared folder would rebuild everything at each switch.

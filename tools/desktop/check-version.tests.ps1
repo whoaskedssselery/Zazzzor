@@ -24,6 +24,19 @@ try {
         if (!$failed -and $version -ne $case.Cargo) { throw "validated version=$version, want $($case.Cargo)" }
         Write-Output "PASS $($case.Name)"
     }
+    & git -C $fixture init --quiet
+    & git -C $fixture config user.name 'Release Tests'
+    & git -C $fixture config user.email 'release-tests@example.invalid'
+    & git -C $fixture add desktop/app/Cargo.toml desktop/app/tauri.conf.json
+    & git -C $fixture commit --quiet -m 'feat(desktop): create release fixture'
+    & git -C $fixture tag desktop-v0.2.0
+    $version = & $checker -Tag desktop-v0.2.0 -Root $fixture -RequireTag
+    if ($version -ne '0.2.0') { throw 'checked-out release tag rejected' }
+    & git -C $fixture commit --quiet --allow-empty -m 'test: move beyond tag'
+    $failed = $false
+    try { & $checker -Tag desktop-v0.2.0 -Root $fixture -RequireTag | Out-Null } catch { $failed = $true }
+    if (!$failed) { throw 'a different checkout was accepted for release' }
+    Write-Output 'PASS existing tag must identify this checkout'
 } finally {
     $resolved = [IO.Path]::GetFullPath($fixture)
     $temporary = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())

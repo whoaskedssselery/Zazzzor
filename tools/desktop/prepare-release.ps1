@@ -8,7 +8,7 @@ param(
     [string]$Root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 )
 $ErrorActionPreference = 'Stop'
-$version = & (Join-Path $PSScriptRoot 'check-version.ps1') -Tag $Tag -Root $Root
+$version = & (Join-Path $PSScriptRoot 'check-version.ps1') -Tag $Tag -Root $Root -RequireTag
 $installer = Join-Path $BundleDir "Zazzzor_${version}_x64-setup.exe"
 $signature = $installer + '.sig'
 if (!(Test-Path -LiteralPath $installer -PathType Leaf) -or !(Test-Path -LiteralPath $signature -PathType Leaf)) {
@@ -16,15 +16,11 @@ if (!(Test-Path -LiteralPath $installer -PathType Leaf) -or !(Test-Path -Literal
 }
 $signed = [IO.File]::ReadAllText($signature).Trim()
 if (!$signed -or (Get-Item -LiteralPath $installer).Length -eq 0) { throw 'Empty installer or signature.' }
-$commit = & git -C $Root rev-parse --verify "$Tag^{commit}"
-if ($LASTEXITCODE) { throw "Tag $Tag does not exist locally." }
-$headCommit = & git -C $Root rev-parse HEAD
-if ($LASTEXITCODE -or $headCommit -cne $commit) { throw "Checkout must be at tag $Tag before preparing its release." }
-$previous = @(& git -C $Root tag --merged $commit --sort=-version:refname --list 'desktop-v*' |
+$previous = @(& git -C $Root tag --merged HEAD --sort=-version:refname --list 'desktop-v*' |
     Where-Object { $_ -cne $Tag -and $_ -cmatch '\Adesktop-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\z' })
 if ($LASTEXITCODE) { throw 'Cannot enumerate previous desktop tags.' }
-$range = $commit
-if ($previous.Count -gt 0) { $range = "$($previous[0])..$commit" }
+$range = "refs/tags/$Tag"
+if ($previous.Count -gt 0) { $range = "refs/tags/$($previous[0])..refs/tags/$Tag" }
 $notes = @(& git -C $Root log '--format=- %s (%h)' $range -- desktop/) -join "`n"
 if ($LASTEXITCODE) { throw 'Cannot read desktop release history.' }
 if (!$notes) { $notes = "Desktop release $version." }
