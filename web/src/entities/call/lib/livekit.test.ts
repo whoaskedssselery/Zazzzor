@@ -23,6 +23,7 @@ vi.mock("livekit-client", async (original) => {
     readonly remoteParticipants = new Map();
     readonly publications = new Map<string, { source: string; track: unknown }>();
     readonly localParticipant = {
+      identity: "100",
       trackPublications: this.publications,
       publishTrack: vi.fn((track: unknown, opts: { source: string }) => {
         this.publications.set(opts.source, { source: opts.source, track });
@@ -569,6 +570,14 @@ describe("a desktop client's screen share", () => {
     expect(streams).toHaveBeenLastCalledWith(["7"]);
   });
 
+  it("is not one of the others' streams when it is the user's own", async () => {
+    const t = await connected();
+    const streams = vi.fn();
+    t.on("streams", streams);
+    const { video, participant } = desktopShare("100");
+    room().emit(RoomEvent.TrackPublished, video, participant);
+    expect(streams).toHaveBeenLastCalledWith([]);
+  });
   it("is received only while its owner's share is watched", async () => {
     const t = await connected();
     const { video, audio, participant } = desktopShare("7");
