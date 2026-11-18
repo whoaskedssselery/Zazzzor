@@ -1,12 +1,19 @@
 //! What can be shared: the monitors and the windows, each with an ID the
-//! picker hands back.
+//! picker hands back, and a small picture of each from one captured frame.
 
-use anyhow::{Result, anyhow};
+use std::sync::mpsc::{SyncSender, sync_channel};
+use std::time::Duration;
+
+use anyhow::{Context as _, Result, anyhow, bail};
 use serde::Serialize;
+use windows_capture::capture::{Context, GraphicsCaptureApiHandler};
+use windows_capture::frame::Frame;
+use windows_capture::graphics_capture_api::InternalCaptureControl;
 use windows_capture::monitor::Monitor;
+use windows_capture::settings::MinimumUpdateIntervalSettings;
 use windows_capture::window::Window;
 
-use crate::capture::{Target, check};
+use crate::capture::{Target, check, settings, window};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -106,6 +113,94 @@ fn cloaked(w: &Window) -> bool {
     got.is_ok() && cloaked != 0
 }
 
+/// A small picture: RGBA, rows of `width` pixels with no padding.
+pub struct Thumbnail {
+    pub width: u32,
+    pub height: u32,
+    pub rgba: Vec<u8>,
+}
+
+struct Snap {
+    out: SyncSender<Thumbnail>,
+    bounds: (u32, u32),
+}
+
+impl GraphicsCaptureApiHandler for Snap {
+    type Flags = (SyncSender<Thumbnail>, (u32, u32));
+    type Error = anyhow::Error;
+
+    fn new(ctx: Context<Self::Flags>) -> Result<Self, Self::Error> {
+        let (out, bounds) = ctx.flags;
+        Ok(Snap { out, bounds })
+    }
+
+    fn on_frame_arrived(&mut self, frame: &mut Frame, control: InternalCaptureControl) -> Result<(), Self::Error> {
+        let (width, height) = (frame.width(), frame.height());
+        let mut buffer = frame.buffer()?;
+        let pitch = buffer.row_pitch() as usize;
+        let thumb = shrink(buffer.as_raw_buffer(), pitch, width, height, self.bounds);
+        let _ = self.out.try_send(thumb);
+        control.stop();
+        Ok(())
+    }
+}
+
+/// One frame of `target`, shrunk to fit `max_width`×`max_height`. Fails
+/// when no frame comes within a second (a minimised window gives none).
+pub fn thumbnail(target: Target, max_width: u32, max_height: u32) -> Result<Thumbnail> {
+    let (tx, rx) = sync_channel(1);
+    let flags = (tx, (max_width.max(1), max_height.max(1)));
+    let interval = MinimumUpdateIntervalSettings::Default;
+    let control = match target {
+        Target::Monitor(index) => {
+            let monitor = Monitor::from_index(index).with_context(|| format!("sources: no monitor {index}"))?;
+            Snap::start_free_threaded(settings(monitor, interval, flags))
+        }
+        Target::Window(hwnd) => Snap::start_free_threaded(settings(window(hwnd)?, interval, flags)),
+    }
+    .map_err(|e| anyhow!("sources: capture: {e}"))?;
+    let thumb = rx.recv_timeout(Duration::from_secs(1));
+    let _ = control.stop();
+    match thumb {
+        Ok(t) => Ok(t),
+        Err(_) => bail!("sources: no frame of {}", target.id()),
+    }
+}
+
+/// Averages BGRA rows of `pitch` bytes into an RGBA picture that fits
+/// `bounds`, keeping the aspect and never enlarging.
+fn shrink(bgra: &[u8], pitch: usize, width: u32, height: u32, bounds: (u32, u32)) -> Thumbnail {
+    let scale = f64::min(1.0, f64::min(bounds.0 as f64 / width as f64, bounds.1 as f64 / height as f64));
+    let (w, h) = (((width as f64 * scale).round() as u32).max(1), ((height as f64 * scale).round() as u32).max(1));
+    let mut rgba = Vec::with_capacity((w * h * 4) as usize);
+    for y in 0..h {
+        let (y0, y1) = span(y, h, height);
+        for x in 0..w {
+            let (x0, x1) = span(x, w, width);
+            let mut sum = [0u32; 3];
+            for sy in y0..y1 {
+                let row = &bgra[sy as usize * pitch..];
+                for sx in x0..x1 {
+                    let p = &row[sx as usize * 4..][..3];
+                    sum[0] += p[2] as u32;
+                    sum[1] += p[1] as u32;
+                    sum[2] += p[0] as u32;
+                }
+            }
+            let n = (y1 - y0) * (x1 - x0);
+            rgba.extend_from_slice(&[(sum[0] / n) as u8, (sum[1] / n) as u8, (sum[2] / n) as u8, 255]);
+        }
+    }
+    Thumbnail { width: w, height: h, rgba }
+}
+
+/// The source pixels `[from, to)` that destination pixel `i` of `out` covers in `size`.
+fn span(i: u32, out: u32, size: u32) -> (u32, u32) {
+    let from = (i as u64 * size as u64 / out as u64) as u32;
+    let to = (((i + 1) as u64 * size as u64).div_ceil(out as u64) as u32).clamp(from + 1, size);
+    (from, to)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -118,5 +213,28 @@ mod tests {
         for bad in ["screen:0", "screen:x", "window:", "tab:1", "1"] {
             assert!(Target::parse(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn a_picture_shrinks_to_fit_and_turns_rgba() {
+        // 4x2 BGRA with a padded pitch: left half blue, right half red.
+        let pitch = 4 * 4 + 8;
+        let mut bgra = vec![0u8; pitch * 2];
+        for y in 0..2 {
+            for x in 0..4 {
+                let px = if x < 2 { [255, 0, 0, 255] } else { [0, 0, 255, 255] };
+                bgra[y * pitch + x * 4..][..4].copy_from_slice(&px);
+            }
+        }
+        let t = shrink(&bgra, pitch, 4, 2, (2, 2));
+        assert_eq!((t.width, t.height), (2, 1));
+        assert_eq!(t.rgba, [0, 0, 255, 255, 255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn a_small_picture_is_not_enlarged() {
+        let t = shrink(&[1, 2, 3, 255], 4, 1, 1, (320, 180));
+        assert_eq!((t.width, t.height), (1, 1));
+        assert_eq!(t.rgba, [3, 2, 1, 255]);
     }
 }
