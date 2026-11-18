@@ -15,10 +15,9 @@ import (
 
 // grant is what a member with permissions p may do in the room of
 // channelID: subscribe unless deafened, publish the microphone with SPEAK
-// unless muted, and the screen share (video and audio) with STREAM; never
-// data, the camera or
-// their own metadata. Every flag is explicit: LiveKit grants everything
-// when none is set.
+// unless muted, and the screen share (video and audio) and the camera with
+// STREAM; never data or their own metadata. Every flag is explicit: LiveKit
+// grants everything when none is set.
 func grant(channelID snowflake.ID, p permissions.Permission, flags serverFlags) *lkauth.VideoGrant {
 	media := mediaPermissions(p, flags.mute, flags.deaf)
 	g := &lkauth.VideoGrant{RoomJoin: true, Room: channelID.String()}
