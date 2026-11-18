@@ -112,6 +112,8 @@ func (s *Service) joinedScreen(ctx context.Context, channelID snowflake.ID, room
 		return fmt.Errorf("voice: read companion permissions: %w", err)
 	}
 	s.mu.Lock()
+	// Defence in depth: committed removal also replaces the captured
+	// session pointer; invalidations keep this aligned with primary admission.
 	valid = admitted && mask.Has(permissions.Stream) && s.sessions[userID] == captured &&
 		!s.invalidatedLocked(captured.state.GuildID, userID, channelID, start) && s.screenCurrentLocked(captured, room, p)
 	if !valid {
@@ -133,6 +135,7 @@ func (s *Service) joinedScreen(ctx context.Context, channelID snowflake.ID, room
 		s.removeLocked(room.Name, p.Identity, p.SID)
 		return fmt.Errorf("voice: enforce companion permissions: %w", err)
 	}
+	// Defence in depth: the pointer check also covers committed invalidations.
 	if s.sessions[userID] != captured || !s.screenCurrentLocked(captured, room, p) ||
 		s.invalidatedLocked(captured.state.GuildID, userID, channelID, start) {
 		s.removeLocked(room.Name, p.Identity, p.SID)
