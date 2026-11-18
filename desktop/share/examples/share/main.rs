@@ -1,26 +1,18 @@
 //! Shares a Windows monitor or window, with the sound of one application, to
 //! a Zazzzor call: the first piece of the desktop client, on its own.
 //!
-//!   capture-spike list
-//!   capture-spike share --window "Notepad" --server http://localhost:4173 --channel 123 --username me
+//!   cargo run --release --example share -- list
+//!   cargo run --release --example share -- share --window "Notepad" --server http://localhost:4173 --channel 123 --username me
 //!
 //! The password comes from ZAZZZOR_PASSWORD. See README.md.
 
-#[cfg(not(windows))]
-compile_error!("the capture spike is Windows-only: it uses Windows Graphics Capture and Media Foundation");
-
-mod audio;
-mod capture;
-mod encode;
 mod join;
-mod mf;
-mod procs;
-mod quality;
-mod session;
 
 use std::borrow::Cow;
+
 use std::sync::Arc;
 use std::sync::mpsc::sync_channel;
+use zazzzor_share::{audio, capture, mf, procs};
 
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -32,10 +24,10 @@ use livekit::webrtc::audio_source::{AudioSourceOptions, RtcAudioSource};
 use livekit::webrtc::video_source::native::NativeVideoSource;
 use livekit::webrtc::video_source::{RtcVideoSource, VideoResolution};
 
-use crate::capture::{Nv12Frame, Shared, Target};
-use crate::encode::{VideoCounters, encode_hardware, encode_software};
-use crate::quality::Level;
-use crate::session::watch;
+use zazzzor_share::capture::{Nv12Frame, Shared, Target};
+use zazzzor_share::encode::{VideoCounters, encode_hardware, encode_software};
+use zazzzor_share::quality::Level;
+use zazzzor_share::session::watch;
 
 #[derive(Parser)]
 #[command(about = "Share a Windows screen or window, with one app's sound, to a Zazzzor call")]
