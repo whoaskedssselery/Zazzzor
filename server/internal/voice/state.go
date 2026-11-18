@@ -85,6 +85,7 @@ func (s *Service) dropLocked(ctx context.Context, userID snowflake.ID, remove bo
 	if !ok {
 		return
 	}
+	s.removeScreenLocked(ctx, sess)
 	delete(s.sessions, userID)
 	s.touchLocked(userID)
 	s.announceLocked(ctx, sess.state, true)

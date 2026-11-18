@@ -373,6 +373,10 @@ func (s *Service) removeParticipant(ctx context.Context, key removalKey, job *re
 // that room as another participant: removing by identity would then
 // disconnect their new session.
 func (s *Service) rejoinedLocked(key removalKey, job *removal) bool {
+	if userID, ok := screenOwner(key.identity); ok {
+		sess := s.sessions[userID]
+		return job.sid != "" && sess != nil && sess.room == key.room && sess.companion != nil && !job.matchesSID(sess.companion.p.SID)
+	}
 	userID, ok := identityUser(key.identity)
 	if !ok || job.sid == "" {
 		return false

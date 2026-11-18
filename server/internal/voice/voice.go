@@ -220,8 +220,15 @@ type session struct {
 	// prior intent pins the user back to it.
 	join string
 	// screens and cameras are the SIDs of the screen share and camera tracks published.
+	screens   map[string]bool
+	cameras   map[string]bool
+	companion *screenSession
+}
+
+// screenSession belongs to one primary session and never has public presence.
+type screenSession struct {
+	p       Participant
 	screens map[string]bool
-	cameras map[string]bool
 }
 
 // intent is a user's latest join: the channel and the generation its

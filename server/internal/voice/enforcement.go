@@ -165,6 +165,9 @@ func (s *Service) refreshParticipant(ctx context.Context, guildID, userID snowfl
 	}
 	s.mu.Lock()
 	current := s.sessions[userID] == captured && s.refreshes[guildID] == job
+	if current && (lost || !p.Has(permissions.Stream)) {
+		s.removeScreenLocked(ctx, captured)
+	}
 	s.mu.Unlock()
 	if !current {
 		return nil
