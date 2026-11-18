@@ -8,26 +8,12 @@
 
 mod join;
 
-use std::borrow::Cow;
-
-use std::sync::Arc;
-use std::sync::mpsc::sync_channel;
-use zazzzor_share::{audio, capture, mf, procs, sources};
-
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use livekit::options::{AudioEncoding, TrackPublishOptions, VideoCodec, VideoEncoderBackend, VideoEncoding};
 use livekit::prelude::*;
-use livekit::webrtc::audio_frame::AudioFrame;
-use livekit::webrtc::audio_source::native::NativeAudioSource;
-use livekit::webrtc::audio_source::{AudioSourceOptions, RtcAudioSource};
-use livekit::webrtc::video_source::native::NativeVideoSource;
-use livekit::webrtc::video_source::{RtcVideoSource, VideoResolution};
-
-use zazzzor_share::capture::{Nv12Frame, Shared, Target};
-use zazzzor_share::encode::{VideoCounters, encode_hardware, encode_software};
-use zazzzor_share::quality::Level;
-use zazzzor_share::session::watch;
+use zazzzor_share::capture::Target;
+use zazzzor_share::session::{self, Parts, watch};
+use zazzzor_share::{audio, capture, mf, procs, sources};
 
 #[derive(Parser)]
 #[command(about = "Share a Windows screen or window, with one app's sound, to a Zazzzor call")]
@@ -188,95 +174,9 @@ async fn share(args: Share) -> Result<()> {
         }
     });
 
-    let first = Level::P1080.bounds();
-    let resolution = VideoResolution { width: first.0, height: first.1 };
-    let source = match hardware {
-        Some(_) => NativeVideoSource::new_encoded(resolution),
-        None => NativeVideoSource::new(resolution, true),
-    };
-    let track = LocalVideoTrack::create_video_track("screen", RtcVideoSource::Native(source.clone()));
-    room.local_participant()
-        .publish_track(
-            LocalTrack::Video(track.clone()),
-            TrackPublishOptions {
-                source: TrackSource::Screenshare,
-                video_codec: if hardware.is_some() { VideoCodec::H264 } else { VideoCodec::VP8 },
-                video_encoder: if hardware.is_some() {
-                    VideoEncoderBackend::PreEncoded
-                } else {
-                    VideoEncoderBackend::Software
-                },
-                simulcast: false,
-                video_encoding: Some(VideoEncoding {
-                    max_bitrate: args.max_bitrate as u64,
-                    max_framerate: args.fps as f64,
-                }),
-                degradation_preference: Some(
-                    livekit::webrtc::rtp_parameters::DegradationPreference::MaintainResolution,
-                ),
-                ..Default::default()
-            },
-        )
-        .await
-        .context("publish the screen")?;
-
-    let mut loopback = None;
-    let mut audio_track = None;
-    if let Some(scope) = scope {
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<i16>>(50);
-        match audio::start(scope, tx) {
-            Ok(l) => {
-                let options =
-                    AudioSourceOptions { echo_cancellation: false, noise_suppression: false, auto_gain_control: false };
-                let src = NativeAudioSource::new(options, audio::SAMPLE_RATE, audio::CHANNELS, 100);
-                let t = LocalAudioTrack::create_audio_track("screen-audio", RtcAudioSource::Native(src.clone()));
-                room.local_participant()
-                    .publish_track(
-                        LocalTrack::Audio(t.clone()),
-                        TrackPublishOptions {
-                            source: TrackSource::ScreenshareAudio,
-                            dtx: false,
-                            red: false,
-                            audio_encoding: Some(AudioEncoding { max_bitrate: 128_000 }),
-                            ..Default::default()
-                        },
-                    )
-                    .await
-                    .context("publish the screen's sound")?;
-                tokio::spawn(async move {
-                    while let Some(chunk) = rx.recv().await {
-                        let frame = AudioFrame {
-                            data: Cow::Owned(chunk),
-                            sample_rate: audio::SAMPLE_RATE,
-                            num_channels: audio::CHANNELS,
-                            samples_per_channel: audio::CHUNK_FRAMES as u32,
-                        };
-                        if let Err(e) = src.capture_frame(&frame).await {
-                            log::warn!("audio: {e}");
-                        }
-                    }
-                });
-                log::info!("sharing the sound of {scope:?}");
-                loopback = Some(l);
-                audio_track = Some(t);
-            }
-            Err(e) => log::warn!("no sound: {e:#}"),
-        }
-    }
-    let _ = &audio_track;
-
-    let shared = Shared::default();
-    let (frames_tx, frames_rx) = sync_channel::<Nv12Frame>(2);
-    let counters = Arc::new(VideoCounters::default());
-    let video = {
-        let (source, counters, fps, bitrate) = (source.clone(), counters.clone(), args.fps, args.max_bitrate);
-        std::thread::Builder::new().name("video-encode".into()).spawn(move || match hardware {
-            Some(name) => encode_hardware(&name, frames_rx, &source, &counters, fps, bitrate),
-            None => encode_software(frames_rx, &source, &counters),
-        })?
-    };
-    let capture = capture::start(&target, args.fps, frames_tx, shared.clone())?;
-    log::info!("sharing {target:?}; Ctrl+C stops");
+    let Parts { track, shared, counters, capture, video, loopback } =
+        session::publish(&room, &target, scope, args.fps, args.max_bitrate, hardware).await?;
+    log::info!("Ctrl+C stops");
 
     let summary = watch(&track, &shared, &counters, &loopback, args.seconds, gone).await;
     capture.stop();
