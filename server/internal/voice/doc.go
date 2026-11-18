@@ -16,4 +16,7 @@
 //
 // A room is named by its voice channel's ID; rooms with other names (the
 // connectivity test's) are left alone.
+// A publishing-only <user_id>.screen companion is bound to the primary
+// session's room and generation. Its tracks share the owner's self_stream;
+// ending the primary session or losing STREAM also removes the companion.
 package voice

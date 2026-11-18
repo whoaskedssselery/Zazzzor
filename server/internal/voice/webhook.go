@@ -256,6 +256,9 @@ func (s *Service) accountActive(ctx context.Context, userID snowflake.ID) (bool,
 // is of the user's latest join becomes the user's state, replacing one in
 // another channel; any other participant is removed from the room.
 func (s *Service) joined(ctx context.Context, channelID snowflake.ID, room Room, p Participant) error {
+	if _, ok := screenOwner(p.Identity); ok {
+		return s.joinedScreen(ctx, channelID, room, p, nil)
+	}
 	userID, _ := identityUser(p.Identity)
 	unlock, lockErr := s.lockUser(ctx, userID)
 	if lockErr != nil {
@@ -348,6 +351,9 @@ func (s *Service) connectLocked(ctx context.Context, guildID, channelID snowflak
 	if old != nil && old.sid == p.SID {
 		return
 	}
+	if old != nil {
+		s.removeScreenLocked(ctx, old)
+	}
 	st := State{GuildID: guildID, ChannelID: channelID, UserID: userID, JoinedAt: p.JoinedAt,
 		SelfStream: len(p.Screens) > 0, SelfVideo: len(p.Cameras) > 0}
 	flags := s.moderation[memberKey{guildID: guildID, userID: userID}]
@@ -374,6 +380,19 @@ func (s *Service) connectLocked(ctx context.Context, guildID, channelID snowflak
 // left handles participant_left and participant_connection_aborted: the
 // state goes if it is of that participant.
 func (s *Service) left(ctx context.Context, p Participant) {
+	if userID, ok := screenOwner(p.Identity); ok {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if p.SID != "" {
+			s.departed[p.SID] = s.now()
+		}
+		if sess := s.sessions[userID]; sess != nil && sess.companion != nil && sess.companion.p.SID == p.SID {
+			sess.companion = nil
+			s.touchLocked(userID)
+			s.syncStreamLocked(ctx, sess)
+		}
+		return
+	}
 	userID, ok := identityUser(p.Identity)
 	if !ok {
 		return
@@ -393,25 +412,35 @@ func (s *Service) left(ctx context.Context, p Participant) {
 // unpublished; self_stream holds while any is published.
 func (s *Service) screen(ctx context.Context, p Participant, trackSID string, on bool) {
 	userID, ok := identityUser(p.Identity)
+	owner, secondary := screenOwner(p.Identity)
+	if secondary {
+		userID, ok = owner, true
+	}
 	if !ok {
 		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	sess := s.sessions[userID]
-	if sess == nil || sess.sid != p.SID {
+	if sess == nil {
+		return
+	}
+	tracks := sess.screens
+	if secondary {
+		if sess.companion == nil || sess.companion.p.SID != p.SID {
+			return
+		}
+		tracks = sess.companion.screens
+	} else if sess.sid != p.SID {
 		return
 	}
 	if on {
-		sess.screens[trackSID] = true
+		tracks[trackSID] = true
 	} else {
-		delete(sess.screens, trackSID)
+		delete(tracks, trackSID)
 	}
-	if streaming := len(sess.screens) > 0; streaming != sess.state.SelfStream {
-		sess.state.SelfStream = streaming
-		s.touchLocked(userID)
-		s.announceLocked(ctx, sess.state, false)
-	}
+	s.touchLocked(userID)
+	s.syncStreamLocked(ctx, sess)
 }
 
 // camera handles a camera track of p being published (on) or unpublished;
