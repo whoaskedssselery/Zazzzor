@@ -243,3 +243,32 @@ jobs:
           tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" gitleaks
       - name: Scan full history
         run: '"$RUNNER_TEMP/gitleaks" git --redact --no-banner --verbose .'
+
+  desktop:
+    name: Desktop client (Rust, Windows)
+    # The native capture and encoding are Windows-only. The self-hosted
+    # Windows runner keeps the build and the prebuilt libwebrtc between jobs
+    # (CARGO_TARGET_DIR and LK_CUSTOM_WEBRTC in its own .env); GitHub's
+    # runner downloads them each time.
+    runs-on: ${{ vars.CI_WINDOWS_RUNNER || 'windows-latest' }}
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: powershell
+        working-directory: desktop/capture-spike
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Put the user's Rust toolchain on PATH (self-hosted)
+        run: |
+          $cargo = Join-Path $env:USERPROFILE '.cargo\bin'
+          if (-not (Get-Command cargo -ErrorAction SilentlyContinue) -and (Test-Path $cargo)) {
+            Add-Content -Path $env:GITHUB_PATH -Value $cargo
+          }
+      - name: rustfmt
+        run: cargo fmt --check
+      - name: clippy (warnings are errors)
+        run: cargo clippy --release --all-targets -- -D warnings
+      - name: cargo test
+        run: cargo test --release
