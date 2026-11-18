@@ -1,0 +1,80 @@
+name: Desktop release
+
+on:
+  push:
+    tags: ['desktop-v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing desktop-vX.Y.Z tag to rebuild as a draft
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# Native bundling must not race another release through a shared build cache.
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Windows x64 NSIS draft
+    runs-on: ${{ vars.CI_WINDOWS_RUNNER || 'windows-latest' }}
+    timeout-minutes: 40
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: powershell
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate tag, checkout and both desktop versions before building
+        run: |
+          ./tools/desktop/check-version.ps1 -Tag $env:RELEASE_TAG -RequireTag
+          ./tools/desktop/check-version.tests.ps1
+          ./tools/desktop/prepare-release.tests.ps1
+          ./tools/desktop/publish-draft.tests.ps1
+          ./tools/desktop/get-tauri.tests.ps1
+      - uses: ./.github/actions/desktop-rust
+        with:
+          target-subdir: desktop-release/app
+      - name: Format, clippy and tests
+        working-directory: desktop/app
+        run: |
+          cargo fmt --check
+          if ($LASTEXITCODE) { throw 'rustfmt failed' }
+          cargo clippy --locked --release --all-targets -- -D warnings
+          if ($LASTEXITCODE) { throw 'clippy failed' }
+          cargo test --locked --release
+          if ($LASTEXITCODE) { throw 'desktop tests failed' }
+      - name: Build NSIS and sign the updater artifact
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY -or -not $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD) {
+            throw 'Updater signing secrets are not configured.'
+          }
+          Write-Output 'Updater signing secrets are configured.'
+          $cli = ./tools/desktop/get-tauri.ps1
+          Push-Location desktop/app
+          try {
+            & $cli tauri build --ci --locked --target x86_64-pc-windows-msvc --bundles nsis
+            if ($LASTEXITCODE) { throw 'Tauri NSIS build failed' }
+          } finally { Pop-Location }
+      - name: Prepare signed metadata and upload only to a draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $bundles = Join-Path $env:CARGO_TARGET_DIR 'x86_64-pc-windows-msvc\release\bundle\nsis'
+          $output = Join-Path $env:RUNNER_TEMP "desktop-release-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $metadata = ./tools/desktop/prepare-release.ps1 -Tag $env:RELEASE_TAG -BundleDir $bundles -OutputDir $output
+          ./tools/desktop/publish-draft.ps1 -Tag $env:RELEASE_TAG -Metadata $metadata

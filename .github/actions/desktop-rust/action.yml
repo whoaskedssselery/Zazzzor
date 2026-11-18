@@ -1,0 +1,34 @@
+name: Prepare desktop Rust
+description: Reuse the Windows Rust toolchain and keep native builds outside the checkout
+inputs:
+  target-subdir:
+    description: Optional separate build namespace under the runner's target directory
+    required: false
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: Rust PATH and external build directories
+      shell: powershell
+      env:
+        TARGET_SUBDIR: ${{ inputs.target-subdir }}
+      run: |
+        $cargo = Join-Path $env:USERPROFILE '.cargo\bin'
+        if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
+          if (-not (Test-Path (Join-Path $cargo 'cargo.exe'))) { throw 'Install the stable MSVC Rust toolchain first.' }
+          [IO.File]::AppendAllText($env:GITHUB_PATH, $cargo + [Environment]::NewLine)
+        }
+        $target = $env:CARGO_TARGET_DIR
+        if (-not $target) { $target = Join-Path $env:USERPROFILE 'zz-build\desktop' }
+        if ($env:TARGET_SUBDIR) { $target = Join-Path $target $env:TARGET_SUBDIR }
+        $target = [IO.Path]::GetFullPath($target)
+        $workspace = [IO.Path]::GetFullPath($env:GITHUB_WORKSPACE).TrimEnd('\') + '\'
+        if (($target.TrimEnd('\') + '\').StartsWith($workspace, [StringComparison]::OrdinalIgnoreCase)) {
+          throw 'CARGO_TARGET_DIR must be outside the checkout: repository binaries can inherit sandbox restrictions.'
+        }
+        $temporary = Join-Path $env:USERPROFILE 'zz-build\tmp'
+        [IO.Directory]::CreateDirectory($target) | Out-Null
+        [IO.Directory]::CreateDirectory($temporary) | Out-Null
+        foreach ($entry in @("CARGO_TARGET_DIR=$target", "TEMP=$temporary", "TMP=$temporary")) {
+          [IO.File]::AppendAllText($env:GITHUB_ENV, $entry + [Environment]::NewLine)
+        }
