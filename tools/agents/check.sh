@@ -225,6 +225,32 @@ else
   record "deploy" SKIP
 fi
 
+# --- desktop (Rust) --------------------------------------------------------------
+# Each Cargo crate under desktop/, as CI's desktop job checks it. Its native
+# code builds on Windows only. The MSVC tools of this machine failed with a
+# temp folder under AppData, so the build keeps its own; LK_CUSTOM_WEBRTC,
+# when set, saves downloading libwebrtc again.
+if has '^desktop/'; then
+  [[ -d "$HOME/.cargo/bin" ]] && PATH="$HOME/.cargo/bin:$PATH"
+  if ! command -v cargo >/dev/null 2>&1; then
+    echo "===== desktop: cargo not found, skipped" >>"$log"
+    record "desktop (no cargo)" SKIP
+  else
+    for manifest in desktop/*/Cargo.toml; do
+      crate="$(dirname "$manifest")"
+      mkdir -p "$crate/target/tmp"
+      tmpdir="$(hostpath "$root/$crate/target/tmp")"
+      run "$crate fmt" bash -c "cd '$crate' && cargo fmt --check"
+      # A shared CARGO_TARGET_DIR gets a folder per crate, as in CI.
+      target="${CARGO_TARGET_DIR:+$CARGO_TARGET_DIR/$(basename "$crate")}"
+      run "$crate clippy" env TMP="$tmpdir" TEMP="$tmpdir" ${target:+CARGO_TARGET_DIR="$target"} bash -c "cd '$crate' && cargo clippy --release --all-targets -- -D warnings"
+      run "$crate test" env TMP="$tmpdir" TEMP="$tmpdir" ${target:+CARGO_TARGET_DIR="$target"} bash -c "cd '$crate' && cargo test --release"
+    done
+  fi
+else
+  record "desktop" SKIP
+fi
+
 # --- shell ---------------------------------------------------------------------
 mapfile -t scripts < <(git diff --name-only --diff-filter=AM "$base"...HEAD -- '*.sh')
 if ((${#scripts[@]})); then
