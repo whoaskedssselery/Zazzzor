@@ -3,7 +3,7 @@ import { Outlet, type ParsedLocation, redirect } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { loadSession, onUnauthorized, safeNext, useSession } from "@/entities/session";
 import { NotificationPrompt, useMentionAlerts, useUnreadBadge } from "@/features/notify";
-import { CallNotices, useCallSounds } from "@/features/voice-call";
+import { CallNotices, NativeSharePicker, useCallSounds } from "@/features/voice-call";
 import { ConnectionBanner } from "@/widgets/connection-banner";
 import { IncomingCalls } from "@/widgets/incoming-call";
 import { useGatewaySession } from "./gateway-session";
@@ -76,6 +76,7 @@ export const AuthGuard = () => {
       {/* Call toasts and incoming calls on every screen behind sign-in, the settings included. */}
       <CallNotices />
       <IncomingCalls />
+      <NativeSharePicker />
     </div>
   );
 };

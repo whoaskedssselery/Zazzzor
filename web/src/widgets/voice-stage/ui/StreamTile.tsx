@@ -1,7 +1,7 @@
-import { Maximize, Monitor } from "lucide-react";
+import { AppWindow, Maximize, Monitor } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { VolumeSlider } from "@/entities/call";
-import { attachOwnStream, attachStream, stopScreenShare, watchStream } from "@/features/voice-call";
+import { attachOwnStream, attachStream, stopScreenShare, useNativeShare, watchStream } from "@/features/voice-call";
 import { Badge, Button, cn } from "@/shared/ui";
 
 /**
@@ -41,8 +41,58 @@ const VideoFrame = ({ video, children }: { video: RefObject<HTMLVideoElement | n
   );
 };
 
+/**
+ * The desktop app's share of the user, which the page has no picture of:
+ * what is shared and how it goes, from the app's figures.
+ */
+const NativeOwnStream = ({ compact }: { compact: boolean }) => {
+  const source = useNativeShare((s) => s.source);
+  const stats = useNativeShare((s) => s.stats);
+  if (!source) return null;
+  const Icon = source.kind === "screen" ? Monitor : AppWindow;
+  const figures = stats
+    ? [
+        `${String(stats.width)}×${String(stats.height)}`,
+        `${String(Math.round(stats.sentFps))} к/с`,
+        `${stats.mbitS.toFixed(1)} Мбит/с`,
+        stats.sound ? "со звуком" : "без звука",
+      ].join(" · ")
+    : "Подключение…";
+  return (
+    <article
+      aria-label="Ваша демонстрация экрана"
+      className="relative flex size-full min-w-0 flex-col items-center justify-center gap-3 rounded-lg bg-panel p-4 text-center"
+    >
+      <Badge variant="live" className="absolute top-2 left-2">
+        В ЭФИРЕ
+      </Badge>
+      <Icon aria-hidden className="size-10 text-fg-muted" strokeWidth={1.5} />
+      <div className="min-w-0 max-w-full">
+        <p className="truncate font-medium">{source.name}</p>
+        {!compact && <p className="mt-1 text-sm text-fg-muted tabular-nums">{figures}</p>}
+      </div>
+      {!compact && (
+        <Button
+          size="sm"
+          variant="danger"
+          onClick={() => {
+            void stopScreenShare();
+          }}
+        >
+          Остановить
+        </Button>
+      )}
+    </article>
+  );
+};
+
 /** The user's own screen share as the others see it: a local preview, so it costs no bandwidth. */
 export const OwnStreamTile = ({ compact = false }: { compact?: boolean }) => {
+  const native = useNativeShare((s) => s.source !== null);
+  return native ? <NativeOwnStream compact={compact} /> : <BrowserOwnStream compact={compact} />;
+};
+
+const BrowserOwnStream = ({ compact }: { compact: boolean }) => {
   const tile = useRef<HTMLElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   useEffect(() => {

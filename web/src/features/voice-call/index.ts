@@ -42,5 +42,6 @@ export {
 export { MODERATOR_DEAFENED, MODERATOR_MUTED, useSelfSwitches } from "./model/switches";
 export { CallNotices } from "./ui/CallNotices";
 export { CameraButton } from "./ui/CameraButton";
+export { NativeSharePicker } from "./ui/NativeSharePicker";
 export { ScreenShareButton } from "./ui/ScreenShareButton";
 export { PTT_FOCUS_HINT, VoiceTab } from "./ui/VoiceTab";
