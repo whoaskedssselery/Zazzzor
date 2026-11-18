@@ -1,6 +1,16 @@
 import { HttpResponse } from "msw";
 
-import { DEFAULT_VOICE_PREFS, getCall, reloadVolumes, resetCall, setVolume, writeVoicePrefs } from "@/entities/call";
+import {
+  DEFAULT_VOICE_PREFS,
+  getCall,
+  type NativeShareStatus,
+  reloadVolumes,
+  resetCall,
+  resetNativeShare,
+  type ShareSource,
+  setVolume,
+  writeVoicePrefs,
+} from "@/entities/call";
 import { applyGatewayDispatch, DEFAULT_EVERYONE, formatMask, PERM, resetGuilds } from "@/entities/guild";
 import { ApiError, errorText } from "@/shared/api";
 import {
@@ -16,6 +26,7 @@ import {
   problem,
   server,
 } from "@/shared/test";
+import { getNativeShare, resetNativeShareState } from "./native-share";
 import {
   applyVoicePrefs,
   CALL_REMOVED,
@@ -31,12 +42,16 @@ import {
   onCallNotice,
   onVoiceMove,
   reconcileVoiceFlags,
+  SHARE_FAILED,
+  SHARE_SOURCE_CLOSED,
   setSelfDeaf,
   setSelfMute,
   setTransportFactory,
+  shareNatively,
   startCamera,
   startScreenShare,
   stopCamera,
+  stopScreenShare,
   switchAudioDevice,
   watchStream,
 } from "./session";
@@ -560,5 +575,164 @@ describe("the camera in the call", () => {
     expect(getCall().camera).toBe(false);
     await leaveVoice();
     expect(getCall().cameras).toEqual([]);
+  });
+});
+
+describe("the desktop app's screen share", () => {
+  const WINDOW: ShareSource = {
+    id: "window:42",
+    kind: "window",
+    name: "Игра",
+    app: "game.exe",
+    width: 1920,
+    height: 1080,
+  };
+
+  let calls: [string, Record<string, unknown> | undefined][];
+  let status: NativeShareStatus;
+  let commands: boolean;
+  let screenTokens: number;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    calls = [];
+    status = { state: "idle" };
+    commands = true;
+    screenTokens = 0;
+    resetNativeShare();
+    Object.assign(globalThis, {
+      __TAURI_INTERNALS__: {
+        invoke: (cmd: string, args?: Record<string, unknown>) => {
+          calls.push([cmd, args]);
+          if (!commands) return Promise.reject(new Error(`Command ${cmd} not allowed by ACL`));
+          return Promise.resolve(cmd === "share_status" ? status : null);
+        },
+      },
+    });
+    server.use(
+      apiHandler("post", "/channels/{channel_id}/voice/screen", ({ params }) => {
+        screenTokens += 1;
+        return HttpResponse.json({ token: `s-${params.channel_id}`, url: SIGNAL });
+      }),
+    );
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(globalThis, "__TAURI_INTERNALS__");
+    resetNativeShareState();
+    vi.useRealTimers();
+  });
+
+  const started = () => calls.filter(([cmd]) => cmd === "share_start").map(([, args]) => args);
+  const poll = () => vi.advanceTimersByTimeAsync(2000);
+
+  it("opens the app's picker instead of the browser's", async () => {
+    await joinVoice(G, LOUNGE);
+    await startScreenShare();
+    expect(getNativeShare().picking).toBe(true);
+    expect(fake.argsOf("startScreenShare")).toHaveLength(0);
+  });
+
+  it("uses the browser's picker in an app without the share's commands", async () => {
+    commands = false;
+    await joinVoice(G, LOUNGE);
+    await startScreenShare();
+    expect(getNativeShare().picking).toBe(false);
+    expect(fake.argsOf("startScreenShare")).toHaveLength(1);
+  });
+
+  it("hands the app a companion token for the call's channel", async () => {
+    await joinVoice(G, LOUNGE);
+    played.length = 0;
+    await shareNatively(WINDOW, true);
+    expect(started()).toEqual([{ url: SIGNAL, token: `s-${LOUNGE}`, id: WINDOW.id, sound: true }]);
+    expect(getCall().sharing).toBe(true);
+    expect(getNativeShare().source).toEqual(WINDOW);
+    expect(played).toEqual(["streamStart"]);
+  });
+
+  it("says why the server refused and starts nothing", async () => {
+    server.use(apiHandler("post", "/channels/{channel_id}/voice/screen", () => problem(409, "not_in_voice")));
+    await joinVoice(G, LOUNGE);
+    await shareNatively(WINDOW, false);
+    expect(started()).toEqual([]);
+    expect(getCall().sharing).toBe(false);
+    expect(notices).toEqual([errorText(new ApiError(409, "not_in_voice"))]);
+  });
+
+  it("says the share failed when the app could not start it", async () => {
+    await joinVoice(G, LOUNGE);
+    commands = false;
+    await shareNatively(WINDOW, false);
+    expect(getCall().sharing).toBe(false);
+    expect(notices).toEqual([SHARE_FAILED]);
+  });
+
+  it("stops the app's share", async () => {
+    await joinVoice(G, LOUNGE);
+    await shareNatively(WINDOW, true);
+    played.length = 0;
+    await stopScreenShare();
+    expect(calls.map(([cmd]) => cmd)).toContain("share_stop");
+    expect(fake.argsOf("stopScreenShare")).toHaveLength(0);
+    expect(getCall().sharing).toBe(false);
+    expect(getNativeShare().source).toBeNull();
+    expect(played).toEqual(["streamStop"]);
+  });
+
+  it("shows the app's figures while it shares", async () => {
+    await joinVoice(G, LOUNGE);
+    await shareNatively(WINDOW, true);
+    const stats = {
+      captureFps: 60,
+      sentFps: 59.8,
+      width: 1920,
+      height: 1080,
+      mbitS: 7.5,
+      estimateMbitS: 12,
+      encoder: "NVENC",
+      sound: true,
+      level: "p1080" as const,
+    };
+    status = { state: "sharing", stats };
+    await poll();
+    expect(getNativeShare().stats).toEqual(stats);
+  });
+
+  it("ends the share when the shared window closes, and says so", async () => {
+    await joinVoice(G, LOUNGE);
+    await shareNatively(WINDOW, true);
+    played.length = 0;
+    status = { state: "ended", end: "sourceClosed" };
+    await poll();
+    expect(getCall().sharing).toBe(false);
+    expect(played).toEqual(["streamStop"]);
+    expect(notices).toEqual([SHARE_SOURCE_CLOSED]);
+  });
+
+  it("shares again, quietly, when the server drops the companion while the call goes on", async () => {
+    await joinVoice(G, LOUNGE);
+    await shareNatively(WINDOW, true);
+    played.length = 0;
+    status = { state: "ended", end: "disconnected" };
+    await poll();
+    await vi.waitFor(() => {
+      expect(started()).toHaveLength(2);
+    });
+    expect(screenTokens).toBe(2);
+    expect(getCall().sharing).toBe(true);
+    expect(played).toEqual([]);
+    // Dropped again before it went well: that is the end.
+    await poll();
+    expect(getCall().sharing).toBe(false);
+    expect(played).toEqual(["streamStop"]);
+  });
+
+  it("stops the app's share when the user leaves the call", async () => {
+    await joinVoice(G, LOUNGE);
+    await shareNatively(WINDOW, true);
+    await leaveVoice();
+    expect(calls.map(([cmd]) => cmd)).toContain("share_stop");
+    expect(getNativeShare().source).toBeNull();
   });
 });

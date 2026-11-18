@@ -8,15 +8,19 @@ import {
   getCall,
   getVolumes,
   loadLiveKitTransport,
+  type NativeShareStatus,
+  nativeShare,
   onVolumes,
   readVoicePrefs,
   type ScreenShareResult,
+  type ShareSource,
   setCall,
   VOLUME_DEFAULT,
 } from "@/entities/call";
 import { computeChannel, getGuildsState, has, myVoice, PERM } from "@/entities/guild";
 import { api, errorText, unwrap } from "@/shared/api";
 import { playSound } from "@/shared/lib";
+import { getNativeShare, resetNativeShareState, setNativeShare } from "./native-share";
 import { shareNotice } from "./notice";
 import { startPushToTalk } from "./push-to-talk";
 
@@ -27,6 +31,7 @@ export const MIC_DENIED = "Нет доступа к микрофону";
 export const NO_CONNECT = "Нет права подключаться к этому каналу";
 export const NO_STREAM = "Нет права на демонстрацию экрана";
 export const SHARE_FAILED = "Не удалось начать демонстрацию";
+export const SHARE_SOURCE_CLOSED = "Окно демонстрации закрыто";
 export const DEVICE_FAILED = "Не удалось переключить устройство";
 export const NO_VIDEO = "Нет права на видео";
 export const CAMERA_DENIED = "Нет доступа к камере: разрешите её в настройках сайта";
@@ -158,6 +163,7 @@ const forgetRemoval = () => {
 const ended = (cause: EndCause) => {
   if (getCall().status === "idle") return;
   clearCall();
+  void dropNativeShare();
   playSound("leave");
   applyVoicePrefs();
   if (cause === "replaced") notify(CALL_REPLACED);
@@ -249,6 +255,7 @@ export const joinVoice = async (guildId: string | null, channelId: string): Prom
     }
     if (!latest()) return;
     await t.disconnect();
+    void dropNativeShare();
     if (!latest()) return;
     setCall({
       status: "connecting",
@@ -302,6 +309,7 @@ export const leaveVoice = async (): Promise<void> => {
   forgetRemoval();
   if (getCall().status !== "idle") playSound("leave");
   clearCall();
+  void dropNativeShare();
   applyVoicePrefs();
   await transport?.disconnect();
   try {
@@ -417,7 +425,8 @@ export const attachOwnStream = (el: HTMLVideoElement): (() => void) =>
 
 /**
  * Starts sharing a screen, a window or a tab (the browser's picker) and says
- * what the viewers will hear. A closed picker changes nothing.
+ * what the viewers will hear. A closed picker changes nothing. In the
+ * desktop app the app's own picker opens instead (see `shareNatively`).
  */
 let picking = false;
 
@@ -429,6 +438,10 @@ export const startScreenShare = async (): Promise<void> => {
   picking = true;
   let result: ScreenShareResult;
   try {
+    if (await nativeShare.available()) {
+      setNativeShare({ picking: true });
+      return;
+    }
     result = await t.startScreenShare();
   } finally {
     picking = false;
@@ -451,7 +464,122 @@ export const startScreenShare = async (): Promise<void> => {
 export const stopScreenShare = async (): Promise<void> => {
   if (getCall().sharing) playSound("streamStop");
   setCall({ sharing: false });
+  if (getNativeShare().source !== null) {
+    await dropNativeShare();
+    return;
+  }
   await transport?.stopScreenShare();
+};
+
+/** How often the page asks the app how its share goes. */
+const NATIVE_POLL_MS = 2000;
+
+let nativePoll: ReturnType<typeof setInterval> | null = null;
+
+/** Forgets the app's share here and stops it there; nothing is said or played. */
+const dropNativeShare = async (): Promise<void> => {
+  if (nativePoll !== null) clearInterval(nativePoll);
+  nativePoll = null;
+  const wasSharing = getNativeShare().source !== null;
+  resetNativeShareState();
+  if (wasSharing) await nativeShare.stop().catch(() => undefined);
+};
+
+/**
+ * Shares `source` through the desktop app: a companion token for the
+ * call's channel from the server, handed to the app, which joins the call
+ * as the user's screen. `sound` brings a window's application sound, or a
+ * screen's whole system sound but the app's. A failure is said in a notice.
+ */
+export const shareNatively = async (source: ShareSource, sound: boolean, again = false): Promise<void> => {
+  setNativeShare({ picking: false });
+  const { channelId, status } = getCall();
+  if (channelId === null || status === "idle" || picking) return;
+  const mine = generation;
+  const failed = (text: string) => {
+    if (mine !== generation) return;
+    notify(text);
+    // A share that was going and could not come back has ended.
+    if (again && getCall().sharing) {
+      setCall({ sharing: false });
+      playSound("streamStop");
+    }
+  };
+  picking = true;
+  try {
+    let joined: { token: string; url: string };
+    try {
+      joined = unwrap(
+        await api.POST("/channels/{channel_id}/voice/screen", { params: { path: { channel_id: channelId } } }),
+      );
+    } catch (e) {
+      failed(errorText(e));
+      return;
+    }
+    if (mine !== generation) return;
+    try {
+      await nativeShare.start({ url: joined.url, token: joined.token, id: source.id, sound });
+    } catch {
+      failed(SHARE_FAILED);
+      return;
+    }
+  } finally {
+    picking = false;
+  }
+  // The call ended or changed while the share was starting.
+  if (mine !== generation || getCall().status === "idle") {
+    await nativeShare.stop().catch(() => undefined);
+    return;
+  }
+  setNativeShare({ source, stats: null });
+  if (!again) {
+    setCall({ sharing: true });
+    playSound("streamStart");
+  }
+  // A share that came back is tried again only after it went well for a while.
+  let retried = again;
+  if (nativePoll !== null) clearInterval(nativePoll);
+  nativePoll = setInterval(() => {
+    void nativeShare
+      .status()
+      .then((s) => followNativeShare(s, mine, source, sound, retried))
+      .then((healthy) => {
+        if (healthy) retried = false;
+      })
+      .catch(() => undefined);
+  }, NATIVE_POLL_MS);
+};
+
+/**
+ * Takes one status of the app's share: its figures, or how it ended and
+ * what follows. Says whether the share is going with figures.
+ */
+const followNativeShare = async (
+  status: NativeShareStatus,
+  mine: number,
+  source: ShareSource,
+  sound: boolean,
+  retried: boolean,
+): Promise<boolean> => {
+  if (getNativeShare().source !== source) return false;
+  if (status.state === "sharing") {
+    setNativeShare({ stats: status.stats });
+    return status.stats !== null;
+  }
+  if (nativePoll !== null) clearInterval(nativePoll);
+  nativePoll = null;
+  resetNativeShareState();
+  const end = status.state === "ended" ? status.end : "disconnected";
+  // The server drops the companion when the call itself reconnects: share again, quietly.
+  if (end === "disconnected" && !retried && mine === generation && getCall().status === "connected") {
+    await shareNatively(source, sound, true);
+    return false;
+  }
+  if (!getCall().sharing) return false;
+  setCall({ sharing: false });
+  playSound("streamStop");
+  if (end === "sourceClosed") notify(SHARE_SOURCE_CLOSED);
+  return false;
 };
 
 const CAMERA_NOTICE = { denied: CAMERA_DENIED, missing: CAMERA_MISSING, failed: CAMERA_FAILED } as const;

@@ -1,5 +1,6 @@
 export { startRingtone } from "./lib/ringtone";
 export { useCallSounds } from "./model/call-sounds";
+export { type NativeShareState, useNativeShare } from "./model/native-share";
 export { ECHO_RISK, FIREFOX_NO_AUDIO, shareNotice, WINDOW_NO_AUDIO } from "./model/notice";
 export {
   applyVoicePrefs,
@@ -26,9 +27,11 @@ export {
   onVoiceMove,
   reconcileVoiceFlags,
   SHARE_FAILED,
+  SHARE_SOURCE_CLOSED,
   setSelfDeaf,
   setSelfMute,
   setTransportFactory,
+  shareNatively,
   startCamera,
   startScreenShare,
   stopCamera,
