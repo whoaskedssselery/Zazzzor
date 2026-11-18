@@ -97,6 +97,10 @@ struct Share {
     username: Option<String>,
     #[arg(long, env = "ZAZZZOR_PASSWORD", hide_env_values = true)]
     password: Option<String>,
+    /// Share as the screen of --username, who is already in the call in a
+    /// browser: one person in the call, not a second participant.
+    #[arg(long, requires = "server")]
+    companion: bool,
 
     /// Connect straight to LiveKit instead of signing in (with --token).
     #[arg(long, conflicts_with = "server", requires = "token")]
@@ -149,7 +153,8 @@ async fn share(args: Share) -> Result<()> {
         (Some(server), _) => {
             let Some(password) = &args.password else { bail!("set ZAZZZOR_PASSWORD to sign in") };
             let (channel, username) = (args.channel.as_deref().unwrap(), args.username.as_deref().unwrap());
-            join::join(server, username, password, channel)?
+            let role = if args.companion { join::Role::Companion } else { join::Role::Participant };
+            join::join(server, username, password, channel, role)?
         }
         (None, Some(url)) => join::Ticket { url: url.clone(), token: args.token.clone().unwrap() },
         (None, None) => bail!("say where to share: --server … or --livekit-url … --token …"),
@@ -180,10 +185,16 @@ async fn share(args: Share) -> Result<()> {
     options.auto_subscribe = false;
     let (room, mut events) = Room::connect(&ticket.url, &ticket.token, options).await.context("connect to LiveKit")?;
     log::info!("joined room {} as {}", room.name(), room.local_participant().identity());
+    // A companion is removed when its owner leaves the call; then the share is over.
+    let (gone_tx, gone) = tokio::sync::oneshot::channel::<()>();
     tokio::spawn(async move {
+        let mut gone_tx = Some(gone_tx);
         while let Some(event) = events.recv().await {
             if let RoomEvent::Disconnected { reason } = event {
                 log::warn!("disconnected: {reason:?}");
+                if let Some(tx) = gone_tx.take() {
+                    let _ = tx.send(());
+                }
             }
         }
     });
@@ -278,7 +289,7 @@ async fn share(args: Share) -> Result<()> {
     let capture = capture::start(&target, args.fps, frames_tx, shared.clone())?;
     log::info!("sharing {target:?}; Ctrl+C stops");
 
-    let summary = watch(&track, &shared, &counters, &loopback, args.seconds).await;
+    let summary = watch(&track, &shared, &counters, &loopback, args.seconds, gone).await;
     capture.stop();
     match video.join() {
         Ok(Err(e)) => log::error!("video: {e:#}"),
@@ -456,6 +467,7 @@ async fn watch(
     counters: &VideoCounters,
     loopback: &Option<audio::Loopback>,
     seconds: Option<u64>,
+    mut gone: tokio::sync::oneshot::Receiver<()>,
 ) -> String {
     const EVERY: Duration = Duration::from_secs(2);
     let started = Instant::now();
@@ -469,6 +481,7 @@ async fn watch(
         tokio::select! {
             _ = tick.tick() => {}
             _ = tokio::signal::ctrl_c() => break,
+            _ = &mut gone => break,
         }
         let now = Instant::now();
         let dt = (now - prev.6).as_secs_f64();

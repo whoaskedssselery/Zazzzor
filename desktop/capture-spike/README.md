@@ -37,10 +37,13 @@ Every two seconds it logs capture fps, encoded and sent fps, the bitrate and
 WebRTC's bandwidth estimate, the capture-to-encoded delay, its CPU use and
 the quality level.
 
-The sharer is a separate account from the person's browser: the API keeps
-one LiveKit connection per user and channel, so a CLI joining as the same
-user would replace the browser's call. The Tauri client will not have this
-problem: it is the browser.
+With `--companion` the CLI signs in as the same user as the browser and
+asks `POST /channels/{id}/voice/screen`: it joins as `<user id>.screen`,
+publishes only the screen share, and the web client shows it as that
+person's. The person must already be in the call (otherwise
+`409 not_in_voice`), and when they leave the companion is removed and the
+CLI stops. Without `--companion` the sharer is a separate account, a
+participant of its own.
 
 ### Building on this machine
 
