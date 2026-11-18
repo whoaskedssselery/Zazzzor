@@ -1,4 +1,5 @@
 export * from "./call-transport";
+export * from "./desktop";
 export * from "./image";
 export * from "./markdown";
 export * from "./snowflake";

@@ -9,6 +9,16 @@ export type {
 } from "@/shared/lib";
 export { type Browser, canRestrictOwnAudio, canShareScreen, canUseCamera, currentBrowser } from "./lib/browser";
 export {
+  decodeThumbnail,
+  type NativeShareEnd,
+  type NativeShareStats,
+  type NativeShareStatus,
+  nativeShare,
+  resetNativeShare,
+  type ShareSource,
+  type Thumbnail,
+} from "./lib/native-share";
+export {
   DEFAULT_VOICE_PREFS,
   readVoicePrefs,
   VOICE_PREFS_KEY,
