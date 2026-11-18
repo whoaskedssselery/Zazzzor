@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The setup page bundled with the app. The instance's own pages get no capability: they talk to their server, never to the app.",
+  "description": "The setup page bundled with the app. The instance's pages get only the screen share's commands, by a capability added at run time for the instance's origin (src/share.rs).",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "allow-current-instance", "allow-set-instance", "allow-open-instance"]
 }

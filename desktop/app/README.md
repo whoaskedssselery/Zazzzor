@@ -16,7 +16,11 @@ target/release/zazzzor-desktop.exe
 ```
 
 `cargo run` works too (a debug build keeps the console window). No Tauri
-CLI or Node is needed: `setup/` is plain HTML, CSS and JS.
+CLI or Node is needed: `setup/` is plain HTML, CSS and JS. The screen
+share links the prebuilt libwebrtc, which `webrtc-sys` downloads at build
+time (~110 MB; `LK_CUSTOM_WEBRTC` points at a local copy, see
+`desktop/share/README.md`), and with it the C runtime statically
+(`.cargo/config.toml`).
 
 On the first start the window asks for the server's address
 ("Подключение к серверу"): the address Zazzzor opens at in a browser. A
@@ -47,15 +51,30 @@ folder's labels is the owner's call.
 - **The instance in a window.** The web client runs as in Chrome: sign-in
   (the session cookie persists across restarts), the gateway WebSocket,
   voice through LiveKit, notifications and the browser's own screen share
-  (`getDisplayMedia` opens WebView2's picker).
+  (`getDisplayMedia` opens WebView2's picker; the web client uses the
+  native share below instead).
 - **Permissions.** The chosen server gets the microphone, the camera and
   notifications without WebView2's prompt, as a browser remembers them;
   any other page, and any other permission, gets WebView2's default.
 - **Its own pages only.** Pages of the server stay in the window; links to
   other sites, `target=_blank` and `window.open` open in the default
-  browser. The server's pages get no access to the app at all: the three
-  commands (`current_instance`, `set_instance`, `open_instance`) answer
-  only the bundled setup page, which the server's pages cannot navigate to.
+  browser. The setup commands (`current_instance`, `set_instance`,
+  `open_instance`) answer only the bundled setup page, which the server's
+  pages cannot navigate to.
+- **The native screen share** (`desktop/share`): a screen or a window at
+  up to 1080p60 on the GPU's encoder, with one application's sound (or the
+  whole system's but the app's own, so the call is not sent back). The
+  server's pages, and only the chosen server's, may call five commands:
+  `share_sources`, `share_thumbnail`, `share_start`, `share_stop` and
+  `share_status`. A capability for the server's origin is added at run
+  time (an ACL manifest in `build.rs` makes every command need a
+  permission), and each command checks the calling page again. The page
+  asks its server for the companion token (`POST
+  /channels/{id}/voice/screen`) and hands it over; the app joins only the
+  LiveKit of the same host. The share stops when the app quits. The
+  chosen server is trusted with this as Discord's app trusts discord.com:
+  its pages could list windows and start a share without the picker, so
+  only a server the person picked gets the commands.
 - **Tray.** Closing the window hides it to the tray; a left click on the
   icon or "Открыть Zazzzor" brings it back; "Сменить сервер…" opens the
   setup page with the current address and a "Отмена" back; "Выйти" quits.
@@ -91,12 +110,6 @@ and how a notification looks in the Windows notification centre.
 
 ## Not done yet
 
-- **The native screen share** from `desktop/capture-spike` (one app's
-  sound, NVENC, 1080p60): it waits for the server to accept a second
-  LiveKit connection per user for the screen (task C19), then the page
-  asks the app to start it.
-- Global hotkeys, push-to-talk, auto-update, an installer and code signing.
+- Global hotkeys, push-to-talk, auto-update and an installer.
 - Start with Windows, a tray badge for unread mentions, a native
   notification bridge.
-- A Windows CI job; until then run `cargo test`, `cargo clippy
-  --all-targets -- -D warnings` and `cargo fmt --check` here.
