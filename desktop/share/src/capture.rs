@@ -7,7 +7,7 @@
 //! never latency.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 use std::sync::mpsc::{SyncSender, TrySendError};
 use std::time::Duration;
 
@@ -36,10 +36,12 @@ pub struct Nv12Frame {
 }
 
 /// What to capture.
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Target {
+    /// A monitor, counted from 1 as Windows lists them.
     Monitor(usize),
-    Window(String),
+    /// A window, by its handle.
+    Window(isize),
 }
 
 /// What the capture shares with the rest of the program.
@@ -53,6 +55,8 @@ pub struct Shared {
     pub dropped: Arc<AtomicU64>,
     /// Time spent converting and scaling, in microseconds, summed.
     pub convert_us: Arc<AtomicU64>,
+    /// Set when the captured item goes away (the window closed).
+    pub closed: Arc<AtomicBool>,
 }
 
 impl Shared {
@@ -128,6 +132,7 @@ impl GraphicsCaptureApiHandler for Handler {
 
     fn on_closed(&mut self) -> Result<(), Self::Error> {
         log::info!("the captured item closed");
+        self.shared.closed.store(true, Ordering::Relaxed);
         Ok(())
     }
 }
@@ -172,9 +177,8 @@ pub fn start(target: &Target, fps: u32, out: SyncSender<Nv12Frame>, shared: Shar
             check(monitor)?;
             Handler::start_free_threaded(settings(monitor, interval, flags))
         }
-        Target::Window(title) => {
-            let window = Window::from_contains_name(title)
-                .with_context(|| format!("capture: no window titled like {title:?}"))?;
+        Target::Window(hwnd) => {
+            let window = window(*hwnd)?;
             check(window)?;
             Handler::start_free_threaded(settings(window, interval, flags))
         }
@@ -185,7 +189,7 @@ pub fn start(target: &Target, fps: u32, out: SyncSender<Nv12Frame>, shared: Shar
 
 /// Makes the capture item once, on a thread of its own, for the reason
 /// Windows gives when it cannot: windows-capture reports only that it failed.
-fn check<T>(item: T) -> Result<()>
+pub(crate) fn check<T>(item: T) -> Result<()>
 where
     T: TryInto<windows_capture::settings::GraphicsCaptureItemType, Error = windows::core::Error> + Send + 'static,
 {
@@ -200,7 +204,7 @@ where
     .map_err(|_| anyhow!("capture: the check panicked"))?
 }
 
-fn settings<T>(item: T, interval: MinimumUpdateIntervalSettings, flags: Flags) -> Settings<Flags, T>
+pub(crate) fn settings<F, T>(item: T, interval: MinimumUpdateIntervalSettings, flags: F) -> Settings<F, T>
 where
     T: TryInto<windows_capture::settings::GraphicsCaptureItemType>,
 {
@@ -216,33 +220,23 @@ where
     )
 }
 
-/// The process that owns the window titled like `title`.
-pub fn window_process(title: &str) -> Result<u32> {
-    let window =
-        Window::from_contains_name(title).with_context(|| format!("capture: no window titled like {title:?}"))?;
-    Ok(window.process_id()?)
+/// The window `hwnd`, while it exists.
+pub(crate) fn window(hwnd: isize) -> Result<Window> {
+    let window = Window::from_raw_hwnd(hwnd as *mut std::ffi::c_void);
+    if !window.is_valid() {
+        return Err(anyhow!("capture: the window is gone"));
+    }
+    Ok(window)
 }
 
-/// Prints the monitors and the windows that can be captured.
-pub fn list() -> Result<()> {
-    println!("Monitors (--monitor N):");
-    for (i, m) in Monitor::enumerate()?.iter().enumerate() {
-        let size = format!("{}x{}", m.width().unwrap_or(0), m.height().unwrap_or(0));
-        let n = i + 1; // Monitor::from_index counts from one
-        let can = match check(*m) {
-            Ok(()) => "capturable".to_owned(),
-            Err(e) => format!("not capturable: {:#}", e),
-        };
-        println!("  {n}: {} {size} @ {} Hz, {can}", m.name().unwrap_or_default(), m.refresh_rate().unwrap_or(0));
-    }
-    println!("Windows (--window \"part of the title\"):");
-    for w in Window::enumerate()? {
-        let title = w.title().unwrap_or_default();
-        if title.trim().is_empty() {
-            continue;
-        }
-        let process = w.process_name().unwrap_or_default();
-        println!("  pid {:>6}  {process:<24} {title}", w.process_id().unwrap_or(0));
-    }
-    Ok(())
+/// The window titled like `title` (a part of its title).
+pub fn find_window(title: &str) -> Result<Target> {
+    let window =
+        Window::from_contains_name(title).with_context(|| format!("capture: no window titled like {title:?}"))?;
+    Ok(Target::Window(window.as_raw_hwnd() as isize))
+}
+
+/// The process that owns the window `hwnd`.
+pub fn window_process(hwnd: isize) -> Result<u32> {
+    Ok(window(hwnd)?.process_id()?)
 }
