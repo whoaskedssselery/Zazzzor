@@ -8,6 +8,7 @@ import (
 	"github.com/livekit/protocol/livekit"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 	"github.com/whoaskedssselery/zazzzor/server/internal/voice"
 )
 
@@ -64,6 +65,25 @@ func TestScreenEndpointWithoutVoice(t *testing.T) {
 	e := newEnv(t, func(o *voice.Options) { o.APIKey = "" })
 	c, _ := e.user("alice")
 	problemOf(t, c.Do(http.MethodPost, joinPath("42")+"/screen", nil), http.StatusServiceUnavailable, "voice_unavailable")
+}
+
+func TestScreenTokenInDirectCallDoesNotRingOrCreatePresence(t *testing.T) {
+	e := newEnv(t)
+	c, u, _, _, dm := dmPair(t, e)
+	e.connect(c, u, dm, "RM_dm", "PA_1")
+	before := len(e.pub.calls())
+	resp := c.Do(http.MethodPost, joinPath(dm)+"/screen", nil)
+	expect(t, resp, http.StatusOK)
+	var j joinBody
+	resp.JSON(&j)
+	p := screenParticipant(u, "SC_1", claims(t, j.Token).Attributes["zazzzor.join"])
+	e.hook(&livekit.WebhookEvent{Event: "participant_joined", Room: lkRoom(dm, "RM_dm"), Participant: p})
+	e.hook(&livekit.WebhookEvent{Event: "track_published", Room: lkRoom(dm, "RM_dm"), Participant: p,
+		Track: &livekit.TrackInfo{Sid: "track", Source: livekit.TrackSource_SCREEN_SHARE}})
+	_, states := e.voice.PrivateCalls([]snowflake.ID{parseID(t, dm)})
+	if len(e.pub.calls()) != before || len(states) != 1 || !states[0].SelfStream || states[0].UserID != u.id(t) {
+		t.Fatal("direct call companion rang or created separate presence")
+	}
 }
 
 // screenParticipant builds the companion identity while reusing primary attributes.

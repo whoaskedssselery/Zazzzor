@@ -383,6 +383,23 @@ webhook:
 	expect(t, owner.Do(http.MethodPatch, path, map[string]bool{"mute": false, "deaf": false}), http.StatusNoContent)
 	checkGrants(true, all...)
 
+	// The companion uses the actual API token, including its restricted
+	// sources and primary generation, rather than trusted CLI credentials.
+	var screenJoin joinBody
+	screenResponse := owner.Do(http.MethodPost, joinPath(channel.ID)+"/screen", nil)
+	expect(t, screenResponse, http.StatusOK)
+	screenResponse.JSON(&screenJoin)
+	startScreenPeer(ctx, t, sfu, screenJoin.Token)
+	awaitLiveHook(t, notices, "companion screen publication", func() bool {
+		state, ok := e.stateOf(parseID(t, guild.ID), user.id(t))
+		return ok && state.SelfStream
+	})
+	screenInfo, screenErr := remote.GetParticipant(ctx, &livekit.RoomParticipantIdentity{Room: channel.ID, Identity: user.ID + ".screen"})
+	if screenErr != nil || screenInfo.GetPermission().GetCanSubscribe() ||
+		!slices.ContainsFunc(screenInfo.GetTracks(), func(track *livekit.TrackInfo) bool { return track.GetSource() == livekit.TrackSource_SCREEN_SHARE }) {
+		t.Fatalf("real companion = %+v (%v), want publishing screen without subscription", screenInfo, screenErr)
+	}
+
 	// Reconstruct only the voice service over the same DB and active SFU.
 	// No synthetic webhook or in-memory participant snapshot is injected.
 	recovered := voice.NewService(options)
@@ -393,7 +410,7 @@ webhook:
 		t.Fatalf("reconcile real LiveKit after reconstruction: %v", err)
 	}
 	states := recovered.GuildStates(parseID(t, guild.ID))
-	if len(states) != 1 || states[0].UserID != user.id(t) || states[0].ChannelID != channel.id(t) {
+	if len(states) != 1 || states[0].UserID != user.id(t) || states[0].ChannelID != channel.id(t) || !states[0].SelfStream {
 		t.Fatalf("recovered states = %+v, want active participant", states)
 	}
 	checkGrants(true, all...)
