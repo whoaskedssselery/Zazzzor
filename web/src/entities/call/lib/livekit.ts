@@ -190,7 +190,9 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
     ...new Set(
       [...r.remoteParticipants.values()]
         .filter((p) => p.getTrackPublication(Track.Source.ScreenShare) !== undefined)
-        .map((p) => userOf(p.identity)),
+        .map((p) => userOf(p.identity))
+        // The user's own desktop client shares as their companion: that is not someone else's stream.
+        .filter((id) => id !== r.localParticipant.identity),
     ),
   ];
 
