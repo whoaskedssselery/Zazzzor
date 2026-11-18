@@ -15,6 +15,9 @@ mod instance;
 #[cfg(windows)]
 mod permissions;
 mod share;
+mod update;
+#[cfg(test)]
+mod update_tests;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -146,9 +149,10 @@ fn tray(app: &AppHandle) -> tauri::Result<()> {
         autostart::enabled(),
         None::<&str>,
     )?;
+    let updates = MenuItem::with_id(app, "check-update", "Проверить обновления", true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
     let exit = MenuItem::with_id(app, "quit", "Выйти", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open, &stop_share, &change, &startup, &separator, &exit])?;
+    let menu = Menu::with_items(app, &[&open, &stop_share, &change, &startup, &updates, &separator, &exit])?;
     let mut builder = TrayIconBuilder::with_id(MAIN)
         .tooltip("Zazzzor")
         .menu(&menu)
@@ -166,6 +170,7 @@ fn tray(app: &AppHandle) -> tauri::Result<()> {
                 let _ = autostart::set(!autostart::enabled());
                 let _ = startup.set_checked(autostart::enabled());
             }
+            "check-update" => update::check(app),
             "quit" => quit(app),
             _ => {}
         })
@@ -250,6 +255,8 @@ fn main() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show(app)))
         .plugin(tauri_plugin_window_state::Builder::default().with_state_flags(state_flags()).build())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .manage(share::Sharing::default())
         .manage(hotkeys::Hotkeys::default())
         .invoke_handler(tauri::generate_handler![
@@ -289,6 +296,7 @@ fn main() {
                 window.show()?;
                 window.set_focus()?;
             }
+            update::start(app.handle())?;
             Ok(())
         })
         .build(tauri::generate_context!())
