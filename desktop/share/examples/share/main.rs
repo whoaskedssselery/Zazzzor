@@ -12,7 +12,7 @@ use std::borrow::Cow;
 
 use std::sync::Arc;
 use std::sync::mpsc::sync_channel;
-use zazzzor_share::{audio, capture, mf, procs};
+use zazzzor_share::{audio, capture, mf, procs, sources};
 
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -114,17 +114,25 @@ fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info,livekit=warn,libwebrtc=warn"))
         .init();
     match Cli::parse().command {
-        Command::List => capture::list(),
+        Command::List => list(),
         Command::Share(args) => {
             tokio::runtime::Builder::new_multi_thread().enable_all().build()?.block_on(share(*args))
         }
     }
 }
 
+fn list() -> Result<()> {
+    for s in sources::list(std::process::id())? {
+        let app = s.app.as_deref().unwrap_or("");
+        println!("{:<24} {:>5}x{:<5} {app:<24} {}", s.id, s.width, s.height, s.name);
+    }
+    Ok(())
+}
+
 async fn share(args: Share) -> Result<()> {
     let target = match (&args.monitor, &args.window) {
         (Some(m), None) => Target::Monitor(*m),
-        (None, Some(w)) => Target::Window(w.clone()),
+        (None, Some(w)) => capture::find_window(w)?,
         (None, None) => Target::Monitor(1),
         _ => unreachable!("clap keeps them apart"),
     };
@@ -300,7 +308,7 @@ fn audio_scope(args: &Share, target: &Target) -> Result<Option<audio::Scope>> {
         return Ok(Some(audio::Scope::AllBut(std::process::id())));
     }
     match target {
-        Target::Window(title) => Ok(Some(audio::Scope::Only(capture::window_process(title)?))),
+        Target::Window(hwnd) => Ok(Some(audio::Scope::Only(capture::window_process(*hwnd)?))),
         Target::Monitor(_) => Ok(None),
     }
 }

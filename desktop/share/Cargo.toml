@@ -9,6 +9,7 @@ description = "Share a Windows screen or window and one app's sound to a Zazzzor
 anyhow = "=1.0.104"
 livekit = "=0.10.0"
 log = "=0.4.35"
+serde = { version = "=1.0.229", features = ["derive"] }
 tokio = { version = "=1.54.1", features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
 
 [target.'cfg(windows)'.dependencies]
@@ -17,6 +18,7 @@ windows-capture = "=2.0.1"
 windows-core = "=0.62.2"
 windows = { version = "=0.62.2", features = [
   "Win32_Foundation",
+  "Win32_Graphics_Dwm",
   "Win32_Media_Audio",
   "Win32_Media_MediaFoundation",
   "Win32_Security",
@@ -34,7 +36,6 @@ windows = { version = "=0.62.2", features = [
 [dev-dependencies]
 clap = { version = "=4.6.7", features = ["derive", "env"] }
 env_logger = "=0.11.11"
-serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.154"
 ureq = { version = "=3.5.1", features = ["json"] }
 
