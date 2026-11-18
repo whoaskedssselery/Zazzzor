@@ -11,6 +11,7 @@
 mod instance;
 #[cfg(windows)]
 mod permissions;
+mod share;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -71,6 +72,7 @@ fn set_instance(url: String, window: WebviewWindow, app: State<'_, App>) -> Resu
     let url = instance::parse(&url)?;
     instance::save(&app.settings, &url).map_err(|e| format!("Не удалось сохранить адрес: {e}"))?;
     *app.instance.lock().unwrap() = Some(url.clone());
+    share::allow_instance(window.app_handle(), &url).map_err(|e| e.to_string())?;
     app.setup_requested.store(false, Ordering::Relaxed);
     window.navigate(url).map_err(|e| e.to_string())
 }
@@ -207,7 +209,17 @@ fn main() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show(app)))
         .plugin(tauri_plugin_window_state::Builder::default().with_state_flags(state_flags()).build())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![current_instance, set_instance, open_instance])
+        .manage(share::Sharing::default())
+        .invoke_handler(tauri::generate_handler![
+            current_instance,
+            set_instance,
+            open_instance,
+            share::share_sources,
+            share::share_thumbnail,
+            share::share_start,
+            share::share_stop,
+            share::share_status
+        ])
         .setup(|app| {
             let settings = instance::settings_path(&app.path().app_config_dir()?);
             let saved = instance::load(&settings);
@@ -220,6 +232,9 @@ fn main() {
                 quitting: AtomicBool::new(false),
                 setup_requested: setup_requested.clone(),
             });
+            if let Some(url) = &saved {
+                share::allow_instance(app.handle(), url)?;
+            }
             tray(app.handle())?;
             let window = window(app.handle(), saved, shared.clone(), setup_requested)?;
             #[cfg(windows)]
@@ -228,6 +243,11 @@ fn main() {
             window.set_focus()?;
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("the app failed to start");
+        .build(tauri::generate_context!())
+        .expect("the app failed to start")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                share::stop_on_exit(app);
+            }
+        });
 }

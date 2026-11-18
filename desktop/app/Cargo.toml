@@ -16,6 +16,7 @@ tauri-plugin-opener = "=2.7.2"
 tauri-plugin-single-instance = "=2.5.5"
 tauri-plugin-window-state = "=2.5.0"
 url = "=2.5.8"
+zazzzor-share = { path = "../share" }
 
 # The same versions as Tauri's WebView2 runtime, for the permission handler.
 [target.'cfg(windows)'.dependencies]
