@@ -3161,7 +3161,9 @@ paths:
         microphone with `SPEAK` unless server-muted
         and the screen share (video and audio) and the camera with `STREAM`
         (server mute and deafen leave the camera alone), nothing with
-        neither, and never data or its own metadata. `url` is the
+        neither, and never data or its own metadata. A separate
+        `<user_id>.screen` connection may also publish the screen share;
+        obtain its token with `joinVoiceScreen`. `url` is the
         LiveKit signaling URL for this origin (`wss://` for an `https://`
         `Origin`, `ws://` for `http://`, same host and port).
 
@@ -3217,6 +3219,55 @@ paths:
           $ref: "#/components/responses/Problem"
         "503":
           description: "`voice_unavailable`: voice is not configured, or LiveKit could not remove the caller from their previous channel."
+          $ref: "#/components/responses/Problem"
+  /channels/{channel_id}/voice/screen:
+    post:
+      tags: [voice]
+      operationId: joinVoiceScreen
+      summary: Get a screen publishing token for the current voice session
+      description: |
+        Requires an active voice session in exactly this channel and current
+        `STREAM` permission. Every DM and group DM recipient has `STREAM`.
+        Returns a token valid for 10 minutes with identity `<user_id>.screen`,
+        the caller's display name, and this channel ID as room. It can publish
+        only `SCREEN_SHARE` and `SCREEN_SHARE_AUDIO`, cannot subscribe, publish
+        data or update its own metadata. Its `zazzzor.join` attribute is the
+        active primary session's generation. `url` follows `joinVoice`.
+
+        Issuing the token changes no voice state and never rings a call.
+        Admission requires the primary session in the same room name and SID,
+        the same generation, and current channel access and `STREAM`.
+        The companion shares its owner's `self_stream`, with no separate
+        voice state. It is removed when the primary leaves or is replaced,
+        the room ends, the account is disabled, membership/channel access or
+        `STREAM` is lost. Server mute and deafen do not affect it.
+        Shares the per-user voice write limit (2/second, burst 10).
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      responses:
+        "200":
+          description: The companion token and signaling URL.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceJoin"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          description: "`origin_not_allowed` or `missing_permission`: channel access or STREAM lost."
+          $ref: "#/components/responses/Problem"
+        "409":
+          description: "`not_in_voice`: no active primary session in this channel."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+        "503":
+          description: "`voice_unavailable`: voice is not configured."
           $ref: "#/components/responses/Problem"
   /channels/{channel_id}/call/decline:
     post:
@@ -4961,7 +5012,7 @@ components:
           description: The user deafened themselves (set by the client).
         self_stream:
           type: boolean
-          description: The user shares their screen (from LiveKit).
+          description: The user shares their screen from their primary or `<user_id>.screen` LiveKit connection; true while either publishes screen video.
         self_video:
           type: boolean
           description: The user has their camera on (from LiveKit).

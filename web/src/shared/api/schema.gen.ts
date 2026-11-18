@@ -1603,7 +1603,9 @@ export interface paths {
          *     microphone with `SPEAK` unless server-muted
          *     and the screen share (video and audio) and the camera with `STREAM`
          *     (server mute and deafen leave the camera alone), nothing with
-         *     neither, and never data or its own metadata. `url` is the
+         *     neither, and never data or its own metadata. A separate
+         *     `<user_id>.screen` connection may also publish the screen share;
+         *     obtain its token with `joinVoiceScreen`. `url` is the
          *     LiveKit signaling URL for this origin (`wss://` for an `https://`
          *     `Origin`, `ws://` for `http://`, same host and port).
          *
@@ -1634,6 +1636,41 @@ export interface paths {
          *     share a limit of 2 per second (bursts of 10) per user.
          */
         post: operations["joinVoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/channels/{channel_id}/voice/screen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Get a screen publishing token for the current voice session
+         * @description Requires an active voice session in exactly this channel and current
+         *     `STREAM` permission. Every DM and group DM recipient has `STREAM`.
+         *     Returns a token valid for 10 minutes with identity `<user_id>.screen`,
+         *     the caller's display name, and this channel ID as room. It can publish
+         *     only `SCREEN_SHARE` and `SCREEN_SHARE_AUDIO`, cannot subscribe, publish
+         *     data or update its own metadata. Its `zazzzor.join` attribute is the
+         *     active primary session's generation. `url` follows `joinVoice`.
+         *
+         *     Issuing the token changes no voice state and never rings a call.
+         *     Admission requires the primary session in the same room name and SID,
+         *     the same generation, and current channel access and `STREAM`.
+         *     The companion shares its owner's `self_stream`, with no separate
+         *     voice state. It is removed when the primary leaves or is replaced,
+         *     the room ends, the account is disabled, membership/channel access or
+         *     `STREAM` is lost. Server mute and deafen do not affect it.
+         *     Shares the per-user voice write limit (2/second, burst 10).
+         */
+        post: operations["joinVoiceScreen"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2473,7 +2510,7 @@ export interface components {
             self_mute: boolean;
             /** @description The user deafened themselves (set by the client). */
             self_deaf: boolean;
-            /** @description The user shares their screen (from LiveKit). */
+            /** @description The user shares their screen from their primary or `<user_id>.screen` LiveKit connection; true while either publishes screen video. */
             self_stream: boolean;
             /** @description The user has their camera on (from LiveKit). */
             self_video: boolean;
@@ -5541,6 +5578,39 @@ export interface operations {
             429: components["responses"]["RateLimited"];
             500: components["responses"]["Problem"];
             /** @description `voice_unavailable`: voice is not configured, or LiveKit could not remove the caller from their previous channel. */
+            503: components["responses"]["Problem"];
+        };
+    };
+    joinVoiceScreen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The companion token and signaling URL. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceJoin"];
+                };
+            };
+            400: components["responses"]["Problem"];
+            /** @description `unauthenticated`. */
+            401: components["responses"]["Problem"];
+            /** @description `origin_not_allowed` or `missing_permission`: channel access or STREAM lost. */
+            403: components["responses"]["Problem"];
+            /** @description `not_in_voice`: no active primary session in this channel. */
+            409: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Problem"];
+            /** @description `voice_unavailable`: voice is not configured. */
             503: components["responses"]["Problem"];
         };
     };

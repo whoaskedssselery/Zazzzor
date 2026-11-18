@@ -13,6 +13,7 @@ import (
 // run auth.Middleware:
 //
 //	POST /channels/{channel_id}/voice
+//	POST /channels/{channel_id}/voice/screen
 //	POST /channels/{channel_id}/call/decline
 //	PATCH /users/@me/voice-state
 //	DELETE /users/@me/voice
@@ -24,6 +25,7 @@ func Mount(r chi.Router, s *Service) {
 		r.Use(auth.Require, httpx.NoStore)
 		writes := r.With(auth.LimitPerUser(s.writeLimiter))
 		writes.Post("/channels/{channel_id}/voice", httpx.Wrap(s.handleJoin))
+		writes.Post("/channels/{channel_id}/voice/screen", httpx.Wrap(s.handleJoinScreen))
 		writes.Post("/channels/{channel_id}/call/decline", httpx.Wrap(s.handleDecline))
 		writes.Patch("/users/@me/voice-state", httpx.Wrap(s.handleUpdateSelf))
 		writes.Delete("/users/@me/voice", httpx.Wrap(s.handleLeave))
@@ -32,6 +34,19 @@ func Mount(r chi.Router, s *Service) {
 }
 
 func fail(err error) error { return auth.ToProblem(ToProblem(err)) }
+
+func (s *Service) handleJoinScreen(w http.ResponseWriter, r *http.Request) error {
+	id, err := httpx.PathID(r, "channel_id")
+	if err != nil {
+		return err
+	}
+	j, err := s.JoinScreen(r.Context(), id, auth.CurrentUser(r), r.Header.Get("Origin"))
+	if err != nil {
+		return fail(err)
+	}
+	httpx.JSON(w, http.StatusOK, j)
+	return nil
+}
 
 func (s *Service) handleJoin(w http.ResponseWriter, r *http.Request) error {
 	id, err := httpx.PathID(r, "channel_id")

@@ -35,11 +35,16 @@ func grant(channelID snowflake.ID, p permissions.Permission, flags serverFlags) 
 // token signs the join token of user for channelID: their ID is the
 // identity, their display name the name, and join the generation attribute.
 func (s *Service) token(user auth.User, channelID snowflake.ID, p permissions.Permission, join string, flags serverFlags) (string, error) {
+	return s.signToken(user.ID.String(), user.DisplayName, grant(channelID, p, flags), join)
+}
+
+// signToken gives primary and screen connections the same lifetime and binding.
+func (s *Service) signToken(identity, name string, grant *lkauth.VideoGrant, join string) (string, error) {
 	t, err := lkauth.NewAccessToken(s.key, s.secret).
-		SetIdentity(user.ID.String()).
-		SetName(user.DisplayName).
+		SetIdentity(identity).
+		SetName(name).
 		SetValidFor(TokenTTL).
-		SetVideoGrant(grant(channelID, p, flags)).
+		SetVideoGrant(grant).
 		SetAttributes(map[string]string{joinAttribute: join}).
 		ToJWT()
 	if err != nil {
