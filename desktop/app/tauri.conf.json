@@ -13,6 +13,14 @@
       "csp": "default-src 'self'; style-src 'self'; script-src 'self'; connect-src ipc: http://ipc.localhost"
     }
   },
+  "plugins": {
+    "updater": {
+      "requireSignedVersion": true,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU2QkQwREQ0ODkwQzBGOEUKUldTT0R3eUoxQTI5VnI2aHRSdkErNnc3ekpWN0F2R2ZrNlFTZnhLcTl6L0w4c1NiQUUyMGZndmEK",
+      "endpoints": ["https://github.com/whoaskedssselery/Zazzzor/releases/latest/download/latest.json"],
+      "windows": { "installMode": "quiet" }
+    }
+  },
   "bundle": {
     "active": false,
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.png", "icons/icon.ico"]
