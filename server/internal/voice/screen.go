@@ -126,6 +126,9 @@ func (s *Service) joinedScreen(ctx context.Context, channelID snowflake.ID, room
 	cancel()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if observed != nil && s.revs[userID] != observed.revision {
+		return nil
+	}
 	if err != nil {
 		s.removeLocked(room.Name, p.Identity, p.SID)
 		return fmt.Errorf("voice: enforce companion permissions: %w", err)

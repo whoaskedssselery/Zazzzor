@@ -76,6 +76,7 @@ func (s *Service) Reconcile(ctx context.Context) error {
 		sources         = map[snowflake.ID]found{}
 		turnedOut       []found // admitted, but not the room the user is kept in
 		refused         []found // not admitted
+		screens         []found // resolved only after primary sessions
 		unknown         = map[snowflake.ID]bool{}
 		reconcileErrors []error
 	)
@@ -95,6 +96,10 @@ func (s *Service) Reconcile(ctx context.Context) error {
 		}
 		var candidates, roomRefused []found
 		for _, p := range ps {
+			if _, secondary := screenOwner(p.Identity); secondary {
+				screens = append(screens, found{channelID: channelID, room: room, p: p})
+				continue
+			}
 			guildID, mask, ok, err := s.admitted(ctx, channelID, p)
 			if err != nil {
 				unknown[channelID] = true
@@ -158,58 +163,98 @@ func (s *Service) Reconcile(ctx context.Context) error {
 		checked[userID] = revision
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	changed := func(userID snowflake.ID) bool { return s.revs[userID] > max(start, checked[userID]) }
-	for _, f := range refused {
-		s.removeLocked(f.room.Name, f.p.Identity, f.p.SID)
-	}
-	for _, f := range turnedOut {
-		if userID, _ := identityUser(f.p.Identity); !changed(userID) && kept[userID].p.SID != f.p.SID {
+	observed := map[snowflake.ID]*screenObservation{}
+	func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		changed := func(userID snowflake.ID) bool { return s.revs[userID] > max(start, checked[userID]) }
+		for userID := range s.sessions {
+			if !changed(userID) {
+				observed[userID] = &screenObservation{}
+			}
+		}
+		for _, f := range screens {
+			userID, _ := screenOwner(f.p.Identity)
+			if !changed(userID) {
+				observed[userID] = &screenObservation{}
+			}
+		}
+		for _, f := range refused {
 			s.removeLocked(f.room.Name, f.p.Identity, f.p.SID)
 		}
-	}
-	for userID, f := range kept {
-		switch {
-		case s.departedLocked(f.p.SID):
-		case s.invalidatedLocked(f.guildID, userID, f.channelID, start):
-			s.removeLocked(f.room.Name, f.p.Identity, f.p.SID)
-		case changed(userID):
-		case failed[userID]:
-			// A connected session keeps its call through a LiveKit blip; the
-			// refresh worker retries its grants. A participant not yet admitted
-			// has no known grants and is removed.
-			if sess := s.sessions[userID]; sess != nil && sess.sid == f.p.SID {
-				s.queueRefreshLocked(f.guildID)
+		for _, f := range turnedOut {
+			if userID, _ := identityUser(f.p.Identity); !changed(userID) && kept[userID].p.SID != f.p.SID {
+				s.removeLocked(f.room.Name, f.p.Identity, f.p.SID)
+			}
+		}
+		for userID, f := range kept {
+			switch {
+			case s.departedLocked(f.p.SID):
+			case s.invalidatedLocked(f.guildID, userID, f.channelID, start):
+				s.removeLocked(f.room.Name, f.p.Identity, f.p.SID)
+			case changed(userID):
+			case failed[userID]:
+				// A connected session keeps its call through a LiveKit blip; the
+				// refresh worker retries its grants. A participant not yet admitted
+				// has no known grants and is removed.
+				if sess := s.sessions[userID]; sess != nil && sess.sid == f.p.SID {
+					s.queueRefreshLocked(f.guildID)
+					continue
+				}
+				s.removeLocked(f.room.Name, f.p.Identity, f.p.SID)
+			case !s.currentParticipantLocked(userID, f.channelID, f.p):
+				s.removeLocked(f.room.Name, f.p.Identity, f.p.SID)
+			default:
+				// Another room's duplicate cannot displace a session whose room
+				// could not be checked, particularly after restart without intents.
+				if current := s.sessions[userID]; current != nil && unknown[current.state.ChannelID] && current.state.ChannelID != f.channelID {
+					continue
+				}
+				s.connectLocked(ctx, f.guildID, f.channelID, f.room, f.p)
+				s.syncScreensLocked(ctx, userID, f.p)
+				if s.permissionRev != permissionRevision {
+					s.queueRefreshLocked(f.guildID)
+				}
+			}
+		}
+		for userID, sess := range s.sessions {
+			if f, ok := kept[userID]; (ok && f.p.SID == sess.sid) || changed(userID) || unknown[sess.state.ChannelID] {
 				continue
 			}
-			s.removeLocked(f.room.Name, f.p.Identity, f.p.SID)
-		case !s.currentParticipantLocked(userID, f.channelID, f.p):
-			s.removeLocked(f.room.Name, f.p.Identity, f.p.SID)
-		default:
-			// Another room's duplicate cannot displace a session whose room
-			// could not be checked, particularly after restart without intents.
-			if current := s.sessions[userID]; current != nil && unknown[current.state.ChannelID] && current.state.ChannelID != f.channelID {
-				continue
+			s.dropLocked(ctx, userID, false)
+		}
+		// Capture the revisions after our primary updates, but only for owners
+		// unchanged by concurrent work since listing began.
+		listed := map[removalKey]Participant{}
+		for _, f := range screens {
+			listed[removalKey{f.room.Name, f.p.Identity}] = f.p
+		}
+		for userID, observation := range observed {
+			sess := s.sessions[userID]
+			if sess != nil && !unknown[sess.state.ChannelID] && sess.companion != nil {
+				p, exists := listed[removalKey{sess.room, userID.String() + ".screen"}]
+				if !exists || p.SID != sess.companion.p.SID {
+					s.removeScreenLocked(ctx, sess)
+				}
 			}
-			s.connectLocked(ctx, f.guildID, f.channelID, f.room, f.p)
-			s.syncScreensLocked(ctx, userID, f.p)
-			if s.permissionRev != permissionRevision {
-				s.queueRefreshLocked(f.guildID)
+			observation.sess, observation.revision = sess, s.revs[userID]
+		}
+	}()
+	for _, f := range screens {
+		userID, _ := screenOwner(f.p.Identity)
+		if observation := observed[userID]; observation != nil && !unknown[f.channelID] {
+			if err := s.joinedScreen(ctx, f.channelID, f.room, f.p, observation); err != nil {
+				reconcileErrors = append(reconcileErrors, fmt.Errorf("voice: reconcile companion: %w", err))
 			}
 		}
-	}
-	for userID, sess := range s.sessions {
-		if f, ok := kept[userID]; (ok && f.p.SID == sess.sid) || changed(userID) || unknown[sess.state.ChannelID] {
-			continue
-		}
-		s.dropLocked(ctx, userID, false)
 	}
 	if err := ctx.Err(); err != nil {
 		reconcileErrors = append(reconcileErrors, fmt.Errorf("voice: reconcile: %w", err))
 	}
 	if len(reconcileErrors) == 0 {
+		s.mu.Lock()
 		s.lastReconcile = s.now()
+		s.mu.Unlock()
 	}
 	return errors.Join(reconcileErrors...)
 }
@@ -239,7 +284,7 @@ func (s *Service) syncScreensLocked(ctx context.Context, userID snowflake.ID, p 
 	for _, sid := range p.Cameras {
 		sess.cameras[sid] = true
 	}
-	streaming, video := len(p.Screens) > 0, len(p.Cameras) > 0
+	streaming, video := sess.streaming(), len(p.Cameras) > 0
 	if streaming != sess.state.SelfStream || video != sess.state.SelfVideo {
 		sess.state.SelfStream, sess.state.SelfVideo = streaming, video
 		s.touchLocked(userID)
