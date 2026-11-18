@@ -1,5 +1,4 @@
-//! Shares a Windows monitor or window, with the sound of one application, to
-//! a Zazzzor call: the first piece of the desktop client, on its own.
+//! The screen share as a CLI, for measuring it outside the app:
 //!
 //!   cargo run --release --example share -- list
 //!   cargo run --release --example share -- share --window "Notepad" --server http://localhost:4173 --channel 123 --username me
@@ -8,12 +7,14 @@
 
 mod join;
 
-use anyhow::{Context, Result, bail};
+use std::time::{Duration, Instant};
+
+use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use livekit::prelude::*;
-use zazzzor_share::capture::Target;
-use zazzzor_share::session::{self, Parts, watch};
-use zazzzor_share::{audio, capture, mf, procs, sources};
+use zazzzor_share::audio::Scope;
+use zazzzor_share::capture::{self, Target};
+use zazzzor_share::session::{Encoder, Options, Session};
+use zazzzor_share::{procs, sources};
 
 #[derive(Parser)]
 #[command(about = "Share a Windows screen or window, with one app's sound, to a Zazzzor call")]
@@ -122,7 +123,7 @@ async fn share(args: Share) -> Result<()> {
         (None, None) => Target::Monitor(1),
         _ => unreachable!("clap keeps them apart"),
     };
-    let scope = audio_scope(&args, &target)?;
+    let sound = sound(&args, &target)?;
 
     let ticket = match (&args.server, &args.livekit_url) {
         (Some(server), _) => {
@@ -135,80 +136,48 @@ async fn share(args: Share) -> Result<()> {
         (None, None) => bail!("say where to share: --server … or --livekit-url … --token …"),
     };
 
-    // Choose the encoder before joining, so a broken one fails before anyone sees a share.
-    let hardware = match args.encoder {
-        EncoderChoice::Software => None,
-        choice => {
-            mf::startup()?;
-            let found = mf::hardware_encoders()?;
-            for c in &found {
-                log::info!("hardware H.264 encoder: {}", c.name);
-            }
-            // COM objects stay on their thread: the encoding thread finds the encoder again by name.
-            match found.into_iter().next() {
-                Some(c) => Some(c.name),
-                None if choice == EncoderChoice::Hardware => bail!("no hardware H.264 encoder on this machine"),
-                None => {
-                    log::warn!("no hardware H.264 encoder: falling back to software VP8");
-                    None
-                }
-            }
-        }
+    let encoder = match args.encoder {
+        EncoderChoice::Auto => Encoder::Auto,
+        EncoderChoice::Hardware => Encoder::Hardware,
+        EncoderChoice::Software => Encoder::Software,
     };
-
-    let mut options = RoomOptions::default();
-    options.auto_subscribe = false;
-    let (room, mut events) = Room::connect(&ticket.url, &ticket.token, options).await.context("connect to LiveKit")?;
-    log::info!("joined room {} as {}", room.name(), room.local_participant().identity());
-    // A companion is removed when its owner leaves the call; then the share is over.
-    let (gone_tx, gone) = tokio::sync::oneshot::channel::<()>();
-    tokio::spawn(async move {
-        let mut gone_tx = Some(gone_tx);
-        while let Some(event) = events.recv().await {
-            if let RoomEvent::Disconnected { reason } = event {
-                log::warn!("disconnected: {reason:?}");
-                if let Some(tx) = gone_tx.take() {
-                    let _ = tx.send(());
-                }
-            }
-        }
-    });
-
-    let Parts { track, shared, counters, capture, video, loopback } =
-        session::publish(&room, &target, scope, args.fps, args.max_bitrate, hardware).await?;
+    let options = Options { encoder, fps: args.fps, max_bitrate: args.max_bitrate };
+    let session = Session::start(&ticket.url, &ticket.token, &target, sound, options).await?;
     log::info!("Ctrl+C stops");
 
-    let summary = watch(&track, &shared, &counters, &loopback, args.seconds, gone).await;
-    capture.stop();
-    match video.join() {
-        Ok(Err(e)) => log::error!("video: {e:#}"),
-        Err(_) => log::error!("video: the encoder thread panicked"),
-        Ok(Ok(())) => {}
+    // The session logs a line every two seconds; this waits for a reason to stop.
+    let started = Instant::now();
+    let mut tick = tokio::time::interval(Duration::from_millis(250));
+    loop {
+        tokio::select! {
+            _ = tick.tick() => {}
+            _ = tokio::signal::ctrl_c() => break,
+        }
+        if session.is_finished() || args.seconds.is_some_and(|s| started.elapsed() >= Duration::from_secs(s)) {
+            break;
+        }
     }
-    if let Some(l) = loopback {
-        l.stop();
-    }
-    room.close().await.ok();
-    println!("{summary}");
+    let (end, summary) = session.stop().await;
+    println!("{summary} ({end:?})");
     Ok(())
 }
 
 /// Whose sound goes with the picture.
-fn audio_scope(args: &Share, target: &Target) -> Result<Option<audio::Scope>> {
+fn sound(args: &Share, target: &Target) -> Result<Option<Scope>> {
     if args.no_audio {
         return Ok(None);
     }
     if let Some(pid) = args.audio_pid {
-        return Ok(Some(audio::Scope::Only(pid)));
+        return Ok(Some(Scope::Only(pid)));
     }
     if let Some(exe) = &args.audio_process {
-        return Ok(Some(audio::Scope::Only(procs::find(exe)?)));
+        return Ok(Some(Scope::Only(procs::find(exe)?)));
     }
     if args.audio_system {
-        return Ok(Some(audio::Scope::AllBut(std::process::id())));
+        return Ok(Some(Scope::AllBut(std::process::id())));
     }
     match target {
-        Target::Window(hwnd) => Ok(Some(audio::Scope::Only(capture::window_process(*hwnd)?))),
+        Target::Window(hwnd) => Ok(Some(Scope::Only(capture::window_process(*hwnd)?))),
         Target::Monitor(_) => Ok(None),
     }
 }

@@ -1,13 +1,14 @@
-//! A screen share in a call: its figures every two seconds and the quality
-//! rule they drive.
+//! A screen share in a call: the capture, the encoder and the published
+//! tracks, from `Session::start` to `Session::stop`, with its figures every
+//! two seconds.
 
 use std::borrow::Cow;
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::sync_channel;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use livekit::options::{AudioEncoding, TrackPublishOptions, VideoCodec, VideoEncoderBackend, VideoEncoding};
 use livekit::prelude::*;
 use livekit::webrtc::audio_frame::AudioFrame;
@@ -16,36 +17,197 @@ use livekit::webrtc::audio_source::{AudioSourceOptions, RtcAudioSource};
 use livekit::webrtc::stats::RtcStats;
 use livekit::webrtc::video_source::native::NativeVideoSource;
 use livekit::webrtc::video_source::{RtcVideoSource, VideoResolution};
+use serde::Serialize;
+use tokio::sync::oneshot;
 
-use crate::audio;
+use crate::audio::{self, Scope};
 use crate::capture::{self, Nv12Frame, Shared, Target};
 use crate::encode::{VideoCounters, encode_hardware, encode_software};
-use crate::procs;
 use crate::quality::{Level, Quality, Sample, fit};
+use crate::{mf, procs};
 
-/// Every two seconds: reads the counters and WebRTC's stats, applies the
-/// 1080p/720p rule and logs a line. Returns a summary when told to stop.
-pub async fn watch(
-    track: &LocalVideoTrack,
-    shared: &Shared,
-    counters: &VideoCounters,
-    loopback: &Option<audio::Loopback>,
-    seconds: Option<u64>,
-    mut gone: tokio::sync::oneshot::Receiver<()>,
-) -> String {
+/// Which encoder sends the picture.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Encoder {
+    /// A hardware H.264 encoder when there is one, the software VP8 one otherwise.
+    Auto,
+    /// A hardware H.264 encoder or nothing.
+    Hardware,
+    /// libwebrtc's software VP8, as the browser sends it.
+    Software,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Options {
+    pub encoder: Encoder,
+    /// The most frames per second captured and sent.
+    pub fps: u32,
+    /// The most bit/s the video may use; WebRTC lowers it on a short link.
+    pub max_bitrate: u32,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Options { encoder: Encoder::Auto, fps: 60, max_bitrate: 10_000_000 }
+    }
+}
+
+/// The share's figures over the last two seconds.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Stats {
+    pub capture_fps: f64,
+    pub encoded_fps: f64,
+    pub sent_fps: f64,
+    pub width: u32,
+    pub height: u32,
+    pub mbit_s: f64,
+    /// WebRTC's estimate of what the link carries, in Mbit/s.
+    pub estimate_mbit_s: Option<f64>,
+    pub encoder: String,
+    pub encode_ms: f64,
+    pub convert_ms: f64,
+    /// This process's CPU use, as a share of the whole machine.
+    pub cpu_percent: f64,
+    /// Frames dropped because the encoder was behind, since the start.
+    pub dropped: u64,
+    pub sound: bool,
+    pub level: Level,
+}
+
+/// Why a share ended.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum End {
+    /// `stop` was called.
+    Stopped,
+    /// The connection to the call ended: the server removed it (its owner
+    /// left the call or reconnected) or the link broke.
+    Disconnected,
+    /// The shared window closed.
+    SourceClosed,
+}
+
+/// A share in progress. Dropping it leaves it running: `stop` ends it.
+pub struct Session {
+    stop: Option<oneshot::Sender<()>>,
+    task: tokio::task::JoinHandle<(End, String)>,
+    stats: Arc<Mutex<Option<Stats>>>,
+}
+
+impl Session {
+    /// Joins the room of `url` with `token`, publishes `target` (and the
+    /// sound of `sound`, when it can be taken) and starts sending.
+    pub async fn start(
+        url: &str,
+        token: &str,
+        target: &Target,
+        sound: Option<Scope>,
+        options: Options,
+    ) -> Result<Session> {
+        let hardware = encoder(options.encoder)?;
+
+        let mut room_options = RoomOptions::default();
+        room_options.auto_subscribe = false;
+        let (room, mut events) = Room::connect(url, token, room_options).await.context("connect to LiveKit")?;
+        log::info!("joined room {} as {}", room.name(), room.local_participant().identity());
+        let (gone_tx, gone) = oneshot::channel::<()>();
+        tokio::spawn(async move {
+            let mut gone_tx = Some(gone_tx);
+            while let Some(event) = events.recv().await {
+                if let RoomEvent::Disconnected { reason } = event {
+                    log::warn!("disconnected: {reason:?}");
+                    if let Some(tx) = gone_tx.take() {
+                        let _ = tx.send(());
+                    }
+                }
+            }
+        });
+
+        let started = publish(&room, target, sound, options, hardware).await;
+        let parts = match started {
+            Ok(parts) => parts,
+            Err(e) => {
+                room.close().await.ok();
+                return Err(e);
+            }
+        };
+        let (stop_tx, stop_rx) = oneshot::channel::<()>();
+        let stats = Arc::new(Mutex::new(None));
+        let task = tokio::spawn(run(room, parts, stats.clone(), stop_rx, gone));
+        Ok(Session { stop: Some(stop_tx), task, stats })
+    }
+
+    /// The figures of the last two seconds; none in the first two.
+    pub fn stats(&self) -> Option<Stats> {
+        self.stats.lock().unwrap().clone()
+    }
+
+    /// Whether the share has ended on its own (see `End`).
+    pub fn is_finished(&self) -> bool {
+        self.task.is_finished()
+    }
+
+    /// Ends the share, if it has not ended, and says why it ended and what
+    /// it sent on average.
+    pub async fn stop(mut self) -> (End, String) {
+        if let Some(tx) = self.stop.take() {
+            let _ = tx.send(());
+        }
+        match (&mut self.task).await {
+            Ok(done) => done,
+            Err(_) => (End::Stopped, "the share's task failed".into()),
+        }
+    }
+}
+
+/// The hardware encoder to use by name, or none for the software one.
+/// Chosen before joining, so a broken one fails before anyone sees a share.
+fn encoder(choice: Encoder) -> Result<Option<String>> {
+    if choice == Encoder::Software {
+        return Ok(None);
+    }
+    mf::startup()?;
+    let found = mf::hardware_encoders()?;
+    for c in &found {
+        log::info!("hardware H.264 encoder: {}", c.name);
+    }
+    // COM objects stay on their thread: the encoding thread finds the encoder again by name.
+    match found.into_iter().next() {
+        Some(c) => Ok(Some(c.name)),
+        None if choice == Encoder::Hardware => bail!("no hardware H.264 encoder on this machine"),
+        None => {
+            log::warn!("no hardware H.264 encoder: falling back to software VP8");
+            Ok(None)
+        }
+    }
+}
+
+/// Runs the share until it is stopped, the room goes or the window closes,
+/// then takes everything down.
+async fn run(
+    room: Room,
+    parts: Parts,
+    stats: Arc<Mutex<Option<Stats>>>,
+    mut stop: oneshot::Receiver<()>,
+    mut gone: oneshot::Receiver<()>,
+) -> (End, String) {
     const EVERY: Duration = Duration::from_secs(2);
-    let started = Instant::now();
+    let Parts { track, shared, counters, capture, video, loopback } = parts;
     let cpus = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1) as f64;
     let mut quality = Quality::default();
-    let mut prev = (0u64, 0u64, 0u64, 0u64, 0u64, procs::cpu_time(), Instant::now(), 0u64);
+    let mut prev = (0u64, 0u64, 0u64, 0u64, 0u64, procs::cpu_time(), Instant::now());
     let mut lines: Vec<(f64, f64, f64, f64)> = Vec::new();
     let mut tick = tokio::time::interval(EVERY);
     tick.tick().await;
-    loop {
+    let end = loop {
         tokio::select! {
             _ = tick.tick() => {}
-            _ = tokio::signal::ctrl_c() => break,
-            _ = &mut gone => break,
+            _ = &mut stop => break End::Stopped,
+            _ = &mut gone => break End::Disconnected,
+        }
+        if shared.closed.load(Ordering::Relaxed) {
+            break End::SourceClosed;
         }
         let now = Instant::now();
         let dt = (now - prev.6).as_secs_f64();
@@ -55,26 +217,22 @@ pub async fn watch(
         let latency = counters.latency_us.load(Ordering::Relaxed);
         let convert = shared.convert_us.load(Ordering::Relaxed);
         let cpu = procs::cpu_time();
-        let sound = loopback.as_ref().map(|l| l.frames.load(Ordering::Relaxed)).unwrap_or(0);
-        let peak = loopback.as_ref().map(|l| l.peak.swap(0, Ordering::Relaxed)).unwrap_or(0);
 
-        let source_fps = (captured - prev.0) as f64 / dt;
+        let capture_fps = (captured - prev.0) as f64 / dt;
         let encoded_fps = (encoded - prev.1) as f64 / dt;
-        let n = (encoded - prev.1).max(1) as f64;
-        let encode_ms = (latency - prev.3) as f64 / n / 1000.0;
+        let encode_ms = (latency - prev.3) as f64 / ((encoded - prev.1).max(1) as f64) / 1000.0;
         let convert_ms = (convert - prev.4) as f64 / ((captured - prev.0).max(1) as f64) / 1000.0;
-        let cpu_pct = (cpu - prev.5) as f64 / 1e7 / dt / cpus * 100.0;
-        let mbps = (bytes - prev.2) as f64 * 8.0 / dt / 1e6;
+        let cpu_percent = (cpu - prev.5) as f64 / 1e7 / dt / cpus * 100.0;
+        let mbit_s = (bytes - prev.2) as f64 * 8.0 / dt / 1e6;
 
-        let (mut sent_fps, mut bandwidth, mut size, mut encoder_name) =
-            (encoded_fps, None, String::new(), String::new());
-        if let Ok(stats) = track.get_stats().await {
-            for s in stats {
+        let (mut sent_fps, mut bandwidth, mut size, mut encoder) = (encoded_fps, None, (0, 0), String::new());
+        if let Ok(all) = track.get_stats().await {
+            for s in all {
                 match s {
                     RtcStats::OutboundRtp(o) if o.stream.kind == "video" => {
                         sent_fps = o.outbound.frames_per_second.max(0.0);
-                        size = format!("{}x{}", o.outbound.frame_width, o.outbound.frame_height);
-                        encoder_name = o.outbound.encoder_implementation.clone();
+                        size = (o.outbound.frame_width, o.outbound.frame_height);
+                        encoder = o.outbound.encoder_implementation.clone();
                     }
                     RtcStats::CandidatePair(c)
                         if c.candidate_pair.nominated && c.candidate_pair.available_outgoing_bitrate > 0.0 =>
@@ -86,28 +244,74 @@ pub async fn watch(
             }
         }
         let before = quality.level;
-        quality = quality.next(Sample { source_fps, sent_fps, bandwidth });
+        quality = quality.next(Sample { source_fps: capture_fps, sent_fps, bandwidth });
         if quality.level != before {
             log::warn!("quality: {before:?} -> {:?}", quality.level);
             shared.set_level(quality.level);
         }
-        let dropped = shared.dropped.load(Ordering::Relaxed);
-        log::info!(
-            "capture {source_fps:5.1} fps | encoded {encoded_fps:5.1} | sent {sent_fps:5.1} fps {size} ({encoder_name}) | \
-             {mbps:4.1} Mbit/s, estimate {} | encode {encode_ms:4.1} ms, convert {convert_ms:4.1} ms | \
-             cpu {cpu_pct:4.1}% | dropped {dropped} | sound {} frames, peak {:.0} dBFS | {:?}",
-            bandwidth.map(|b| format!("{:.1} Mbit/s", b / 1e6)).unwrap_or("-".into()),
-            sound - prev.7,
-            20.0 * (peak.max(1) as f64 / 32768.0).log10(),
-            quality.level,
-        );
-        lines.push((source_fps, sent_fps, encode_ms, cpu_pct));
-        prev = (captured, encoded, bytes, latency, convert, cpu, now, sound);
-        if seconds.is_some_and(|s| started.elapsed() >= Duration::from_secs(s)) {
-            break;
-        }
+        let now_stats = Stats {
+            capture_fps,
+            encoded_fps,
+            sent_fps,
+            width: size.0,
+            height: size.1,
+            mbit_s,
+            estimate_mbit_s: bandwidth.map(|b| b / 1e6),
+            encoder,
+            encode_ms,
+            convert_ms,
+            cpu_percent,
+            dropped: shared.dropped.load(Ordering::Relaxed),
+            sound: loopback.is_some(),
+            level: quality.level,
+        };
+        log::info!("{}", line(&now_stats, loopback.as_ref()));
+        *stats.lock().unwrap() = Some(now_stats);
+        lines.push((capture_fps, sent_fps, encode_ms, cpu_percent));
+        prev = (captured, encoded, bytes, latency, convert, cpu, now);
+    };
+
+    capture.stop();
+    // The encoder thread ends once the capture lets go of its frames.
+    match tokio::task::spawn_blocking(move || video.join()).await {
+        Ok(Ok(Err(e))) => log::error!("video: {e:#}"),
+        Ok(Err(_)) | Err(_) => log::error!("video: the encoder thread panicked"),
+        Ok(Ok(Ok(()))) => {}
     }
-    summarize(&lines, shared)
+    if let Some(l) = loopback {
+        let _ = tokio::task::spawn_blocking(move || l.stop()).await;
+    }
+    room.close().await.ok();
+    log::info!("share ended: {end:?}");
+    (end, summarize(&lines, &shared))
+}
+
+/// The log line of one reading.
+fn line(s: &Stats, loopback: Option<&audio::Loopback>) -> String {
+    let sound = match loopback {
+        Some(l) => {
+            let peak = l.peak.swap(0, Ordering::Relaxed);
+            format!("sound peak {:.0} dBFS", 20.0 * (peak.max(1) as f64 / 32768.0).log10())
+        }
+        None => "no sound".into(),
+    };
+    format!(
+        "capture {:5.1} fps | encoded {:5.1} | sent {:5.1} fps {}x{} ({}) | {:4.1} Mbit/s, estimate {} | \
+         encode {:4.1} ms, convert {:4.1} ms | cpu {:4.1}% | dropped {} | {sound} | {:?}",
+        s.capture_fps,
+        s.encoded_fps,
+        s.sent_fps,
+        s.width,
+        s.height,
+        s.encoder,
+        s.mbit_s,
+        s.estimate_mbit_s.map(|b| format!("{b:.1} Mbit/s")).unwrap_or("-".into()),
+        s.encode_ms,
+        s.convert_ms,
+        s.cpu_percent,
+        s.dropped,
+        s.level,
+    )
 }
 
 fn summarize(lines: &[(f64, f64, f64, f64)], shared: &Shared) -> String {
@@ -130,24 +334,21 @@ fn summarize(lines: &[(f64, f64, f64, f64)], shared: &Shared) -> String {
     )
 }
 
-/// What a share publishing a screen holds until it ends.
-pub struct Parts {
-    pub track: LocalVideoTrack,
-    pub shared: Shared,
-    pub counters: Arc<VideoCounters>,
-    pub capture: capture::Capture,
-    pub video: std::thread::JoinHandle<Result<()>>,
-    pub loopback: Option<audio::Loopback>,
+/// What a running share holds until it ends.
+struct Parts {
+    track: LocalVideoTrack,
+    shared: Shared,
+    counters: Arc<VideoCounters>,
+    capture: capture::Capture,
+    video: std::thread::JoinHandle<Result<()>>,
+    loopback: Option<audio::Loopback>,
 }
 
-/// Publishes `target` (and the sound of `scope`) in `room` and starts the
-/// capture and the encoder: a hardware one named `hardware`, or VP8.
-pub async fn publish(
+async fn publish(
     room: &Room,
     target: &Target,
-    scope: Option<audio::Scope>,
-    fps: u32,
-    max_bitrate: u32,
+    sound: Option<Scope>,
+    options: Options,
     hardware: Option<String>,
 ) -> Result<Parts> {
     let first = Level::P1080.bounds();
@@ -169,7 +370,10 @@ pub async fn publish(
                     VideoEncoderBackend::Software
                 },
                 simulcast: false,
-                video_encoding: Some(VideoEncoding { max_bitrate: max_bitrate as u64, max_framerate: fps as f64 }),
+                video_encoding: Some(VideoEncoding {
+                    max_bitrate: options.max_bitrate as u64,
+                    max_framerate: options.fps as f64,
+                }),
                 degradation_preference: Some(
                     livekit::webrtc::rtp_parameters::DegradationPreference::MaintainResolution,
                 ),
@@ -179,62 +383,71 @@ pub async fn publish(
         .await
         .context("publish the screen")?;
 
-    let mut loopback = None;
-    let mut audio_track = None;
-    if let Some(scope) = scope {
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<i16>>(50);
-        match audio::start(scope, tx) {
-            Ok(l) => {
-                let options =
-                    AudioSourceOptions { echo_cancellation: false, noise_suppression: false, auto_gain_control: false };
-                let src = NativeAudioSource::new(options, audio::SAMPLE_RATE, audio::CHANNELS, 100);
-                let t = LocalAudioTrack::create_audio_track("screen-audio", RtcAudioSource::Native(src.clone()));
-                room.local_participant()
-                    .publish_track(
-                        LocalTrack::Audio(t.clone()),
-                        TrackPublishOptions {
-                            source: TrackSource::ScreenshareAudio,
-                            dtx: false,
-                            red: false,
-                            audio_encoding: Some(AudioEncoding { max_bitrate: 128_000 }),
-                            ..Default::default()
-                        },
-                    )
-                    .await
-                    .context("publish the screen's sound")?;
-                tokio::spawn(async move {
-                    while let Some(chunk) = rx.recv().await {
-                        let frame = AudioFrame {
-                            data: Cow::Owned(chunk),
-                            sample_rate: audio::SAMPLE_RATE,
-                            num_channels: audio::CHANNELS,
-                            samples_per_channel: audio::CHUNK_FRAMES as u32,
-                        };
-                        if let Err(e) = src.capture_frame(&frame).await {
-                            log::warn!("audio: {e}");
-                        }
-                    }
-                });
-                log::info!("sharing the sound of {scope:?}");
-                loopback = Some(l);
-                audio_track = Some(t);
-            }
-            Err(e) => log::warn!("no sound: {e:#}"),
-        }
-    }
-    let _ = &audio_track;
+    let loopback = match sound {
+        Some(scope) => publish_sound(room, scope).await,
+        None => None,
+    };
 
     let shared = Shared::default();
     let (frames_tx, frames_rx) = sync_channel::<Nv12Frame>(2);
     let counters = Arc::new(VideoCounters::default());
     let video = {
-        let (source, counters, fps, bitrate) = (source.clone(), counters.clone(), fps, max_bitrate);
+        let (source, counters, fps, bitrate) = (source.clone(), counters.clone(), options.fps, options.max_bitrate);
         std::thread::Builder::new().name("video-encode".into()).spawn(move || match hardware {
             Some(name) => encode_hardware(&name, frames_rx, &source, &counters, fps, bitrate),
             None => encode_software(frames_rx, &source, &counters),
         })?
     };
-    let capture = capture::start(target, fps, frames_tx, shared.clone())?;
+    let capture = capture::start(target, options.fps, frames_tx, shared.clone())?;
     log::info!("sharing {target:?}");
     Ok(Parts { track, shared, counters, capture, video, loopback })
+}
+
+/// Publishes the sound of `scope`; a share goes on without it when the
+/// loopback cannot start (Windows before 10 2004, a process gone).
+async fn publish_sound(room: &Room, scope: Scope) -> Option<audio::Loopback> {
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<i16>>(50);
+    let loopback = match audio::start(scope, tx) {
+        Ok(l) => l,
+        Err(e) => {
+            log::warn!("no sound: {e:#}");
+            return None;
+        }
+    };
+    let options = AudioSourceOptions { echo_cancellation: false, noise_suppression: false, auto_gain_control: false };
+    let src = NativeAudioSource::new(options, audio::SAMPLE_RATE, audio::CHANNELS, 100);
+    let track = LocalAudioTrack::create_audio_track("screen-audio", RtcAudioSource::Native(src.clone()));
+    let published = room
+        .local_participant()
+        .publish_track(
+            LocalTrack::Audio(track),
+            TrackPublishOptions {
+                source: TrackSource::ScreenshareAudio,
+                dtx: false,
+                red: false,
+                audio_encoding: Some(AudioEncoding { max_bitrate: 128_000 }),
+                ..Default::default()
+            },
+        )
+        .await;
+    if let Err(e) = published {
+        log::warn!("no sound: publish: {e}");
+        loopback.stop();
+        return None;
+    }
+    tokio::spawn(async move {
+        while let Some(chunk) = rx.recv().await {
+            let frame = AudioFrame {
+                data: Cow::Owned(chunk),
+                sample_rate: audio::SAMPLE_RATE,
+                num_channels: audio::CHANNELS,
+                samples_per_channel: audio::CHUNK_FRAMES as u32,
+            };
+            if let Err(e) = src.capture_frame(&frame).await {
+                log::warn!("audio: {e}");
+            }
+        }
+    });
+    log::info!("sharing the sound of {scope:?}");
+    Some(loopback)
 }
