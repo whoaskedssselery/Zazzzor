@@ -139,3 +139,37 @@ func TestScreenStaleRemovalProtectsRejoinedCompanion(t *testing.T) {
 		t.Fatal("stale companion removal would disconnect the accepted SID")
 	}
 }
+
+type screenRemovalRooms struct {
+	*refreshRooms
+	listed, release chan struct{}
+}
+
+func (r *screenRemovalRooms) ListParticipants(context.Context, string) ([]Participant, error) {
+	close(r.listed)
+	<-r.release
+	return nil, nil
+}
+
+func TestScreenRemovalRechecksCompanionAfterRemoteListing(t *testing.T) {
+	s, r, room, p := screenService(t)
+	listed, release, done := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+	unblock := sync.OnceFunc(func() { close(release) })
+	defer unblock()
+	s.rooms = &screenRemovalRooms{refreshRooms: r, listed: listed, release: release}
+	s.removeLocked(room.Name, p.Identity, "SC_old")
+	key := removalKey{room.Name, p.Identity}
+	job := s.removals[key]
+	go func() { done <- s.removeParticipant(t.Context(), key, job) }()
+	waitRefreshSignal(t, listed)
+	if err := s.joined(t.Context(), 42, room, p); err != nil {
+		t.Fatalf("new admission: %v", err)
+	}
+	unblock()
+	if err := <-done; err != nil {
+		t.Fatalf("removeParticipant: %v", err)
+	}
+	if r.removed[p.Identity] {
+		t.Fatal("in-flight stale removal disconnected rejoined companion")
+	}
+}

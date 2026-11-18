@@ -164,6 +164,7 @@ func (s *Service) Reconcile(ctx context.Context) error {
 	}
 
 	observed := map[snowflake.ID]*screenObservation{}
+	var screenCandidates []found
 	func() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
@@ -239,13 +240,24 @@ func (s *Service) Reconcile(ctx context.Context) error {
 			}
 			observation.sess, observation.revision = sess, s.revs[userID]
 		}
-	}()
-	for _, f := range screens {
-		userID, _ := screenOwner(f.p.Identity)
-		if observation := observed[userID]; observation != nil && !unknown[f.channelID] {
-			if err := s.joinedScreen(ctx, f.channelID, f.room, f.p, observation); err != nil {
-				reconcileErrors = append(reconcileErrors, fmt.Errorf("voice: reconcile companion: %w", err))
+		// Reject all mismatched bindings before accepting any companion:
+		// accepting one advances its owner's revision, which must not hide
+		// another room's orphan behind the observation guard.
+		for _, f := range screens {
+			userID, _ := screenOwner(f.p.Identity)
+			if observation := observed[userID]; observation != nil && !unknown[f.channelID] {
+				if !s.screenCurrentLocked(observation.sess, f.room, f.p) {
+					s.removeLocked(f.room.Name, f.p.Identity, f.p.SID)
+					continue
+				}
+				screenCandidates = append(screenCandidates, f)
 			}
+		}
+	}()
+	for _, f := range screenCandidates {
+		userID, _ := screenOwner(f.p.Identity)
+		if err := s.joinedScreen(ctx, f.channelID, f.room, f.p, observed[userID]); err != nil {
+			reconcileErrors = append(reconcileErrors, fmt.Errorf("voice: reconcile companion: %w", err))
 		}
 	}
 	if err := ctx.Err(); err != nil {

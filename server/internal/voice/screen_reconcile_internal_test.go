@@ -121,3 +121,46 @@ func TestScreenReconcileClearsMissingCompanion(t *testing.T) {
 		t.Fatal("missing companion remained public")
 	}
 }
+
+type screenMultiRooms struct {
+	*screenRooms
+	orphanFirst bool
+}
+
+func (r *screenMultiRooms) ListRooms(context.Context) ([]Room, error) {
+	rooms := []Room{{Name: "42", SID: "RM_1"}, {Name: "43", SID: "RM_orphan"}}
+	if r.orphanFirst {
+		rooms[0], rooms[1] = rooms[1], rooms[0]
+	}
+	return rooms, nil
+}
+
+func (r *screenMultiRooms) ListParticipants(ctx context.Context, room string) ([]Participant, error) {
+	if room == "43" {
+		return []Participant{{Identity: "1.screen", SID: "SC_orphan", Join: "join"}}, nil
+	}
+	return r.screenRooms.ListParticipants(ctx, room)
+}
+
+func TestScreenReconcileRemovesOrphanAlongsideValidCompanion(t *testing.T) {
+	for _, orphanFirst := range []bool{false, true} {
+		t.Run(map[bool]string{false: "valid first", true: "orphan first"}[orphanFirst], func(t *testing.T) {
+			s, r, _, p := screenService(t)
+			p.Screens = []string{"valid"}
+			s.rooms = &screenMultiRooms{screenRooms: &screenRooms{refreshRooms: r,
+				participants: []Participant{{Identity: "1", SID: "PA_1", Join: "join"}, p}}, orphanFirst: orphanFirst}
+			delete(s.sessions, 1)
+			for range 2 {
+				if err := s.Reconcile(t.Context()); err != nil {
+					t.Fatalf("Reconcile: %v", err)
+				}
+				if s.removals[removalKey{"43", "1.screen"}] == nil {
+					t.Fatal("valid admission hid another room's orphan")
+				}
+				if sess := s.sessions[1]; sess == nil || sess.companion == nil || sess.companion.p.SID != p.SID || !sess.state.SelfStream {
+					t.Fatal("orphan cleanup removed the valid companion")
+				}
+			}
+		})
+	}
+}

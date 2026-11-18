@@ -71,6 +71,7 @@ func startScreenPeer(ctx context.Context, t *testing.T, sfu testcontainers.Conta
 	}
 	if runtime.GOOS != "linux" {
 		binary = filepath.Join(t.TempDir(), "voice.test")
+		//nolint:gosec // G204: only the output path varies, inside t.TempDir; the command and arguments are fixed.
 		build := exec.CommandContext(ctx, "go", "test", "-c", "-o", binary, ".")
 		build.Env = append(os.Environ(), "GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=0")
 		if output, buildErr := build.CombinedOutput(); buildErr != nil {

@@ -149,6 +149,22 @@ func TestScreenRepeatedAdmissionKeepsPublishedTracks(t *testing.T) {
 	}
 }
 
+func TestScreenOldJoinCannotReplaceNewCompanion(t *testing.T) {
+	s, _, room, p := screenService(t)
+	newerScreen := p
+	newerScreen.SID = "SC_2"
+	newerScreen.Screens = []string{"new"}
+	if err := s.joined(t.Context(), 42, room, newerScreen); err != nil {
+		t.Fatalf("new admission: %v", err)
+	}
+	if err := s.joined(t.Context(), 42, room, p); err != nil {
+		t.Fatalf("old admission: %v", err)
+	}
+	if s.sessions[1].companion.p.SID != newerScreen.SID || !s.sessions[1].state.SelfStream {
+		t.Fatal("late join replaced the newer companion")
+	}
+}
+
 func TestScreenIgnoresOldTrackAndDepartureEvents(t *testing.T) {
 	s, _, room, p := screenService(t)
 	if err := s.joined(t.Context(), 42, room, p); err != nil {
