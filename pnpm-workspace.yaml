@@ -15,3 +15,12 @@ allowBuilds:
 overrides:
   handlebars: 4.7.10
   "minimatch@>=7.0.0 <11.0.1": 11.0.1
+# picomatch ReDoS (GHSA-fc5q-39xc-vjpf, published 2026-11-18) has no fixed
+# release yet. picomatch is only in the build and lint tools (ESLint plugins,
+# Vite, Vitest), never in what the browser or the server runs:
+# `pnpm why picomatch --prod -r` finds nothing. Ignored by the owner's
+# decision until a fixed picomatch ships; then drop this and override
+# picomatch to the fixed version like the pins above.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-fc5q-39xc-vjpf

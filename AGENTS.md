@@ -25,6 +25,8 @@ home Linux server, Docker, no cloud services.
   ESLint), TanStack Router and Query, Tailwind CSS; Biome formats it.
 - `deploy/`: Compose and Swarm stacks, Caddy, the backup image, scripts and
   the server owner's guide (in Russian).
+- `desktop/`: the Windows desktop client in Rust (Tauri around the web
+  client, native screen capture); each crate builds on Windows only.
 
 ## Navigating the code
 
@@ -53,8 +55,8 @@ back to search and file reads for what the graph does not cover.
 
 Before you push: `bash tools/agents/check.sh`. It runs only what applies
 to the change (Go vet, lint, race tests and govulncheck; the contract; the
-web client; deploy configs; shellcheck; secrets; commit messages) and ends
-with a PASS/FAIL table. CI runs the same and more; ESLint for `web/` runs
+web client; deploy configs; the desktop crates' rustfmt, clippy and tests;
+shellcheck; secrets; commit messages) and ends with a PASS/FAIL table. CI runs the same and more; ESLint for `web/` runs
 with `pnpm lint`.
 
 ## Commits and branches
