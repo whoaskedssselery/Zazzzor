@@ -11,6 +11,7 @@ compile_error!("the capture spike is Windows-only: it uses Windows Graphics Capt
 
 mod audio;
 mod capture;
+mod encode;
 mod join;
 mod mf;
 mod procs;
@@ -18,8 +19,8 @@ mod quality;
 
 use std::borrow::Cow;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{Receiver, RecvTimeoutError, sync_channel};
+use std::sync::atomic::Ordering;
+use std::sync::mpsc::sync_channel;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
@@ -29,13 +30,12 @@ use livekit::prelude::*;
 use livekit::webrtc::audio_frame::AudioFrame;
 use livekit::webrtc::audio_source::native::NativeAudioSource;
 use livekit::webrtc::audio_source::{AudioSourceOptions, RtcAudioSource};
-use livekit::webrtc::prelude::{NV12Buffer, VideoFrame, VideoRotation};
 use livekit::webrtc::stats::RtcStats;
-use livekit::webrtc::video_frame::{EncodedFrameType, EncodedVideoCodec, EncodedVideoFrame};
 use livekit::webrtc::video_source::native::NativeVideoSource;
 use livekit::webrtc::video_source::{RtcVideoSource, VideoResolution};
 
 use crate::capture::{Nv12Frame, Shared, Target};
+use crate::encode::{VideoCounters, encode_hardware, encode_software};
 use crate::quality::{Level, Quality, Sample, fit};
 
 #[derive(Parser)]
@@ -128,16 +128,6 @@ fn main() -> Result<()> {
             tokio::runtime::Builder::new_multi_thread().enable_all().build()?.block_on(share(*args))
         }
     }
-}
-
-/// What the video thread counts, read by the stats loop.
-#[derive(Default)]
-struct VideoCounters {
-    encoded: AtomicU64,
-    bytes: AtomicU64,
-    /// Time from handing a frame to the encoder to its access unit, summed, in microseconds.
-    latency_us: AtomicU64,
-    keyframes: AtomicU64,
 }
 
 async fn share(args: Share) -> Result<()> {
@@ -322,141 +312,6 @@ fn audio_scope(args: &Share, target: &Target) -> Result<Option<audio::Scope>> {
         Target::Window(title) => Ok(Some(audio::Scope::Only(capture::window_process(title)?))),
         Target::Monitor(_) => Ok(None),
     }
-}
-
-/// Encodes on the GPU and hands the access units to WebRTC as they are.
-fn encode_hardware(
-    name: &str,
-    frames: Receiver<Nv12Frame>,
-    source: &NativeVideoSource,
-    counters: &VideoCounters,
-    fps: u32,
-    max_bitrate: u32,
-) -> Result<()> {
-    unsafe {
-        let _ = windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_MULTITHREADED);
-    }
-    let Some(candidate) = mf::hardware_encoders()?.into_iter().find(|c| c.name == name) else {
-        bail!("the encoder {name} is gone");
-    };
-    let candidate = &candidate;
-    log::info!("encoding with {}", candidate.name);
-    let mut bitrate = max_bitrate;
-    let mut encoder: Option<mf::Encoder> = None;
-    // A still screen gives no frames: the last one is sent again now and then,
-    // so a viewer who joins or loses a packet still gets a keyframe.
-    let mut last: Option<Nv12Frame> = None;
-    let mut waiting: Option<Nv12Frame> = None;
-    loop {
-        let frame = match waiting.take() {
-            Some(f) => f,
-            None => match frames.recv_timeout(Duration::from_millis(500)) {
-                Ok(f) => f,
-                Err(RecvTimeoutError::Timeout) => match &last {
-                    // On the capture's clock: half a second after the frame it repeats.
-                    Some(l) => Nv12Frame { data: l.data.clone(), timestamp_us: l.timestamp_us + 500_000, ..*l },
-                    None => continue,
-                },
-                Err(RecvTimeoutError::Disconnected) => return Ok(()),
-            },
-        };
-        let size_changed = encoder.as_ref().is_none_or(|e| (e.width, e.height) != (frame.width, frame.height));
-        if size_changed {
-            drop(encoder.take());
-            log::info!("encoder at {}x{}", frame.width, frame.height);
-            encoder = Some(mf::Encoder::open(candidate, frame.width, frame.height, fps, bitrate)?);
-        }
-        let enc = encoder.as_mut().unwrap();
-        // Feed this frame at the encoder's next request, and send whatever comes out meanwhile.
-        loop {
-            if source.take_keyframe_request() {
-                enc.request_keyframe();
-            }
-            if let Some(rc) = source.take_rate_control_request() {
-                let wanted = (rc.target_bitrate_bps as u32).clamp(500_000, max_bitrate);
-                if wanted != bitrate {
-                    bitrate = wanted;
-                    enc.set_bitrate(bitrate);
-                }
-            }
-            match enc.next_event()? {
-                mf::Event::NeedInput => {
-                    enc.feed(&frame)?;
-                    break;
-                }
-                mf::Event::HaveOutput => send(enc, source, counters)?,
-                mf::Event::Other => {}
-            }
-        }
-        // Take what is ready without waiting for the next frame.
-        let mut newer = None;
-        while enc.pending() > 0 {
-            match enc.next_event()? {
-                mf::Event::HaveOutput => send(enc, source, counters)?,
-                mf::Event::NeedInput => {
-                    // It wants the next frame before finishing this one: give it when it comes.
-                    match frames.recv_timeout(Duration::from_millis(500)) {
-                        Ok(f) if (f.width, f.height) == (enc.width, enc.height) => {
-                            enc.feed(&f)?;
-                            newer = Some(f);
-                        }
-                        Ok(f) => {
-                            waiting = Some(f);
-                            break;
-                        }
-                        Err(RecvTimeoutError::Timeout) => break,
-                        Err(RecvTimeoutError::Disconnected) => return Ok(()),
-                    }
-                }
-                mf::Event::Other => {}
-            }
-        }
-        last = newer.or(Some(frame));
-    }
-}
-
-fn send(enc: &mut mf::Encoder, source: &NativeVideoSource, counters: &VideoCounters) -> Result<()> {
-    let Some(unit) = enc.take()? else { return Ok(()) };
-    counters.encoded.fetch_add(1, Ordering::Relaxed);
-    counters.bytes.fetch_add(unit.data.len() as u64, Ordering::Relaxed);
-    counters.latency_us.fetch_add(unit.encode_time.as_micros() as u64, Ordering::Relaxed);
-    if unit.keyframe {
-        counters.keyframes.fetch_add(1, Ordering::Relaxed);
-    }
-    source.capture_encoded_frame(&EncodedVideoFrame {
-        codec: EncodedVideoCodec::H264,
-        payload: &unit.data,
-        timestamp_us: unit.timestamp_us,
-        frame_type: if unit.keyframe { EncodedFrameType::Key } else { EncodedFrameType::Delta },
-        resolution: VideoResolution { width: unit.width, height: unit.height },
-        frame_metadata: None,
-    });
-    Ok(())
-}
-
-/// Hands raw frames to WebRTC, whose software VP8 encoder sends them.
-fn encode_software(frames: Receiver<Nv12Frame>, source: &NativeVideoSource, counters: &VideoCounters) -> Result<()> {
-    log::info!("encoding with libwebrtc's software VP8");
-    while let Ok(frame) = frames.recv() {
-        let mut buffer = NV12Buffer::new(frame.width, frame.height);
-        let (sy, suv) = buffer.strides();
-        let (y, uv) = buffer.data_mut();
-        let (w, h) = (frame.width as usize, frame.height as usize);
-        for row in 0..h {
-            y[row * sy as usize..][..w].copy_from_slice(&frame.data[row * w..][..w]);
-        }
-        for row in 0..h / 2 {
-            uv[row * suv as usize..][..w].copy_from_slice(&frame.data[w * h + row * w..][..w]);
-        }
-        source.capture_frame(&VideoFrame {
-            rotation: VideoRotation::VideoRotation0,
-            timestamp_us: frame.timestamp_us,
-            frame_metadata: None,
-            buffer,
-        });
-        counters.encoded.fetch_add(1, Ordering::Relaxed);
-    }
-    Ok(())
 }
 
 /// Every two seconds: reads the counters and WebRTC's stats, applies the
