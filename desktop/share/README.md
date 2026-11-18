@@ -1,28 +1,34 @@
-# capture-spike
+# zazzzor-share
 
-The first piece of the Zazzzor desktop client, on its own: a Windows CLI that
-shares a monitor or a window, with the sound of one application, to a
-Zazzzor call. The web client sees it as an ordinary screen share
-(`ScreenShare` and `ScreenShareAudio` tracks of a participant), so nothing in
-`web/` or `server/` changes. It is a spike: it proves the pipeline and
-measures it; the Tauri shell will take the code over.
+The native screen share of the Zazzzor desktop client: a monitor or a
+window, with the sound of one application, sent to a Zazzzor call over a
+LiveKit connection of its own. The desktop app (`desktop/app`) runs it as
+the user's screen companion (`<user id>.screen`, see `joinVoiceScreen` in
+the API); the web client shows that share as the person's own.
 
-## Use
+- `sources`: the monitors and windows that can be shared, with an ID each
+  and a thumbnail from one captured frame.
+- `session`: a share from `Session::start` to `Session::stop`, with its
+  figures every two seconds and why it ended (stopped, the connection
+  removed, the window closed).
 
-Windows 10 2004 or later (the per-process loopback), x64, with the MSVC
-build tools and the Windows SDK.
+## The CLI
+
+`examples/share` is the same share as a command line tool, for measuring
+it outside the app. Windows 10 2004 or later (the per-process loopback),
+x64, with the MSVC build tools and the Windows SDK.
 
 ```bash
-cargo build --release
-target/release/capture-spike list
+cargo build --release --examples
+target/release/examples/share list
 ```
 
-`list` prints the monitors (counted from 1) and the windows with their
-process IDs. To share, sign in as a member of the voice channel (the
-password comes from `ZAZZZOR_PASSWORD`, never the command line):
+`list` prints each source's ID, size, application and title. To share,
+sign in as a member of the voice channel (the password comes from
+`ZAZZZOR_PASSWORD`, never the command line):
 
 ```bash
-ZAZZZOR_PASSWORD=… target/release/capture-spike share --window "Firefox" --server http://localhost:4173 --channel <voice channel ID> --username sharer
+ZAZZZOR_PASSWORD=… target/release/examples/share share --window "Firefox" --server http://localhost:4173 --channel <voice channel ID> --username sharer
 ```
 
 - `--monitor N` or `--window "part of the title"` (monitor 1 by default).
@@ -32,18 +38,14 @@ ZAZZZOR_PASSWORD=… target/release/capture-spike share --window "Firefox" --ser
 - `--encoder auto|hardware|software`, `--fps 60`, `--max-bitrate 10000000`,
   `--seconds N` (stop and print a summary).
 - `--livekit-url ws://… --token …` (or `LIVEKIT_TOKEN`) skips the sign-in.
+- `--companion` joins as the screen of `--username`, who must already be
+  in the call in a browser (otherwise `409 not_in_voice`): one person in
+  the call, as the app does. Without it the sharer is a participant of its
+  own. When the owner leaves, the companion is removed and the CLI stops.
 
 Every two seconds it logs capture fps, encoded and sent fps, the bitrate and
 WebRTC's bandwidth estimate, the capture-to-encoded delay, its CPU use and
 the quality level.
-
-With `--companion` the CLI signs in as the same user as the browser and
-asks `POST /channels/{id}/voice/screen`: it joins as `<user id>.screen`,
-publishes only the screen share, and the web client shows it as that
-person's. The person must already be in the call (otherwise
-`409 not_in_voice`), and when they leave the companion is removed and the
-CLI stops. Without `--companion` the sharer is a separate account, a
-participant of its own.
 
 ### Building on this machine
 
@@ -89,8 +91,8 @@ process loopback (one app's tree) ─ 48 kHz stereo PCM, 10 ms chunks ─▶ Liv
   bandwidth estimate under 2.5 Mbit/s (a hardware encoder sends every frame,
   so a short link shows there, not as lost frames); back to 1080p after
   10 s with room for 6 Mbit/s, slower after each fall.
-- **Join**: the same API the web client uses: `POST /auth/login`, then
-  `POST /channels/{id}/voice` for a LiveKit token and URL.
+- **Join**: the app gets the token from the web client, which asks
+  `POST /channels/{id}/voice/screen`; the CLI signs in and asks the same.
 
 ## Crates
 
@@ -100,7 +102,7 @@ process loopback (one app's tree) ─ 48 kHz stereo PCM, 10 ms chunks ─▶ Liv
 | `webrtc-sys` | 0.3.52 (locked) | The libwebrtc it wraps; held at a release two weeks old |
 | `windows-capture` | 2.0.1 | Windows Graphics Capture with D3D11 readback, monitor and window enumeration |
 | `windows` | 0.62.2 | Media Foundation, WASAPI process loopback, ToolHelp |
-| `tokio`, `clap`, `ureq`, `serde_json`, `anyhow`, `log` | | Runtime, CLI, the two API calls |
+| `tokio`, `serde`, `anyhow`, `log` | | Runtime, the figures for the app; the CLI adds `clap`, `ureq`, `serde_json` |
 
 Rejected: FFmpeg bindings for encoding (a large native dependency for what
 Media Foundation does with the driver's encoder); `scap` and `xcap` (no
@@ -150,32 +152,12 @@ internet.
   answered `E_ACCESSDENIED` for every monitor and window when the binary
   ran from anywhere under `WebstormProjects\projects\Zazzzor`, and worked
   for the same binary copied to `%USERPROFILE%\capture-probe`. The privacy
-  settings allow capture for desktop apps; the cause was not found. `list`
-  now says for each monitor whether it can be captured.
+  settings allow capture for desktop apps; the cause is the folder's sandbox
+  ACL (see `desktop/app/README.md`). `list` leaves out what cannot be captured.
 - **A minimised window gives no frames**; the window must be restored.
 
-## What the Tauri shell will need
+## Next
 
-- **One LiveKit connection, not two.** The spike joins as its own
-  participant; in the client the web UI already holds the call. Either the
-  native side publishes into the page's room (it cannot: the room lives in
-  the WebView's JavaScript), or the page asks Rust to join with the same
-  token and the API learns that one user may hold a voice connection and a
-  screen-share connection (a second identity such as `<user>:screen`, which
-  the web client would have to fold into the person). The second is the
-  likely way; it is an API change (`server/internal/voice`, the contract)
-  and a web change (`livekit.ts` maps the identity back to the user).
-- **A picker in the UI.** `list` becomes a Tauri command returning the
-  monitors and windows (with thumbnails from one WGC frame each) and the
-  processes playing sound; the web UI shows them where it now calls
-  `getDisplayMedia`, behind a "running in the desktop client" check.
-- **Commands and events**: `start_share {target, audio, quality}`,
-  `stop_share`, and a stats event every two seconds (the log line here) for
-  the share's status in the UI.
-- **Builds**: a Windows runner in CI (`windows-latest` or a native
-  self-hosted one), `+crt-static`, the MSVC tools and the Windows SDK, and a
-  cache of the prebuilt libwebrtc (`LK_CUSTOM_WEBRTC`), since the download
-  is large and the link to GitHub is unreliable.
 - **Zero-copy next.** The frame now goes GPU → CPU (BGRA readback) → libyuv
   → CPU → GPU (the encoder's input). The next step keeps it on the GPU:
   the WGC texture through the D3D11 video processor (BGRA → NV12 and the
