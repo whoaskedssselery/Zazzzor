@@ -1,21 +1,15 @@
 [package]
-name = "capture-spike"
+name = "zazzzor-share"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "Spike: share a Windows screen or window and one app's sound to a Zazzzor call"
+description = "Share a Windows screen or window and one app's sound to a Zazzzor call"
 
 [dependencies]
 anyhow = "=1.0.104"
-clap = { version = "=4.6.7", features = ["derive", "env"] }
-env_logger = "=0.11.11"
-futures-util = "=0.3.34"
 livekit = "=0.10.0"
 log = "=0.4.35"
-serde = { version = "=1.0.229", features = ["derive"] }
-serde_json = "=1.0.154"
 tokio = { version = "=1.54.1", features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
-ureq = { version = "=3.5.1", features = ["json"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-capture = "=2.0.1"
@@ -35,6 +29,14 @@ windows = { version = "=0.62.2", features = [
   "Win32_System_Ole",
   "Win32_System_ProcessStatus",
 ] }
+
+# The CLI in examples/share.
+[dev-dependencies]
+clap = { version = "=4.6.7", features = ["derive", "env"] }
+env_logger = "=0.11.11"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+ureq = { version = "=3.5.1", features = ["json"] }
 
 [profile.release]
 debug = 1
