@@ -41,6 +41,19 @@ const LINK: Partial<Record<ConnectionState, CallLink>> = {
 
 const SCREEN = new Set<Track.Source>([Track.Source.ScreenShare, Track.Source.ScreenShareAudio]);
 
+/**
+ * The desktop client captures the screen natively and shares it as a
+ * second participant beside the person's own, `<user id>.screen`, which
+ * publishes only the screen share (the server allows it while the person is
+ * in the call). Here it is that person: their screen share, their tile,
+ * their screen share volume.
+ */
+const SCREEN_IDENTITY = ".screen";
+
+/** The user a participant is: its identity, or the owner of a `.screen` one. */
+const userOf = (identity: string): string =>
+  identity.endsWith(SCREEN_IDENTITY) ? identity.slice(0, -SCREEN_IDENTITY.length) : identity;
+
 /** How long a screen may stay unpublished before it counts as ended: a full reconnect publishes it again. */
 const REPUBLISH_MS = 1000;
 
@@ -155,20 +168,31 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
   const playAudio = (track: RemoteTrack, pub: RemoteTrackPublication, participant: RemoteParticipant) => {
     if (track.kind !== Track.Kind.Audio) return;
     sounds.append(track.attach());
-    if (track instanceof RemoteAudioTrack) applyVolume(track, participant.identity, pub.source);
+    if (track instanceof RemoteAudioTrack) applyVolume(track, userOf(participant.identity), pub.source);
   };
 
   /** Applies the volumes again to everything `participant` plays. */
   const applyVolumes = (participant: RemoteParticipant) => {
     for (const pub of participant.audioTrackPublications.values()) {
-      if (pub.audioTrack instanceof RemoteAudioTrack) applyVolume(pub.audioTrack, participant.identity, pub.source);
+      if (pub.audioTrack instanceof RemoteAudioTrack) {
+        applyVolume(pub.audioTrack, userOf(participant.identity), pub.source);
+      }
     }
   };
 
-  const sharing = (r: Room) =>
-    [...r.remoteParticipants.values()]
-      .filter((p) => p.getTrackPublication(Track.Source.ScreenShare) !== undefined)
-      .map((p) => p.identity);
+  /** `userId`'s participants in the room: their own and the one their desktop client shares through. */
+  const participantsOf = (userId: string): RemoteParticipant[] =>
+    [room?.remoteParticipants.get(userId), room?.remoteParticipants.get(userId + SCREEN_IDENTITY)].filter(
+      (p): p is RemoteParticipant => p !== undefined,
+    );
+
+  const sharing = (r: Room) => [
+    ...new Set(
+      [...r.remoteParticipants.values()]
+        .filter((p) => p.getTrackPublication(Track.Source.ScreenShare) !== undefined)
+        .map((p) => userOf(p.identity)),
+    ),
+  ];
 
   const filming = (r: Room) =>
     [...r.remoteParticipants.values()]
@@ -184,7 +208,7 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
   /** Subscribes what this participant's publication should be received: microphones, watched screens, shown cameras. */
   const follow = (pub: RemoteTrackPublication, participant: RemoteParticipant) => {
     if (pub.source === Track.Source.Microphone) pub.setSubscribed(true);
-    else if (SCREEN.has(pub.source)) pub.setSubscribed(watching.has(participant.identity));
+    else if (SCREEN.has(pub.source)) pub.setSubscribed(watching.has(userOf(participant.identity)));
     else if (pub.source === Track.Source.Camera) pub.setSubscribed(cameraViews.has(participant.identity));
   };
 
@@ -246,7 +270,7 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
   };
 
   const showScreen = (participant: RemoteParticipant) => {
-    const el = screens.get(participant.identity);
+    const el = screens.get(userOf(participant.identity));
     const track = participant.getTrackPublication(Track.Source.ScreenShare)?.videoTrack;
     if (el && track) track.attach(el);
   };
@@ -487,8 +511,7 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
 
     setVolume(userId, source, volume) {
       volumes[source].set(userId, Math.min(2, Math.max(0, volume)));
-      const participant = room?.remoteParticipants.get(userId);
-      if (participant) applyVolumes(participant);
+      for (const participant of participantsOf(userId)) applyVolumes(participant);
     },
 
     async startScreenShare(): Promise<ScreenShareResult> {
@@ -551,18 +574,19 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
     watch(userId, on) {
       if (on) watching.add(userId);
       else watching.delete(userId);
-      const participant = room?.remoteParticipants.get(userId);
-      if (!participant) return;
-      for (const pub of participant.trackPublications.values()) if (SCREEN.has(pub.source)) pub.setSubscribed(on);
+      for (const participant of participantsOf(userId)) {
+        for (const pub of participant.trackPublications.values()) if (SCREEN.has(pub.source)) pub.setSubscribed(on);
+      }
     },
 
     attachScreen(userId, el) {
       screens.set(userId, el);
-      const participant = room?.remoteParticipants.get(userId);
-      if (participant) showScreen(participant);
+      for (const participant of participantsOf(userId)) showScreen(participant);
       return () => {
         if (screens.get(userId) === el) screens.delete(userId);
-        room?.remoteParticipants.get(userId)?.getTrackPublication(Track.Source.ScreenShare)?.videoTrack?.detach(el);
+        for (const participant of participantsOf(userId)) {
+          participant.getTrackPublication(Track.Source.ScreenShare)?.videoTrack?.detach(el);
+        }
       };
     },
 
