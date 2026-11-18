@@ -20,7 +20,8 @@ const UP_AFTER: u32 = 5;
 const UP_AFTER_MAX: u32 = 30;
 
 /// The height the share is sent at.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Level {
     P1080,
     P720,
