@@ -2,6 +2,7 @@ package voice
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 )
@@ -119,6 +120,27 @@ func TestScreenReconcileClearsMissingCompanion(t *testing.T) {
 	}
 	if s.sessions[1].companion != nil || s.sessions[1].state.SelfStream {
 		t.Fatal("missing companion remained public")
+	}
+}
+
+type screenUnavailableRooms struct{ *screenRooms }
+
+func (*screenUnavailableRooms) ListParticipants(context.Context, string) ([]Participant, error) {
+	return nil, errors.New("temporary listing failure")
+}
+
+func TestScreenReconcileKeepsCompanionWhenRoomCannotBeListed(t *testing.T) {
+	s, r, room, p := screenService(t)
+	p.Screens = []string{"screen"}
+	if err := s.joined(t.Context(), 42, room, p); err != nil {
+		t.Fatalf("admission: %v", err)
+	}
+	s.rooms = &screenUnavailableRooms{screenRooms: &screenRooms{refreshRooms: r}}
+	if err := s.Reconcile(t.Context()); err == nil {
+		t.Fatal("Reconcile error = nil, want listing failure")
+	}
+	if sess := s.sessions[1]; sess == nil || sess.companion == nil || !sess.state.SelfStream {
+		t.Fatal("failed listing cleared a connected companion")
 	}
 }
 

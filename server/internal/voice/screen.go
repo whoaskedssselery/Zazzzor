@@ -157,6 +157,8 @@ func (s *Service) joinedScreen(ctx context.Context, channelID snowflake.ID, room
 	captured.companion = &screenSession{p: p, screens: tracks}
 	s.touchLocked(userID)
 	s.syncStreamLocked(ctx, captured)
+	// Defence in depth: RefreshGuild already queues this existing owner;
+	// repeat it if the permission epoch changed during admission.
 	if s.permissionRev != epoch {
 		s.queueRefreshLocked(captured.state.GuildID)
 	}
