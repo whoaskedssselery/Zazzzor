@@ -255,7 +255,6 @@ jobs:
     defaults:
       run:
         shell: powershell
-        working-directory: desktop/capture-spike
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -266,9 +265,22 @@ jobs:
           if (-not (Get-Command cargo -ErrorAction SilentlyContinue) -and (Test-Path $cargo)) {
             Add-Content -Path $env:GITHUB_PATH -Value $cargo
           }
-      - name: rustfmt
-        run: cargo fmt --check
-      - name: clippy (warnings are errors)
-        run: cargo clippy --release --all-targets -- -D warnings
-      - name: cargo test
-        run: cargo test --release
+      # Every crate under desktop/, each with a build folder of its own: their
+      # flags differ (the capture links the C runtime statically), and one
+      # shared folder would rebuild everything at each switch.
+      - name: rustfmt, clippy (warnings are errors) and tests of each crate
+        run: |
+          $failed = @()
+          foreach ($manifest in Get-ChildItem desktop\*\Cargo.toml) {
+            $crate = $manifest.Directory
+            if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR = Join-Path $env:CARGO_TARGET_DIR $crate.Name }
+            Push-Location $crate
+            Write-Output "::group::$($crate.Name)"
+            cargo fmt --check; if ($LASTEXITCODE) { $failed += "$($crate.Name) fmt" }
+            cargo clippy --release --all-targets -- -D warnings; if ($LASTEXITCODE) { $failed += "$($crate.Name) clippy" }
+            cargo test --release; if ($LASTEXITCODE) { $failed += "$($crate.Name) test" }
+            Write-Output "::endgroup::"
+            Pop-Location
+            if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR = Split-Path $env:CARGO_TARGET_DIR -Parent }
+          }
+          if ($failed) { Write-Output "::error::failed: $($failed -join ', ')"; exit 1 }

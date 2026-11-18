@@ -241,8 +241,10 @@ if has '^desktop/'; then
       mkdir -p "$crate/target/tmp"
       tmpdir="$(hostpath "$root/$crate/target/tmp")"
       run "$crate fmt" bash -c "cd '$crate' && cargo fmt --check"
-      run "$crate clippy" env TMP="$tmpdir" TEMP="$tmpdir" bash -c "cd '$crate' && cargo clippy --release --all-targets -- -D warnings"
-      run "$crate test" env TMP="$tmpdir" TEMP="$tmpdir" bash -c "cd '$crate' && cargo test --release"
+      # A shared CARGO_TARGET_DIR gets a folder per crate, as in CI.
+      target="${CARGO_TARGET_DIR:+$CARGO_TARGET_DIR/$(basename "$crate")}"
+      run "$crate clippy" env TMP="$tmpdir" TEMP="$tmpdir" ${target:+CARGO_TARGET_DIR="$target"} bash -c "cd '$crate' && cargo clippy --release --all-targets -- -D warnings"
+      run "$crate test" env TMP="$tmpdir" TEMP="$tmpdir" ${target:+CARGO_TARGET_DIR="$target"} bash -c "cd '$crate' && cargo test --release"
     done
   fi
 else
