@@ -510,3 +510,94 @@ describe("volumes", () => {
     expect(context.close).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("a desktop client's screen share", () => {
+  /** A remote screen share sound, told apart by its class like any other. */
+  const shareSound = () => {
+    const track = Object.create(RemoteAudioTrack.prototype) as RemoteAudioTrack;
+    const setVolume = vi.fn();
+    Object.assign(track, {
+      kind: Track.Kind.Audio,
+      attach: () => document.createElement("audio"),
+      setVolume,
+      setAudioContext: vi.fn(),
+    });
+    return { track, setVolume };
+  };
+
+  /** `<userId>.screen`, the second participant a desktop client shares through, with its screen and sound published. */
+  const desktopShare = (userId: string) => {
+    const sound = shareSound();
+    const video = {
+      source: Track.Source.ScreenShare,
+      setSubscribed: vi.fn(),
+      videoTrack: { attach: vi.fn(), detach: vi.fn() },
+    };
+    const audio = { source: Track.Source.ScreenShareAudio, setSubscribed: vi.fn(), audioTrack: sound.track };
+    const participant = {
+      identity: `${userId}.screen`,
+      trackPublications: new Map<Track.Source, unknown>([
+        [Track.Source.ScreenShare, video],
+        [Track.Source.ScreenShareAudio, audio],
+      ]),
+      audioTrackPublications: new Map([[Track.Source.ScreenShareAudio, audio]]),
+      getTrackPublication: (source: Track.Source) =>
+        source === Track.Source.ScreenShare ? video : source === Track.Source.ScreenShareAudio ? audio : undefined,
+    };
+    (room() as unknown as { remoteParticipants: Map<string, unknown> }).remoteParticipants.set(
+      participant.identity,
+      participant,
+    );
+    return { video, audio, participant, sound };
+  };
+
+  it("counts as its owner's screen share, once", async () => {
+    const t = await connected();
+    const streams = vi.fn();
+    t.on("streams", streams);
+    const { video, participant } = desktopShare("7");
+    room().emit(RoomEvent.TrackPublished, video, participant);
+    expect(streams).toHaveBeenLastCalledWith(["7"]);
+    // The person also sharing from the browser is still one sharer.
+    const own = { source: Track.Source.ScreenShare, setSubscribed: vi.fn() };
+    (room() as unknown as { remoteParticipants: Map<string, unknown> }).remoteParticipants.set("7", {
+      identity: "7",
+      trackPublications: new Map([[Track.Source.ScreenShare, own]]),
+      getTrackPublication: (source: Track.Source) => (source === Track.Source.ScreenShare ? own : undefined),
+    });
+    room().emit(RoomEvent.TrackPublished, own, { identity: "7" });
+    expect(streams).toHaveBeenLastCalledWith(["7"]);
+  });
+
+  it("is received only while its owner's share is watched", async () => {
+    const t = await connected();
+    const { video, audio, participant } = desktopShare("7");
+    room().emit(RoomEvent.TrackPublished, video, participant);
+    expect(video.setSubscribed).toHaveBeenLastCalledWith(false);
+    t.watch("7", true);
+    expect(video.setSubscribed).toHaveBeenLastCalledWith(true);
+    expect(audio.setSubscribed).toHaveBeenLastCalledWith(true);
+    t.watch("7", false);
+    expect(video.setSubscribed).toHaveBeenLastCalledWith(false);
+  });
+
+  it("shows in its owner's tile", async () => {
+    const t = await connected();
+    const { video } = desktopShare("7");
+    const el = document.createElement("video");
+    const release = t.attachScreen("7", el);
+    expect(video.videoTrack.attach).toHaveBeenCalledWith(el);
+    release();
+    expect(video.videoTrack.detach).toHaveBeenCalledWith(el);
+  });
+
+  it("plays at its owner's screen share volume", async () => {
+    const t = await connected();
+    t.setVolume("7", "stream", 0.4);
+    const { audio, participant, sound } = desktopShare("7");
+    room().emit(RoomEvent.TrackSubscribed, sound.track, audio, participant);
+    expect(sound.setVolume).toHaveBeenLastCalledWith(0.4);
+    t.setVolume("7", "stream", 0.6);
+    expect(sound.setVolume).toHaveBeenLastCalledWith(0.6);
+  });
+});
