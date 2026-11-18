@@ -146,6 +146,11 @@ func (s *Service) joinedScreen(ctx context.Context, channelID snowflake.ID, room
 	for _, sid := range p.Screens {
 		tracks[sid] = true
 	}
+	// A duplicate joined delivery predates track events already applied;
+	// only a reconcile listing is authoritative about the current tracks.
+	if observed == nil && captured.companion != nil && captured.companion.p.SID == p.SID {
+		tracks = captured.companion.screens
+	}
 	captured.companion = &screenSession{p: p, screens: tracks}
 	s.touchLocked(userID)
 	s.syncStreamLocked(ctx, captured)

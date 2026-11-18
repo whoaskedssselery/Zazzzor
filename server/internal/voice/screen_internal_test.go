@@ -3,6 +3,7 @@ package voice
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
@@ -81,7 +82,7 @@ func TestScreenAdmissionRejectsInvalidBinding(t *testing.T) {
 }
 
 func TestScreenRemovedWithPrimary(t *testing.T) {
-	for _, cause := range []string{"leave", "departure", "replacement", "finished", "user", "channel", "members"} {
+	for _, cause := range []string{"leave", "departure", "replacement", "finished", "user", "channel", "members", "move", "move expiry", "channel join", "disconnect"} {
 		t.Run(cause, func(t *testing.T) {
 			s, _, room, p := screenService(t)
 			if err := s.joined(t.Context(), 42, room, p); err != nil {
@@ -107,10 +108,76 @@ func TestScreenRemovedWithPrimary(t *testing.T) {
 				s.RemoveChannel(t.Context(), 42)
 			case "members":
 				s.RemoveMembers(t.Context(), 7, []snowflake.ID{1})
+			case "move":
+				s.mu.Lock()
+				s.requestMoveLocked(t.Context(), 1, 43, s.sessions[1])
+				s.connectLocked(t.Context(), 7, 43, Room{Name: "43", SID: "RM_2"}, Participant{Identity: "1", SID: "PA_2", Join: "new"})
+				s.mu.Unlock()
+			case "move expiry":
+				s.mu.Lock()
+				s.requestMoveLocked(t.Context(), 1, 43, s.sessions[1])
+				s.moves[1].deadline = s.now().Add(-time.Second)
+				s.expireMovesLocked(t.Context())
+				s.mu.Unlock()
+			case "channel join":
+				if err := s.leaveOther(t.Context(), 1, 43); err != nil {
+					t.Fatalf("leaveOther: %v", err)
+				}
+			case "disconnect":
+				if err := s.disconnect(t.Context(), 7, 1, s.sessions[1], serverFlags{}, s.rev); err != nil {
+					t.Fatalf("disconnect: %v", err)
+				}
 			}
 			if s.removals[removalKey{room.Name, p.Identity}] == nil {
 				t.Fatal("primary ended without removing companion")
 			}
 		})
+	}
+}
+
+func TestScreenRepeatedAdmissionKeepsPublishedTracks(t *testing.T) {
+	s, _, room, p := screenService(t)
+	if err := s.joined(t.Context(), 42, room, p); err != nil {
+		t.Fatalf("admission: %v", err)
+	}
+	s.screen(t.Context(), p, "published", true)
+	if err := s.joined(t.Context(), 42, room, p); err != nil {
+		t.Fatalf("repeated admission: %v", err)
+	}
+	if !s.sessions[1].state.SelfStream {
+		t.Fatal("repeated join erased a later track event")
+	}
+}
+
+func TestScreenIgnoresOldTrackAndDepartureEvents(t *testing.T) {
+	s, _, room, p := screenService(t)
+	if err := s.joined(t.Context(), 42, room, p); err != nil {
+		t.Fatalf("admission: %v", err)
+	}
+	old := p
+	old.SID = "SC_old"
+	s.screen(t.Context(), old, "old", true)
+	if s.sessions[1].state.SelfStream {
+		t.Fatal("old track set self_stream")
+	}
+	s.left(t.Context(), old)
+	s.screen(t.Context(), p, "current", true)
+	if !s.sessions[1].state.SelfStream {
+		t.Fatal("old departure cleared accepted companion")
+	}
+}
+
+func TestScreenServerFlagsPreserveCompanion(t *testing.T) {
+	s, r, room, p := screenService(t)
+	p.Screens = []string{"screen"}
+	if err := s.joined(t.Context(), 42, room, p); err != nil {
+		t.Fatalf("admission: %v", err)
+	}
+	s.moderation[memberKey{guildID: 7, userID: 1}] = serverFlags{mute: true, deaf: true}
+	delete(r.updates, p.Identity)
+	s.RefreshGuild(7)
+	s.refreshDue(t.Context())
+	if _, updated := r.updates[p.Identity]; updated || s.sessions[1].companion == nil || !s.sessions[1].state.SelfStream {
+		t.Fatal("server mute/deaf changed companion grants or screen")
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
 	"github.com/whoaskedssselery/zazzzor/server/internal/permissions"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
@@ -55,8 +56,55 @@ func TestScreenAdmissionCannotRestoreEndedOwner(t *testing.T) {
 				if s.removals[removalKey{room.Name, p.Identity}] == nil {
 					t.Fatal("stale admission was not removed")
 				}
+				if _, updated := r.updates[p.Identity]; phase == "permission read" && updated {
+					t.Fatal("ended binding reached the grants RPC")
+				}
 			})
 		}
+	}
+}
+
+func TestScreenObservationWaitsForStripeWithoutOverwritingTrack(t *testing.T) {
+	s, r, room, p := screenService(t)
+	if err := s.joined(t.Context(), 42, room, p); err != nil {
+		t.Fatalf("admission: %v", err)
+	}
+	observed := &screenObservation{sess: s.sessions[1], revision: s.revs[1]}
+	unlock, err := s.lockUser(t.Context(), 1)
+	if err != nil {
+		t.Fatalf("lockUser: %v", err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- s.joinedScreen(t.Context(), 42, room, p, observed) }()
+	s.screen(t.Context(), p, "new", true)
+	delete(r.updates, p.Identity)
+	unlock()
+	if err := <-done; err != nil {
+		t.Fatalf("reconcile admission: %v", err)
+	}
+	if _, updated := r.updates[p.Identity]; updated || !s.sessions[1].state.SelfStream {
+		t.Fatal("stale observation reached grants or erased a new track")
+	}
+}
+
+func TestScreenTokenCannotOutliveOwnerDuringPermissionRead(t *testing.T) {
+	s, _, _, _ := screenService(t)
+	entered, release, done := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+	unblock := sync.OnceFunc(func() { close(release) })
+	defer unblock()
+	s.channels = refreshChannels{read: func(context.Context, snowflake.ID) (permissions.Permission, error) {
+		close(entered)
+		<-release
+		return permissions.ViewChannel | permissions.Connect | permissions.Stream, nil
+	}}
+	go func() { _, err := s.JoinScreen(t.Context(), 42, auth.User{ID: 1}, "https://zazzzor.test"); done <- err }()
+	waitRefreshSignal(t, entered)
+	if err := s.Leave(t.Context(), 1); err != nil {
+		t.Fatalf("Leave: %v", err)
+	}
+	unblock()
+	if err := <-done; !errors.Is(err, ErrNotInVoice) {
+		t.Fatalf("JoinScreen error = %v, want not in voice", err)
 	}
 }
 
