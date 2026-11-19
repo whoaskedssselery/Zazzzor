@@ -25,6 +25,7 @@ const (
 	PendingTTL           = time.Hour
 	maxFilenameBytes     = 255
 	attachmentTrashBatch = 100
+	expiredNonceBatch    = 1000
 )
 
 // Attachment is the wire form of an uploaded file.
@@ -111,13 +112,17 @@ func (s *Service) AttachmentReferenced(ctx context.Context, channel, id snowflak
 	return ok, nil
 }
 
-// SweepAttachments expires pending metadata and retries queued file moves.
+// SweepAttachments expires pending metadata and nonce claims and retries file moves.
 func (s *Service) SweepAttachments(ctx context.Context) error {
+	var nonceErr error
+	if err := s.q.SweepExpiredNonces(ctx, s.pool, expiredNonceBatch); err != nil {
+		nonceErr = fmt.Errorf("messages: expire nonce claims: %w", err)
+	}
 	var expireErr error
 	if err := s.q.ExpirePendingAttachments(ctx, s.pool, s.now().Add(-PendingTTL)); err != nil {
 		expireErr = fmt.Errorf("messages: expire pending attachments: %w", err)
 	}
-	return errors.Join(expireErr, s.moveAttachmentTrash(ctx))
+	return errors.Join(nonceErr, expireErr, s.moveAttachmentTrash(ctx))
 }
 
 // moveAttachmentTrash runs after commit so even a failed rename can be retried.
@@ -163,7 +168,7 @@ func (s *Service) wakeAttachmentTrash() {
 	}
 }
 
-// RunAttachmentSweep expires pending uploads and retries file moves until ctx ends.
+// RunAttachmentSweep expires uploads and nonce claims and retries file moves until ctx ends.
 func (s *Service) RunAttachmentSweep(ctx context.Context) {
 	const interval = time.Minute
 	tick := time.NewTicker(interval)

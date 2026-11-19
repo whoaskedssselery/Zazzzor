@@ -1365,6 +1365,20 @@ func (q *Queries) SetMessageEmbeds(ctx context.Context, db DBTX, arg SetMessageE
 	return result.RowsAffected(), nil
 }
 
+const sweepExpiredNonces = `-- name: SweepExpiredNonces :exec
+WITH expired AS (
+    SELECT author_id, channel_id, nonce FROM message_nonces WHERE expires_at <= now()
+    ORDER BY expires_at LIMIT $1 FOR UPDATE SKIP LOCKED
+)
+DELETE FROM message_nonces AS n USING expired AS e
+WHERE n.author_id = e.author_id AND n.channel_id = e.channel_id AND n.nonce = e.nonce
+`
+
+func (q *Queries) SweepExpiredNonces(ctx context.Context, db DBTX, limit int32) error {
+	_, err := db.Exec(ctx, sweepExpiredNonces, limit)
+	return err
+}
+
 const unusedEmbedImages = `-- name: UnusedEmbedImages :many
 SELECT i.id FROM embed_images AS i
 WHERE i.created_at < $1
