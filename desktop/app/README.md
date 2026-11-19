@@ -122,7 +122,64 @@ Not checked by hand yet: the tray menu clicks themselves (the code paths
 behind them were exercised), a server over https with a real certificate,
 and how a notification looks in the Windows notification centre.
 
+## Releases
+
+Desktop versions are independent of the server: `desktop-vX.Y.Z` tags build a
+Russian NSIS installer for the current Windows user. WebView2 is downloaded
+only when needed. [Installation instructions for friends](../../deploy/desktop.md)
+explain the expected SmartScreen warning: there is deliberately no Authenticode
+certificate or code-signing step. Update signatures are separate and mandatory.
+
+The owner has already configured `TAURI_SIGNING_PRIVATE_KEY` and
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` as GitHub repository secrets. The public
+key is bundled in `tauri.conf.json`; never replace it with a local test key.
+The workflow exposes the private values only to the build step, never the
+instance server or its pages. It uses checksum-verified Tauri CLI 2.12.4.
+
+1. Choose the desktop version (the first release is `0.2.0`), update both
+   `desktop/app/Cargo.toml` and `desktop/app/tauri.conf.json`, and run the crate's
+   tests to refresh the root package version in `Cargo.lock` if necessary.
+   Keep `CARGO_TARGET_DIR` outside the checkout, such as
+   `%USERPROFILE%\zz-build\desktop-check`. Run `bash tools/agents/check.sh`,
+   commit the version change and merge it through review before tagging.
+2. From the merged commit, validate and push its desktop tag:
+
+   ```powershell
+   $tag = 'desktop-v0.2.0'
+   ./tools/desktop/check-version.ps1 -Tag $tag
+   git tag $tag
+   git push origin $tag
+   ```
+
+3. Wait for **Desktop release** in Actions. It verifies that the existing tag
+   identifies the checkout and matches both manifests before building. The same
+   fmt, clippy and tests run before NSIS packaging. A dedicated release target
+   directory under the runner's `CARGO_TARGET_DIR` avoids racing CI builds.
+4. Review the resulting **draft**, while the workflow is no longer running.
+   It must contain the nonempty x64 setup `.exe`, its `.sig`, and `latest.json`.
+   Check the installer size is plausible, the JSON version matches the tag,
+   and `platforms.windows-x86_64` names that exact repository/tag/installer
+   and carries the `.sig` contents. Notes include only `desktop/` changes
+   since the previous desktop tag. Test installation on a normal Windows account.
+5. Publish the draft manually and mark it as the latest release. Before that,
+   the app cannot see it. Verify the public
+   [latest.json](https://github.com/whoaskedssselery/Zazzzor/releases/latest/download/latest.json)
+   and test updating an older client on the first real release.
+
+To retry a failed build, use **Actions → Desktop release → Run workflow** with
+the existing tag. A rerun replaces assets only while its release is a draft;
+published releases are refused. Do not publish a draft while its build is running.
+Fixes to a published version need a new version and tag, not moved tags or
+replaced published files. To recover from a bad release, publish a newer version
+with the fix/revert; the updater intentionally does not downgrade clients.
+
+Updates are checked at startup and every six hours. Download and minisign/version
+verification happen before the single **Да / Позже** prompt; Later suppresses
+further prompts until restart. The tray item uses the same worker and reports
+when the client is current. Network/signature failures stay in `update.log`
+under Tauri's per-user app log directory. The update source is compiled into the
+app, never read from instance settings; instance pages gain no updater permissions.
+
 ## Not done yet
 
-- An auto-update and an installer.
 - A tray badge for unread mentions, a native notification bridge.
