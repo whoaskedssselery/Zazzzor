@@ -80,12 +80,18 @@ folder's labels is the owner's call.
   reports it while the window is behind, so it works in a game. The hook
   only looks (the key still reaches the program in front) and runs only
   while a key is asked for.
+- **Mute and deafen combinations everywhere.** The page asks the app to
+  watch the combinations saved in the voice settings (`hotkeys_toggles`,
+  e.g. "Control+Shift+KeyM"); the same hook reports each press while the
+  window is behind, and a held combination flips once.
 - **Start with Windows.** "Запускать вместе с Windows" in the tray menu
   writes the app under the user's Run key with `--autostart`; started so,
   the app stays in the tray.
 - **Tray.** Closing the window hides it to the tray; a left click on the
   icon or "Открыть Zazzzor" brings it back; "Сменить сервер…" opens the
-  setup page with the current address and a "Отмена" back; "Выйти" quits.
+  setup page with the current address and a "Отмена" back; "Остановить
+  демонстрацию" (enabled, and the tooltip says so, while a share runs)
+  stops the share; "Выйти" quits.
 - **One instance.** A second launch brings the running window to the front
   and exits.
 - **Window state.** Size, position and the maximised state are restored on
@@ -118,5 +124,5 @@ and how a notification looks in the Windows notification centre.
 
 ## Not done yet
 
-- Global hotkeys for mute and deafen, an auto-update and an installer.
+- An auto-update and an installer.
 - A tray badge for unread mentions, a native notification bridge.
