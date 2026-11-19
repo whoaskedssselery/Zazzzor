@@ -999,11 +999,16 @@ func (q *Queries) PutMentionRecipients(ctx context.Context, db DBTX, arg PutMent
 }
 
 const queuedAttachmentTrash = `-- name: QueuedAttachmentTrash :many
-SELECT id, channel_id FROM attachment_trash ORDER BY id
+SELECT id, channel_id FROM attachment_trash WHERE id > $1 ORDER BY id LIMIT $2
 `
 
-func (q *Queries) QueuedAttachmentTrash(ctx context.Context, db DBTX) ([]AttachmentTrash, error) {
-	rows, err := db.Query(ctx, queuedAttachmentTrash)
+type QueuedAttachmentTrashParams struct {
+	After int64
+	Lim   int32
+}
+
+func (q *Queries) QueuedAttachmentTrash(ctx context.Context, db DBTX, arg QueuedAttachmentTrashParams) ([]AttachmentTrash, error) {
+	rows, err := db.Query(ctx, queuedAttachmentTrash, arg.After, arg.Lim)
 	if err != nil {
 		return nil, err
 	}

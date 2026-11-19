@@ -343,6 +343,8 @@ type Service struct {
 	minFreeBytes    uint64
 	freeBytes       func() (uint64, error)
 	trashMu         sync.Mutex
+	trashAfter      int64
+	trashWake       chan struct{}
 	uploadLimiter   *ratelimit.Limiter
 	now             func() time.Time
 	sendLimiter     *ratelimit.Limiter
@@ -355,7 +357,7 @@ type Service struct {
 // NewService builds a Service from o.
 func NewService(o Options) *Service {
 	s := &Service{reactionLimiter: ratelimit.New(reactionRate, reactionBurst, reactionTTL), onlineAmong: o.OnlineAmong, ackLimiter: ratelimit.New(ackRate, ackBurst, ackTTL), pool: o.Pool, q: store.New(), ids: o.IDs, audit: o.Audit, channels: o.Channels, users: o.Users,
-		pub: o.Publisher, files: o.Files, logger: o.Logger, now: o.Now,
+		pub: o.Publisher, files: o.Files, logger: o.Logger, now: o.Now, trashWake: make(chan struct{}, 1),
 		uploadLimiter: ratelimit.New(uploadRate, uploadBurst, uploadTTL, ratelimit.WithClock(o.Now)), sendLimiter: o.SendLimiter, writeLimiter: o.WriteLimiter,
 		typingLimiter: o.TypingLimiter, typingCalls: o.TypingCallLimiter,
 		searchLimiter: ratelimit.New(searchRate, searchBurst, searchTTL)}

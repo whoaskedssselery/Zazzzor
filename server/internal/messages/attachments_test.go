@@ -136,6 +136,9 @@ func TestAttachmentPrivacyAndBinding(t *testing.T) {
 	denyEveryone(t, alice, g, ch.ID, permissions.ReadMessageHistory)
 	problemOf(t, bob.Do(http.MethodGet, a.URL, nil, conditional), http.StatusNotFound, "attachment_not_found")
 	expect(t, alice.Do(http.MethodDelete, messagePath(ch.ID, sent.ID), nil), http.StatusNoContent)
+	if err := e.msgs.SweepAttachments(t.Context()); err != nil {
+		t.Fatalf("SweepAttachments: %v", err)
+	}
 	assertOriginalMoved(t, e, ch.ID, a.ID)
 	problemOf(t, alice.Do(http.MethodGet, a.URL, nil), http.StatusNotFound, "attachment_not_found")
 }
@@ -152,5 +155,8 @@ func TestDiscardPendingAttachmentIsOwnerOnly(t *testing.T) {
 	problemOf(t, testkit.NewClient(t, e.h).Do(http.MethodGet, a.URL, nil), http.StatusNotFound, "attachment_not_found")
 	expect(t, owner.Do(http.MethodDelete, endpoint, nil), http.StatusNoContent)
 	problemOf(t, owner.Do(http.MethodDelete, endpoint, nil), http.StatusNotFound, "attachment_not_found")
+	if err := e.msgs.SweepAttachments(t.Context()); err != nil {
+		t.Fatalf("SweepAttachments: %v", err)
+	}
 	assertOriginalMoved(t, e, ch.ID, a.ID)
 }

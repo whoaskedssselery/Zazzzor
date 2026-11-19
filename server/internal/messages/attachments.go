@@ -22,8 +22,9 @@ const (
 	// MaxAttachments is the most files one message may bind.
 	MaxAttachments = 10
 	// PendingTTL is how long an unbound upload is available to its uploader.
-	PendingTTL       = time.Hour
-	maxFilenameBytes = 255
+	PendingTTL           = time.Hour
+	maxFilenameBytes     = 255
+	attachmentTrashBatch = 100
 )
 
 // Attachment is the wire form of an uploaded file.
@@ -126,7 +127,9 @@ func (s *Service) moveAttachmentTrash(ctx context.Context) error {
 	}
 	s.trashMu.Lock()
 	defer s.trashMu.Unlock()
-	rows, err := s.q.QueuedAttachmentTrash(ctx, s.pool)
+	rows, err := s.q.QueuedAttachmentTrash(ctx, s.pool, store.QueuedAttachmentTrashParams{
+		After: s.trashAfter, Lim: attachmentTrashBatch,
+	})
 	if err != nil {
 		return fmt.Errorf("messages: list attachment trash: %w", err)
 	}
@@ -135,6 +138,9 @@ func (s *Service) moveAttachmentTrash(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("messages: drain attachment trash: %w", err)
 		}
+		// Failed entries wait for the next pass around the queue, allowing
+		// later healthy entries to progress within the same bounded budget.
+		s.trashAfter = row.ID
 		if err := s.files.DeleteAttachment(files.AttachmentReference(snowflake.ID(row.ChannelID), snowflake.ID(row.ID))); err != nil {
 			failures = append(failures, fmt.Errorf("messages: trash attachment %d: %w", row.ID, err))
 			continue
@@ -143,13 +149,17 @@ func (s *Service) moveAttachmentTrash(ctx context.Context) error {
 			failures = append(failures, fmt.Errorf("messages: acknowledge attachment trash %d: %w", row.ID, err))
 		}
 	}
+	if len(rows) < attachmentTrashBatch {
+		s.trashAfter = 0
+	}
 	return errors.Join(failures...)
 }
 
-// tryAttachmentTrash attempts the file move after a committed deletion.
-func (s *Service) tryAttachmentTrash(ctx context.Context) {
-	if err := s.moveAttachmentTrash(ctx); err != nil {
-		s.logger.Warn("move attachment trash", "err", err)
+// wakeAttachmentTrash asks the worker to process committed deletions.
+func (s *Service) wakeAttachmentTrash() {
+	select {
+	case s.trashWake <- struct{}{}:
+	default:
 	}
 }
 
@@ -166,6 +176,7 @@ func (s *Service) RunAttachmentSweep(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-tick.C:
+		case <-s.trashWake:
 		}
 	}
 }
