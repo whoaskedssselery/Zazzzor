@@ -2283,6 +2283,8 @@ export interface components {
             message_id: components["schemas"]["Snowflake"];
             user_id: components["schemas"]["Snowflake"];
             emoji: components["schemas"]["Emoji"];
+            /** @description How many reacted with the emoji after the change. A client that sees the event twice (catching up after a reconnect) sets the count rather than adding to it. */
+            count: number;
         };
         EmbedMedia: {
             url: string;
