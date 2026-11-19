@@ -6,19 +6,29 @@ afterEach(() => {
 });
 
 describe("voice prefs", () => {
-  it("default to the system devices, voice activity on V, enhanced noise suppression", () => {
+  it("default to the system devices, voice activity on V, enhanced noise suppression, no switch keys", () => {
     expect(readVoicePrefs()).toEqual({
       inputId: null,
       outputId: null,
       mode: "voice",
       pttKey: "KeyV",
+      muteKey: null,
+      deafenKey: null,
       noise: "enhanced",
     });
     expect(DEFAULT_VOICE_PREFS.pttKey).toBe("KeyV");
   });
 
   it("are written and read back", () => {
-    const prefs = { inputId: "mic-2", outputId: "out-1", mode: "ptt", pttKey: "KeyB", noise: "off" } as const;
+    const prefs = {
+      inputId: "mic-2",
+      outputId: "out-1",
+      mode: "ptt",
+      pttKey: "KeyB",
+      muteKey: "Control+Shift+KeyM",
+      deafenKey: null,
+      noise: "off",
+    } as const;
     writeVoicePrefs(prefs);
     expect(readVoicePrefs()).toEqual(prefs);
     writeVoicePrefs({ ...prefs, noise: "standard" });
@@ -26,7 +36,7 @@ describe("voice prefs", () => {
   });
 
   it("fall back to the defaults field by field for garbage", () => {
-    localStorage.setItem(VOICE_PREFS_KEY, JSON.stringify({ inputId: 5, mode: "loud", pttKey: "KeyB" }));
+    localStorage.setItem(VOICE_PREFS_KEY, JSON.stringify({ inputId: 5, mode: "loud", pttKey: "KeyB", muteKey: 7 }));
     expect(readVoicePrefs()).toEqual({ ...DEFAULT_VOICE_PREFS, pttKey: "KeyB" });
     localStorage.setItem(VOICE_PREFS_KEY, "{not json");
     expect(readVoicePrefs()).toEqual(DEFAULT_VOICE_PREFS);

@@ -8,6 +8,9 @@ export interface VoicePrefs {
   mode: "voice" | "ptt";
   /** A `KeyboardEvent.code`. */
   pttKey: string;
+  /** The combinations that flip the microphone and the sound (e.g. "Control+Shift+KeyM"); null for none. */
+  muteKey: string | null;
+  deafenKey: string | null;
   /** DeepFilterNet3 («Улучшенное», with fallbacks), the browser's own («Стандартное»), or none. */
   noise: "off" | "standard" | "enhanced";
 }
@@ -19,6 +22,8 @@ export const DEFAULT_VOICE_PREFS: VoicePrefs = {
   outputId: null,
   mode: "voice",
   pttKey: "KeyV",
+  muteKey: null,
+  deafenKey: null,
   noise: "enhanced",
 };
 
@@ -39,6 +44,8 @@ export const readVoicePrefs = (): VoicePrefs => {
     outputId: idOrNull(p.outputId),
     mode: p.mode === "ptt" ? "ptt" : "voice",
     pttKey: typeof p.pttKey === "string" && p.pttKey !== "" ? p.pttKey : DEFAULT_VOICE_PREFS.pttKey,
+    muteKey: idOrNull(p.muteKey),
+    deafenKey: idOrNull(p.deafenKey),
     noise: p.noise === "off" || p.noise === "standard" ? p.noise : "enhanced",
   };
 };

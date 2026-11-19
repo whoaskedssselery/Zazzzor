@@ -3,6 +3,7 @@ export { useCallSounds } from "./model/call-sounds";
 export { type NativeShareState, useNativeShare } from "./model/native-share";
 export { ECHO_RISK, FIREFOX_NO_AUDIO, shareNotice, WINDOW_NO_AUDIO } from "./model/notice";
 export {
+  applySwitchKeys,
   applyVoicePrefs,
   attachCamera,
   attachOwnCamera,
@@ -39,7 +40,9 @@ export {
   switchAudioDevice,
   watchStream,
 } from "./model/session";
+export { comboName, comboOf } from "./model/switch-keys";
 export { MODERATOR_DEAFENED, MODERATOR_MUTED, useSelfSwitches } from "./model/switches";
+export { useSwitchKeys } from "./model/use-switch-keys";
 export { CallNotices } from "./ui/CallNotices";
 export { CameraButton } from "./ui/CameraButton";
 export { NativeSharePicker } from "./ui/NativeSharePicker";

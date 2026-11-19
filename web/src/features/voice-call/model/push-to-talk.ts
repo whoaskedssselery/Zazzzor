@@ -1,7 +1,7 @@
 import { desktopInvoke, inDesktopApp } from "@/shared/lib";
 
 /** Whether a key press went into something the user types in. */
-const typing = (target: EventTarget | null): boolean =>
+export const typing = (target: EventTarget | null): boolean =>
   target instanceof HTMLElement &&
   (target.isContentEditable || target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement);
 

@@ -24,6 +24,7 @@ import { playSound } from "@/shared/lib";
 import { getNativeShare, resetNativeShareState, setNativeShare } from "./native-share";
 import { shareNotice } from "./notice";
 import { startPushToTalk } from "./push-to-talk";
+import { startSwitchKeys } from "./switch-keys";
 
 export const CALL_REPLACED = "Вы подключились к голосу в другом месте";
 export const CALL_REMOVED = "Вас отключили от голосового канала";
@@ -362,6 +363,37 @@ export const setSelfDeaf = (on: boolean): void => {
     void transport?.setMicrophone(micOn());
   }
   void reconcileVoiceFlags();
+};
+
+let stopSwitchKeys: (() => void) | null = null;
+
+/**
+ * Listens for the saved combinations that flip the microphone and the
+ * sound, in a call or not, as the switches outlive calls; stops listening
+ * for the ones saved before. Called once signed in and after each change.
+ */
+export const applySwitchKeys = (): void => {
+  stopSwitchKeys?.();
+  stopSwitchKeys = null;
+  const { muteKey, deafenKey } = readVoicePrefs();
+  if (muteKey === null && deafenKey === null) return;
+  stopSwitchKeys = startSwitchKeys(
+    { mute: muteKey, deafen: deafenKey },
+    {
+      mute: () => {
+        setSelfMute(!getCall().selfMute);
+      },
+      deafen: () => {
+        setSelfDeaf(!getCall().selfDeaf);
+      },
+    },
+  );
+};
+
+/** Stops listening for the switches' combinations (signed out). */
+export const dropSwitchKeys = (): void => {
+  stopSwitchKeys?.();
+  stopSwitchKeys = null;
 };
 
 let syncing = false;
