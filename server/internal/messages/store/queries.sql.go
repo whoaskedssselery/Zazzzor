@@ -1022,6 +1022,22 @@ func (q *Queries) QueuedAttachmentTrash(ctx context.Context, db DBTX) ([]Attachm
 	return items, nil
 }
 
+const reactionCount = `-- name: ReactionCount :one
+SELECT count(*) FROM message_reactions WHERE message_id = $1 AND emoji = $2
+`
+
+type ReactionCountParams struct {
+	MessageID int64
+	Emoji     string
+}
+
+func (q *Queries) ReactionCount(ctx context.Context, db DBTX, arg ReactionCountParams) (int64, error) {
+	row := db.QueryRow(ctx, reactionCount, arg.MessageID, arg.Emoji)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const reactionGroupsForWrite = `-- name: ReactionGroupsForWrite :many
 WITH locked AS (
     SELECT emoji, first_added_at FROM message_reactions

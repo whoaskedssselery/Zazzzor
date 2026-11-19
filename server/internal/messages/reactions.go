@@ -45,6 +45,9 @@ type ReactionPayload struct {
 	MessageID snowflake.ID  `json:"message_id"`
 	UserID    snowflake.ID  `json:"user_id"`
 	Emoji     Emoji         `json:"emoji"`
+	// Count is how many reacted with Emoji after the change: a client that
+	// sees the event twice (catching up after a reconnect) sets it, not adds.
+	Count int64 `json:"count"`
 }
 
 // Get returns a visible message and its reactions for userID.
@@ -160,18 +163,31 @@ func (s *Service) changeReaction(ctx context.Context, channelID, messageID, acto
 				return sendErr
 			}
 		}
+		var n int64
 		if add {
-			n, addErr := s.addReactionIn(ctx, tx, p, payload, emojiKey)
-			changed = n
-			return addErr
-		}
-		n, removeErr := s.q.RemoveMessageReaction(ctx, tx, store.RemoveMessageReactionParams{
-			MessageID: int64(messageID), Emoji: emojiKey, UserID: int64(userID),
-		})
-		if removeErr != nil {
-			return fmt.Errorf("messages: delete reaction: %w", removeErr)
+			var addErr error
+			n, addErr = s.addReactionIn(ctx, tx, p, payload, emojiKey)
+			if addErr != nil {
+				return addErr
+			}
+		} else {
+			var removeErr error
+			n, removeErr = s.q.RemoveMessageReaction(ctx, tx, store.RemoveMessageReactionParams{
+				MessageID: int64(messageID), Emoji: emojiKey, UserID: int64(userID),
+			})
+			if removeErr != nil {
+				return fmt.Errorf("messages: delete reaction: %w", removeErr)
+			}
 		}
 		changed = n
+		if n == 0 {
+			return nil
+		}
+		count, countErr := s.q.ReactionCount(ctx, tx, store.ReactionCountParams{MessageID: int64(messageID), Emoji: emojiKey})
+		if countErr != nil {
+			return fmt.Errorf("messages: count reactions: %w", countErr)
+		}
+		payload.Count = count
 		return nil
 	})
 	if err != nil {

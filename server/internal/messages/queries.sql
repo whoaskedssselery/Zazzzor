@@ -173,6 +173,9 @@ ON CONFLICT (message_id, emoji, user_id) DO NOTHING;
 -- name: RemoveMessageReaction :execrows
 DELETE FROM message_reactions WHERE message_id = $1 AND emoji = $2 AND user_id = $3;
 
+-- name: ReactionCount :one
+SELECT count(*) FROM message_reactions WHERE message_id = $1 AND emoji = $2;
+
 -- name: ReactionSummaries :many
 SELECT r.message_id, r.emoji_id, COALESCE(e.name, r.emoji)::text AS emoji_name,
     count(*) AS count, bool_or(r.user_id = sqlc.arg(caller_id)::bigint)::bool AS me

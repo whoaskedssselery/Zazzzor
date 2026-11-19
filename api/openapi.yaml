@@ -4546,7 +4546,7 @@ components:
     MessageReactionEvent:
       type: object
       additionalProperties: false
-      required: [channel_id, guild_id, message_id, user_id, emoji]
+      required: [channel_id, guild_id, message_id, user_id, emoji, count]
       properties:
         channel_id:
           $ref: "#/components/schemas/Snowflake"
@@ -4561,6 +4561,13 @@ components:
           $ref: "#/components/schemas/Snowflake"
         emoji:
           $ref: "#/components/schemas/Emoji"
+        count:
+          type: integer
+          minimum: 0
+          description: >-
+            How many reacted with the emoji after the change. A client that
+            sees the event twice (catching up after a reconnect) sets the
+            count rather than adding to it.
     EmbedMedia:
       type: object
       additionalProperties: false
