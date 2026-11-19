@@ -18,11 +18,11 @@ type oneFailedDMViewerLookup struct {
 	channel atomic.Int64
 }
 
-func (f *oneFailedDMViewerLookup) Viewers(ctx context.Context, id snowflake.ID) ([]snowflake.ID, error) {
+func (f *oneFailedDMViewerLookup) ViewersAmong(ctx context.Context, id snowflake.ID, candidates []snowflake.ID) ([]snowflake.ID, map[snowflake.ID]bool, error) {
 	if f.channel.CompareAndSwap(int64(id), 0) {
-		return nil, errors.New("viewers: injected private lookup failure")
+		return nil, nil, errors.New("viewers: injected private lookup failure")
 	}
-	return f.Resolver.Viewers(ctx, id)
+	return f.Resolver.ViewersAmong(ctx, id, candidates)
 }
 
 func TestFailedDMReopenResyncsClosedRecipient(t *testing.T) {

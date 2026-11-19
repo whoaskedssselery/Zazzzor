@@ -170,6 +170,8 @@ type Resolver interface {
 	Viewers(ctx context.Context, channelID snowflake.ID) ([]snowflake.ID, error)
 	// ViewersWithHistory also identifies which viewers can read history.
 	ViewersWithHistory(ctx context.Context, channelID snowflake.ID) ([]snowflake.ID, map[snowflake.ID]bool, error)
+	// ViewersAmong checks only candidates, returning their current history access.
+	ViewersAmong(ctx context.Context, channelID snowflake.ID, candidates []snowflake.ID) ([]snowflake.ID, map[snowflake.ID]bool, error)
 }
 
 var _ Resolver = (*Service)(nil)
@@ -179,6 +181,7 @@ type Guilds interface {
 	LockGuild(ctx context.Context, tx pgx.Tx, guildID snowflake.ID) error
 	SubjectIn(ctx context.Context, db guilds.DB, guildID, userID snowflake.ID) (permissions.Subject, error)
 	AccessIn(ctx context.Context, db guilds.DB, guildID snowflake.ID) (guilds.Access, error)
+	AccessAmongIn(ctx context.Context, db guilds.DB, guildID snowflake.ID, candidates []snowflake.ID) (guilds.Access, error)
 }
 
 var _ Guilds = (*guilds.Service)(nil)

@@ -55,6 +55,19 @@ type Access struct {
 // AccessIn loads the Access of guildID through db in three queries; a
 // missing guild is ErrNotFound.
 func (s *Service) AccessIn(ctx context.Context, db DB, guildID snowflake.ID) (Access, error) {
+	return s.accessIn(ctx, db, guildID, nil)
+}
+
+// AccessAmongIn reads current roles only for candidate members; nil selects nobody.
+func (s *Service) AccessAmongIn(ctx context.Context, db DB, guildID snowflake.ID, candidates []snowflake.ID) (Access, error) {
+	if candidates == nil {
+		candidates = []snowflake.ID{}
+	}
+	return s.accessIn(ctx, db, guildID, candidates)
+}
+
+// accessIn loads guild permissions, optionally restricting member assignments.
+func (s *Service) accessIn(ctx context.Context, db DB, guildID snowflake.ID, candidates []snowflake.ID) (Access, error) {
 	g, err := s.q.GuildByID(ctx, db, guildID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Access{}, ErrNotFound
@@ -66,7 +79,13 @@ func (s *Service) AccessIn(ctx context.Context, db DB, guildID snowflake.ID) (Ac
 	if err != nil {
 		return Access{}, err
 	}
-	rows, err := s.q.MembersWithRoles(ctx, db, guildID)
+	ids := make([]int64, len(candidates))
+	for i, id := range candidates {
+		ids[i] = int64(id)
+	}
+	rows, err := s.q.MembersWithRoles(ctx, db, store.MembersWithRolesParams{
+		GuildID: guildID, AllMembers: candidates == nil, Candidates: ids,
+	})
 	if err != nil {
 		return Access{}, fmt.Errorf("guilds: list member roles: %w", err)
 	}

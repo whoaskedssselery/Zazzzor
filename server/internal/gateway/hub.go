@@ -97,10 +97,23 @@ func (g *Gateway) dispatch(ctx context.Context, e events.Event) {
 		readers    map[snowflake.ID]bool
 		err        error
 	)
-	if hasMessage && message.ReferencedMessage != nil && e.Audience.Kind == events.AudienceChannel {
-		recipients, readers, err = g.opts.Channels.ViewersWithHistory(ctx, e.Audience.ChannelID)
+	if e.Audience.Kind == events.AudienceChannel || e.Audience.Kind == events.AudiencePrivateChannel {
+		candidates := make([]snowflake.ID, 0, len(conns))
+		for id := range conns {
+			candidates = append(candidates, id)
+		}
+		var history map[snowflake.ID]bool
+		recipients, history, err = g.opts.Channels.ViewersAmong(ctx, e.Audience.ChannelID, candidates)
 		if errors.Is(err, channels.ErrNotFound) {
 			return
+		}
+		if e.Audience.Kind == events.AudiencePrivateChannel {
+			recipients = slices.DeleteFunc(recipients, func(id snowflake.ID) bool {
+				return !slices.Contains(e.Audience.UserIDs, id)
+			})
+		}
+		if hasMessage && message.ReferencedMessage != nil {
+			readers = history
 		}
 	} else {
 		recipients, err = g.recipients(ctx, e)

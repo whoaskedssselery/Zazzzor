@@ -903,9 +903,16 @@ SELECT members.user_id,
 FROM members
 LEFT JOIN member_roles ON member_roles.guild_id = members.guild_id AND member_roles.user_id = members.user_id
 WHERE members.guild_id = $1
+  AND ($2::boolean OR members.user_id = ANY($3::bigint[]))
 GROUP BY members.user_id
 ORDER BY members.user_id
 `
+
+type MembersWithRolesParams struct {
+	GuildID    snowflake.ID
+	AllMembers bool
+	Candidates []int64
+}
 
 type MembersWithRolesRow struct {
 	UserID  snowflake.ID
@@ -913,8 +920,8 @@ type MembersWithRolesRow struct {
 }
 
 // Every member of the guild with the IDs of their non-@everyone roles.
-func (q *Queries) MembersWithRoles(ctx context.Context, db DBTX, guildID snowflake.ID) ([]MembersWithRolesRow, error) {
-	rows, err := db.Query(ctx, membersWithRoles, guildID)
+func (q *Queries) MembersWithRoles(ctx context.Context, db DBTX, arg MembersWithRolesParams) ([]MembersWithRolesRow, error) {
+	rows, err := db.Query(ctx, membersWithRoles, arg.GuildID, arg.AllMembers, arg.Candidates)
 	if err != nil {
 		return nil, err
 	}
