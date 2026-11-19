@@ -10,7 +10,7 @@ import {
   makeUser,
 } from "@/shared/test";
 import { advanceRead, applyEvent, applyReady, type GuildEntry, type GuildsState } from "./reducer";
-import { guildMentionCount, isGuildUnread, isUnread, mentionCount } from "./unread";
+import { guildMentionCount, isGuildUnread, isUnread, lastMessageOf, mentionCount } from "./unread";
 
 const me = makeUser("100");
 const petya = makeUser("200");
@@ -87,5 +87,14 @@ describe("unread channels", () => {
     let s = create(ready(), "600", GENERAL);
     s = applyEvent(s, "MESSAGE_DELETE", { id: "600", channel_id: GENERAL, guild_id: G, last_message_id: "500" });
     expect(isUnread(entry(s), GENERAL)).toBe(false);
+  });
+
+  it("keeps a newer message unread when the deletion of an older one comes late", () => {
+    let s = create(ready(), "600", GENERAL, petya);
+    // The server read the newest as 500 when 600 was deleted, but 700 reached the user first.
+    s = create(s, "700", GENERAL, petya);
+    s = applyEvent(s, "MESSAGE_DELETE", { id: "600", channel_id: GENERAL, guild_id: G, last_message_id: "500" });
+    expect(lastMessageOf(s, GENERAL)).toBe("700");
+    expect(isUnread(entry(s), GENERAL)).toBe(true);
   });
 });

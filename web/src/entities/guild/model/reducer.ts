@@ -345,21 +345,29 @@ function privateMessageCreated(s: GuildsState, m: NewMessage): GuildsState {
   });
 }
 
-/** A deleted message may have been the channel's newest: the event says which one is now. */
+/**
+ * A deleted message may have been the channel's newest: the event says
+ * which one is now. A newer message the client has already seen stays the
+ * newest: the server read the event's value before that message, which
+ * reached the client first.
+ */
 function messageDeleted(s: GuildsState, d: ChatEvents["MESSAGE_DELETE"]): GuildsState {
+  const after = (current: string | null): string | null =>
+    current !== null && newer(current, d.id) ? current : d.last_message_id;
   if (d.guild_id === null) {
-    return updatePrivate(s, d.channel_id, (p) =>
-      p.channel.last_message_id === d.last_message_id
-        ? p
-        : { ...p, channel: { ...p.channel, last_message_id: d.last_message_id } },
-    );
+    return updatePrivate(s, d.channel_id, (p) => {
+      const last = after(p.channel.last_message_id);
+      return p.channel.last_message_id === last ? p : { ...p, channel: { ...p.channel, last_message_id: last } };
+    });
   }
   const guildId = d.guild_id;
   const channel = s.guilds[guildId]?.channels[d.channel_id];
-  if (!channel || channel.last_message_id === d.last_message_id) return s;
+  if (!channel) return s;
+  const last = after(channel.last_message_id);
+  if (channel.last_message_id === last) return s;
   return updateGuild(s, guildId, (e) => ({
     ...e,
-    channels: { ...e.channels, [channel.id]: { ...channel, last_message_id: d.last_message_id } },
+    channels: { ...e.channels, [channel.id]: { ...channel, last_message_id: last } },
   }));
 }
 
