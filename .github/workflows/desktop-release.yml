@@ -67,7 +67,7 @@ jobs:
           $cli = ./tools/desktop/get-tauri.ps1
           Push-Location desktop/app
           try {
-            & $cli tauri build --ci --locked --target x86_64-pc-windows-msvc --bundles nsis
+            & $cli tauri build --ci --target x86_64-pc-windows-msvc --bundles nsis -- --locked
             if ($LASTEXITCODE) { throw 'Tauri NSIS build failed' }
           } finally { Pop-Location }
       - name: Prepare signed metadata and upload only to a draft
