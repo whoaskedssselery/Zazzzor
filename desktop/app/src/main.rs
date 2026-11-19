@@ -115,8 +115,28 @@ fn quit(app: &AppHandle) {
     app.exit(0);
 }
 
+/// The tray's "Остановить демонстрацию", enabled while the app shares a screen.
+struct StopShare(MenuItem<tauri::Wry>);
+
+/// Shows in the tray whether the app shares a screen now: the tooltip says
+/// so and the menu can stop it, so a share is never out of sight.
+pub fn sharing_shown(app: &AppHandle, on: bool) {
+    if let Some(item) = app.try_state::<StopShare>() {
+        let _ = item.0.set_enabled(on);
+    }
+    if let Some(tray) = app.tray_by_id(MAIN) {
+        let _ = tray.set_tooltip(Some(if on {
+            "Zazzzor — идёт демонстрация экрана"
+        } else {
+            "Zazzzor"
+        }));
+    }
+}
+
 fn tray(app: &AppHandle) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "Открыть Zazzzor", true, None::<&str>)?;
+    let stop_share = MenuItem::with_id(app, "stop-share", "Остановить демонстрацию", false, None::<&str>)?;
+    app.manage(StopShare(stop_share.clone()));
     let change = MenuItem::with_id(app, "change", "Сменить сервер…", true, None::<&str>)?;
     let startup = CheckMenuItem::with_id(
         app,
@@ -128,13 +148,18 @@ fn tray(app: &AppHandle) -> tauri::Result<()> {
     )?;
     let separator = PredefinedMenuItem::separator(app)?;
     let exit = MenuItem::with_id(app, "quit", "Выйти", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open, &change, &startup, &separator, &exit])?;
+    let menu = Menu::with_items(app, &[&open, &stop_share, &change, &startup, &separator, &exit])?;
     let mut builder = TrayIconBuilder::with_id(MAIN)
         .tooltip("Zazzzor")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "open" => show(app),
+            // The page learns of it from the share's status, as of a share that ended.
+            "stop-share" => {
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move { share::stop(&app).await });
+            }
             "change" => change_instance(app),
             // The tick follows what Windows will do, whatever the click managed.
             "autostart" => {
