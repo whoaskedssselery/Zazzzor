@@ -8,6 +8,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod autostart;
 mod bridge;
 mod hotkeys;
 mod instance;
@@ -19,7 +20,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::webview::NewWindowResponse;
 use tauri::{AppHandle, Manager, State, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
@@ -117,16 +118,29 @@ fn quit(app: &AppHandle) {
 fn tray(app: &AppHandle) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "Открыть Zazzzor", true, None::<&str>)?;
     let change = MenuItem::with_id(app, "change", "Сменить сервер…", true, None::<&str>)?;
+    let startup = CheckMenuItem::with_id(
+        app,
+        "autostart",
+        "Запускать вместе с Windows",
+        true,
+        autostart::enabled(),
+        None::<&str>,
+    )?;
     let separator = PredefinedMenuItem::separator(app)?;
     let exit = MenuItem::with_id(app, "quit", "Выйти", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open, &change, &separator, &exit])?;
+    let menu = Menu::with_items(app, &[&open, &change, &startup, &separator, &exit])?;
     let mut builder = TrayIconBuilder::with_id(MAIN)
         .tooltip("Zazzzor")
         .menu(&menu)
         .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| match event.id.as_ref() {
+        .on_menu_event(move |app, event| match event.id.as_ref() {
             "open" => show(app),
             "change" => change_instance(app),
+            // The tick follows what Windows will do, whatever the click managed.
+            "autostart" => {
+                let _ = autostart::set(!autostart::enabled());
+                let _ = startup.set_checked(autostart::enabled());
+            }
             "quit" => quit(app),
             _ => {}
         })
@@ -244,8 +258,11 @@ fn main() {
             let window = window(app.handle(), saved, shared.clone(), setup_requested)?;
             #[cfg(windows)]
             permissions::grant_to_instance(&window, shared)?;
-            window.show()?;
-            window.set_focus()?;
+            // Started by Windows at sign-in: stay in the tray until called.
+            if !std::env::args().any(|a| a == autostart::FLAG) {
+                window.show()?;
+                window.set_focus()?;
+            }
             Ok(())
         })
         .build(tauri::generate_context!())

@@ -64,7 +64,7 @@ folder's labels is the owner's call.
 - **The native screen share** (`desktop/share`): a screen or a window at
   up to 1080p60 on the GPU's encoder, with one application's sound (or the
   whole system's but the app's own, so the call is not sent back). The
-  server's pages, and only the chosen server's, may call five commands:
+  server's pages, and only the chosen server's, may call five share commands:
   `share_sources`, `share_thumbnail`, `share_start`, `share_stop` and
   `share_status`. A capability for the server's origin is added at run
   time (an ACL manifest in `build.rs` makes every command need a
@@ -75,6 +75,14 @@ folder's labels is the owner's call.
   chosen server is trusted with this as Discord's app trusts discord.com:
   its pages could list windows and start a share without the picker, so
   only a server the person picked gets the commands.
+- **Push-to-talk everywhere.** In a call with push-to-talk the page asks
+  the app to watch its key (`hotkeys_ptt`); a low-level keyboard hook
+  reports it while the window is behind, so it works in a game. The hook
+  only looks (the key still reaches the program in front) and runs only
+  while a key is asked for.
+- **Start with Windows.** "Запускать вместе с Windows" in the tray menu
+  writes the app under the user's Run key with `--autostart`; started so,
+  the app stays in the tray.
 - **Tray.** Closing the window hides it to the tray; a left click on the
   icon or "Открыть Zazzzor" brings it back; "Сменить сервер…" opens the
   setup page with the current address and a "Отмена" back; "Выйти" quits.
@@ -110,6 +118,5 @@ and how a notification looks in the Windows notification centre.
 
 ## Not done yet
 
-- Global hotkeys, push-to-talk, auto-update and an installer.
-- Start with Windows, a tray badge for unread mentions, a native
-  notification bridge.
+- Global hotkeys for mute and deafen, an auto-update and an installer.
+- A tray badge for unread mentions, a native notification bridge.
