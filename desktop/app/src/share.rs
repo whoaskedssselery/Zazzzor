@@ -61,18 +61,20 @@ pub async fn share_thumbnail(
 /// Starts sharing the source `id` over the LiveKit `url` with `token`,
 /// replacing a share in progress. With `sound`, a window brings its
 /// application's sound and a screen the whole system's except this app's
-/// (so the call itself is not sent back).
+/// (so the call itself is not sent back). At most `fps` frames per
+/// second (30 or 60; 60 when not said).
 #[tauri::command]
 pub async fn share_start(
     url: String,
     token: String,
     id: String,
     sound: bool,
+    fps: Option<u32>,
     window: WebviewWindow,
     app: State<'_, crate::App>,
-    sharing: State<'_, Sharing>,
 ) -> Result<(), String> {
     let home = from_instance(&window, &app.instance)?;
+    let sharing = window.app_handle().state::<Sharing>();
     check_signaling(&url, &home)?;
     let target = Target::parse(&id).map_err(|e| format!("{e:#}"))?;
     let scope = match (sound, target) {
@@ -85,26 +87,29 @@ pub async fn share_start(
         old.stop().await;
     }
     *sharing.ended.lock().unwrap() = None;
-    let session =
-        Session::start(&url, &token, &target, scope, Options::default()).await.map_err(|e| format!("{e:#}"))?;
+    let session = Session::start(&url, &token, &target, scope, options(fps)).await.map_err(|e| format!("{e:#}"))?;
     *current = Some(session);
+    crate::sharing_shown(window.app_handle(), true);
     Ok(())
 }
 
 /// Stops the share in progress, if any.
 #[tauri::command]
-pub async fn share_stop(
-    window: WebviewWindow,
-    app: State<'_, crate::App>,
-    sharing: State<'_, Sharing>,
-) -> Result<(), String> {
+pub async fn share_stop(window: WebviewWindow, app: State<'_, crate::App>) -> Result<(), String> {
     from_instance(&window, &app.instance)?;
+    stop(window.app_handle()).await;
+    Ok(())
+}
+
+/// Stops the share in progress, if any: from the page or the tray menu.
+pub async fn stop(app: &AppHandle) {
+    let sharing = app.state::<Sharing>();
     let session = sharing.session.lock().await.take();
     if let Some(session) = session {
         let (end, _) = session.stop().await;
         *sharing.ended.lock().unwrap() = Some(end);
     }
-    Ok(())
+    crate::sharing_shown(app, false);
 }
 
 #[derive(Serialize)]
@@ -133,6 +138,7 @@ pub async fn share_status(
     if current.as_ref().is_some_and(Session::is_finished) {
         let (end, _) = current.take().unwrap().stop().await;
         *sharing.ended.lock().unwrap() = Some(end);
+        crate::sharing_shown(window.app_handle(), false);
     }
     if let Some(session) = current.as_ref() {
         return Ok(Status::Sharing { stats: session.stats() });
@@ -141,6 +147,12 @@ pub async fn share_status(
         Some(end) => Status::Ended { end },
         None => Status::Idle,
     })
+}
+
+/// The share's options for at most `fps` frames per second: 30 or 60, as the
+/// picker offers; anything else is 60.
+fn options(fps: Option<u32>) -> Options {
+    Options { fps: if fps == Some(30) { 30 } else { 60 }, ..Options::default() }
 }
 
 /// The LiveKit URL must be the instance's own host (the API derives it
@@ -173,6 +185,14 @@ pub fn stop_on_exit(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_share_runs_at_30_or_60_fps() {
+        assert_eq!(options(Some(30)).fps, 30);
+        for other in [None, Some(60), Some(5), Some(240)] {
+            assert_eq!(options(other).fps, 60, "{other:?}");
+        }
+    }
 
     #[test]
     fn a_share_goes_only_to_the_instance() {
