@@ -1,12 +1,13 @@
 import { AppWindow, Monitor } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { nativeShare, type ShareSource, type Thumbnail } from "@/entities/call";
+import { nativeShare, type ShareChoice, type ShareSource, type Thumbnail } from "@/entities/call";
 import {
   Button,
   cn,
   Dialog,
   DialogClose,
   DialogContent,
+  Select,
   Spinner,
   Switch,
   Tabs,
@@ -16,6 +17,12 @@ import {
 } from "@/shared/ui";
 import { setNativeShare, useNativeShare } from "../model/native-share";
 import { shareNatively } from "../model/session";
+
+/** The frame rates a share may run at: 60 for games and video, 30 for a weak link. */
+const FPS_OPTIONS = [
+  { value: "60", label: "60 к/с" },
+  { value: "30", label: "30 к/с" },
+];
 
 /** Thumbnails taken at once: each holds a capture of its own for a moment. */
 const THUMBNAILS_AT_ONCE = 3;
@@ -116,6 +123,7 @@ const Picker = () => {
   const [thumbs, setThumbs] = useState<Thumbs>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [sound, setSound] = useState(true);
+  const [fps, setFps] = useState<ShareChoice["fps"]>(60);
   const [tab, setTab] = useState<"window" | "screen">("window");
   const soundId = useId();
 
@@ -143,7 +151,7 @@ const Picker = () => {
 
   const chosen = sources?.find((s) => s.id === selected) ?? null;
   const start = (source: ShareSource | null) => {
-    if (source) void shareNatively(source, sound);
+    if (source) void shareNatively(source, { sound, fps });
   };
   const grid = (kind: ShareSource["kind"]) => {
     const list = sources?.filter((s) => s.kind === kind) ?? [];
@@ -184,6 +192,15 @@ const Picker = () => {
             <Switch id={soundId} checked={sound} onCheckedChange={setSound} />
             {chosen?.kind === "screen" ? "Звук системы (без звонка)" : "Звук приложения"}
           </label>
+          <Select
+            aria-label="Частота кадров"
+            className="w-32"
+            value={String(fps)}
+            onValueChange={(v) => {
+              setFps(v === "30" ? 30 : 60);
+            }}
+            options={FPS_OPTIONS}
+          />
           <DialogClose asChild>
             <Button variant="ghost">Отмена</Button>
           </DialogClose>

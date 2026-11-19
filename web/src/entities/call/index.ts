@@ -15,6 +15,7 @@ export {
   type NativeShareStatus,
   nativeShare,
   resetNativeShare,
+  type ShareChoice,
   type ShareSource,
   type Thumbnail,
 } from "./lib/native-share";

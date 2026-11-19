@@ -644,8 +644,8 @@ describe("the desktop app's screen share", () => {
   it("hands the app a companion token for the call's channel", async () => {
     await joinVoice(G, LOUNGE);
     played.length = 0;
-    await shareNatively(WINDOW, true);
-    expect(started()).toEqual([{ url: SIGNAL, token: `s-${LOUNGE}`, id: WINDOW.id, sound: true }]);
+    await shareNatively(WINDOW, { sound: true, fps: 60 });
+    expect(started()).toEqual([{ url: SIGNAL, token: `s-${LOUNGE}`, id: WINDOW.id, sound: true, fps: 60 }]);
     expect(getCall().sharing).toBe(true);
     expect(getNativeShare().source).toEqual(WINDOW);
     expect(played).toEqual(["streamStart"]);
@@ -654,7 +654,7 @@ describe("the desktop app's screen share", () => {
   it("says why the server refused and starts nothing", async () => {
     server.use(apiHandler("post", "/channels/{channel_id}/voice/screen", () => problem(409, "not_in_voice")));
     await joinVoice(G, LOUNGE);
-    await shareNatively(WINDOW, false);
+    await shareNatively(WINDOW, { sound: false, fps: 60 });
     expect(started()).toEqual([]);
     expect(getCall().sharing).toBe(false);
     expect(notices).toEqual([errorText(new ApiError(409, "not_in_voice"))]);
@@ -663,14 +663,14 @@ describe("the desktop app's screen share", () => {
   it("says the share failed when the app could not start it", async () => {
     await joinVoice(G, LOUNGE);
     commands = false;
-    await shareNatively(WINDOW, false);
+    await shareNatively(WINDOW, { sound: false, fps: 60 });
     expect(getCall().sharing).toBe(false);
     expect(notices).toEqual([SHARE_FAILED]);
   });
 
   it("stops the app's share", async () => {
     await joinVoice(G, LOUNGE);
-    await shareNatively(WINDOW, true);
+    await shareNatively(WINDOW, { sound: true, fps: 60 });
     played.length = 0;
     await stopScreenShare();
     expect(calls.map(([cmd]) => cmd)).toContain("share_stop");
@@ -682,7 +682,7 @@ describe("the desktop app's screen share", () => {
 
   it("shows the app's figures while it shares", async () => {
     await joinVoice(G, LOUNGE);
-    await shareNatively(WINDOW, true);
+    await shareNatively(WINDOW, { sound: true, fps: 60 });
     const stats = {
       captureFps: 60,
       sentFps: 59.8,
@@ -701,7 +701,7 @@ describe("the desktop app's screen share", () => {
 
   it("ends the share when the shared window closes, and says so", async () => {
     await joinVoice(G, LOUNGE);
-    await shareNatively(WINDOW, true);
+    await shareNatively(WINDOW, { sound: true, fps: 60 });
     played.length = 0;
     status = { state: "ended", end: "sourceClosed" };
     await poll();
@@ -712,7 +712,7 @@ describe("the desktop app's screen share", () => {
 
   it("shares again, quietly, when the server drops the companion while the call goes on", async () => {
     await joinVoice(G, LOUNGE);
-    await shareNatively(WINDOW, true);
+    await shareNatively(WINDOW, { sound: true, fps: 60 });
     played.length = 0;
     status = { state: "ended", end: "disconnected" };
     await poll();
@@ -730,7 +730,7 @@ describe("the desktop app's screen share", () => {
 
   it("stops the app's share when the user leaves the call", async () => {
     await joinVoice(G, LOUNGE);
-    await shareNatively(WINDOW, true);
+    await shareNatively(WINDOW, { sound: true, fps: 60 });
     await leaveVoice();
     expect(calls.map(([cmd]) => cmd)).toContain("share_stop");
     expect(getNativeShare().source).toBeNull();
