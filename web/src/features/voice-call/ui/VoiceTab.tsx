@@ -3,10 +3,20 @@ import { useEffect, useState } from "react";
 import { type NoiseStatus, readVoicePrefs, useCall, type VoicePrefs, writeVoicePrefs } from "@/entities/call";
 import { inDesktopApp } from "@/shared/lib";
 import { Button, cn, Field, Select } from "@/shared/ui";
-import { applyVoicePrefs, switchAudioDevice } from "../model/session";
+import { applySwitchKeys, applyVoicePrefs, switchAudioDevice } from "../model/session";
+import { comboName, comboOf } from "../model/switch-keys";
 
 export const PTT_FOCUS_HINT = "Push-to-talk работает, пока окно Zazzzor активно; в фоне — в приложении для Windows.";
 export const PTT_GLOBAL_HINT = "Push-to-talk работает в любом окне, и в играх тоже.";
+export const SWITCH_FOCUS_HINT = "Сочетания работают, пока окно Zazzzor активно; в фоне — в приложении для Windows.";
+export const SWITCH_GLOBAL_HINT = "Сочетания работают в любом окне, и в играх тоже.";
+
+/** The switches a combination may flip, by the setting that keeps it. */
+type KeyField = "muteKey" | "deafenKey";
+const SWITCH_KEYS: { field: KeyField; label: string }[] = [
+  { field: "muteKey", label: "Выключить микрофон" },
+  { field: "deafenKey", label: "Выключить звук" },
+];
 const DEFAULT = "default";
 
 const MODES: { value: VoicePrefs["mode"]; label: string; hint: string }[] = [
@@ -97,7 +107,8 @@ const useDevices = () => {
  */
 export const VoiceTab = () => {
   const [prefs, setPrefs] = useState(readVoicePrefs);
-  const [listening, setListening] = useState(false);
+  /** Which key the next press sets: push-to-talk's, or a switch's combination. */
+  const [listening, setListening] = useState<"ptt" | KeyField | null>(null);
   const { inputs, outputs, add } = useDevices();
   const noise = useCall((s) => (s.status === "idle" ? null : s.noise));
 
@@ -110,18 +121,32 @@ export const VoiceTab = () => {
     setPrefs(next);
     writeVoicePrefs(next);
     applyVoicePrefs();
+    applySwitchKeys();
   };
 
-  // The next key pressed becomes the push-to-talk key; Esc keeps the old one.
+  // The next key pressed becomes the push-to-talk key, or the next combination
+  // the switch's (a modifier alone waits for its key); Esc keeps the old one.
   useEffect(() => {
-    if (!listening) return;
+    if (listening === null) return;
+    const target = listening;
     const onKey = (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      setListening(false);
-      if (e.code !== "Escape") save({ ...readVoicePrefs(), pttKey: e.code });
+      if (e.code === "Escape") {
+        setListening(null);
+        return;
+      }
+      if (target === "ptt") {
+        setListening(null);
+        save({ ...readVoicePrefs(), pttKey: e.code });
+        return;
+      }
+      const combo = comboOf(e);
+      if (combo === null) return;
+      setListening(null);
+      save({ ...readVoicePrefs(), [target]: combo });
     };
-    window.addEventListener("keydown", onKey, { capture: true, once: true });
+    window.addEventListener("keydown", onKey, { capture: true });
     return () => {
       window.removeEventListener("keydown", onKey, { capture: true });
     };
@@ -212,7 +237,7 @@ export const VoiceTab = () => {
         <div>
           <h3 className="mb-2 text-sm font-semibold text-fg-muted">Клавиша</h3>
           <div className="flex items-center gap-3">
-            {listening ? (
+            {listening === "ptt" ? (
               <span className="text-base text-fg">Нажмите клавишу…</span>
             ) : (
               <kbd className="rounded-md bg-control px-2.5 py-1 font-mono text-base">{keyName(prefs.pttKey)}</kbd>
@@ -220,9 +245,9 @@ export const VoiceTab = () => {
             <Button
               variant="secondary"
               size="sm"
-              disabled={listening}
+              disabled={listening !== null}
               onClick={() => {
-                setListening(true);
+                setListening("ptt");
               }}
             >
               Изменить клавишу
@@ -231,6 +256,56 @@ export const VoiceTab = () => {
           <p className="mt-2 text-sm text-fg-muted">{inDesktopApp() ? PTT_GLOBAL_HINT : PTT_FOCUS_HINT}</p>
         </div>
       )}
+
+      <div>
+        <h3 className="mb-2 text-sm font-semibold text-fg-muted">Горячие клавиши</h3>
+        <div className="flex flex-col gap-2">
+          {SWITCH_KEYS.map(({ field, label }) => {
+            const combo = prefs[field];
+            return (
+              <div key={field} className="flex flex-wrap items-center gap-3">
+                <span className="w-40 text-base">{label}</span>
+                {listening === field ? (
+                  <span className="text-base text-fg">Нажмите сочетание…</span>
+                ) : (
+                  <kbd
+                    className={cn(
+                      "rounded-md bg-control px-2.5 py-1 text-base",
+                      combo === null ? "text-fg-muted" : "font-mono",
+                    )}
+                  >
+                    {combo === null ? "Не назначено" : comboName(combo)}
+                  </kbd>
+                )}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  aria-label={`Изменить: ${label}`}
+                  disabled={listening !== null}
+                  onClick={() => {
+                    setListening(field);
+                  }}
+                >
+                  Изменить
+                </Button>
+                {combo !== null && listening !== field && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={`Сбросить: ${label}`}
+                    onClick={() => {
+                      save({ ...readVoicePrefs(), [field]: null });
+                    }}
+                  >
+                    Сбросить
+                  </Button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-sm text-fg-muted">{inDesktopApp() ? SWITCH_GLOBAL_HINT : SWITCH_FOCUS_HINT}</p>
+      </div>
 
       <Field
         htmlFor="voice-noise"

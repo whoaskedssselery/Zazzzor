@@ -377,6 +377,20 @@ describe("voice and video", () => {
     expect(screen.getByText("B", { selector: "kbd" })).toBeTruthy();
   });
 
+  it("sets the combination that flips the microphone, and clears it", async () => {
+    signedIn();
+    const { user } = renderApp("/settings/voice");
+    await user.click(await screen.findByRole("button", { name: "Изменить: Выключить микрофон" }));
+    expect(screen.getByText("Нажмите сочетание…")).toBeTruthy();
+    // A modifier alone waits for its key.
+    await user.keyboard("{Control>}{Shift>}m{/Shift}{/Control}");
+    expect(readVoicePrefs().muteKey).toBe("Control+Shift+KeyM");
+    expect(screen.getByText("Ctrl + Shift + M", { selector: "kbd" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Сбросить: Выключить микрофон" }));
+    expect(readVoicePrefs().muteKey).toBeNull();
+    expect(screen.getAllByText("Не назначено", { selector: "kbd" })).toHaveLength(2);
+  });
+
   it("chooses the noise suppression, enhanced by default", async () => {
     signedIn();
     const { user } = renderApp("/settings/voice");
