@@ -2,23 +2,19 @@
 //! screens and windows with thumbnails, and a share started with a token
 //! the page got from its server (`POST /channels/{id}/voice/screen`), which
 //! joins the call as the user's screen companion. One share at a time.
-//!
-//! These are the only commands the instance's pages may call: a remote
-//! capability for the instance's origin allows them (see `allow_instance`),
-//! and each checks again that the calling page is the instance's.
 
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use serde::Serialize;
 use tauri::async_runtime::Mutex as AsyncMutex;
-use tauri::ipc::{CapabilityBuilder, Response};
+use tauri::ipc::Response;
 use tauri::{AppHandle, Manager, State, Url, WebviewWindow};
 use zazzzor_share::audio::Scope;
 use zazzzor_share::capture::{self, Target};
 use zazzzor_share::session::{End, Options, Session, Stats};
 use zazzzor_share::sources::{self, Source};
 
-use crate::instance;
+use crate::bridge::from_instance;
 
 /// The commands of this module, as the app's ACL names them.
 pub const COMMANDS: [&str; 5] = ["share_sources", "share_thumbnail", "share_start", "share_stop", "share_status"];
@@ -28,28 +24,6 @@ pub const COMMANDS: [&str; 5] = ["share_sources", "share_thumbnail", "share_star
 pub struct Sharing {
     session: AsyncMutex<Option<Session>>,
     ended: Mutex<Option<End>>,
-}
-
-/// Allows the instance's pages at `origin` to call this module's commands.
-/// A capability cannot be taken back, so one for an earlier instance stays;
-/// the commands still refuse any page but the current instance's.
-pub fn allow_instance(app: &AppHandle, origin: &Url) -> tauri::Result<()> {
-    let base = origin.origin().ascii_serialization();
-    let mut capability = CapabilityBuilder::new(format!("instance-{base}")).remote(format!("{base}/*")).local(false);
-    capability = capability.window(crate::MAIN);
-    for command in COMMANDS {
-        capability = capability.permission(format!("allow-{}", command.replace('_', "-")));
-    }
-    app.add_capability(capability)
-}
-
-/// Refuses a command called from anywhere but the instance's own pages.
-fn from_instance(window: &WebviewWindow, instance: &Arc<Mutex<Option<Url>>>) -> Result<Url, String> {
-    let home = instance.lock().unwrap().clone();
-    match (window.url(), home) {
-        (Ok(url), Some(home)) if instance::same_origin(&url, &home) => Ok(home),
-        _ => Err("not allowed".into()),
-    }
 }
 
 /// The screens, then the windows, that can be shared.

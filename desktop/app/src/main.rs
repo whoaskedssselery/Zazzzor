@@ -8,6 +8,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod bridge;
 mod instance;
 #[cfg(windows)]
 mod permissions;
@@ -72,7 +73,7 @@ fn set_instance(url: String, window: WebviewWindow, app: State<'_, App>) -> Resu
     let url = instance::parse(&url)?;
     instance::save(&app.settings, &url).map_err(|e| format!("Не удалось сохранить адрес: {e}"))?;
     *app.instance.lock().unwrap() = Some(url.clone());
-    share::allow_instance(window.app_handle(), &url).map_err(|e| e.to_string())?;
+    bridge::allow_instance(window.app_handle(), &url).map_err(|e| e.to_string())?;
     app.setup_requested.store(false, Ordering::Relaxed);
     window.navigate(url).map_err(|e| e.to_string())
 }
@@ -233,7 +234,7 @@ fn main() {
                 setup_requested: setup_requested.clone(),
             });
             if let Some(url) = &saved {
-                share::allow_instance(app.handle(), url)?;
+                bridge::allow_instance(app.handle(), url)?;
             }
             tray(app.handle())?;
             let window = window(app.handle(), saved, shared.clone(), setup_requested)?;
