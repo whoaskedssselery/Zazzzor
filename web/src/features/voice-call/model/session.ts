@@ -13,6 +13,7 @@ import {
   onVolumes,
   readVoicePrefs,
   type ScreenShareResult,
+  type ShareChoice,
   type ShareSource,
   setCall,
   VOLUME_DEFAULT,
@@ -488,10 +489,11 @@ const dropNativeShare = async (): Promise<void> => {
 /**
  * Shares `source` through the desktop app: a companion token for the
  * call's channel from the server, handed to the app, which joins the call
- * as the user's screen. `sound` brings a window's application sound, or a
- * screen's whole system sound but the app's. A failure is said in a notice.
+ * as the user's screen. `choice.sound` brings a window's application sound, or a
+ * screen's whole system sound but the app's; `choice.fps` caps the frame
+ * rate. A failure is said in a notice.
  */
-export const shareNatively = async (source: ShareSource, sound: boolean, again = false): Promise<void> => {
+export const shareNatively = async (source: ShareSource, choice: ShareChoice, again = false): Promise<void> => {
   setNativeShare({ picking: false });
   const { channelId, status } = getCall();
   if (channelId === null || status === "idle" || picking) return;
@@ -518,7 +520,7 @@ export const shareNatively = async (source: ShareSource, sound: boolean, again =
     }
     if (mine !== generation) return;
     try {
-      await nativeShare.start({ url: joined.url, token: joined.token, id: source.id, sound });
+      await nativeShare.start({ url: joined.url, token: joined.token, id: source.id, ...choice });
     } catch {
       failed(SHARE_FAILED);
       return;
@@ -542,7 +544,7 @@ export const shareNatively = async (source: ShareSource, sound: boolean, again =
   nativePoll = setInterval(() => {
     void nativeShare
       .status()
-      .then((s) => followNativeShare(s, mine, source, sound, retried))
+      .then((s) => followNativeShare(s, mine, source, choice, retried))
       .then((healthy) => {
         if (healthy) retried = false;
       })
@@ -558,7 +560,7 @@ const followNativeShare = async (
   status: NativeShareStatus,
   mine: number,
   source: ShareSource,
-  sound: boolean,
+  choice: ShareChoice,
   retried: boolean,
 ): Promise<boolean> => {
   if (getNativeShare().source !== source) return false;
@@ -572,7 +574,7 @@ const followNativeShare = async (
   const end = status.state === "ended" ? status.end : "disconnected";
   // The server drops the companion when the call itself reconnects: share again, quietly.
   if (end === "disconnected" && !retried && mine === generation && getCall().status === "connected") {
-    await shareNatively(source, sound, true);
+    await shareNatively(source, choice, true);
     return false;
   }
   if (!getCall().sharing) return false;

@@ -40,6 +40,12 @@ export type NativeShareStatus =
   | { state: "sharing"; stats: NativeShareStats | null }
   | { state: "ended"; end: NativeShareEnd };
 
+/** How to share a source: with its sound or not, at up to 30 or 60 frames per second. */
+export interface ShareChoice {
+  sound: boolean;
+  fps: 30 | 60;
+}
+
 export interface Thumbnail {
   width: number;
   height: number;
@@ -71,9 +77,9 @@ export const nativeShare = {
   sources: (): Promise<ShareSource[]> => desktopInvoke("share_sources"),
   thumbnail: async (id: string): Promise<Thumbnail> =>
     decodeThumbnail(await desktopInvoke<ArrayBuffer>("share_thumbnail", { id })),
-  /** Starts sharing source `id` (replacing a share in progress); `sound` brings its sound. */
-  start: (args: { url: string; token: string; id: string; sound: boolean }): Promise<void> =>
-    desktopInvoke("share_start", args),
+  /** Starts sharing source `id` (replacing a share in progress); `sound` brings its sound, `fps` caps the frame rate. */
+  start: (args: { url: string; token: string; id: string } & ShareChoice): Promise<void> =>
+    desktopInvoke("share_start", { ...args }),
   stop: (): Promise<void> => desktopInvoke("share_stop"),
   status: (): Promise<NativeShareStatus> => desktopInvoke("share_status"),
 };
