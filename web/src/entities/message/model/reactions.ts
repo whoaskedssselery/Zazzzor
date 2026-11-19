@@ -31,11 +31,22 @@ export const sameEmoji = (a: ReactionEmoji, b: ReactionEmoji): boolean =>
  * when that someone is the user. The user's own change is a state, not a
  * step: the chat shows it at once and the server's event of it then
  * changes nothing. A new emoji goes last, as the server orders them.
+ *
+ * With `count` (the server's event says how many reacted after the
+ * change) the count is set, not stepped: an event seen twice, as a
+ * reconnect's catch-up replays them, changes nothing the second time.
  */
-export function withReaction(m: Message, emoji: ReactionEmoji, mine: boolean, add: boolean): Message {
+export function withReaction(m: Message, emoji: ReactionEmoji, mine: boolean, add: boolean, count?: number): Message {
   const reactions = reactionsOf(m);
   const at = reactions.findIndex((r) => sameEmoji(r.emoji, emoji));
   const held = reactions[at];
+  if (count !== undefined) {
+    const me = mine ? add : (held?.me ?? false);
+    if (count <= 0) return held === undefined ? m : { ...m, reactions: reactions.filter((_, i) => i !== at) };
+    if (held === undefined) return { ...m, reactions: [...reactions, { emoji, count, me }] };
+    if (held.count === count && held.me === me) return m;
+    return { ...m, reactions: reactions.map((r, i) => (i === at ? { ...held, count, me } : r)) };
+  }
   if (add) {
     if (held === undefined) return { ...m, reactions: [...reactions, { emoji, count: 1, me: mine }] };
     if (mine && held.me) return m;

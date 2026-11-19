@@ -422,6 +422,7 @@ const reactionEventSchema: z.ZodMiniType<S["MessageReactionEvent"]> = z.object({
   message_id: snowflake,
   user_id: snowflake,
   emoji: emojiSchema,
+  count: z.int().check(z.nonnegative()),
 });
 
 const chatSchemas: { [K in keyof ChatEvents]: z.ZodMiniType<ChatEvents[K]> } = {

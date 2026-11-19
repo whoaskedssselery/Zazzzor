@@ -51,3 +51,23 @@ describe("emoji keys", () => {
     expect(sameEmoji(LIKE, FIRE)).toBe(false);
   });
 });
+
+describe("a reaction event with the count after the change", () => {
+  const thumb = { id: null, name: "👍" };
+  const base = makeMessage("1", "101", makeUser("1"), { reactions: [{ emoji: thumb, count: 2, me: false }] });
+
+  it("sets the count, so the same event twice changes nothing", () => {
+    const once = withReaction(base, thumb, false, true, 3);
+    expect(once.reactions).toEqual([{ emoji: thumb, count: 3, me: false }]);
+    expect(withReaction(once, thumb, false, true, 3)).toBe(once);
+  });
+
+  it("marks the user's own, and drops an emoji nobody uses any more", () => {
+    expect(withReaction(base, thumb, true, true, 3).reactions).toEqual([{ emoji: thumb, count: 3, me: true }]);
+    expect(withReaction(base, thumb, false, false, 0).reactions).toEqual([]);
+    expect(withReaction(base, { id: null, name: "🔥" }, false, true, 1).reactions).toEqual([
+      { emoji: thumb, count: 2, me: false },
+      { emoji: { id: null, name: "🔥" }, count: 1, me: false },
+    ]);
+  });
+});

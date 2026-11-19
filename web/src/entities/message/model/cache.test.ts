@@ -108,16 +108,17 @@ describe("applyMessageDispatch", () => {
 
   it("applies reactions, the user's own once, and keeps them through an edit", () => {
     const qc = client(pages([1, 2]));
-    const event = (userId: string) => ({
+    const event = (userId: string, count: number) => ({
       channel_id: C,
       guild_id: "10",
       message_id: "2",
       user_id: userId,
       emoji: { id: null, name: "🔥" },
+      count,
     });
-    applyMessageDispatch(qc, "MESSAGE_REACTION_ADD", event("7"), "9");
-    applyMessageDispatch(qc, "MESSAGE_REACTION_ADD", event("9"), "9");
-    applyMessageDispatch(qc, "MESSAGE_REACTION_ADD", event("9"), "9");
+    applyMessageDispatch(qc, "MESSAGE_REACTION_ADD", event("7", 1), "9");
+    applyMessageDispatch(qc, "MESSAGE_REACTION_ADD", event("9", 2), "9");
+    applyMessageDispatch(qc, "MESSAGE_REACTION_ADD", event("9", 2), "9");
     const { reactions: _none, ...edit } = msg(2, { content: "правка" });
     applyMessageDispatch(qc, "MESSAGE_UPDATE", edit, "9");
     const d = history(qc);
@@ -125,7 +126,7 @@ describe("applyMessageDispatch", () => {
     const m = inOrder(d)[1];
     expect(m?.content).toBe("правка");
     expect(m?.reactions).toEqual([{ emoji: { id: null, name: "🔥" }, count: 2, me: true }]);
-    applyMessageDispatch(qc, "MESSAGE_REACTION_REMOVE", event("7"), "9");
+    applyMessageDispatch(qc, "MESSAGE_REACTION_REMOVE", event("7", 1), "9");
     expect(inOrder(history(qc) ?? { pages: [] })[1]?.reactions).toEqual([
       { emoji: { id: null, name: "🔥" }, count: 1, me: true },
     ]);
@@ -237,6 +238,32 @@ describe("catchUpMessages", () => {
     expect(order(qc.getQueryData<MessagePages>(messagesKey(C)) ?? pages())).toEqual([1, 2, 5]);
   });
 
+  it("counts a reaction once when the answer already holds one that arrived while it was in flight", async () => {
+    const thumb = { id: null, name: "👍" };
+    let qc = new QueryClient();
+    server.use(
+      apiHandler("get", "/channels/{channel_id}/messages", () => {
+        // Someone reacts while the history is fetched again: the answer already counts it.
+        applyMessageDispatch(qc, "MESSAGE_REACTION_ADD", {
+          channel_id: C,
+          guild_id: "10",
+          message_id: "1",
+          user_id: "2",
+          emoji: thumb,
+          count: 1,
+        });
+        return HttpResponse.json([msg(1, { reactions: [{ emoji: thumb, count: 1, me: false }] })]);
+      }),
+    );
+    qc = new QueryClient();
+    const stop = shown(qc, C, pages([1]));
+    await catchUpMessages(qc);
+    stop();
+    expect(inOrder(qc.getQueryData<MessagePages>(messagesKey(C)) ?? pages())[0]?.reactions).toEqual([
+      { emoji: thumb, count: 1, me: false },
+    ]);
+  });
+
   it("drops what the server no longer has, even when it has nothing left", async () => {
     serve(() => []);
     const qc = new QueryClient();
@@ -337,6 +364,7 @@ describe("what just arrived", () => {
       user_id: "77",
       guild_id: null,
       emoji: { id: null, name: "👍" },
+      count: 1,
     });
     expect(justArrived(reactionKey("9002", "👍"))).toBe(true);
     expect(justArrived("9001")).toBe(false);

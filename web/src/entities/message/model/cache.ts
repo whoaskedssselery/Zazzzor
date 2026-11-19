@@ -217,7 +217,7 @@ export function applyMessageDispatch(qc: QueryClient, t: string, d: unknown, meI
       const add = t === "MESSAGE_REACTION_ADD";
       if (add) markArrived(reactionKey(e.message_id, emojiKey(e.emoji)));
       applyLive(qc, e.channel_id, (h) =>
-        updateMessage(h, e.message_id, (m) => withReaction(m, e.emoji, e.user_id === meId, add)),
+        updateMessage(h, e.message_id, (m) => withReaction(m, e.emoji, e.user_id === meId, add, e.count)),
       );
       return;
     }
