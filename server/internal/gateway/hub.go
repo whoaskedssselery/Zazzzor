@@ -125,9 +125,13 @@ func (g *Gateway) dispatch(ctx context.Context, e events.Event) {
 	perRecipient := e.Type == events.GuildCreate || e.Type == events.GuildSync ||
 		e.Audience.Kind == events.AudienceGuildSync
 	var (
-		shared   json.RawMessage
-		redacted json.RawMessage
-		guildID  snowflake.ID
+		shared         json.RawMessage
+		redacted       json.RawMessage
+		guildID        snowflake.ID
+		snapshot       guilds.GuildSnapshot
+		public         guilds.PublicSnapshot
+		snapshotErr    error
+		snapshotLoaded bool
 	)
 	if perRecipient {
 		if guildID = guildOf(e); guildID == 0 {
@@ -144,7 +148,21 @@ func (g *Gateway) dispatch(ctx context.Context, e events.Event) {
 		seen[uid] = true
 		var d json.RawMessage
 		if perRecipient {
-			st, stErr := g.guildState(ctx, uid, guildID)
+			if !snapshotLoaded {
+				snapshot, snapshotErr = g.opts.Guilds.Snapshot(ctx, guildID)
+				if errors.Is(snapshotErr, guilds.ErrNotFound) {
+					snapshotErr = errNotInGuild
+				}
+				if snapshotErr == nil {
+					public = snapshot.Public()
+				}
+				snapshotLoaded = true
+			}
+			var st GuildState
+			stErr := snapshotErr
+			if stErr == nil {
+				st, stErr = g.guildView(ctx, uid, snapshot, public)
+			}
 			if errors.Is(stErr, errNotInGuild) {
 				continue // not a member (any more): no state to send
 			}

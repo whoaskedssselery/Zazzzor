@@ -30,6 +30,12 @@ func (g *Gateway) guildState(ctx context.Context, userID, guildID snowflake.ID) 
 	if err != nil {
 		return GuildState{}, err
 	}
+	return g.guildView(ctx, userID, snap, snap.Public())
+}
+
+// guildView adds the recipient's current visibility and read state to a shared snapshot.
+func (g *Gateway) guildView(ctx context.Context, userID snowflake.ID, snap guilds.GuildSnapshot, pub guilds.PublicSnapshot) (GuildState, error) {
+	guildID := snap.Guild.ID
 	i := slices.IndexFunc(snap.Members, func(m guilds.Member) bool { return m.User.ID == userID })
 	if i < 0 {
 		return GuildState{}, errNotInGuild
@@ -42,7 +48,6 @@ func (g *Gateway) guildState(ctx context.Context, userID, guildID snowflake.ID) 
 		return GuildState{}, err
 	}
 
-	pub := snap.Public()
 	st := GuildState{Guild: pub.Guild, Roles: pub.Roles, MyMember: pub.Members[i],
 		Members:  pub.Members[:min(len(pub.Members), MaxMembers)],
 		Channels: make([]channels.PublicChannel, len(visible)), Emojis: snap.Emojis}
