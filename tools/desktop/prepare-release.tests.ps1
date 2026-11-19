@@ -22,6 +22,9 @@ function Write-Version([string]$Version) {
 }
 try {
     Invoke-Git init --quiet
+    # Git for Windows turns line endings by default and warns on stderr, which
+    # PowerShell with Stop takes for a failure: the fixture keeps them as they are.
+    Invoke-Git config core.autocrlf false
     Invoke-Git config user.name 'Release Tests'
     Invoke-Git config user.email 'release-tests@example.invalid'
     Write-Version '0.2.0'

@@ -25,6 +25,9 @@ try {
         Write-Output "PASS $($case.Name)"
     }
     & git -C $fixture init --quiet
+    # Git for Windows turns line endings by default and warns on stderr, which
+    # PowerShell with Stop takes for a failure: the fixture keeps them as they are.
+    & git -C $fixture config core.autocrlf false
     & git -C $fixture config user.name 'Release Tests'
     & git -C $fixture config user.email 'release-tests@example.invalid'
     & git -C $fixture add desktop/app/Cargo.toml desktop/app/tauri.conf.json
