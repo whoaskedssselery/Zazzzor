@@ -190,8 +190,25 @@ jobs:
           # Self-hosted runners keep the pnpm store between jobs.
           cache: ${{ vars.CI_RUNNER == '' && 'pnpm' || '' }}
       - run: pnpm install --frozen-lockfile
-      - name: Playwright's Chromium and Firefox
+      - name: Playwright's Chromium and Firefox (GitHub-hosted)
+        if: vars.CI_RUNNER == ''
         run: pnpm --filter @zazzzor/web exec playwright install --with-deps chromium firefox
+      - name: Playwright's Chromium and Firefox (self-hosted cache)
+        if: vars.CI_RUNNER != ''
+        # A runner image built for another Playwright (or before this step
+        # existed) still works: it installs the system packages with apt, as
+        # the hosted runners do, and says the image needs a rebuild.
+        run: |
+          version="$(pnpm --filter @zazzzor/web exec node -p 'require("@playwright/test/package.json").version')"
+          deps=()
+          if [[ ! -f /opt/zazzzor-runner/playwright-version ]] ||
+             [[ "$(cat /opt/zazzzor-runner/playwright-version)" != "$version" ]]; then
+            echo "::warning::Rebuild the Linux runner with tools/ci/runner/Dockerfile for Playwright $version; installing its system packages with apt meanwhile"
+            deps=(--with-deps)
+          fi
+          export PLAYWRIGHT_BROWSERS_PATH="/var/lib/zz-runner/playwright/$version"
+          echo "PLAYWRIGHT_BROWSERS_PATH=$PLAYWRIGHT_BROWSERS_PATH" >> "$GITHUB_ENV"
+          pnpm --filter @zazzzor/web exec playwright install "${deps[@]}" chromium firefox
       # The API image and Postgres of web/e2e/compose.yml, on loopback only.
       # e2e:up also opens registration in that throwaway database.
       - name: Start the e2e API

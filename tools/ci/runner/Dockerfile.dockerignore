@@ -1,0 +1,6 @@
+**
+!pnpm-lock.yaml
+!tools/
+!tools/ci/
+!tools/ci/runner/
+!tools/ci/runner/start.sh
