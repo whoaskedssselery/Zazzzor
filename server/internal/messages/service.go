@@ -251,9 +251,8 @@ func (s *Service) Create(ctx context.Context, channelID, userID snowflake.ID, f 
 	var row store.Message
 	var picked previewSelection
 	var reopened []events.Event
-	if guildID == 0 {
-		defer s.channels.LockPrivateEvents(channelID)()
-	}
+	// Order the committed channel marker with create and delete delivery.
+	defer s.channels.LockPrivateEvents(channelID)()
 	// A claim that disappears before it is read frees the nonce for one retry.
 	for range 2 {
 		if row, err = s.createOnce(ctx, guildID, params, f, &m, &picked, &reopened); !errors.Is(err, errNonceTaken) {
@@ -593,6 +592,7 @@ func (s *Service) Delete(ctx context.Context, channelID, messageID, userID snowf
 	if err != nil {
 		return err
 	}
+	defer s.channels.LockPrivateEvents(channelID)()
 	defer s.lockPreviewUpdate(messageID)()
 	row, err := s.loadFor(ctx, p, channelID, messageID, userID)
 	if err != nil {

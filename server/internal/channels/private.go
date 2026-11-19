@@ -165,7 +165,8 @@ func (s *Service) LockPrivateIn(ctx context.Context, tx pgx.Tx, id snowflake.ID)
 	return nil
 }
 
-// LockPrivateEvents orders commits and publications for one private channel.
+// LockPrivateEvents orders message commits and publications for a channel,
+// including its membership events when the channel is private.
 func (s *Service) LockPrivateEvents(id snowflake.ID) func() {
 	key := int64(id) ^ id.Time().UnixMilli()
 	mu := &s.privateLocks[key&int64(len(s.privateLocks)-1)]
