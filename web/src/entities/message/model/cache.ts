@@ -1,5 +1,5 @@
 import type { InfiniteData, QueryClient } from "@tanstack/react-query";
-import { api, type components, isChatEvent, parseChatEvent, unwrap } from "@/shared/api";
+import { ApiError, api, type components, isChatEvent, parseChatEvent, unwrap } from "@/shared/api";
 import { compareIds } from "@/shared/lib";
 import { markArrived, reactionKey } from "./arrival";
 import { confirmPending, isPending } from "./pending";
@@ -249,6 +249,27 @@ const asPages = (channelId: string, messages: Message[], ended: boolean): Messag
   return { pages, pageParams };
 };
 
+/** The waits before trying a catch-up page again after a network or server failure. */
+const RETRY_AFTER_MS = [1000, 3000, 9000];
+
+/**
+ * A catch-up page, tried again a few times when the network or the server
+ * fails (a 503 while the server restarts); any other refusal (no access
+ * any more) is final.
+ */
+async function fetchRetrying(channelId: string, after: string): Promise<Message[]> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fetchMessages(channelId, { after, limit: CATCH_UP_SIZE });
+    } catch (e) {
+      const transient = !(e instanceof ApiError) || e.status >= 500;
+      const wait = RETRY_AFTER_MS[attempt];
+      if (!transient || wait === undefined) throw e;
+      await new Promise((resolve) => setTimeout(resolve, wait));
+    }
+  }
+}
+
 /**
  * Brings the loaded histories up to date after a reconnect. Events missed
  * while away touch messages already loaded too (edits, deletions,
@@ -277,15 +298,18 @@ export async function catchUpMessages(qc: QueryClient): Promise<void> {
       const fetched: Message[] = [];
       const live: ((h: MessagePages) => MessagePages)[] = [];
       catchingUp.set(channelId, live);
+      // A newer catch-up of the channel (another reconnect) took over: this one writes nothing.
+      const current = () => catchingUp.get(channelId) === live;
       try {
         let after = oldest === undefined ? undefined : justBefore(oldest);
         for (let n = 0; after !== undefined && n < CATCH_UP_PAGES; n++) {
           let page: Message[];
           try {
-            page = await fetchMessages(channelId, { after, limit: CATCH_UP_SIZE });
+            page = await fetchRetrying(channelId, after);
           } catch {
             return;
           }
+          if (!current()) return;
           fetched.push(...page);
           if (page.length < CATCH_UP_SIZE) {
             updateHistory(qc, channelId, () => live.reduce((h, fn) => fn(h), asPages(channelId, fetched, ended)));
@@ -294,8 +318,9 @@ export async function catchUpMessages(qc: QueryClient): Promise<void> {
           after = page.at(-1)?.id;
         }
       } finally {
-        if (catchingUp.get(channelId) === live) catchingUp.delete(channelId);
+        if (current()) catchingUp.delete(channelId);
       }
+      if (catchingUp.has(channelId)) return;
       await qc.resetQueries({ queryKey: q.queryKey, exact: true });
     }),
   );

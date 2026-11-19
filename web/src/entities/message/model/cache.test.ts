@@ -293,6 +293,59 @@ describe("catchUpMessages", () => {
     expect(inOrder(d).at(-1)?.content).toBe("новое");
   });
 
+  it("tries again after a server or network failure instead of leaving the history stale", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"], shouldAdvanceTime: true });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    let calls = 0;
+    server.use(
+      apiHandler("get", "/channels/{channel_id}/messages", () => {
+        calls += 1;
+        if (calls === 1) return problem(503, "unavailable");
+        if (calls === 2) return HttpResponse.error();
+        return HttpResponse.json([msg(1), msg(2), msg(3)]);
+      }),
+    );
+    const qc = new QueryClient();
+    const stop = shown(qc, C, pages([1]));
+    const done = catchUpMessages(qc);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await done;
+    stop();
+    expect(calls).toBe(3);
+    expect(order(qc.getQueryData<MessagePages>(messagesKey(C)) ?? pages())).toEqual([1, 2, 3]);
+  });
+
+  it("lets a newer catch-up win over an older one that answers later", async () => {
+    const gate: { release?: () => void } = {};
+    let calls = 0;
+    server.use(
+      apiHandler("get", "/channels/{channel_id}/messages", async () => {
+        calls += 1;
+        if (calls === 1) {
+          // The first catch-up's answer is slow and old.
+          await new Promise<void>((resolve) => {
+            gate.release = resolve;
+          });
+          return HttpResponse.json([msg(1)]);
+        }
+        return HttpResponse.json([msg(1), msg(2)]);
+      }),
+    );
+    const qc = new QueryClient();
+    const stop = shown(qc, C, pages([1]));
+    const first = catchUpMessages(qc);
+    await vi.waitFor(() => {
+      expect(gate.release).toBeDefined();
+    });
+    await catchUpMessages(qc);
+    gate.release?.();
+    await first;
+    stop();
+    expect(order(qc.getQueryData<MessagePages>(messagesKey(C)) ?? pages())).toEqual([1, 2]);
+  });
+
   it("drops a history no screen shows, to load fresh when opened", async () => {
     const qc = new QueryClient();
     qc.setQueryData(messagesKey(C), pages([1]));
