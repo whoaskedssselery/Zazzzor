@@ -152,6 +152,7 @@ SELECT members.user_id,
 FROM members
 LEFT JOIN member_roles ON member_roles.guild_id = members.guild_id AND member_roles.user_id = members.user_id
 WHERE members.guild_id = @guild_id
+  AND (@all_members::boolean OR members.user_id = ANY(@candidates::bigint[]))
 GROUP BY members.user_id
 ORDER BY members.user_id;
 

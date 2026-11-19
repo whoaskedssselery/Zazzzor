@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/jackc/pgx/v5"
 
@@ -162,18 +163,28 @@ func (l *layout) visibleTo(sub permissions.Subject) []Channel {
 // Viewers implements Resolver: it loads the channel, its overwrites and the
 // whole guild's roles once and computes every member in memory.
 func (s *Service) Viewers(ctx context.Context, channelID snowflake.ID) ([]snowflake.ID, error) {
-	return s.channelViewers(ctx, channelID, nil)
+	return s.channelViewers(ctx, channelID, nil, nil)
 }
 
 // ViewersWithHistory resolves live recipients and history access together.
 func (s *Service) ViewersWithHistory(ctx context.Context, channelID snowflake.ID) ([]snowflake.ID, map[snowflake.ID]bool, error) {
 	readers := make(map[snowflake.ID]bool)
-	ids, err := s.channelViewers(ctx, channelID, readers)
+	ids, err := s.channelViewers(ctx, channelID, readers, nil)
+	return ids, readers, err
+}
+
+// ViewersAmong checks live permissions for connected candidates in one read snapshot.
+func (s *Service) ViewersAmong(ctx context.Context, channelID snowflake.ID, candidates []snowflake.ID) ([]snowflake.ID, map[snowflake.ID]bool, error) {
+	if candidates == nil {
+		candidates = []snowflake.ID{}
+	}
+	readers := make(map[snowflake.ID]bool)
+	ids, err := s.channelViewers(ctx, channelID, readers, candidates)
 	return ids, readers, err
 }
 
 // channelViewers fills readers, when requested, in the same snapshot as viewers.
-func (s *Service) channelViewers(ctx context.Context, channelID snowflake.ID, readers map[snowflake.ID]bool) ([]snowflake.ID, error) {
+func (s *Service) channelViewers(ctx context.Context, channelID snowflake.ID, readers map[snowflake.ID]bool, candidates []snowflake.ID) ([]snowflake.ID, error) {
 	var out []snowflake.ID
 	err := s.read(ctx, func(tx pgx.Tx) error {
 		c, err := s.channelIn(ctx, tx, channelID)
@@ -182,6 +193,9 @@ func (s *Service) channelViewers(ctx context.Context, channelID snowflake.ID, re
 		}
 		if c.Type.Private() {
 			out, err = s.PrivateRecipientsIn(ctx, tx, channelID)
+			if candidates != nil {
+				out = slices.DeleteFunc(out, func(id snowflake.ID) bool { return !slices.Contains(candidates, id) })
+			}
 			if readers != nil {
 				for _, id := range out {
 					readers[id] = true
@@ -189,11 +203,19 @@ func (s *Service) channelViewers(ctx context.Context, channelID snowflake.ID, re
 			}
 			return err
 		}
-		a, overwrites, err := s.mentionAccessFor(ctx, tx, c)
+		var a guilds.Access
+		if candidates == nil {
+			a, err = s.guilds.AccessIn(ctx, tx, c.GuildID)
+		} else {
+			a, err = s.guilds.AccessAmongIn(ctx, tx, c.GuildID, candidates)
+		}
+		if errors.Is(err, guilds.ErrNotFound) {
+			return ErrNotFound
+		}
 		if err != nil {
 			return err
 		}
-		out = viewers(a, overwrites, readers)
+		out = viewers(a, c.Overwrites, readers)
 		return nil
 	})
 	if err != nil {
