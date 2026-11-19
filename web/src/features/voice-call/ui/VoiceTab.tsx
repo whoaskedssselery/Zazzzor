@@ -1,10 +1,12 @@
 import { RadioGroup } from "radix-ui";
 import { useEffect, useState } from "react";
 import { type NoiseStatus, readVoicePrefs, useCall, type VoicePrefs, writeVoicePrefs } from "@/entities/call";
+import { inDesktopApp } from "@/shared/lib";
 import { Button, cn, Field, Select } from "@/shared/ui";
 import { applyVoicePrefs, switchAudioDevice } from "../model/session";
 
 export const PTT_FOCUS_HINT = "Push-to-talk работает, пока окно Zazzzor активно; в фоне — в приложении для Windows.";
+export const PTT_GLOBAL_HINT = "Push-to-talk работает в любом окне, и в играх тоже.";
 const DEFAULT = "default";
 
 const MODES: { value: VoicePrefs["mode"]; label: string; hint: string }[] = [
@@ -226,7 +228,7 @@ export const VoiceTab = () => {
               Изменить клавишу
             </Button>
           </div>
-          <p className="mt-2 text-sm text-fg-muted">{PTT_FOCUS_HINT}</p>
+          <p className="mt-2 text-sm text-fg-muted">{inDesktopApp() ? PTT_GLOBAL_HINT : PTT_FOCUS_HINT}</p>
         </div>
       )}
 
