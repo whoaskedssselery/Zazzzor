@@ -19,11 +19,12 @@ import (
 )
 
 const (
-	previewWorkers       = 4
-	previewQueueSize     = 128
-	previewSuccessTTL    = 24 * time.Hour
-	previewFailureTTL    = time.Hour
-	previewSweepInterval = 24 * time.Hour
+	previewWorkers         = 4
+	previewQueueSize       = 128
+	previewSuccessTTL      = 24 * time.Hour
+	previewFailureTTL      = time.Hour
+	previewSweepInterval   = 24 * time.Hour
+	previewDropLogInterval = time.Minute
 )
 
 // PreviewFetcher builds a preview and stores any image through save.
@@ -32,10 +33,13 @@ type PreviewFetcher interface {
 }
 
 type previews struct {
-	fetcher PreviewFetcher
-	jobs    chan previewJob
-	shared  singleflight.Group
-	locks   [64]sync.Mutex
+	fetcher  PreviewFetcher
+	jobs     chan previewJob
+	shared   singleflight.Group
+	locks    [64]sync.Mutex
+	statsMu  sync.Mutex
+	dropped  uint64
+	warnedAt time.Time
 }
 
 type previewJob struct {
@@ -142,6 +146,24 @@ func (s *Service) enqueuePreviews(m Message, pending []string) {
 	select {
 	case s.previews.jobs <- previewJob{id: m.ID, channelID: m.ChannelID, guildID: m.GuildID, content: m.Content, editedAt: m.EditedAt, pending: pending}:
 	default:
+		s.previewDropped()
+	}
+}
+
+// previewDropped counts every overflow while limiting warnings to one per minute.
+func (s *Service) previewDropped() {
+	p := s.previews
+	p.statsMu.Lock()
+	p.dropped++
+	total := p.dropped
+	now := s.now()
+	warn := p.warnedAt.IsZero() || now.Sub(p.warnedAt) >= previewDropLogInterval
+	if warn {
+		p.warnedAt = now
+	}
+	p.statsMu.Unlock()
+	if warn {
+		s.logger.Warn("link preview queue full", "dropped_total", total, "queue_capacity", previewQueueSize)
 	}
 }
 
