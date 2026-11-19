@@ -11,6 +11,7 @@ fn main() {
         "share_start",
         "share_stop",
         "share_status",
+        "hotkeys_ptt",
     ];
     tauri_build::try_build(
         tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(commands)),

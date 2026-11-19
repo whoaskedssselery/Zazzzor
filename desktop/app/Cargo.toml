@@ -21,7 +21,12 @@ zazzzor-share = { path = "../share" }
 # The same versions as Tauri's WebView2 runtime, for the permission handler.
 [target.'cfg(windows)'.dependencies]
 webview2-com = "=0.39.1"
-windows = "=0.62.2"
+windows = { version = "=0.62.2", features = [
+  "Win32_Foundation",
+  "Win32_System_Registry",
+  "Win32_System_Threading",
+  "Win32_UI_WindowsAndMessaging",
+] }
 
 [profile.release]
 debug = 1
