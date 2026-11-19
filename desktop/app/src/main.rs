@@ -9,6 +9,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod bridge;
+mod hotkeys;
 mod instance;
 #[cfg(windows)]
 mod permissions;
@@ -211,6 +212,7 @@ fn main() {
         .plugin(tauri_plugin_window_state::Builder::default().with_state_flags(state_flags()).build())
         .plugin(tauri_plugin_opener::init())
         .manage(share::Sharing::default())
+        .manage(hotkeys::Hotkeys::default())
         .invoke_handler(tauri::generate_handler![
             current_instance,
             set_instance,
@@ -219,7 +221,8 @@ fn main() {
             share::share_thumbnail,
             share::share_start,
             share::share_stop,
-            share::share_status
+            share::share_status,
+            hotkeys::hotkeys_ptt
         ])
         .setup(|app| {
             let settings = instance::settings_path(&app.path().app_config_dir()?);
@@ -236,6 +239,7 @@ fn main() {
             if let Some(url) = &saved {
                 bridge::allow_instance(app.handle(), url)?;
             }
+            hotkeys::deliver(app.handle());
             tray(app.handle())?;
             let window = window(app.handle(), saved, shared.clone(), setup_requested)?;
             #[cfg(windows)]
