@@ -164,6 +164,9 @@ func serve(ctx context.Context, logger *slog.Logger, cfg config.Config, pool *pg
 		if err = reg.Register(m.Voice.Metrics()); err != nil {
 			return fmt.Errorf("zazzzor: register voice metrics: %w", err)
 		}
+		if err = reg.Register(m.Messages.Metrics()); err != nil {
+			return fmt.Errorf("zazzzor: register message metrics: %w", err)
+		}
 		deps.Ready = dbReady(pool)
 		deps.Modules = m
 		deps.Gateway = m.NewGateway(bus, cfg, logger, reg, gateway.Options{})
