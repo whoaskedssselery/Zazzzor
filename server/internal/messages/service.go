@@ -642,7 +642,7 @@ func (s *Service) Delete(ctx context.Context, channelID, messageID, userID snowf
 	if err != nil {
 		return fmt.Errorf("messages: delete transaction: %w", err)
 	}
-	s.tryAttachmentTrash(ctx)
+	s.wakeAttachmentTrash()
 	s.publish(ctx, events.Event{Type: events.MessageDelete, Audience: channelAudience(guildID, channelID),
 		Payload: DeletePayload{ID: messageID, ChannelID: channelID, GuildID: nullableGuildID(guildID), LastMessageID: last}})
 	return nil

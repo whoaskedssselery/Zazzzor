@@ -177,7 +177,7 @@ func (s *Service) handleDiscardAttachment(w http.ResponseWriter, r *http.Request
 	if n == 0 {
 		return attachmentNotFound()
 	}
-	s.tryAttachmentTrash(ctx)
+	s.wakeAttachmentTrash()
 	w.WriteHeader(http.StatusNoContent)
 	return nil
 }

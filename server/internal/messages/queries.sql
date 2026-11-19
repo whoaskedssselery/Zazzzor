@@ -103,7 +103,7 @@ SELECT EXISTS (
 );
 
 -- name: QueuedAttachmentTrash :many
-SELECT * FROM attachment_trash ORDER BY id;
+SELECT * FROM attachment_trash WHERE id > sqlc.arg(after) ORDER BY id LIMIT sqlc.arg(lim);
 
 -- name: ForgetAttachmentTrash :exec
 DELETE FROM attachment_trash WHERE id = $1;
