@@ -4759,6 +4759,7 @@ export interface operations {
             413: components["responses"]["Problem"];
             415: components["responses"]["Problem"];
             429: components["responses"]["RateLimited"];
+            500: components["responses"]["Problem"];
             /** @description `server_busy`: the shared upload gate is full. */
             503: components["responses"]["Problem"];
             /** @description `storage_full`: the files volume is below the minimum free space. */

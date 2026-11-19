@@ -92,13 +92,13 @@ func (s *Service) handleUploadAttachment(w http.ResponseWriter, r *http.Request)
 		UploaderID: dbID(user), Filename: name, ContentType: info.ContentType, Size: info.Size,
 		Width: dbDimension(info.Width), Height: dbDimension(info.Height), Digest: info.Digest, CreatedAt: s.now()}
 	var row store.MessageAttachment
-	attempted := false
+	insertAttempted := false
 	record := func(q store.DBTX) error {
-		attempted = true
 		if quotaErr := s.checkAttachmentQuota(ctx, q, user, params.Size); quotaErr != nil {
 			return quotaErr
 		}
 		var recordErr error
+		insertAttempted = true
 		row, recordErr = s.q.CreateAttachment(ctx, q, params)
 		return recordErr
 	}
@@ -115,14 +115,14 @@ func (s *Service) handleUploadAttachment(w http.ResponseWriter, r *http.Request)
 		err = record(s.pool)
 	}
 	if err != nil {
-		if !attempted {
-			s.removeUncommitted(ref)
-			return fail(err)
-		}
 		if errors.Is(err, errAttachmentQuota) {
 			s.removeUncommitted(ref)
 			return &httpx.Problem{Status: http.StatusRequestEntityTooLarge, Code: "attachment_quota_exceeded",
 				Detail: "Достигнут лимит хранилища для ваших файлов. Удалите старые вложения или попросите администратора."}
+		}
+		if !insertAttempted {
+			s.removeUncommitted(ref)
+			return fail(err)
 		}
 		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23503" {
 			s.removeUncommitted(ref)
