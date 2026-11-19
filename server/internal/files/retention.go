@@ -195,7 +195,13 @@ func parseReference(kind, owner, hash string) (Reference, bool) {
 // <kind>/<owner_id>/<hash>/<unix_nano>.png are warned about and skipped.
 func (d *Disk) trashEntries(ctx context.Context, rep *Report) ([]trashEntry, error) {
 	var entries []trashEntry
-	err := d.walk(ctx, trashDir, 3, rep, func(path string, parts []string, _ fs.DirEntry) {
+	err := d.walkTrash(ctx, rep, func(entry trashEntry) { entries = append(entries, entry) })
+	return entries, err
+}
+
+// walkTrash visits validated trash entries without collecting the whole tree.
+func (d *Disk) walkTrash(ctx context.Context, rep *Report, visit func(trashEntry)) error {
+	return d.walk(ctx, trashDir, 3, rep, func(path string, parts []string, _ fs.DirEntry) {
 		if len(parts) != 4 || filepath.Ext(parts[3]) != Kind(parts[0]).suffix() {
 			rep.warn(d.rel(path), ErrUnexpectedEntry)
 			return
@@ -206,9 +212,8 @@ func (d *Disk) trashEntries(ctx context.Context, rep *Report) ([]trashEntry, err
 			rep.warn(d.rel(path), ErrUnexpectedEntry)
 			return
 		}
-		entries = append(entries, trashEntry{ref: r, path: path, deleted: time.Unix(0, n)})
+		visit(trashEntry{ref: r, path: path, deleted: time.Unix(0, n)})
 	})
-	return entries, err
 }
 
 // Reconcile makes the data directory match the database: it moves every
@@ -367,20 +372,12 @@ func (d *Disk) purge(ctx context.Context, rep *Report) error {
 	if d.retention <= 0 {
 		return nil
 	}
-	entries, err := d.trashEntries(ctx, rep)
-	if err != nil {
-		return err
-	}
 	cutoff := d.now().Add(-d.retention)
-	for _, e := range entries {
-		if err := ctx.Err(); err != nil {
-			return fmt.Errorf("files: purge: %w", err)
-		}
+	return d.walkTrash(ctx, rep, func(e trashEntry) {
 		if e.deleted.Before(cutoff) {
 			d.remove(e, rep)
 		}
-	}
-	return nil
+	})
 }
 
 // remove deletes one trash entry, and its hash directory once empty.
