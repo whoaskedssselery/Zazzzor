@@ -108,6 +108,7 @@ describe("MessageList", () => {
         attachments: [],
         status: "sending",
         error: null,
+        sentAt: Date.now(),
       },
       grouped: true,
     };

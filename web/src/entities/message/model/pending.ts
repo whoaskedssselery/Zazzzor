@@ -20,6 +20,8 @@ export interface PendingMessage {
   status: "sending" | "failed";
   /** Why it failed, in the user's words. */
   error: string | null;
+  /** When it was first sent (Date.now()): a retry with its nonce is safe only while the server remembers the nonce. */
+  sentAt: number;
 }
 
 interface PendingStore {

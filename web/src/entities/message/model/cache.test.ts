@@ -148,6 +148,7 @@ describe("applyMessageDispatch", () => {
       attachments: [],
       status: "sending",
       error: null,
+      sentAt: Date.now(),
     });
     applyMessageDispatch(qc, "MESSAGE_CREATE", msg(2, { nonce: "abc", content: "привет" }));
     expect(getPending(C, "abc")).toBeUndefined();
@@ -408,6 +409,7 @@ describe("what just arrived", () => {
       attachments: [],
       status: "sending",
       error: null,
+      sentAt: Date.now(),
     });
     applyMessageDispatch(qc, "MESSAGE_CREATE", msg(9003, { nonce: "n-9003" }));
     expect(justArrived("9003")).toBe(false);

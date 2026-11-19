@@ -7,6 +7,7 @@ import {
   confirmPending,
   getPending,
   type MessageStub,
+  type PendingMessage,
   removePending,
   updateHistory,
   updatePending,
@@ -19,6 +20,18 @@ export const SEND_WAIT_MS = 10_000;
 
 export const TOO_FAST = "Слишком часто, подождите";
 export const OFFLINE = "Нет подключения к серверу";
+export const MAYBE_SENT = "сообщение могло уже дойти, проверьте чат выше";
+
+/**
+ * How long a retry with the message's nonce cannot send it twice: the
+ * server answers a nonce with the message sent with it for 10 minutes
+ * (NonceTTL); a minute is left for a request still in flight.
+ */
+export const RETRY_WINDOW_MS = 9 * 60_000;
+
+/** Whether sending pending message `p` again with its nonce is still safe. */
+export const canRetrySafely = (p: Pick<PendingMessage, "sentAt">, now = Date.now()): boolean =>
+  now - p.sentAt < RETRY_WINDOW_MS;
 
 /** A nonce for one message: a random UUID without dashes (32 characters, the contract allows 64). */
 const newNonce = (): string => crypto.randomUUID().replaceAll("-", "");
@@ -83,8 +96,14 @@ const deliver = async (qc: QueryClient, channelId: string, nonce: string): Promi
 export interface SendMessage {
   /** Sends `content` (already trimmed and checked) with uploaded `attachments`, answering `replyTo` if set. */
   send: (content: string, replyTo: MessageStub | null, attachments?: Attachment[]) => void;
-  /** Sends a failed message again with its nonce, so a send that did arrive is not sent twice. */
+  /**
+   * Sends a failed message again with its nonce, so a send that did arrive
+   * is not sent twice. Past RETRY_WINDOW_MS the server may not know the
+   * nonce any more: the message is marked MAYBE_SENT instead.
+   */
   retry: (nonce: string) => void;
+  /** Sends a failed message as a new one, with a new nonce: the user checked it did not arrive. */
+  resend: (nonce: string) => void;
   /** Gives up on a failed message. */
   discard: (nonce: string) => void;
 }
@@ -100,18 +119,41 @@ export const useSendMessage = (channelId: string): SendMessage => {
   const send = useCallback(
     (content: string, replyTo: MessageStub | null, attachments: Attachment[] = []) => {
       const nonce = newNonce();
-      addPending({ nonce, channelId, content, replyTo, attachments, status: "sending", error: null });
+      addPending({
+        nonce,
+        channelId,
+        content,
+        replyTo,
+        attachments,
+        status: "sending",
+        error: null,
+        sentAt: Date.now(),
+      });
       void deliver(qc, channelId, nonce);
     },
     [qc, channelId],
   );
   const retry = useCallback(
     (nonce: string) => {
-      if (getPending(channelId, nonce)?.status !== "failed") return;
+      const p = getPending(channelId, nonce);
+      if (p?.status !== "failed") return;
+      if (!canRetrySafely(p)) {
+        updatePending(channelId, nonce, { error: MAYBE_SENT });
+        return;
+      }
       updatePending(channelId, nonce, { status: "sending", error: null });
       void deliver(qc, channelId, nonce);
     },
     [qc, channelId],
+  );
+  const resend = useCallback(
+    (nonce: string) => {
+      const p = getPending(channelId, nonce);
+      if (p?.status !== "failed") return;
+      removePending(channelId, nonce);
+      send(p.content, p.replyTo, p.attachments);
+    },
+    [channelId, send],
   );
   const discard = useCallback(
     (nonce: string) => {
@@ -119,5 +161,5 @@ export const useSendMessage = (channelId: string): SendMessage => {
     },
     [channelId],
   );
-  return { send, retry, discard };
+  return { send, retry, resend, discard };
 };
