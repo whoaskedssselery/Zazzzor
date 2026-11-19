@@ -13,6 +13,13 @@ use url::Url;
 
 const INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 const TIMEOUT: Duration = Duration::from_secs(30);
+const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+
+/// Prepares a candidate for a separately bounded installer download.
+pub(super) fn bounded_download(mut update: Update, timeout: Duration) -> Update {
+    update.timeout = Some(timeout);
+    update
+}
 
 struct Requests(SyncSender<()>);
 
@@ -140,7 +147,10 @@ impl Backend for Desktop {
 
     async fn download(&self, update: &Update) -> Result<Vec<u8>, String> {
         // The plugin verifies the minisign signature before returning the bytes.
-        update.download(|_, _| {}, || {}).await.map_err(|e| format!("download/verify update: {e}"))
+        bounded_download(update.clone(), DOWNLOAD_TIMEOUT)
+            .download(|_, _| {}, || {})
+            .await
+            .map_err(|e| format!("download/verify update: {e}"))
     }
 
     fn confirm(&self, version: &str) -> bool {
