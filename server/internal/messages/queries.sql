@@ -41,6 +41,14 @@ DELETE FROM messages WHERE id = @id AND channel_id = @channel_id;
 -- name: DropExpiredNonces :exec
 DELETE FROM message_nonces WHERE author_id = @author_id AND expires_at <= now();
 
+-- name: SweepExpiredNonces :exec
+WITH expired AS (
+    SELECT author_id, channel_id, nonce FROM message_nonces WHERE expires_at <= now()
+    ORDER BY expires_at LIMIT $1 FOR UPDATE SKIP LOCKED
+)
+DELETE FROM message_nonces AS n USING expired AS e
+WHERE n.author_id = e.author_id AND n.channel_id = e.channel_id AND n.nonce = e.nonce;
+
 -- name: ClaimNonce :execrows
 -- Claims the nonce for the message; no row when a claim holds it (after
 -- DropExpiredNonces, a live one). A claim being inserted concurrently is
