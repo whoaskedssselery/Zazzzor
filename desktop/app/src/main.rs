@@ -261,7 +261,8 @@ fn main() {
             share::share_start,
             share::share_stop,
             share::share_status,
-            hotkeys::hotkeys_ptt
+            hotkeys::hotkeys_ptt,
+            hotkeys::hotkeys_toggles
         ])
         .setup(|app| {
             let settings = instance::settings_path(&app.path().app_config_dir()?);
