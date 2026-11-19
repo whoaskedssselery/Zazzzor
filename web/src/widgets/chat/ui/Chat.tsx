@@ -26,7 +26,14 @@ import {
   useToggleReaction,
 } from "@/features/message-actions";
 import { useReadChannel } from "@/features/read-channel";
-import { Composer, type ReplyTarget, useAddFiles, useSendMessage } from "@/features/send-message";
+import {
+  Composer,
+  canRetrySafely,
+  MAYBE_SENT,
+  type ReplyTarget,
+  useAddFiles,
+  useSendMessage,
+} from "@/features/send-message";
 import { errorText } from "@/shared/api";
 import { Button, Skeleton } from "@/shared/ui";
 import { buildRows, type ChatRow } from "../model/rows";
@@ -90,27 +97,41 @@ const DaySeparator = ({ label }: { label: string }) => (
   </div>
 );
 
-/** The words of a failed send and its way out: send again, or drop it. */
+/**
+ * The words of a failed send and its way out: send again, or drop it. Once
+ * the server may have forgotten its nonce, sending again could make a
+ * second copy, so the way out is to check the chat and send it as a new
+ * message on purpose.
+ */
 const FailedFooter = ({
   pending,
   onRetry,
+  onResend,
   onDiscard,
 }: {
   pending: PendingMessage;
   onRetry: () => void;
+  onResend: () => void;
   onDiscard: () => void;
-}) => (
-  <p className="mt-0.5 text-xs text-fg-danger">
-    {`Не отправлено: ${pending.error ?? "ошибка"}. `}
-    <button type="button" className="cursor-pointer font-semibold text-link hover:underline" onClick={onRetry}>
-      Повторить
-    </button>
-    {" · "}
-    <button type="button" className="cursor-pointer font-semibold text-link hover:underline" onClick={onDiscard}>
-      Удалить
-    </button>
-  </p>
-);
+}) => {
+  const stale = pending.error === MAYBE_SENT || !canRetrySafely(pending);
+  return (
+    <p className="mt-0.5 text-xs text-fg-danger">
+      {`Не отправлено: ${stale ? MAYBE_SENT : (pending.error ?? "ошибка")}. `}
+      <button
+        type="button"
+        className="cursor-pointer font-semibold text-link hover:underline"
+        onClick={stale ? onResend : onRetry}
+      >
+        {stale ? "Отправить как новое" : "Повторить"}
+      </button>
+      {" · "}
+      <button type="button" className="cursor-pointer font-semibold text-link hover:underline" onClick={onDiscard}>
+        Удалить
+      </button>
+    </p>
+  );
+};
 
 /** A message of someone the user blocked, folded as Discord folds it, with a way to read it anyway. */
 const BlockedMessage = ({ onShow }: { onShow: () => void }) => (
@@ -404,6 +425,9 @@ export const Chat = ({ scope }: { scope: ChatScope }) => {
                     pending={p}
                     onRetry={() => {
                       sender.retry(p.nonce);
+                    }}
+                    onResend={() => {
+                      sender.resend(p.nonce);
                     }}
                     onDiscard={() => {
                       sender.discard(p.nonce);

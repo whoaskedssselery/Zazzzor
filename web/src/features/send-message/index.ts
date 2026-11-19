@@ -15,7 +15,16 @@ export {
   type Upload,
   useUploads,
 } from "./model/uploads";
-export { OFFLINE, SEND_WAIT_MS, type SendMessage, TOO_FAST, useSendMessage } from "./model/useSendMessage";
+export {
+  canRetrySafely,
+  MAYBE_SENT,
+  OFFLINE,
+  RETRY_WINDOW_MS,
+  SEND_WAIT_MS,
+  type SendMessage,
+  TOO_FAST,
+  useSendMessage,
+} from "./model/useSendMessage";
 export { TYPING_EVERY_MS, type Typing, useTyping } from "./model/useTyping";
 export {
   Composer,

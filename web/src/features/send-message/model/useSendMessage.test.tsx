@@ -13,7 +13,7 @@ import {
   usePendingMessages,
 } from "@/entities/message";
 import { apiHandler, makeMessage, makeUser, problem, server } from "@/shared/test";
-import { OFFLINE, SEND_WAIT_MS, TOO_FAST, useSendMessage } from "./useSendMessage";
+import { MAYBE_SENT, OFFLINE, RETRY_WINDOW_MS, SEND_WAIT_MS, TOO_FAST, useSendMessage } from "./useSendMessage";
 
 const me = makeUser("100");
 const C = "101";
@@ -136,6 +136,43 @@ describe("useSendMessage", () => {
     expect(nonces).toHaveLength(2);
     expect(nonces[0]).toBe(nonces[1]);
     expect(history().map((m) => m.content)).toEqual(["сообщение 1", "быстро"]);
+  });
+
+  it("does not retry with a nonce the server may have forgotten, and sends it as new only when asked", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const nonces: string[] = [];
+    let fail = true;
+    server.use(
+      apiHandler("post", "/channels/{channel_id}/messages", async ({ request }) => {
+        const body = await request.json();
+        nonces.push(body.nonce ?? "");
+        if (fail) return problem(500, "internal");
+        return HttpResponse.json(echo("2", body.content ?? "", body.nonce), { status: 201 });
+      }),
+    );
+    const { hook } = setup();
+    act(() => {
+      hook.result.current.sender.send("поздно", null);
+    });
+    await waitFor(() => {
+      expect(hook.result.current.pending).toMatchObject([{ status: "failed" }]);
+    });
+    vi.setSystemTime(Date.now() + RETRY_WINDOW_MS);
+    fail = false;
+    const failed = hook.result.current.pending[0];
+    act(() => {
+      if (failed) hook.result.current.sender.retry(failed.nonce);
+    });
+    expect(hook.result.current.pending).toMatchObject([{ status: "failed", error: MAYBE_SENT }]);
+    expect(nonces).toHaveLength(1);
+    act(() => {
+      if (failed) hook.result.current.sender.resend(failed.nonce);
+    });
+    await waitFor(() => {
+      expect(hook.result.current.pending).toEqual([]);
+    });
+    expect(nonces).toHaveLength(2);
+    expect(nonces[1]).not.toBe(nonces[0]);
   });
 
   it("holds a send made while reconnecting until READY", async () => {

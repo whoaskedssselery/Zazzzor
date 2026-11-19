@@ -71,6 +71,7 @@ describe("buildRows", () => {
       attachments: [],
       status: "sending",
       error: null,
+      sentAt: Date.now(),
     });
     const recent = new Date(now.getTime() - 60_000).toISOString();
     const rows = buildRows([makeMessage("1", C, anna, at(recent))], [pending("а"), pending("б")], {
