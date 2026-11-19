@@ -2,7 +2,55 @@ use std::cell::{Cell, RefCell};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
-use crate::update::{Backend, next_check, perform_check, validate_asset};
+use crate::update::{Backend, bounded_download, next_check, perform_check, validate_asset};
+
+#[test]
+fn stalled_sdk_download_times_out_and_allows_another_check() {
+    use std::io::{Read, Write};
+    use tauri_plugin_updater::UpdaterExt;
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = std::thread::spawn(move || {
+        let mut workers = Vec::new();
+        for incoming in listener.incoming().take(3) {
+            let mut socket = incoming.unwrap();
+            workers.push(std::thread::spawn(move || {
+                let mut request = [0; 4096];
+                let length = socket.read(&mut request).unwrap();
+                if String::from_utf8_lossy(&request[..length]).starts_with("GET /latest") {
+                    let body = serde_json::json!({"version":"99.0.0", "url":format!("http://{address}/setup.exe"), "signature":"unused-before-body-completes"}).to_string();
+                    write!(socket, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+                } else {
+                    write!(socket, "HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n").unwrap();
+                    // Bound even the deliberately broken mutant so a missing
+                    // timeout fails an assertion instead of hanging the suite.
+                    std::thread::sleep(Duration::from_millis(900));
+                }
+            }));
+        }
+        for worker in workers {
+            worker.join().unwrap();
+        }
+    });
+    let mut context = tauri::test::mock_context(tauri::test::noop_assets());
+    let config: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+    let mut updater = config["plugins"]["updater"].clone();
+    updater["dangerousInsecureTransportProtocol"] = true.into();
+    updater["endpoints"] = serde_json::json!([format!("http://{address}/latest.json")]);
+    context.config_mut().plugins.0.insert("updater".into(), updater);
+    let app = tauri::test::mock_builder().plugin(tauri_plugin_updater::Builder::new().build()).build(context).unwrap();
+    tauri::async_runtime::block_on(async {
+        let checker = app.updater_builder().no_proxy().build().unwrap();
+        let update = checker.check().await.unwrap().unwrap();
+        let start = Instant::now();
+        assert!(bounded_download(update, Duration::from_millis(150)).download(|_, _| {}, || {}).await.is_err());
+        let elapsed = start.elapsed();
+        // Always perform the retry before asserting so the fixture shuts down.
+        assert!(checker.check().await.unwrap().is_some());
+        assert!(elapsed < Duration::from_millis(700), "stalled download was unbounded: {elapsed:?}");
+    });
+    server.join().unwrap();
+}
 
 #[derive(Default)]
 struct Fake {
