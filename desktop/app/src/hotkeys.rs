@@ -1,11 +1,14 @@
-//! Push-to-talk outside the window. The browser sees keys only while the
-//! window is in front; the app watches the one push-to-talk key everywhere
-//! with a low-level keyboard hook, which only looks: the key still reaches
-//! whatever program is in front, as with Discord. The hook runs only while
-//! the page asks for a key (a call with push-to-talk on).
+//! Keys that work outside the window. The browser sees keys only while the
+//! window is in front; the app watches the keys the page asks for
+//! everywhere with a low-level keyboard hook, which only looks: the keys
+//! still reach whatever program is in front, as with Discord. The hook runs
+//! only while a key is asked for.
 //!
-//! The page hears the key as `zazzzor:ptt` events on its window, with
-//! `detail` true when it goes down and false when it comes up.
+//! - The push-to-talk key, held: `zazzzor:ptt` events on the page's window,
+//!   with `detail` true when it goes down and false when it comes up.
+//! - The microphone and sound switches, combinations such as
+//!   "Control+Shift+KeyM": a `zazzzor:hotkey` event with `detail` "mute" or
+//!   "deafen" each time one is pressed.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Mutex, OnceLock, mpsc};
@@ -14,6 +17,7 @@ use std::thread::JoinHandle;
 use tauri::{AppHandle, Manager, State, WebviewWindow};
 use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::Threading::GetCurrentThreadId;
+use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_CONTROL, VK_MENU, VK_SHIFT};
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, GetMessageW, HC_ACTION, KBDLLHOOKSTRUCT, MSG, PostThreadMessageW, SetWindowsHookExW,
     UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_KEYDOWN, WM_QUIT, WM_SYSKEYDOWN,
@@ -23,14 +27,49 @@ use crate::bridge::from_instance;
 use crate::instance;
 
 /// The commands of this module, as the app's ACL names them.
-pub const COMMANDS: [&str; 1] = ["hotkeys_ptt"];
+pub const COMMANDS: [&str; 2] = ["hotkeys_ptt", "hotkeys_toggles"];
 
-/// The virtual key watched now; 0 for none.
+/// A switch the page flips on a key combination.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Toggle {
+    Mute,
+    Deafen,
+}
+
+impl Toggle {
+    fn name(self) -> &'static str {
+        match self {
+            Toggle::Mute => "mute",
+            Toggle::Deafen => "deafen",
+        }
+    }
+}
+
+/// A key with the modifiers that must be held with it, and no others.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Combo {
+    vk: u32,
+    ctrl: bool,
+    shift: bool,
+    alt: bool,
+}
+
+#[derive(Clone, Copy)]
+enum Event {
+    Ptt(bool),
+    Toggle(Toggle),
+}
+
+/// The push-to-talk key watched now; 0 for none.
 static WATCHED: AtomicU32 = AtomicU32::new(0);
-/// Whether the watched key is down.
+/// Whether the push-to-talk key is down.
 static HELD: AtomicBool = AtomicBool::new(false);
-/// Where the hook reports the key going down (true) and up (false).
-static EVENTS: OnceLock<mpsc::Sender<bool>> = OnceLock::new();
+/// The switches' combinations.
+static TOGGLES: Mutex<Vec<(Toggle, Combo)>> = Mutex::new(Vec::new());
+/// The key of a combination being held, so that its repeats flip nothing; 0 for none.
+static TOGGLE_DOWN: AtomicU32 = AtomicU32::new(0);
+/// Where the hook reports what it saw.
+static EVENTS: OnceLock<mpsc::Sender<Event>> = OnceLock::new();
 
 /// The hook's thread, while a key is watched.
 #[derive(Default)]
@@ -43,19 +82,38 @@ struct Hook {
     thread: JoinHandle<()>,
 }
 
+fn report(event: Event) {
+    if let Some(events) = EVENTS.get() {
+        let _ = events.send(event);
+    }
+}
+
+/// Whether the modifier `vk` is down now.
+fn held(vk: u16) -> bool {
+    let state = unsafe { GetAsyncKeyState(vk as i32) };
+    state < 0
+}
+
 /// Called by Windows for every key of every program: it must return at once.
 unsafe extern "system" fn on_key(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if code == HC_ACTION as i32 {
         // SAFETY: for HC_ACTION, lparam points to the event's KBDLLHOOKSTRUCT.
         let key = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
+        let down = matches!(wparam.0 as u32, WM_KEYDOWN | WM_SYSKEYDOWN);
         let watched = WATCHED.load(Ordering::Relaxed);
-        if watched != 0 && key.vkCode == watched {
-            let down = matches!(wparam.0 as u32, WM_KEYDOWN | WM_SYSKEYDOWN);
-            // A held key repeats its key-down: only the changes count.
-            if HELD.swap(down, Ordering::Relaxed) != down
-                && let Some(events) = EVENTS.get()
-            {
-                let _ = events.send(down);
+        // A held key repeats its key-down: only the changes count.
+        if watched != 0 && key.vkCode == watched && HELD.swap(down, Ordering::Relaxed) != down {
+            report(Event::Ptt(down));
+        }
+        if !down {
+            let _ = TOGGLE_DOWN.compare_exchange(key.vkCode, 0, Ordering::Relaxed, Ordering::Relaxed);
+        } else if TOGGLE_DOWN.load(Ordering::Relaxed) != key.vkCode {
+            let pressed =
+                Combo { vk: key.vkCode, ctrl: held(VK_CONTROL.0), shift: held(VK_SHIFT.0), alt: held(VK_MENU.0) };
+            let toggle = TOGGLES.lock().ok().and_then(|t| t.iter().find(|(_, c)| *c == pressed).map(|(t, _)| *t));
+            if let Some(toggle) = toggle {
+                TOGGLE_DOWN.store(key.vkCode, Ordering::Relaxed);
+                report(Event::Toggle(toggle));
             }
         }
     }
@@ -68,7 +126,7 @@ impl Hook {
     fn start() -> Result<Hook, String> {
         let (ready_tx, ready_rx) = mpsc::channel::<Result<u32, String>>();
         let thread = std::thread::Builder::new()
-            .name("ptt-hook".into())
+            .name("hotkeys-hook".into())
             .spawn(move || {
                 let hook = match unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(on_key), None, 0) } {
                     Ok(h) => h,
@@ -93,22 +151,41 @@ impl Hook {
     }
 }
 
+/// Runs the hook while any key is watched, and only then.
+fn refresh(hotkeys: &Hotkeys) -> Result<(), String> {
+    let needed = WATCHED.load(Ordering::Relaxed) != 0 || !TOGGLES.lock().unwrap().is_empty();
+    let mut hook = hotkeys.hook.lock().unwrap();
+    match (needed, hook.is_some()) {
+        (false, true) => hook.take().unwrap().stop(),
+        (true, false) => *hook = Some(Hook::start()?),
+        _ => {}
+    }
+    Ok(())
+}
+
 /// Sends the hook's reports to the instance's page in `MAIN`, and to no
 /// other page.
 pub fn deliver(app: &AppHandle) {
-    let (tx, rx) = mpsc::channel::<bool>();
+    let (tx, rx) = mpsc::channel::<Event>();
     if EVENTS.set(tx).is_err() {
         return;
     }
     let app = app.clone();
     std::thread::spawn(move || {
-        for down in rx {
+        for event in rx {
             let Some(window) = app.get_webview_window(crate::MAIN) else { continue };
             let home = app.state::<crate::App>().instance.lock().unwrap().clone();
             let ours = matches!((window.url(), home), (Ok(url), Some(home)) if instance::same_origin(&url, &home));
-            if ours {
-                let _ = window.eval(format!("window.dispatchEvent(new CustomEvent('zazzzor:ptt',{{detail:{down}}}))"));
+            if !ours {
+                continue;
             }
+            let script = match event {
+                Event::Ptt(down) => format!("window.dispatchEvent(new CustomEvent('zazzzor:ptt',{{detail:{down}}}))"),
+                Event::Toggle(t) => {
+                    format!("window.dispatchEvent(new CustomEvent('zazzzor:hotkey',{{detail:'{}'}}))", t.name())
+                }
+            };
+            let _ = window.eval(script);
         }
     });
 }
@@ -130,13 +207,55 @@ pub fn hotkeys_ptt(
     };
     WATCHED.store(vk, Ordering::Relaxed);
     HELD.store(false, Ordering::Relaxed);
-    let mut hook = hotkeys.hook.lock().unwrap();
-    match (vk, hook.is_some()) {
-        (0, true) => hook.take().unwrap().stop(),
-        (0, false) | (_, true) => {}
-        (_, false) => *hook = Some(Hook::start()?),
+    refresh(&hotkeys)
+}
+
+/// Watches the combinations (e.g. "Control+Shift+KeyM") that flip the
+/// microphone and the sound everywhere; null for none. Fails, and watches
+/// nothing new, when a combination cannot be watched.
+#[tauri::command]
+pub fn hotkeys_toggles(
+    mute: Option<String>,
+    deafen: Option<String>,
+    window: WebviewWindow,
+    app: State<'_, crate::App>,
+    hotkeys: State<'_, Hotkeys>,
+) -> Result<(), String> {
+    from_instance(&window, &app.instance)?;
+    let mut toggles = Vec::new();
+    for (toggle, binding) in [(Toggle::Mute, mute), (Toggle::Deafen, deafen)] {
+        if let Some(binding) = binding {
+            toggles.push((toggle, combo(&binding).ok_or_else(|| format!("no global key for {binding}"))?));
+        }
     }
-    Ok(())
+    *TOGGLES.lock().unwrap() = toggles;
+    TOGGLE_DOWN.store(0, Ordering::Relaxed);
+    refresh(&hotkeys)
+}
+
+/// A combination as the page writes it: modifiers ("Control", "Shift",
+/// "Alt"), each at most once, then one other key's KeyboardEvent.code,
+/// joined with "+".
+fn combo(binding: &str) -> Option<Combo> {
+    let mut parts: Vec<&str> = binding.split('+').collect();
+    let key = parts.pop()?;
+    if matches!(key, "ControlLeft" | "ControlRight" | "ShiftLeft" | "ShiftRight" | "AltLeft" | "AltRight") {
+        return None;
+    }
+    let mut c = Combo { vk: virtual_key(key)?, ctrl: false, shift: false, alt: false };
+    for modifier in parts {
+        let flag = match modifier {
+            "Control" => &mut c.ctrl,
+            "Shift" => &mut c.shift,
+            "Alt" => &mut c.alt,
+            _ => return None,
+        };
+        if *flag {
+            return None;
+        }
+        *flag = true;
+    }
+    Some(c)
 }
 
 /// The Windows virtual key of a KeyboardEvent.code. Left and right
@@ -202,6 +321,16 @@ fn virtual_key(code: &str) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn combinations_name_their_modifiers() {
+        assert_eq!(combo("Control+Shift+KeyM"), Some(Combo { vk: 0x4D, ctrl: true, shift: true, alt: false }));
+        assert_eq!(combo("Alt+F9"), Some(Combo { vk: 0x78, ctrl: false, shift: false, alt: true }));
+        assert_eq!(combo("F9"), Some(Combo { vk: 0x78, ctrl: false, shift: false, alt: false }));
+        for bad in ["", "Control+", "Control+Control+KeyM", "Meta+KeyM", "Control+ShiftLeft", "Control+Nope"] {
+            assert_eq!(combo(bad), None, "{bad}");
+        }
+    }
 
     #[test]
     fn browser_key_codes_become_windows_keys() {
