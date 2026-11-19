@@ -104,12 +104,15 @@ pub async fn share_stop(window: WebviewWindow, app: State<'_, crate::App>) -> Re
 /// Stops the share in progress, if any: from the page or the tray menu.
 pub async fn stop(app: &AppHandle) {
     let sharing = app.state::<Sharing>();
-    let session = sharing.session.lock().await.take();
-    if let Some(session) = session {
+    // Held until the tray is updated: a share started meanwhile waits, so this
+    // stop cannot mark it as stopped.
+    let mut current = sharing.session.lock().await;
+    if let Some(session) = current.take() {
         let (end, _) = session.stop().await;
         *sharing.ended.lock().unwrap() = Some(end);
     }
     crate::sharing_shown(app, false);
+    drop(current);
 }
 
 #[derive(Serialize)]
