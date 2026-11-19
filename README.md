@@ -9,6 +9,8 @@ and channels, chat, voice and 1080p60 screen sharing, with no cloud
 services and no VPN. Everything runs in Docker; images are published to
 Docker Hub.
 
+Download the Windows desktop client from [Releases](https://github.com/whoaskedssselery/Zazzzor/releases).
+
 ## Features
 
 **Talking**
