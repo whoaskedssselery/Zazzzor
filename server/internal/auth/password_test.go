@@ -13,6 +13,7 @@ import (
 )
 
 func TestPasswordRoundTrip(t *testing.T) {
+	auth.UseProductionCost(t)
 	const pw = "correct horse battery staple"
 	encoded, err := auth.HashPassword(t.Context(), pw)
 	if err != nil {
@@ -53,6 +54,7 @@ func TestPasswordRoundTrip(t *testing.T) {
 }
 
 func TestVerifyDetectsRehash(t *testing.T) {
+	t.Parallel()
 	const pw = "old-params-password" //nolint:gosec // test password
 	salt := make([]byte, 16)
 	_, _ = rand.Read(salt)
@@ -74,6 +76,7 @@ func TestVerifyDetectsRehash(t *testing.T) {
 }
 
 func TestVerifyRejectsMalformedHashes(t *testing.T) {
+	t.Parallel()
 	for _, enc := range []string{
 		"",
 		"plain",
