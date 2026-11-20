@@ -35,6 +35,7 @@ func (q *cancelUploadQuery) TraceQueryStart(ctx context.Context, _ *pgx.Conn, da
 func (*cancelUploadQuery) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
 
 func TestUploadDatabaseFailureCleansOnlyBeforeInsert(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		query string
 		want  int

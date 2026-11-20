@@ -10,6 +10,7 @@ import (
 )
 
 func TestReplyEventsRespectHistoryAccess(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, _ := e.user("alice")
 	bob, bu := e.user("bob")

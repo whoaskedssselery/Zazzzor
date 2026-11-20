@@ -60,6 +60,7 @@ func dmPair(t *testing.T, e *env) (alice *testkit.Client, a userBody, bob *testk
 }
 
 func TestCallRingsTheOtherAndEndsWithItsLastParticipant(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a, bob, b, dm := dmPair(t, e)
 	dmID := parseID(t, dm)
@@ -102,6 +103,7 @@ func TestCallRingsTheOtherAndEndsWithItsLastParticipant(t *testing.T) {
 }
 
 func TestDecliningACallNobodyIsInEndsIt(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _, bob, _, dm := dmPair(t, e)
 	joinVoice(t, alice, dm) // a token, not yet connected
@@ -118,6 +120,7 @@ func TestDecliningACallNobodyIsInEndsIt(t *testing.T) {
 }
 
 func TestDeclineNeedsAPrivateChannelOfTheCaller(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	_, _, _, _, dm := dmPair(t, e)
 	carol, _ := e.user("carol")
@@ -128,6 +131,7 @@ func TestDeclineNeedsAPrivateChannelOfTheCaller(t *testing.T) {
 }
 
 func TestAnUnansweredCallStopsRinging(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, func(o *voice.Options) { o.RingFor = 300 * time.Millisecond })
 	alice, a, _, _, dm := dmPair(t, e)
 	e.connect(alice, a, dm, "RM_dm", "PA_alice")
@@ -145,6 +149,7 @@ func TestAnUnansweredCallStopsRinging(t *testing.T) {
 }
 
 func TestABlockRefusesTheCall(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a, _, b, dm := dmPair(t, e)
 	if _, err := e.pool.Exec(t.Context(), `INSERT INTO relationships(user_id,other_id,type,since) VALUES ($1,$2,2,now())`,
@@ -158,6 +163,7 @@ func TestABlockRefusesTheCall(t *testing.T) {
 }
 
 func TestLeavingAGroupLeavesItsCall(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a := e.user("alice")
 	bob, b := e.user("bob")
@@ -202,6 +208,7 @@ func (e *env) inCall(channelID, userID snowflake.ID) bool {
 }
 
 func TestABlockDuringACallEndsItAndRefusesOlderTokens(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a, bob, b, dm := dmPair(t, e)
 	dmID := parseID(t, dm)
@@ -228,6 +235,7 @@ func TestABlockDuringACallEndsItAndRefusesOlderTokens(t *testing.T) {
 }
 
 func TestADisabledAccountLeavesVoiceAndItsTokenStopsWorking(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a := e.user("alice")
 	bob, b := e.user("bob")
@@ -257,6 +265,7 @@ func TestADisabledAccountLeavesVoiceAndItsTokenStopsWorking(t *testing.T) {
 }
 
 func TestAGroupCallDoesNotRingWhoBlockedTheCaller(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a := e.user("alice")
 	_, b := e.user("bob")

@@ -115,6 +115,7 @@ func storedImage(t *testing.T, d *Disk, kind Kind, hash string) image.Image {
 }
 
 func TestProgressiveFixtureDecodes(t *testing.T) {
+	t.Parallel()
 	img, err := jpeg.Decode(bytes.NewReader(progressiveJPEG(64, 48, 3, 1)))
 	if err != nil {
 		t.Fatalf("fixture does not decode: %v", err)
@@ -125,6 +126,7 @@ func TestProgressiveFixtureDecodes(t *testing.T) {
 }
 
 func TestSaveImageDimensionCaps(t *testing.T) {
+	t.Parallel()
 	d := newTestDisk(t)
 	for name, src := range map[string][]byte{
 		"4097 wide":  progressiveJPEG(4097, 8, 1, 1),
@@ -139,6 +141,7 @@ func TestSaveImageDimensionCaps(t *testing.T) {
 }
 
 func TestSaveImageRejectsManyScans(t *testing.T) {
+	t.Parallel()
 	d := newTestDisk(t)
 	if _, err := d.SaveImage(t.Context(), KindAvatar, 1, bytes.NewReader(progressiveJPEG(64, 64, 3, 101))); !errors.Is(err, ErrUnsupportedImage) {
 		t.Fatalf("101 scans: err = %v, want ErrUnsupportedImage", err)
@@ -160,6 +163,7 @@ func measureAlloc(f func()) uint64 {
 // memory than was reserved for them, or, when their estimate exceeds the
 // whole decode budget, are refused before any pixel is decoded.
 func TestWorstCaseImagesFitBudget(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("allocates a few hundred MB")
 	}
@@ -246,6 +250,7 @@ func colorName(c color.Color) string {
 }
 
 func TestSaveImageHonoursExifOrientation(t *testing.T) {
+	t.Parallel()
 	d := newTestDisk(t)
 	var plain bytes.Buffer
 	if err := jpeg.Encode(&plain, quadrants(96, 64), &jpeg.Options{Quality: 95}); err != nil {
@@ -359,6 +364,7 @@ func rawPNG(t *testing.T, w, h int, depth, colorType byte, bpp int, interlaced b
 }
 
 func TestWeightEstimate(t *testing.T) {
+	t.Parallel()
 	const mib = 1 << 20
 	base := int64(OutputSize*OutputSize*4 + weightOverhead)
 	for _, tc := range []struct {
@@ -400,6 +406,7 @@ func TestWeightEstimate(t *testing.T) {
 }
 
 func TestScanJPEG(t *testing.T) {
+	t.Parallel()
 	for scans, want := range map[int]int{1: 1, 100: 100, 101: 101, 500: 101} {
 		f, err := scanJPEG(progressiveJPEG(16, 16, 3, scans))
 		if err != nil || f.scans != want || !f.progressive || f.components != 3 {
@@ -443,6 +450,7 @@ func TestScanJPEG(t *testing.T) {
 }
 
 func TestInspectFindsPNGTransparency(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name             string
 		src              []byte
@@ -466,6 +474,7 @@ func TestInspectFindsPNGTransparency(t *testing.T) {
 }
 
 func TestDecodeSlotsCapConcurrency(t *testing.T) {
+	t.Parallel()
 	if d := newTestDisk(t); d.maxDecodes != runtime.GOMAXPROCS(0) {
 		t.Fatalf("maxDecodes = %d, want GOMAXPROCS %d", d.maxDecodes, runtime.GOMAXPROCS(0))
 	}

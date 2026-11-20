@@ -12,6 +12,7 @@ import (
 )
 
 func TestPreviewDropsAreCountedAndWarningsAreRateLimited(t *testing.T) {
+	t.Parallel()
 	var logs bytes.Buffer
 	now := time.Now()
 	s := NewService(Options{Now: func() time.Time { return now }, Logger: slog.New(slog.NewTextHandler(&logs, nil))})

@@ -37,6 +37,7 @@ func setStatus(t *testing.T, c *testkit.Client, body map[string]any) {
 // TestChosenStatusReachesPeers: peers see the status and line the user
 // chose; invisible looks offline to them, at once and in later READYs.
 func TestChosenStatusReachesPeers(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, au := e.user("alice")
 	bob, bu := e.user("bob")
@@ -79,6 +80,7 @@ func TestChosenStatusReachesPeers(t *testing.T) {
 
 // TestInvisibleFromTheStart: a user who connects invisible never shows up.
 func TestInvisibleFromTheStart(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, au := e.user("alice")
 	carol, cu := e.user("carol")

@@ -11,6 +11,7 @@ import (
 // A reaction event says how many reacted with its emoji after the change, so
 // that a client applying it twice (a reconnect's catch-up) does not count it twice.
 func TestReactionEventsCarryTheCountAfterTheChange(t *testing.T) {
+	t.Parallel()
 	e, _, alice, bob, _, m := reactionFixture(t)
 	path := reactionPath(m, thumb) + "/@me"
 	expect(t, alice.Do(http.MethodPut, path, nil), http.StatusNoContent)

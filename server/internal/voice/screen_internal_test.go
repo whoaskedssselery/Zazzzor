@@ -22,6 +22,7 @@ func screenService(t *testing.T) (*Service, *refreshRooms, Room, Participant) {
 }
 
 func TestScreenAdmissionAndAggregateTracks(t *testing.T) {
+	t.Parallel()
 	s, r, room, p := screenService(t)
 	if err := s.joined(t.Context(), 42, room, p); err != nil {
 		t.Fatalf("screen admission: %v", err)
@@ -54,6 +55,7 @@ func TestScreenAdmissionAndAggregateTracks(t *testing.T) {
 }
 
 func TestScreenAdmissionRejectsInvalidBinding(t *testing.T) {
+	t.Parallel()
 	for _, reason := range []string{"owner", "room", "room SID", "generation", "stream", "departed"} {
 		t.Run(reason, func(t *testing.T) {
 			s, _, room, p := screenService(t)
@@ -82,6 +84,7 @@ func TestScreenAdmissionRejectsInvalidBinding(t *testing.T) {
 }
 
 func TestScreenRemovedWithPrimary(t *testing.T) {
+	t.Parallel()
 	for _, cause := range []string{"leave", "departure", "replacement", "finished", "user", "channel", "members", "move", "move expiry", "channel join", "disconnect"} {
 		t.Run(cause, func(t *testing.T) {
 			s, _, room, p := screenService(t)
@@ -136,6 +139,7 @@ func TestScreenRemovedWithPrimary(t *testing.T) {
 }
 
 func TestScreenRepeatedAdmissionKeepsPublishedTracks(t *testing.T) {
+	t.Parallel()
 	s, _, room, p := screenService(t)
 	if err := s.joined(t.Context(), 42, room, p); err != nil {
 		t.Fatalf("admission: %v", err)
@@ -150,6 +154,7 @@ func TestScreenRepeatedAdmissionKeepsPublishedTracks(t *testing.T) {
 }
 
 func TestScreenOldJoinCannotReplaceNewCompanion(t *testing.T) {
+	t.Parallel()
 	s, _, room, p := screenService(t)
 	newerScreen := p
 	newerScreen.SID = "SC_2"
@@ -166,6 +171,7 @@ func TestScreenOldJoinCannotReplaceNewCompanion(t *testing.T) {
 }
 
 func TestScreenIgnoresOldTrackAndDepartureEvents(t *testing.T) {
+	t.Parallel()
 	s, _, room, p := screenService(t)
 	if err := s.joined(t.Context(), 42, room, p); err != nil {
 		t.Fatalf("admission: %v", err)
@@ -184,6 +190,7 @@ func TestScreenIgnoresOldTrackAndDepartureEvents(t *testing.T) {
 }
 
 func TestScreenServerFlagsPreserveCompanion(t *testing.T) {
+	t.Parallel()
 	s, r, room, p := screenService(t)
 	p.Screens = []string{"screen"}
 	if err := s.joined(t.Context(), 42, room, p); err != nil {

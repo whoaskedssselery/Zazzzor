@@ -47,6 +47,7 @@ func requireMarker(t *testing.T, e *env, user, ch, last string, count int32) {
 }
 
 func TestDirectMentionCountsOnlyMembersAndNeverTheAuthor(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a := e.user("alice")
 	_, b := e.user("bob")
@@ -72,6 +73,7 @@ func TestDirectMentionCountsOnlyMembersAndNeverTheAuthor(t *testing.T) {
 }
 
 func TestMentionLimitCountsOnlyDistinctValidMembers(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	g, ch, _ := newGuild(t, alice, "club")
@@ -105,6 +107,7 @@ func TestMentionLimitCountsOnlyDistinctValidMembers(t *testing.T) {
 }
 
 func TestRoleMentionUsesAuthorAndRecipientPermissions(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("owner")
 	sender, a := e.user("sender")
@@ -147,6 +150,7 @@ func TestRoleMentionUsesAuthorAndRecipientPermissions(t *testing.T) {
 }
 
 func TestHereCountsOnlyOnlineMembers(t *testing.T) {
+	t.Parallel()
 	var online atomic.Int64
 	e := newEnv(t, func(o *messages.Options) {
 		o.OnlineAmong = func([]snowflake.ID) []snowflake.ID { return []snowflake.ID{snowflake.ID(online.Load())} }
@@ -173,6 +177,7 @@ func TestHereCountsOnlyOnlineMembers(t *testing.T) {
 }
 
 func TestAckRecomputesMentionsAfterEditAndDelete(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	bob, b := e.user("bob")
@@ -207,6 +212,7 @@ func TestAckRecomputesMentionsAfterEditAndDelete(t *testing.T) {
 }
 
 func TestGuildAckOnlyMovesVisibleChannels(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	bob, b := e.user("bob")
@@ -227,6 +233,7 @@ func TestGuildAckOnlyMovesVisibleChannels(t *testing.T) {
 }
 
 func TestConcurrentMentionsAndNonceRetryCountOnce(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a := e.user("alice")
 	_, b := e.user("bob")
@@ -261,6 +268,7 @@ func TestConcurrentMentionsAndNonceRetryCountOnce(t *testing.T) {
 }
 
 func TestAckRefreshesUnchangedPositionAfterDeletingLatest(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	bob, b := e.user("bob")
@@ -276,6 +284,7 @@ func TestAckRefreshesUnchangedPositionAfterDeletingLatest(t *testing.T) {
 }
 
 func TestGuildAckClearsDeletedMentionsWithoutRegressingReadPosition(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	bob, b := e.user("bob")
@@ -293,6 +302,7 @@ func TestGuildAckClearsDeletedMentionsWithoutRegressingReadPosition(t *testing.T
 }
 
 func TestChannelNewestMessageFollowsSendAndDelete(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	_, ch, _ := newGuild(t, alice, "club")
@@ -330,6 +340,7 @@ func TestChannelNewestMessageFollowsSendAndDelete(t *testing.T) {
 }
 
 func TestMentionAudienceSnapshotSerializesWithGuildPermissionWrites(t *testing.T) {
+	t.Parallel()
 	atPresence := make(chan struct{})
 	continueSend := make(chan struct{})
 	resume := sync.OnceFunc(func() { close(continueSend) })

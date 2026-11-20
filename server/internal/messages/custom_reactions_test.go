@@ -12,6 +12,7 @@ import (
 )
 
 func TestCustomReactionSurvivesRenameAndDelete(t *testing.T) {
+	t.Parallel()
 	e, owner, alice, bob, g, m := reactionFixture(t)
 	ownerID := parseID(t, m.Author.ID)
 	var raw bytes.Buffer
@@ -58,6 +59,7 @@ func TestCustomReactionSurvivesRenameAndDelete(t *testing.T) {
 }
 
 func TestCustomReactionRejectsAnotherGuild(t *testing.T) {
+	t.Parallel()
 	e, owner, alice, _, _, m := reactionFixture(t)
 	other, _, _ := newGuild(t, owner, "other")
 	var raw bytes.Buffer

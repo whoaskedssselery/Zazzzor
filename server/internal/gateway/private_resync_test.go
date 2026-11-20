@@ -26,6 +26,7 @@ func (f *oneFailedDMViewerLookup) ViewersAmong(ctx context.Context, id snowflake
 }
 
 func TestFailedDMReopenResyncsClosedRecipient(t *testing.T) {
+	t.Parallel()
 	viewers := &oneFailedDMViewerLookup{}
 	e := newEnvWith(t, gateway.Options{}, func(m *app.Modules, o *gateway.Options) {
 		viewers.Resolver = m.Channels

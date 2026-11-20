@@ -46,6 +46,7 @@ func isMember(t *testing.T, e *env, g guildBody, userID snowflake.ID) bool {
 }
 
 func TestKickRequiresPermission(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	bob, bu := e.user("bob")
@@ -78,6 +79,7 @@ func TestKickRequiresPermission(t *testing.T) {
 }
 
 func TestKickHierarchy(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, ou := e.user("alice")
 	bob, bu := e.user("bob")
@@ -120,6 +122,7 @@ func TestKickHierarchy(t *testing.T) {
 }
 
 func TestKickSelfRefused(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, ou := e.user("alice")
 	bob, bu := e.user("bob")
@@ -138,6 +141,7 @@ func TestKickSelfRefused(t *testing.T) {
 }
 
 func TestKickedUserCanRejoin(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	bob, bu := e.user("bob")
@@ -167,6 +171,7 @@ func TestKickedUserCanRejoin(t *testing.T) {
 }
 
 func TestBanNonMember(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	bob, bu := e.user("bob")
@@ -233,6 +238,7 @@ func TestBanNonMember(t *testing.T) {
 }
 
 func TestBanMemberRemoves(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	bob, bu := e.user("bob")
@@ -263,6 +269,7 @@ func TestBanMemberRemoves(t *testing.T) {
 }
 
 func TestBanIdempotent(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	_, bu := e.user("bob")
@@ -288,6 +295,7 @@ func TestBanIdempotent(t *testing.T) {
 }
 
 func TestUnbanRequiresBan(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	bob, bu := e.user("bob")
@@ -311,6 +319,7 @@ func TestUnbanRequiresBan(t *testing.T) {
 }
 
 func TestBanListAndGet(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 	var clockMu sync.Mutex
 	clock := func() time.Time {
@@ -379,6 +388,7 @@ func TestBanListAndGet(t *testing.T) {
 }
 
 func TestKickAndBanRateLimited(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, func(o *guilds.Options) { o.WriteLimiter = ratelimit.New(rate.Every(time.Hour), 2, 2*time.Hour) })
 	owner, _ := e.user("alice")
 	g := createGuild(t, owner, "guild")

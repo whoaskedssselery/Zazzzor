@@ -12,6 +12,7 @@ import (
 )
 
 func TestAttachmentKeepsOriginalPNG(t *testing.T) {
+	t.Parallel()
 	d, err := files.NewDisk(t.TempDir(), files.Options{})
 	if err != nil {
 		t.Fatalf("NewDisk: %v", err)

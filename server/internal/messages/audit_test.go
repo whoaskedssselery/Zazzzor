@@ -23,6 +23,7 @@ func (l *auditLog) Record(_ context.Context, _ audit.Tx, e audit.Entry) error {
 }
 
 func TestModeratorDeleteIsAudited(t *testing.T) {
+	t.Parallel()
 	log := &auditLog{}
 	e := newEnv(t, func(o *messages.Options) { o.Audit = log })
 	alice, au := e.user("alice")

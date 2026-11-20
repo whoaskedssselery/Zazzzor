@@ -19,6 +19,7 @@ import (
 )
 
 func TestAttachmentUploadSize(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c, _ := e.user("alice")
 	_, ch, _ := newGuild(t, c, "club")
@@ -31,6 +32,7 @@ func TestAttachmentUploadSize(t *testing.T) {
 }
 
 func TestRejectedMultipartDoesNotFillTrash(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	disk, err := files.NewDisk(root, files.Options{})
 	if err != nil {
@@ -67,6 +69,7 @@ func TestRejectedMultipartDoesNotFillTrash(t *testing.T) {
 }
 
 func TestAttachmentUploadRate(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	e := newEnv(t, func(o *messages.Options) { o.Now = func() time.Time { return now } })
 	c, _ := e.user("alice")
@@ -82,6 +85,7 @@ func TestAttachmentUploadRate(t *testing.T) {
 }
 
 func TestAttachFilesRequiredAtUploadAndSend(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("owner")
 	member, u := e.user("member")
@@ -95,6 +99,7 @@ func TestAttachFilesRequiredAtUploadAndSend(t *testing.T) {
 }
 
 func TestAttachmentIDsMustBePendingInTheChannel(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c, _ := e.user("alice")
 	g, ch, _ := newGuild(t, c, "club")
@@ -127,6 +132,7 @@ func TestAttachmentIDsMustBePendingInTheChannel(t *testing.T) {
 }
 
 func TestMessageAttachmentOrderInHistoryAndEvents(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c, _ := e.user("alice")
 	_, ch, _ := newGuild(t, c, "club")
@@ -157,6 +163,7 @@ func TestMessageAttachmentOrderInHistoryAndEvents(t *testing.T) {
 }
 
 func TestPendingExpiryAndChannelCascadeTrashOriginal(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c, _ := e.user("alice")
 	g, _, _ := newGuild(t, c, "club")

@@ -21,6 +21,7 @@ func (*discoveredRefreshRooms) ListParticipants(context.Context, string) ([]Part
 }
 
 func TestRefreshCoversAdmissionNotYetInLocalState(t *testing.T) {
+	t.Parallel()
 	for _, reconcile := range []bool{false, true} {
 		t.Run(map[bool]string{false: "webhook", true: "reconcile"}[reconcile], func(t *testing.T) {
 			entered, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})

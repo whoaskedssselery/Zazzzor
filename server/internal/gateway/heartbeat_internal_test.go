@@ -9,6 +9,7 @@ import (
 )
 
 func TestHeartbeatTimeoutDefault(t *testing.T) {
+	t.Parallel()
 	if DefaultHeartbeatTimeout <= 2*HeartbeatInterval {
 		t.Fatalf("timeout %v leaves no room for a heartbeat delayed past one interval", DefaultHeartbeatTimeout)
 	}

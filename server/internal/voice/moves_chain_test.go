@@ -12,6 +12,7 @@ import (
 
 // A -> B (B token issued) -> C, then back to A: the B token must not connect.
 func TestChainedMoveBackRefusesFirstDestinationToken(t *testing.T) {
+	t.Parallel()
 	e, _, _, _ := pendingMoveEnv(t)
 	j, err := e.voice.Join(t.Context(), 44, auth.User{ID: 1}, "https://example.test")
 	if err != nil {
@@ -32,6 +33,7 @@ func TestChainedMoveBackRefusesFirstDestinationToken(t *testing.T) {
 
 // Same, but C is deleted instead of a move back.
 func TestChainedMoveToDeletedChannelRefusesFirstDestinationToken(t *testing.T) {
+	t.Parallel()
 	e, _, _, _ := pendingMoveEnv(t)
 	j, err := e.voice.Join(t.Context(), 44, auth.User{ID: 1}, "https://example.test")
 	if err != nil {
@@ -51,6 +53,7 @@ func TestChainedMoveToDeletedChannelRefusesFirstDestinationToken(t *testing.T) {
 // Without a prior intent (the API restarted), cancelling still pins the
 // source's join, so the destination token is refused.
 func TestCancelledMoveWithoutPriorIntentRefusesDestinationToken(t *testing.T) {
+	t.Parallel()
 	e, _, _ := moderationEnv(t, permissions.All)
 	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Move: destination(44)}); err != nil {
 		t.Fatalf("move: %v", err)

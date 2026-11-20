@@ -50,6 +50,7 @@ func reactionPath(m messageBody, emoji string) string {
 }
 
 func TestReactionEmojiValidation(t *testing.T) {
+	t.Parallel()
 	_, _, alice, _, _, m := reactionFixture(t)
 	for _, name := range []string{thumb, "👍🏽", string([]rune{0x1F468, 0x200D, 0x1F469, 0x200D, 0x1F467}), "🇷🇺", "❤️"} {
 		expect(t, alice.Do(http.MethodPut, reactionPath(m, name)+"/@me", nil), 204)
@@ -60,6 +61,7 @@ func TestReactionEmojiValidation(t *testing.T) {
 }
 
 func TestReactionJoiningNeedsOnlyHistory(t *testing.T) {
+	t.Parallel()
 	_, owner, alice, _, g, m := reactionFixture(t)
 	denyEveryone(t, owner, g, m.ChannelID, 1<<6)
 	p := reactionPath(m, thumb) + "/@me"
@@ -70,6 +72,7 @@ func TestReactionJoiningNeedsOnlyHistory(t *testing.T) {
 }
 
 func TestReactionRoutesRequireHistory(t *testing.T) {
+	t.Parallel()
 	_, owner, alice, _, g, m := reactionFixture(t)
 	denyEveryone(t, owner, g, m.ChannelID, permissions.ReadMessageHistory)
 	p := reactionPath(m, thumb)
@@ -80,6 +83,7 @@ func TestReactionRoutesRequireHistory(t *testing.T) {
 }
 
 func TestReactionWritesAreIdempotent(t *testing.T) {
+	t.Parallel()
 	e, owner, alice, _, _, m := reactionFixture(t)
 	p := reactionPath(m, thumb) + "/@me"
 	for range 2 {
@@ -103,6 +107,7 @@ func TestReactionWritesAreIdempotent(t *testing.T) {
 }
 
 func TestModeratingReactions(t *testing.T) {
+	t.Parallel()
 	e, owner, alice, bob, g, m := reactionFixture(t)
 	p := reactionPath(m, thumb)
 	expect(t, alice.Do(http.MethodPut, p+"/@me", nil), 204)
@@ -154,6 +159,7 @@ func reactionSummary(t *testing.T, c *testkit.Client, m messageBody) []reactionB
 }
 
 func TestReactionLimitStillAllowsJoining(t *testing.T) {
+	t.Parallel()
 	_, owner, alice, bob, _, m := reactionFixture(t)
 	for i := range 20 {
 		c := []*testkit.Client{owner, alice, bob}[i%3]
@@ -164,6 +170,7 @@ func TestReactionLimitStillAllowsJoining(t *testing.T) {
 }
 
 func TestReactionSummaryKeepsFirstAdditionOrder(t *testing.T) {
+	t.Parallel()
 	e, owner, alice, bob, _, m := reactionFixture(t)
 	first, second := reactionPath(m, thumb)+"/@me", reactionPath(m, "😂")+"/@me"
 	expect(t, alice.Do(http.MethodPut, first, nil), 204)
@@ -205,6 +212,7 @@ func TestReactionSummaryKeepsFirstAdditionOrder(t *testing.T) {
 }
 
 func TestReactionConcurrentAddsAndUserPaging(t *testing.T) {
+	t.Parallel()
 	_, owner, alice, bob, _, m := reactionFixture(t)
 	p := reactionPath(m, thumb)
 	t.Run("simultaneous adds", func(t *testing.T) {
@@ -254,6 +262,7 @@ func (p *pausedReactionPublish) Publish(ctx context.Context, event events.Event)
 }
 
 func TestReactionEventsFollowCommitOrder(t *testing.T) {
+	t.Parallel()
 	pub := &pausedReactionPublish{started: make(chan struct{}), release: make(chan struct{})}
 	release := sync.OnceFunc(func() { close(pub.release) })
 	defer release()
@@ -324,6 +333,7 @@ func reactionWriteStatus(ctx context.Context, c *testkit.Client, method, path st
 }
 
 func TestReactionRechecksHistoryUnderGuildLock(t *testing.T) {
+	t.Parallel()
 	e, owner, alice, _, g, m := reactionFixture(t)
 	denyEveryone(t, owner, g, m.ChannelID, 0)
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)

@@ -11,6 +11,7 @@ import (
 )
 
 func TestReactionsReachOnlyChannelViewers(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	owner, ou := e.user("owner")
 	member, mu := e.user("member")

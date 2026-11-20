@@ -10,6 +10,7 @@ import (
 )
 
 func TestEmptyChannelLastMessageIDIsNull(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("owner")
 	g := createGuild(t, owner, "Guild")
@@ -24,6 +25,7 @@ func TestEmptyChannelLastMessageIDIsNull(t *testing.T) {
 }
 
 func TestJoiningStartsReadAtVisibleChannelHead(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("owner")
 	_, member := e.user("member")
@@ -44,6 +46,7 @@ func TestJoiningStartsReadAtVisibleChannelHead(t *testing.T) {
 }
 
 func TestJoiningSkipsHiddenChannelReadState(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("owner")
 	_, member := e.user("member")
@@ -55,6 +58,7 @@ func TestJoiningSkipsHiddenChannelReadState(t *testing.T) {
 }
 
 func TestLosingChannelVisibilityDropsReadState(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("owner")
 	_, member := e.user("member")
@@ -78,6 +82,7 @@ func assertNoReadState(t *testing.T, e *env, userID, channelID snowflake.ID) {
 }
 
 func TestLosingViewThroughRolePermissionsDropsReadState(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("owner")
 	_, member := e.user("member")
@@ -92,6 +97,7 @@ func TestLosingViewThroughRolePermissionsDropsReadState(t *testing.T) {
 }
 
 func TestSyncingWithHiddenCategoryDropsReadState(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("owner")
 	_, member := e.user("member")
@@ -107,6 +113,7 @@ func TestSyncingWithHiddenCategoryDropsReadState(t *testing.T) {
 }
 
 func TestLosingRoleVisibilityDropsReadState(t *testing.T) {
+	t.Parallel()
 	for _, change := range []string{"member role removal", "role deletion"} {
 		t.Run(change, func(t *testing.T) {
 			e := newEnv(t)

@@ -7,6 +7,7 @@ import (
 )
 
 func TestRegisterReservedNameLooksTaken(t *testing.T) {
+	t.Parallel()
 	c := newEnv(t).client()
 	const path = "/api/v1/auth/register"
 	register(t, c, "alice", "password123")

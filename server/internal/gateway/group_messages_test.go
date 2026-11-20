@@ -44,6 +44,7 @@ func putDMFile(t *testing.T, c *testkit.Client, ch string) (id, url string) {
 }
 
 func TestGroupDMOwnersAndFiles(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, a := e.user("alice")
 	bob, b := e.user("bob")
@@ -100,6 +101,7 @@ func TestGroupDMOwnersAndFiles(t *testing.T) {
 }
 
 func TestGroupDMCapacity(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, a := e.user("alice")
 	bob, b := e.user("bob")
@@ -133,6 +135,7 @@ func TestGroupDMCapacity(t *testing.T) {
 }
 
 func TestGroupDMCreationLimits(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, a := e.user("alice")
 	bob, b := e.user("bob")

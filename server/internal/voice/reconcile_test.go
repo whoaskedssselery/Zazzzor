@@ -22,6 +22,7 @@ func (e *env) reconcile() {
 }
 
 func TestReconcileRebuildsStatesFromLiveKit(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a := e.user("alice")
 	g, _, vc := newGuild(t, alice, "home")
@@ -47,6 +48,7 @@ func TestReconcileRebuildsStatesFromLiveKit(t *testing.T) {
 }
 
 func TestReconcileRemovesParticipantsWhoMayNotConnect(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	_, b := e.user("bob")
@@ -61,6 +63,7 @@ func TestReconcileRemovesParticipantsWhoMayNotConnect(t *testing.T) {
 }
 
 func TestReconcileKeepsTheNewestOfTwoRooms(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a := e.user("alice")
 	g, _, first := newGuild(t, alice, "home")
@@ -77,6 +80,7 @@ func TestReconcileKeepsTheNewestOfTwoRooms(t *testing.T) {
 }
 
 func TestReconcileDropsStatesWithoutAParticipant(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a := e.user("alice")
 	g, _, vc := newGuild(t, alice, "home")
@@ -92,6 +96,7 @@ func TestReconcileDropsStatesWithoutAParticipant(t *testing.T) {
 }
 
 func TestReconcileKeepsStatesOfRoomsItCouldNotList(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a := e.user("alice")
 	g, _, vc := newGuild(t, alice, "home")
@@ -107,6 +112,7 @@ func TestReconcileKeepsStatesOfRoomsItCouldNotList(t *testing.T) {
 }
 
 func TestRemovalIsRetriedAfterAFailure(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	_, b := e.user("bob")

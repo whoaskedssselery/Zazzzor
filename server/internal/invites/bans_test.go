@@ -35,6 +35,7 @@ func memberCount(t *testing.T, e *env, g guildBody, userID string) int {
 // TestBannedCannotJoin: a banned user's join is 403 banned and takes no
 // use of the invite, even with uses left.
 func TestBannedCannotJoin(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	bobC, bob := e.user("bob")
@@ -65,6 +66,7 @@ func TestBannedCannotJoin(t *testing.T) {
 
 // TestUnban: once unbanned the user joins again through an invite.
 func TestUnban(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	bobC, bob := e.user("bob")
@@ -83,6 +85,7 @@ func TestUnban(t *testing.T) {
 // TestConcurrentBanAndJoin: a ban racing the target's invite accept never
 // leaves a banned member, whichever commits first.
 func TestConcurrentBanAndJoin(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	g, ch := newGuild(t, owner, "home")

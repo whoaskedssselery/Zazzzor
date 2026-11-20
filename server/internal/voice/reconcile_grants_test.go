@@ -12,6 +12,7 @@ import (
 // A LiveKit blip during the periodic reconcile must not end calls that are
 // already connected: the grants are retried instead.
 func TestReconcileKeepsConnectedParticipantWhenPermissionUpdateFails(t *testing.T) {
+	t.Parallel()
 	e, _, r := moderationEnv(t, permissions.MuteMembers)
 	e.rooms.put(voice.Room{Name: "42", SID: "RM_1"}, voice.Participant{Identity: "1", SID: "PA_1"})
 	var calls atomic.Int32

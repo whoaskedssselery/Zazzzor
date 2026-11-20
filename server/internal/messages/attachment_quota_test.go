@@ -11,6 +11,7 @@ import (
 )
 
 func TestAttachmentQuotaCountsPendingAcrossChannels(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, func(o *messages.Options) { o.AttachmentQuotaBytes = 4 })
 	c, _ := e.user("alice")
 	_, first, _ := newGuild(t, c, "first")
@@ -22,6 +23,7 @@ func TestAttachmentQuotaCountsPendingAcrossChannels(t *testing.T) {
 }
 
 func TestAttachmentQuotaReleasesOnMessageDeletion(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, func(o *messages.Options) { o.AttachmentQuotaBytes = 4 })
 	c, _ := e.user("alice")
 	_, ch, _ := newGuild(t, c, "guild")
@@ -37,6 +39,7 @@ func TestAttachmentQuotaReleasesOnMessageDeletion(t *testing.T) {
 }
 
 func TestAttachmentStorageFloor(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		free uint64
@@ -63,6 +66,7 @@ func TestAttachmentStorageFloor(t *testing.T) {
 }
 
 func TestConcurrentUploadsCannotOverspendQuota(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, func(o *messages.Options) { o.AttachmentQuotaBytes = 4 })
 	c, _ := e.user("alice")
 	_, ch, _ := newGuild(t, c, "guild")

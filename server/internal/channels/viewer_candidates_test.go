@@ -37,6 +37,7 @@ func (q *viewerQueries) TraceQueryEnd(ctx context.Context, _ *pgx.Conn, data pgx
 }
 
 func TestConnectedViewersReadOnlyCandidateAssignments(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c, owner := e.user("owner")
 	g := createGuild(t, c, "club")

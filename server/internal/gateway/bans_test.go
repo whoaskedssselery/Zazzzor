@@ -30,6 +30,7 @@ func framesOf(fs []frame, typ string) []frame {
 // kicked user GUILD_DELETE exactly once and then nothing more of the guild;
 // their channel overwrites are gone.
 func TestKickRemovesMemberAndNotifies(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, au := e.user("alice")
 	bob, bu := e.user("bob")
@@ -96,6 +97,7 @@ func TestKickRemovesMemberAndNotifies(t *testing.T) {
 // TestBanEventsOnlyToModerators: GUILD_BAN_ADD and GUILD_BAN_REMOVE reach
 // the members holding BAN_MEMBERS when they are sent, nobody else.
 func TestBanEventsOnlyToModerators(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, au := e.user("alice")
 	bob, bu := e.user("bob")
@@ -152,6 +154,7 @@ func TestBanEventsOnlyToModerators(t *testing.T) {
 // former members who share no other guild, both ways; those still sharing
 // one hear nothing.
 func TestGuildDeletePresence(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, au := e.user("alice")
 	bob, bu := e.user("bob")

@@ -15,6 +15,7 @@ import (
 )
 
 func TestJoinGrantsFollowPermissions(t *testing.T) {
+	t.Parallel()
 	const (
 		mic         = "microphone"
 		screen      = "screen_share"
@@ -112,6 +113,7 @@ func TestJoinGrantsFollowPermissions(t *testing.T) {
 }
 
 func TestJoinTokenExpiresAfterTenMinutes(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	_, _, vc := newGuild(t, alice, "home")
@@ -123,6 +125,7 @@ func TestJoinTokenExpiresAfterTenMinutes(t *testing.T) {
 }
 
 func TestJoinWithoutConnectIsForbidden(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	bob, b := e.user("bob")
@@ -133,6 +136,7 @@ func TestJoinWithoutConnectIsForbidden(t *testing.T) {
 }
 
 func TestJoinRefusesTextChannels(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	_, text, _ := newGuild(t, alice, "home")
@@ -140,6 +144,7 @@ func TestJoinRefusesTextChannels(t *testing.T) {
 }
 
 func TestJoinHidesChannelsTheCallerCannotView(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	bob, b := e.user("bob")
@@ -157,6 +162,7 @@ func TestJoinHidesChannelsTheCallerCannotView(t *testing.T) {
 }
 
 func TestJoinSignalingURLFollowsOrigin(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a := e.user("alice")
 	_, _, vc := newGuild(t, alice, "home")
@@ -174,6 +180,7 @@ func TestJoinSignalingURLFollowsOrigin(t *testing.T) {
 }
 
 func TestVoiceWithoutLiveKitIsUnavailable(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, func(o *voice.Options) { o.Rooms, o.APIKey, o.APISecret = nil, "", "" })
 	alice, _ := e.user("alice")
 	_, _, vc := newGuild(t, alice, "home")

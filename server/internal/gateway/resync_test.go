@@ -30,6 +30,7 @@ func (d *failingDirectory) MemberIDs(ctx context.Context, guildID snowflake.ID) 
 // guild event cannot be resolved, the connections that hold that guild
 // are closed with 4008 so their clients reconnect and resync; others stay.
 func TestUnresolvedGuildEventResyncsItsMembers(t *testing.T) {
+	t.Parallel()
 	dir := &failingDirectory{}
 	e := newEnvWith(t, gateway.Options{}, func(m *app.Modules, o *gateway.Options) {
 		dir.Directory = m.Guilds

@@ -9,6 +9,7 @@ import (
 )
 
 func TestProfileLink(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, au := e.user("alice")
 	_, bu := e.user("bob")

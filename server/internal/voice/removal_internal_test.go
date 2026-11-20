@@ -21,6 +21,7 @@ func (r *replacementRoom) RemoveParticipant(context.Context, string, string) err
 }
 
 func TestQueuedRemovalPreservesRemoteReplacement(t *testing.T) {
+	t.Parallel()
 	r := &replacementRoom{}
 	s := NewService(Options{Rooms: r, APIKey: "key", APISecret: "secret"})
 	s.mu.Lock()

@@ -18,6 +18,7 @@ import (
 )
 
 func TestCreateAndListMessages(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a := e.user("alice")
 	g, general, _ := newGuild(t, alice, "home")
@@ -62,6 +63,7 @@ func TestCreateAndListMessages(t *testing.T) {
 }
 
 func TestCreateMessageLengthCountsRunes(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	_, general, _ := newGuild(t, alice, "home")
@@ -82,6 +84,7 @@ func TestCreateMessageLengthCountsRunes(t *testing.T) {
 }
 
 func TestCreateMessageRejectsInvisibleOnly(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	_, general, _ := newGuild(t, alice, "home")
@@ -108,6 +111,7 @@ func TestCreateMessageRejectsInvisibleOnly(t *testing.T) {
 }
 
 func TestSendRequiresPermission(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	bobC, bob := e.user("bob")
@@ -146,6 +150,7 @@ func TestSendRequiresPermission(t *testing.T) {
 // channels.TestHiddenChannelIsNotFound: a channel the caller may not view,
 // or of a server they are not in, does not exist for any message endpoint.
 func TestHiddenChannelMessages404(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	bobC, bob := e.user("bob")
@@ -190,6 +195,7 @@ func TestHiddenChannelMessages404(t *testing.T) {
 }
 
 func TestEditOnlyAuthor(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	bobC, bob := e.user("bob")
@@ -236,6 +242,7 @@ func TestEditOnlyAuthor(t *testing.T) {
 }
 
 func TestDeleteByAuthorOrManageMessages(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	bobC, bob := e.user("bob")
@@ -276,6 +283,7 @@ func TestDeleteByAuthorOrManageMessages(t *testing.T) {
 }
 
 func TestReplyMustBeSameChannel(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a := e.user("alice")
 	g, general, _ := newGuild(t, alice, "home")
@@ -309,6 +317,7 @@ func TestReplyMustBeSameChannel(t *testing.T) {
 }
 
 func TestReplyToDeletedMessageIsNull(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	_, general, _ := newGuild(t, alice, "home")
@@ -324,6 +333,7 @@ func TestReplyToDeletedMessageIsNull(t *testing.T) {
 }
 
 func TestNonceEchoed(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	_, general, _ := newGuild(t, alice, "home")
@@ -360,6 +370,7 @@ func TestNonceEchoed(t *testing.T) {
 }
 
 func TestMessageRateLimit(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, func(o *messages.Options) {
 		o.SendLimiter = ratelimit.New(rate.Every(time.Hour), 2, 2*time.Hour)
 		o.WriteLimiter = ratelimit.New(rate.Every(time.Hour), 2, 2*time.Hour)
@@ -388,6 +399,7 @@ func TestMessageRateLimit(t *testing.T) {
 }
 
 func TestTypingThrottled(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a := e.user("alice")
 	bobC, bob := e.user("bob")
@@ -428,6 +440,7 @@ func TestTypingThrottled(t *testing.T) {
 }
 
 func TestVoiceChannelRejectsMessages(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	g, _, voice := newGuild(t, alice, "home")
@@ -447,6 +460,7 @@ func TestVoiceChannelRejectsMessages(t *testing.T) {
 }
 
 func TestMessageEventsPublished(t *testing.T) {
+	t.Parallel()
 	bus := events.NewBus(nil)
 	t.Cleanup(bus.Close)
 	sub, cancel := bus.Subscribe(64)
@@ -508,6 +522,7 @@ func payloadOf(t *testing.T, ev events.Event) map[string]any {
 // A message whose author's account is gone (author_id set null) shows
 // author null, in history and as a replied-to stub.
 func TestDeletedAuthorIsNull(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	bobC, bob := e.user("bob")

@@ -45,6 +45,7 @@ func sorted(ids ...string) []string {
 // TestGuildStateCarriesPresences: READY's guild states list the guild's
 // online members.
 func TestGuildStateCarriesPresences(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, au := e.user("alice")
 	bob, bu := e.user("bob")
@@ -68,6 +69,7 @@ func TestGuildStateCarriesPresences(t *testing.T) {
 // their GUILD_CREATE, and the members who shared no server with them learn
 // that they are online.
 func TestJoinSharesPresence(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, au := e.user("alice")
 	bob, bu := e.user("bob")
@@ -97,6 +99,7 @@ func TestJoinSharesPresence(t *testing.T) {
 // no other server with them see them offline, and they see those members
 // offline; members still sharing a server see nothing.
 func TestLeaveEndsSharedPresence(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, au := e.user("alice")
 	bob, bu := e.user("bob")

@@ -63,6 +63,7 @@ func refreshService(t *testing.T, read func(context.Context, snowflake.ID) (perm
 }
 
 func TestRefreshAppliesEachPermissionLoss(t *testing.T) {
+	t.Parallel()
 	all := permissions.ViewChannel | permissions.Connect | permissions.Speak | permissions.Stream
 	for _, tc := range []struct {
 		name string
@@ -108,6 +109,7 @@ func TestRefreshAppliesEachPermissionLoss(t *testing.T) {
 }
 
 func TestRefreshPreservesServerModeration(t *testing.T) {
+	t.Parallel()
 	s, r := refreshService(t, func(context.Context, snowflake.ID) (permissions.Permission, error) {
 		return permissions.ViewChannel | permissions.Connect | permissions.Speak | permissions.Stream, nil
 	})
@@ -120,6 +122,7 @@ func TestRefreshPreservesServerModeration(t *testing.T) {
 }
 
 func TestRefreshRetriesFailuresWithoutBlockingOtherUsers(t *testing.T) {
+	t.Parallel()
 	for _, database := range []bool{false, true} {
 		t.Run(map[bool]string{true: "database", false: "livekit"}[database], func(t *testing.T) {
 			failed := true

@@ -20,6 +20,7 @@ import (
 )
 
 func TestVoiceModerationHiddenChannelPrivacyMatrix(t *testing.T) {
+	t.Parallel()
 	for _, field := range []string{"mute", "deaf", "disconnect", "stream_revoke"} {
 		t.Run(field, func(t *testing.T) {
 			e, _ := voiceEnv(t)
@@ -85,6 +86,7 @@ func TestVoiceModerationHiddenChannelPrivacyMatrix(t *testing.T) {
 }
 
 func TestVoiceModerationErrorsDoNotEchoPresenceIDs(t *testing.T) {
+	t.Parallel()
 	e, _ := voiceEnv(t)
 	owner, _ := e.user("owner")
 	member, u := e.user("member")

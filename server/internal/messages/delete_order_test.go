@@ -25,6 +25,7 @@ func (p *delayedDelete) Publish(ctx context.Context, event events.Event) {
 }
 
 func TestDelayedDeleteCannotFollowNewerCreate(t *testing.T) {
+	t.Parallel()
 	p := &delayedDelete{entered: make(chan struct{}), release: make(chan struct{})}
 	e := newEnv(t, func(o *messages.Options) { o.Publisher = p })
 	c, user := e.user("alice")

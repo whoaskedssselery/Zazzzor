@@ -22,6 +22,7 @@ func (v *moveViewers) Viewers(context.Context, snowflake.ID) ([]snowflake.ID, er
 }
 
 func TestVoiceMoveRechecksDestinationViewers(t *testing.T) {
+	t.Parallel()
 	v := &moveViewers{ids: []snowflake.ID{1, 2}}
 	g := &Gateway{opts: Options{Channels: v}}
 	e := events.Event{Type: events.VoiceMove, Audience: events.Audience{Kind: events.AudienceUsers, ChannelID: 44, UserIDs: []snowflake.ID{1}}}

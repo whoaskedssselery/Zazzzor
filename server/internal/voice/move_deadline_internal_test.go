@@ -6,6 +6,7 @@ import (
 )
 
 func TestMoveDeadlineIsDrivenByRemovalWorker(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	r := &replacementRoom{}
 	s := NewService(Options{Rooms: r, APIKey: "key", APISecret: "secret", Now: func() time.Time { return now }})

@@ -6,6 +6,7 @@ import (
 )
 
 func TestLateWebhookCannotRestoreRevocationAfterTokenHorizon(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	s := NewService(Options{Now: func() time.Time { return now }, Rooms: &reconcileRooms{},
 		Channels: retryGrantChannels{}, APIKey: "key", APISecret: "0123456789abcdef0123456789abcdef"})

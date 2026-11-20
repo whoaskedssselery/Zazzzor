@@ -10,6 +10,7 @@ import (
 )
 
 func TestGatewayReadStatesExcludeHiddenChannels(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	owner, _ := e.user("owner")
 	reader, member := e.user("reader")
@@ -56,6 +57,7 @@ func TestGatewayReadStatesExcludeHiddenChannels(t *testing.T) {
 }
 
 func TestMessageAckReachesOnlyReadersConnections(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	owner, peer := e.user("owner")
 	reader, member := e.user("reader")

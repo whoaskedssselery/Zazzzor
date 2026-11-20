@@ -9,6 +9,7 @@ import (
 )
 
 func TestDeleteDoesNotWaitForAttachmentTrash(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c, user := e.user("alice")
 	_, ch, _ := newGuild(t, c, "club")
@@ -43,6 +44,7 @@ func TestDeleteDoesNotWaitForAttachmentTrash(t *testing.T) {
 }
 
 func TestAttachmentTrashSweepIsBounded(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	if _, err := e.pool.Exec(t.Context(), "INSERT INTO attachment_trash (id, channel_id) SELECT id, 123 FROM generate_series(1, 150) AS id"); err != nil {
 		t.Fatalf("queue trash: %v", err)
@@ -60,6 +62,7 @@ func TestAttachmentTrashSweepIsBounded(t *testing.T) {
 }
 
 func TestFailedTrashBatchDoesNotStarveLaterEntries(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	if _, err := e.pool.Exec(t.Context(), `INSERT INTO attachment_trash (id, channel_id)
 		SELECT id, CASE WHEN id <= 100 THEN -1 ELSE 123 END FROM generate_series(1, 101) AS id`); err != nil {

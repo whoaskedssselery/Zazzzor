@@ -15,6 +15,7 @@ import (
 )
 
 func TestSuccessfulMediaRefreshInvalidatesOlderPermissionSnapshot(t *testing.T) {
+	t.Parallel()
 	for _, refresh := range []string{"moderation", "webhook", "reconcile"} {
 		t.Run(refresh, func(t *testing.T) {
 			e, c, r := moderationEnv(t, permissions.MuteMembers)
@@ -58,6 +59,7 @@ func TestSuccessfulMediaRefreshInvalidatesOlderPermissionSnapshot(t *testing.T) 
 }
 
 func TestReconcileIsolatesFailedPermissionUpdate(t *testing.T) {
+	t.Parallel()
 	e, c, r := moderationEnv(t, permissions.MuteMembers|permissions.Connect)
 	c.subjects = map[snowflake.ID]permissions.Permission{3: permissions.ViewChannel}
 	room := voice.Room{Name: "42", SID: "RM_1"}
@@ -93,6 +95,7 @@ func TestReconcileIsolatesFailedPermissionUpdate(t *testing.T) {
 }
 
 func TestFailedAdmissionRemovesParticipantInsteadOfPublishingState(t *testing.T) {
+	t.Parallel()
 	e, _, r := moderationEnv(t, permissions.MuteMembers)
 	e.hook(&livekit.WebhookEvent{Event: "participant_left", Room: lkRoom("42", "RM_1"), Participant: lkParticipant(userBody{ID: "1"}, "PA_1", "")})
 	r.before = func(voice.ParticipantPermissions) error { return errFake }
@@ -107,6 +110,7 @@ func TestFailedAdmissionRemovesParticipantInsteadOfPublishingState(t *testing.T)
 }
 
 func TestFailedModerationDoesNotPersistOrAnnounce(t *testing.T) {
+	t.Parallel()
 	e, _, r := moderationEnv(t, permissions.MuteMembers)
 	r.before = func(voice.ParticipantPermissions) error { return errFake }
 	n := len(e.pub.updates())

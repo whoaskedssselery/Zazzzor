@@ -8,6 +8,7 @@ import (
 )
 
 func TestModerationHTTPMovesAndDisconnects(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("owner")
 	member, u := e.user("member")
@@ -32,6 +33,7 @@ func TestModerationHTTPMovesAndDisconnects(t *testing.T) {
 }
 
 func TestModerationHTTPRejectsInvalidMoveDestinations(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, u := e.user("owner")
 	g, _, source := newGuild(t, owner, "home")
@@ -44,6 +46,7 @@ func TestModerationHTTPRejectsInvalidMoveDestinations(t *testing.T) {
 }
 
 func TestModerationHTTPMoveRequiresDestinationConnect(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("owner")
 	member, u := e.user("member")

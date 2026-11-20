@@ -13,6 +13,7 @@ import (
 )
 
 func TestWebhookAcceptsOnlyValidSignatures(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	body, err := protojson.Marshal(&livekit.WebhookEvent{Event: "room_started", Id: "EV_sig",
 		Room: lkRoom("connectivity", "RM_1")})
@@ -39,12 +40,14 @@ func TestWebhookAcceptsOnlyValidSignatures(t *testing.T) {
 }
 
 func TestWebhookRefusesOversizedBodies(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	body := bytes.Repeat([]byte(" "), 1<<20+1)
 	problemOf(t, e.postHook(body, sign(t, testKey, testSecret, body)), http.StatusBadRequest, "body_too_large")
 }
 
 func TestWebhookJoinCreatesTheState(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a := e.user("alice")
 	g, _, vc := newGuild(t, alice, "home")
@@ -66,6 +69,7 @@ func TestWebhookJoinCreatesTheState(t *testing.T) {
 }
 
 func TestWebhookRepeatedJoinAnnouncesOnce(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a := e.user("alice")
 	_, _, vc := newGuild(t, alice, "home")
@@ -82,6 +86,7 @@ func TestWebhookRepeatedJoinAnnouncesOnce(t *testing.T) {
 }
 
 func TestWebhookStaleLeaveKeepsTheNewerSession(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a := e.user("alice")
 	g, _, vc := newGuild(t, alice, "home")
@@ -104,6 +109,7 @@ func TestWebhookStaleLeaveKeepsTheNewerSession(t *testing.T) {
 }
 
 func TestWebhookJoinWithAnOutdatedTokenIsRemoved(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	e.run()
 	alice, a := e.user("alice")
@@ -119,6 +125,7 @@ func TestWebhookJoinWithAnOutdatedTokenIsRemoved(t *testing.T) {
 }
 
 func TestWebhookJoinWithoutConnectIsRemoved(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	e.run()
 	alice, _ := e.user("alice")
@@ -136,6 +143,7 @@ func TestWebhookJoinWithoutConnectIsRemoved(t *testing.T) {
 }
 
 func TestWebhookScreenShareSetsSelfStream(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a := e.user("alice")
 	g, _, vc := newGuild(t, alice, "home")
@@ -170,6 +178,7 @@ func TestWebhookScreenShareSetsSelfStream(t *testing.T) {
 }
 
 func TestWebhookRoomFinishedClearsOnlyThatRoom(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a := e.user("alice")
 	g, _, vc := newGuild(t, alice, "home")
@@ -185,6 +194,7 @@ func TestWebhookRoomFinishedClearsOnlyThatRoom(t *testing.T) {
 }
 
 func TestWebhookIgnoresRoomsThatAreNotChannels(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	e.run()
 	_, a := e.user("alice")
@@ -196,6 +206,7 @@ func TestWebhookIgnoresRoomsThatAreNotChannels(t *testing.T) {
 }
 
 func TestJoiningAnotherChannelLeavesThePreviousOne(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a := e.user("alice")
 	g, _, first := newGuild(t, alice, "home")
@@ -216,6 +227,7 @@ func TestJoiningAnotherChannelLeavesThePreviousOne(t *testing.T) {
 }
 
 func TestJoinIsUnavailableWhenThePreviousRoomCannotBeLeft(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a := e.user("alice")
 	g, _, first := newGuild(t, alice, "home")
@@ -229,6 +241,7 @@ func TestJoinIsUnavailableWhenThePreviousRoomCannotBeLeft(t *testing.T) {
 }
 
 func TestWebhookCameraSetsSelfVideo(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a := e.user("alice")
 	g, _, vc := newGuild(t, alice, "home")

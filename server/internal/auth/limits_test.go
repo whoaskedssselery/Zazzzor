@@ -21,6 +21,7 @@ import (
 // oldest ones in the same transaction, and their revocation is announced
 // so their gateway connections close.
 func TestSessionsCappedPerUser(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, func(o *auth.Options) { o.MaxSessions = 3 })
 	first := e.client()
 	u := register(t, first, "maria", "password123")
@@ -73,6 +74,7 @@ func TestSessionsCappedPerUser(t *testing.T) {
 }
 
 func TestLogoutRateLimited(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, func(o *auth.Options) { o.LogoutLimiter = ratelimit.New(rate.Every(time.Hour), 1, time.Hour) })
 	c := e.client()
 	if resp := c.Do(http.MethodPost, "/api/v1/auth/logout", nil); resp.Status != http.StatusNoContent {
@@ -88,6 +90,7 @@ func TestLogoutRateLimited(t *testing.T) {
 // TestLimitReadsChargesSignedInGets: only the GETs of a signed-in user
 // count, per user.
 func TestLimitReadsChargesSignedInGets(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	r := chi.NewRouter()
 	r.Use(httpx.RequireOrigin([]string{testkit.DefaultOrigin}))

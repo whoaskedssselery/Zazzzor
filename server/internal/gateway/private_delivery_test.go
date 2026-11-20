@@ -52,6 +52,7 @@ func readDMReady(t *testing.T, c *testkit.Client, id string, want int32) {
 }
 
 func TestDirectChannelGatewayAndUnread(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, a := e.user("alice")
 	bob, b := e.user("bob")
@@ -115,6 +116,7 @@ func TestDirectChannelGatewayAndUnread(t *testing.T) {
 }
 
 func TestRemovedGroupRecipientStopsReceivingMessages(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, a := e.user("alice")
 	bob, b := e.user("bob")

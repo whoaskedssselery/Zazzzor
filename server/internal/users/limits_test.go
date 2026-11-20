@@ -42,6 +42,7 @@ func storedAvatars(t *testing.T, e *env, u userBody) []string {
 }
 
 func TestAvatarFailedWriteLeavesNoFile(t *testing.T) {
+	t.Parallel()
 	var fa *failingAccounts
 	e := newEnv(t, func(o *users.Options) {
 		fa = &failingAccounts{Accounts: o.Accounts}
@@ -77,6 +78,7 @@ func TestAvatarFailedWriteLeavesNoFile(t *testing.T) {
 }
 
 func TestProfileWritesRateLimited(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, func(o *users.Options) { o.ProfileLimiter = nil }) // the real limit
 	c := e.client()
 	register(t, c, "alice", "password123")

@@ -177,6 +177,7 @@ func adminPaths(id snowflake.ID) [][2]string {
 }
 
 func TestAdminOnly(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	boss := e.client()
 	bossID := loginAdmin(t, boss)
@@ -207,6 +208,7 @@ func TestAdminOnly(t *testing.T) {
 }
 
 func TestAdminSettings(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	boss := e.client()
 	loginAdmin(t, boss)
@@ -237,6 +239,7 @@ func TestAdminSettings(t *testing.T) {
 }
 
 func TestRegistrationToggle(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	boss := e.client()
 	loginAdmin(t, boss)
@@ -253,6 +256,7 @@ func TestRegistrationToggle(t *testing.T) {
 }
 
 func TestAdminPasswordReset(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	boss := e.client()
 	loginAdmin(t, boss)
@@ -300,6 +304,7 @@ func TestAdminPasswordReset(t *testing.T) {
 }
 
 func TestDisabledUserCannotLogin(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	boss := e.client()
 	bossID := loginAdmin(t, boss)
@@ -331,6 +336,7 @@ func TestDisabledUserCannotLogin(t *testing.T) {
 }
 
 func TestAdminFindsUserByUsername(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	boss := e.client()
 	loginAdmin(t, boss)
@@ -373,6 +379,7 @@ func TestAdminFindsUserByUsername(t *testing.T) {
 // TestAdminUserIDsAreCanonical: an ID written any other way than the
 // server writes it (leading zeros, a sign) addresses no user.
 func TestAdminUserIDsAreCanonical(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	boss := e.client()
 	loginAdmin(t, boss)
@@ -385,6 +392,7 @@ func TestAdminUserIDsAreCanonical(t *testing.T) {
 }
 
 func TestAdminRateLimited(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, func(o *admin.Options) { o.Limiter = ratelimit.New(rate.Every(time.Hour), 2, time.Hour) })
 	boss := e.client()
 	loginAdmin(t, boss)

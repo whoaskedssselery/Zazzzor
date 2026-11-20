@@ -22,6 +22,7 @@ import (
 var codePattern = regexp.MustCompile(`^[0-9A-Za-z]{8}$`)
 
 func TestInviteCodeFormat(t *testing.T) {
+	t.Parallel()
 	seen := make(map[string]bool, 2000)
 	counts := make(map[rune]int)
 	for range 2000 {
@@ -56,6 +57,7 @@ func TestInviteCodeFormat(t *testing.T) {
 }
 
 func TestInviteJoinFlow(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, alice := e.user("alice")
 	bobC, bob := e.user("bob")
@@ -137,6 +139,7 @@ func TestInviteJoinFlow(t *testing.T) {
 }
 
 func TestInviteExpired(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	bobC, _ := e.user("bob")
@@ -155,6 +158,7 @@ func TestInviteExpired(t *testing.T) {
 }
 
 func TestInviteConcurrentJoinMaxUsesOne(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	a, _ := e.user("bob")
@@ -200,6 +204,7 @@ func TestInviteConcurrentJoinMaxUsesOne(t *testing.T) {
 }
 
 func TestJoinTwiceIsIdempotent(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	bobC, _ := e.user("bob")
@@ -226,6 +231,7 @@ func TestJoinTwiceIsIdempotent(t *testing.T) {
 }
 
 func TestDeleteAndListInvites(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	bobC, _ := e.user("bob")
@@ -257,6 +263,7 @@ func TestDeleteAndListInvites(t *testing.T) {
 }
 
 func TestInvitePagesSkipHiddenChannelsAndReachPermanentInvite(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, u := e.user("alice")
 	manager, _ := e.user("bob")
@@ -310,6 +317,7 @@ func TestInvitePagesSkipHiddenChannelsAndReachPermanentInvite(t *testing.T) {
 }
 
 func TestInviteLookupRateLimited(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, func(o *invites.Options) {
 		o.LookupLimiter = ratelimit.New(rate.Every(time.Hour), 3, 2*time.Hour)
 	})
@@ -328,6 +336,7 @@ func TestInviteLookupRateLimited(t *testing.T) {
 }
 
 func TestInviteCreationRateLimited(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, func(o *invites.Options) { o.CreateLimiter = nil })
 	owner, _ := e.user("alice")
 	_, ch := newGuild(t, owner, "home")
@@ -341,6 +350,7 @@ func TestInviteCreationRateLimited(t *testing.T) {
 // A member's overwrites go when they leave: rejoining does not bring back
 // a private channel they were let into.
 func TestRejoinDoesNotRestoreOverwrites(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	bobC, bob := e.user("bob")

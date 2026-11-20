@@ -27,6 +27,7 @@ func (r *blockedReconcileRoom) ListParticipants(ctx context.Context, room string
 }
 
 func TestReconcileKeepsJoinCommittedDuringListing(t *testing.T) {
+	t.Parallel()
 	r := &blockedReconcileRoom{
 		reconcileRooms: reconcileRooms{rooms: []Room{{Name: "42", SID: "RM_1"}},
 			participants: map[string][]Participant{"42": {{Identity: "1", SID: "PA_old"}}}},
@@ -56,6 +57,7 @@ func TestReconcileKeepsJoinCommittedDuringListing(t *testing.T) {
 }
 
 func TestRemovalKeepsLocalRejoinMissingFromRemoteListing(t *testing.T) {
+	t.Parallel()
 	r := &reconcileRooms{}
 	s := NewService(Options{Rooms: r, APIKey: "key", APISecret: "secret"})
 	s.sessions[1] = &session{room: "42", sid: "PA_new"}
@@ -82,6 +84,7 @@ func (r *failingRemovalRoom) RemoveParticipant(context.Context, string, string) 
 }
 
 func TestRemovalOutageWarnsPeriodicallyAndLogsRecovery(t *testing.T) {
+	t.Parallel()
 	r := &failingRemovalRoom{}
 	var logs bytes.Buffer
 	now := time.Now()
@@ -103,6 +106,7 @@ func TestRemovalOutageWarnsPeriodicallyAndLogsRecovery(t *testing.T) {
 }
 
 func TestRemovalContinuesAfterFiveFailuresAndLogsOnce(t *testing.T) {
+	t.Parallel()
 	r := &failingRemovalRoom{}
 	var logs bytes.Buffer
 	now := time.Now()

@@ -151,6 +151,7 @@ func awaitLiveHook(t *testing.T, notices <-chan struct{}, what string, ready fun
 }
 
 func TestRealLiveKitAdmissionModerationAndRecovery(t *testing.T) {
+	t.Parallel()
 	pins, err := os.ReadFile("../../../deploy/.env.ci")
 	if err != nil {
 		t.Fatalf("read LiveKit image pins: %v", err)

@@ -57,6 +57,7 @@ func webhookEnv(t *testing.T, c voice.Channels, opts ...func(*voice.Options)) *e
 }
 
 func TestWebhookRetriesFailedAdmission(t *testing.T) {
+	t.Parallel()
 	var fail atomic.Bool
 	fail.Store(true)
 	e := webhookEnv(t, admissionChannels{fail: &fail})
@@ -75,6 +76,7 @@ func TestWebhookRetriesFailedAdmission(t *testing.T) {
 }
 
 func TestLateJoinedDoesNotReviveDepartedParticipant(t *testing.T) {
+	t.Parallel()
 	e := webhookEnv(t, admissionChannels{})
 	p := lkParticipant(userBody{ID: "1"}, "PA_left", "join")
 	e.hook(&livekit.WebhookEvent{Event: "participant_left", Room: lkRoom("42", "RM_1"), Participant: p})
@@ -85,6 +87,7 @@ func TestLateJoinedDoesNotReviveDepartedParticipant(t *testing.T) {
 }
 
 func TestRemovalWhileJoinIsAdmittedDoesNotCreateState(t *testing.T) {
+	t.Parallel()
 	for _, remove := range []string{"member", "channel"} {
 		t.Run(remove, func(t *testing.T) {
 			entered, release := make(chan struct{}), make(chan struct{})
@@ -114,6 +117,7 @@ func TestRemovalWhileJoinIsAdmittedDoesNotCreateState(t *testing.T) {
 }
 
 func TestReconcileDoesNotRestoreRemovedSnapshot(t *testing.T) {
+	t.Parallel()
 	for _, removal := range []string{"member", "channel", "departure"} {
 		t.Run(removal, func(t *testing.T) {
 			entered, release := make(chan struct{}), make(chan struct{})

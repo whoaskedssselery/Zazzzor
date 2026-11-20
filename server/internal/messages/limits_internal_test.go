@@ -24,6 +24,7 @@ func burstAndRefill(l *ratelimit.Limiter) (int, time.Duration) {
 // 10/s with bursts of 20, typing calls 5/s with bursts of 10, one typing
 // notice per 3 s.
 func TestDefaultLimits(t *testing.T) {
+	t.Parallel()
 	s := NewService(Options{})
 	for _, tc := range []struct {
 		name  string

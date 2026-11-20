@@ -48,6 +48,7 @@ func fakeServer(t *testing.T, methods map[string]http.HandlerFunc) string {
 }
 
 func TestLiveKitListsParticipants(t *testing.T) {
+	t.Parallel()
 	joined := time.Date(2026, 10, 31, 12, 0, 0, 123e6, time.UTC)
 	url := fakeServer(t, map[string]http.HandlerFunc{
 		"ListParticipants": func(w http.ResponseWriter, r *http.Request) {
@@ -81,6 +82,7 @@ func TestLiveKitListsParticipants(t *testing.T) {
 }
 
 func TestLiveKitRemovingAGoneParticipantSucceeds(t *testing.T) {
+	t.Parallel()
 	url := fakeServer(t, map[string]http.HandlerFunc{
 		"RemoveParticipant": func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
@@ -94,6 +96,7 @@ func TestLiveKitRemovingAGoneParticipantSucceeds(t *testing.T) {
 }
 
 func TestLiveKitReportsRemovalFailures(t *testing.T) {
+	t.Parallel()
 	url := fakeServer(t, map[string]http.HandlerFunc{
 		"RemoveParticipant": func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")

@@ -18,6 +18,7 @@ func moderationPath(guildID, userID string) string {
 }
 
 func TestModerationHTTPChecksPermissionsAndVisibility(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("owner")
 	mod, m := e.user("moderator")
@@ -57,6 +58,7 @@ func TestModerationHTTPChecksPermissionsAndVisibility(t *testing.T) {
 }
 
 func TestModerationHTTPRejectsInvalidFields(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, u := e.user("owner")
 	g, _, vc := newGuild(t, owner, "home")
@@ -69,6 +71,7 @@ func TestModerationHTTPRejectsInvalidFields(t *testing.T) {
 }
 
 func TestModerationHTTPUsesTheSharedVoiceWriteLimit(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, func(o *voice.Options) { o.WriteLimiter = ratelimit.New(rate.Limit(0), 1, voice.TokenTTL) })
 	owner, u := e.user("owner")
 	g, _, vc := newGuild(t, owner, "home")

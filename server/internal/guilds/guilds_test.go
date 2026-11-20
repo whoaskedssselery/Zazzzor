@@ -25,6 +25,7 @@ import (
 )
 
 func TestCreateGuildBootstrapsEveryoneRole(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c, u := e.user("alice")
 	g := createGuild(t, c, "  Friends  ")
@@ -77,6 +78,7 @@ func TestCreateGuildBootstrapsEveryoneRole(t *testing.T) {
 }
 
 func TestCreateGuildValidatesName(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c, _ := e.user("alice")
 	for name, v := range map[string]string{
@@ -94,6 +96,7 @@ func TestCreateGuildValidatesName(t *testing.T) {
 }
 
 func TestGuildLimitPerUser(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c, u := e.user("alice")
 	for i := range guilds.MaxGuildsPerUser - 1 {
@@ -128,6 +131,7 @@ func TestGuildLimitPerUser(t *testing.T) {
 }
 
 func TestGuildCreationRateLimited(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, func(o *guilds.Options) { o.CreateLimiter = nil })
 	c, _ := e.user("alice")
 	for range 5 {
@@ -141,6 +145,7 @@ func TestGuildCreationRateLimited(t *testing.T) {
 }
 
 func TestWritesRateLimited(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, func(o *guilds.Options) { o.WriteLimiter = ratelimit.New(rate.Every(time.Hour), 2, 2*time.Hour) })
 	c, _ := e.user("alice")
 	g := createGuild(t, c, "guild")
@@ -153,6 +158,7 @@ func TestWritesRateLimited(t *testing.T) {
 }
 
 func TestOnlyMembersSeeGuild(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	stranger, _ := e.user("mallory")
@@ -181,6 +187,7 @@ func TestOnlyMembersSeeGuild(t *testing.T) {
 }
 
 func TestUpdateGuildRequiresManageGuild(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	member, mu := e.user("bob")
@@ -209,6 +216,7 @@ func TestUpdateGuildRequiresManageGuild(t *testing.T) {
 }
 
 func TestDeleteGuildOnlyOwner(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, ou := e.user("alice")
 	admin, au := e.user("bob")
@@ -242,6 +250,7 @@ func TestDeleteGuildOnlyOwner(t *testing.T) {
 }
 
 func TestOwnerCannotLeave(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	member, mu := e.user("bob")
@@ -264,6 +273,7 @@ func TestOwnerCannotLeave(t *testing.T) {
 }
 
 func TestMembersPagination(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, ou := e.user("alice")
 	g := createGuild(t, owner, "crowd")
@@ -307,6 +317,7 @@ func TestMembersPagination(t *testing.T) {
 }
 
 func TestCreateRoleCannotGrantMissingPermission(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	mgr, mu := e.user("bob")
@@ -344,6 +355,7 @@ func TestCreateRoleCannotGrantMissingPermission(t *testing.T) {
 }
 
 func TestRoleHierarchyEnforced(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, ou := e.user("alice")
 	mgr, mu := e.user("bob")
@@ -400,6 +412,7 @@ func TestRoleHierarchyEnforced(t *testing.T) {
 }
 
 func TestReorderRoles(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	mgr, mu := e.user("bob")
@@ -461,6 +474,7 @@ func TestReorderRoles(t *testing.T) {
 }
 
 func TestConcurrentRoleCreation(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	g := createGuild(t, owner, "busy")
@@ -493,6 +507,7 @@ func TestConcurrentRoleCreation(t *testing.T) {
 }
 
 func TestCannotDeleteEveryone(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	g := createGuild(t, owner, "guild")
@@ -516,6 +531,7 @@ func TestCannotDeleteEveryone(t *testing.T) {
 }
 
 func TestNicknamePermissions(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, ou := e.user("alice")
 	mod, mu := e.user("bob")
@@ -564,6 +580,7 @@ func TestNicknamePermissions(t *testing.T) {
 }
 
 func TestRoleChangePublishesGuildSync(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	_, mu := e.user("bob")
@@ -603,6 +620,7 @@ func TestRoleChangePublishesGuildSync(t *testing.T) {
 }
 
 func TestGuildIcon(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	member, mu := e.user("bob")
@@ -641,6 +659,7 @@ func TestGuildIcon(t *testing.T) {
 }
 
 func TestDirectory(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, ou := e.user("alice")
 	_, mu := e.user("bob")
@@ -687,6 +706,7 @@ func TestDirectory(t *testing.T) {
 }
 
 func TestAccessForOtherModules(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, ou := e.user("alice")
 	_, mu := e.user("bob")
@@ -738,6 +758,7 @@ func TestAccessForOtherModules(t *testing.T) {
 }
 
 func TestPeerIDs(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, au := e.user("alice")
 	_, bu := e.user("bob")

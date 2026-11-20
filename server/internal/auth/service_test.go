@@ -25,6 +25,7 @@ func userID(t *testing.T, u userBody) snowflake.ID {
 }
 
 func TestAccountsProfileAndAvatar(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c := e.client()
 	id := userID(t, register(t, c, "nina", "password123"))
@@ -83,6 +84,7 @@ func TestAccountsProfileAndAvatar(t *testing.T) {
 }
 
 func TestUsersByIDs(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c := e.client()
 	a := userID(t, register(t, c, "oleg", "password123"))
@@ -111,6 +113,7 @@ func TestUsersByIDs(t *testing.T) {
 }
 
 func TestIsAdminCaseInsensitive(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, func(o *auth.Options) { o.AdminUsernames = []string{"Root_User"} })
 	c := e.client()
 	created, err := e.svc.CreateAdmin(t.Context(), "ROOT_user", "password123")
@@ -130,6 +133,7 @@ func TestIsAdminCaseInsensitive(t *testing.T) {
 }
 
 func TestChangePasswordRevokesOtherSessions(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c1, c2 := e.client(), e.client()
 	register(t, c1, "pavel", "password123")
@@ -181,6 +185,7 @@ func TestChangePasswordRevokesOtherSessions(t *testing.T) {
 }
 
 func TestRevokeUserSessions(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c1, c2 := e.client(), e.client()
 	id := userID(t, register(t, c1, "rita", "password123"))
@@ -214,6 +219,7 @@ func TestRevokeUserSessions(t *testing.T) {
 }
 
 func TestValidationErrorMapsToProblem(t *testing.T) {
+	t.Parallel()
 	err := &auth.ValidationError{Fields: []httpx.FieldError{{Field: "username", Message: "bad"}}}
 	if !strings.Contains(err.Error(), "username") {
 		t.Fatalf("Error() = %q", err.Error())

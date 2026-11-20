@@ -174,6 +174,7 @@ func voiceChannel(t *testing.T, c *testkit.Client, g guildBody, name string) cha
 }
 
 func TestVoiceStateUpdateReachesOnlyViewers(t *testing.T) {
+	t.Parallel()
 	e, _ := voiceEnv(t)
 	alice, _ := e.user("alice")
 	bob, b := e.user("bob")
@@ -199,6 +200,7 @@ func TestVoiceStateUpdateReachesOnlyViewers(t *testing.T) {
 }
 
 func TestGuildStateListsOnlyVisibleVoiceStates(t *testing.T) {
+	t.Parallel()
 	e, _ := voiceEnv(t)
 	alice, _ := e.user("alice")
 	bob, b := e.user("bob")
@@ -223,6 +225,7 @@ func TestGuildStateListsOnlyVisibleVoiceStates(t *testing.T) {
 }
 
 func TestRemovingAMemberTakesOnlyThemOutOfVoice(t *testing.T) {
+	t.Parallel()
 	cases := map[string]func(t *testing.T, alice, bob *testkit.Client, g guildBody, b userBody){
 		"kick": func(t *testing.T, alice, _ *testkit.Client, g guildBody, b userBody) {
 			expect(t, alice.Do(http.MethodDelete, "/api/v1/guilds/"+g.ID+"/members/"+b.ID, nil), http.StatusNoContent)
@@ -258,6 +261,7 @@ func TestRemovingAMemberTakesOnlyThemOutOfVoice(t *testing.T) {
 }
 
 func TestDeletingAGuildTakesEveryoneOutOfVoice(t *testing.T) {
+	t.Parallel()
 	e, lk := voiceEnv(t)
 	alice, a := e.user("alice")
 	bob, b := e.user("bob")
@@ -277,6 +281,7 @@ func TestDeletingAGuildTakesEveryoneOutOfVoice(t *testing.T) {
 }
 
 func TestDeletingAVoiceChannelTakesEveryoneOutOfIt(t *testing.T) {
+	t.Parallel()
 	e, lk := voiceEnv(t)
 	alice, a := e.user("alice")
 	g, _ := newGuild(t, alice, "guild")
@@ -295,6 +300,7 @@ func TestDeletingAVoiceChannelTakesEveryoneOutOfIt(t *testing.T) {
 }
 
 func TestVoiceMoveReachesOnlyItsTarget(t *testing.T) {
+	t.Parallel()
 	e, _ := voiceEnv(t)
 	owner, a := e.user("owner")
 	target, u := e.user("target")

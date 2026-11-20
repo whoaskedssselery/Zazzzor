@@ -35,6 +35,7 @@ func reconcileTimestamp(t *testing.T, reg *prometheus.Registry) float64 {
 }
 
 func TestReconcileMetricAdvancesOnlyAfterCompleteSuccess(t *testing.T) {
+	t.Parallel()
 	for _, failure := range []string{"room_list", "participant_list", "permissions", "media", "cancelled"} {
 		t.Run(failure, func(t *testing.T) {
 			now := time.Unix(1_800_000_000, 0)
