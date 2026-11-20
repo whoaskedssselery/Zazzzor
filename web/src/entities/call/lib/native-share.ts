@@ -52,8 +52,14 @@ export interface Thumbnail {
   rgba: Uint8ClampedArray<ArrayBuffer>;
 }
 
-/** Reads the app's thumbnail: width and height as little-endian u32, then RGBA rows. */
-export const decodeThumbnail = (buffer: ArrayBuffer): Thumbnail => {
+/**
+ * Reads the app's thumbnail: width and height as little-endian u32, then RGBA
+ * rows. A page served over the network gets the bytes as an array of numbers
+ * rather than an ArrayBuffer (the app answers it through messages, not its
+ * own protocol), so both are read.
+ */
+export const decodeThumbnail = (bytes: ArrayBuffer | readonly number[]): Thumbnail => {
+  const buffer = bytes instanceof ArrayBuffer ? bytes : Uint8Array.from(bytes).buffer;
   const view = new DataView(buffer);
   const width = view.getUint32(0, true);
   const height = view.getUint32(4, true);
@@ -76,7 +82,7 @@ export const nativeShare = {
   },
   sources: (): Promise<ShareSource[]> => desktopInvoke("share_sources"),
   thumbnail: async (id: string): Promise<Thumbnail> =>
-    decodeThumbnail(await desktopInvoke<ArrayBuffer>("share_thumbnail", { id })),
+    decodeThumbnail(await desktopInvoke<ArrayBuffer | number[]>("share_thumbnail", { id })),
   /** Starts sharing source `id` (replacing a share in progress); `sound` brings its sound, `fps` caps the frame rate. */
   start: (args: { url: string; token: string; id: string } & ShareChoice): Promise<void> =>
     desktopInvoke("share_start", { ...args }),
