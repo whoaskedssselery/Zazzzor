@@ -74,6 +74,9 @@ describe("GuildRail", () => {
   it("marks home on /channels/@me", async () => {
     await renderRouted(<GuildRail activeGuildId={null} />);
     expect(servers().getByRole("link", { name: "Главная" }).getAttribute("aria-current")).toBe("page");
+    // Home is the Zazzzor mark, not a house: its three letters, decorative inside the named link.
+    const mark = servers().getByRole("link", { name: "Главная" }).querySelector("svg[aria-hidden]");
+    expect(mark?.querySelectorAll(".logo-face")).toHaveLength(3);
   });
 
   it("opens the dialogs to create and to join a server", async () => {

@@ -1,14 +1,16 @@
 import type { ReactNode } from "react";
+import { LogoLockup } from "@/shared/ui";
 
 /**
  * The frame of the sign-in and registration screens: one card in the middle
  * of the darkest surface, the way Discord greets you, in the app's own warm
- * tones. The card is the only raised thing on the page.
+ * tones, under the mark and the name. The card is the only raised thing on
+ * the page.
  */
 export const AuthLayout = ({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) => (
   <main className="flex min-h-dvh flex-col items-center justify-center bg-rail px-4 py-10">
-    <p className="mb-6 text-lg font-bold tracking-tight text-fg" translate="no">
-      Zazzzor
+    <p className="mb-6">
+      <LogoLockup fontSize={28} />
     </p>
     <section
       aria-labelledby="auth-title"

@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Compass, House, type LucideIcon, Plus, Users } from "lucide-react";
+import { Compass, type LucideIcon, Plus, Users } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { useChannelToOpen } from "@/entities/channel";
 import {
@@ -15,15 +15,15 @@ import {
 } from "@/entities/guild";
 import { CreateGuildDialog } from "@/features/create-guild";
 import { JoinGuildDialog } from "@/features/join-guild";
-import { Avatar, Badge, cn, formatCount, GuildIcon, Tooltip } from "@/shared/ui";
+import { Avatar, Badge, cn, formatCount, GuildIcon, Logo, Tooltip } from "@/shared/ui";
 
-/** The round tile of the rail's own buttons (home, create, join): it squares off on hover and focus. */
+/** The round tile of the rail's own buttons (create, join, a group): it squares off on hover and focus. */
 const tileClass =
   "flex size-12 items-center justify-center rounded-[50%] bg-guild transition-[border-radius,background-color,color] duration-(--duration-base) ease-(--ease-out) " +
   "group-hover:rounded-xl group-hover:bg-accent group-hover:text-on-accent group-focus-visible:rounded-xl group-focus-visible:bg-accent group-focus-visible:text-on-accent";
 
 /**
- * One place in the rail: the pill on its left edge (tall for the open
+ * One place in the rail: the jade pill on its left edge ("here": tall for the open
  * server, short for one with unread messages) and a tooltip with the name on the right.
  */
 const RailItem = ({
@@ -41,7 +41,7 @@ const RailItem = ({
     <span
       aria-hidden
       className={cn(
-        "absolute top-1/2 left-0 w-1 -translate-y-1/2 rounded-r-full bg-fg transition-[height] duration-(--duration-base)",
+        "absolute top-1/2 left-0 w-1 -translate-y-1/2 rounded-r-full bg-accent transition-[height] duration-(--duration-base)",
         active ? "h-10" : unread ? "h-2" : "h-0",
       )}
     />
@@ -173,8 +173,19 @@ export const GuildRail = ({ activeGuildId }: { activeGuildId: string | null }) =
             aria-current={home ? "page" : undefined}
             className="group relative rounded-xl"
           >
-            <span className={cn(tileClass, home ? "rounded-xl bg-accent text-on-accent" : "text-fg")}>
-              <House aria-hidden className="size-6" strokeWidth={1.75} />
+            {/*
+              The mark is home, as in Discord, always in its own colours: the
+              tile never takes the accent fill, it only squares off on hover,
+              focus and when open (the pill marks it open).
+            */}
+            <span
+              className={cn(
+                "flex size-12 items-center justify-center rounded-[50%] bg-guild transition-[border-radius] duration-(--duration-base) ease-(--ease-out)",
+                "group-hover:rounded-xl group-focus-visible:rounded-xl",
+                home && "rounded-xl",
+              )}
+            >
+              <Logo size={30} />
             </span>
             {requests > 0 && (
               <Badge
