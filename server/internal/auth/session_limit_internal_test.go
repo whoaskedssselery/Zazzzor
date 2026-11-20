@@ -13,6 +13,7 @@ import (
 )
 
 func TestSessionFailuresAreLimitedBeforeDatabase(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	pool := testkit.Postgres(t)
 	s := NewService(Options{Pool: pool, IDs: snowflake.NewGenerator(0, time.Now), Now: func() time.Time { return now }})
@@ -63,6 +64,7 @@ func TestSessionFailuresAreLimitedBeforeDatabase(t *testing.T) {
 }
 
 func TestSessionLimitCountsLookupsInFlight(t *testing.T) {
+	t.Parallel()
 	pool := testkit.Postgres(t)
 	s := NewService(Options{Pool: pool, IDs: snowflake.NewGenerator(0, time.Now)})
 	// Use the same admission boundary as lookup without requiring 30 open

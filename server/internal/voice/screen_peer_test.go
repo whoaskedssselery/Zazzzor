@@ -23,6 +23,7 @@ import (
 // TestScreenPublisherProcess is invoked only inside the SFU network namespace.
 // The pinned CLI cannot publish SCREEN_SHARE or consume an API-issued token.
 func TestScreenPublisherProcess(t *testing.T) {
+	t.Parallel()
 	token := os.Getenv("ZAZZZOR_TEST_SCREEN_TOKEN")
 	if token == "" {
 		t.Skip("container peer helper")

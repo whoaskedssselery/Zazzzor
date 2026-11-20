@@ -13,6 +13,7 @@ import (
 )
 
 func TestLiveKitUpdatesExplicitParticipantPermissions(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name      string
 		subscribe bool
@@ -51,6 +52,7 @@ func TestLiveKitUpdatesExplicitParticipantPermissions(t *testing.T) {
 }
 
 func TestLiveKitReportsPermissionUpdateFailure(t *testing.T) {
+	t.Parallel()
 	url := fakeServer(t, map[string]http.HandlerFunc{
 		"UpdateParticipant": func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")

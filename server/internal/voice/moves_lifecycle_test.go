@@ -19,6 +19,7 @@ import (
 )
 
 func TestModeratorDisconnectRevokesPendingTokens(t *testing.T) {
+	t.Parallel()
 	e, _, r := moderationEnv(t, permissions.MoveMembers)
 	old, err := e.voice.Join(t.Context(), 42, auth.User{ID: 1}, "https://example.test")
 	if err != nil {
@@ -37,6 +38,7 @@ func TestModeratorDisconnectRevokesPendingTokens(t *testing.T) {
 }
 
 func TestVoiceMoveSupersedesAnOlderDestinationToken(t *testing.T) {
+	t.Parallel()
 	e, _, _ := moderationEnv(t, permissions.MoveMembers)
 	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Move: destination(44)}); err != nil {
 		t.Fatalf("first Move: %v", err)
@@ -64,6 +66,7 @@ func TestVoiceMoveSupersedesAnOlderDestinationToken(t *testing.T) {
 }
 
 func TestVoiceMoveRejectsNewSourceSessions(t *testing.T) {
+	t.Parallel()
 	e, _, _ := moderationEnv(t, permissions.MoveMembers)
 	old, err := e.voice.Join(t.Context(), 42, auth.User{ID: 1}, "https://example.test")
 	if err != nil {
@@ -79,6 +82,7 @@ func TestVoiceMoveRejectsNewSourceSessions(t *testing.T) {
 }
 
 func TestExplicitJoinElsewhereCancelsTheMove(t *testing.T) {
+	t.Parallel()
 	var clock atomic.Int64
 	clock.Store(time.Now().UnixNano())
 	e, _, r := moderationEnv(t, permissions.MoveMembers, func(o *voice.Options) { o.Now = func() time.Time { return time.Unix(0, clock.Load()) } })
@@ -102,6 +106,7 @@ func TestExplicitJoinElsewhereCancelsTheMove(t *testing.T) {
 }
 
 func TestDisconnectChecksMoveAndPreservesStateOnFailure(t *testing.T) {
+	t.Parallel()
 	e, c, r := moderationEnv(t, permissions.MuteMembers|permissions.DeafenMembers)
 	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Move: disconnect()}); !errors.Is(err, voice.ErrMissingPerm) {
 		t.Fatalf("disconnect without MOVE=%v", err)
@@ -117,6 +122,7 @@ func TestDisconnectChecksMoveAndPreservesStateOnFailure(t *testing.T) {
 }
 
 func TestDisconnectHandlesItsOwnLeftWebhook(t *testing.T) {
+	t.Parallel()
 	e, _, r := moderationEnv(t, permissions.MoveMembers)
 	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Move: destination(44)}); err != nil {
 		t.Fatalf("Move: %v", err)
@@ -138,6 +144,7 @@ func TestDisconnectHandlesItsOwnLeftWebhook(t *testing.T) {
 }
 
 func TestMoveToCurrentChannelIsNoop(t *testing.T) {
+	t.Parallel()
 	e, _, r := moderationEnv(t, permissions.MoveMembers)
 	n, updates := len(e.pub.events), len(r.updates)
 	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Move: destination(42)}); err != nil {
@@ -149,6 +156,7 @@ func TestMoveToCurrentChannelIsNoop(t *testing.T) {
 }
 
 func TestMoveAndMuteAppliesFlagsToTheDestination(t *testing.T) {
+	t.Parallel()
 	e, _, _ := moderationEnv(t, permissions.MoveMembers|permissions.MuteMembers)
 	on := true
 	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Mute: &on, Move: destination(44)}); err != nil {
@@ -168,6 +176,7 @@ func TestMoveAndMuteAppliesFlagsToTheDestination(t *testing.T) {
 }
 
 func TestMovePreparationDoesNotOutliveMemberRemoval(t *testing.T) {
+	t.Parallel()
 	e, c, _ := moderationEnv(t, permissions.MoveMembers)
 	entered, release := make(chan struct{}), make(chan struct{})
 	unblock := sync.OnceFunc(func() { close(release) })

@@ -14,6 +14,7 @@ type screenRooms struct {
 }
 
 func TestScreenReconcilePreservesConcurrentCompanion(t *testing.T) {
+	t.Parallel()
 	s, r, room, p := screenService(t)
 	entered, release, done := make(chan struct{}), make(chan struct{}), make(chan error, 1)
 	unblock := sync.OnceFunc(func() { close(release) })
@@ -37,6 +38,7 @@ func TestScreenReconcilePreservesConcurrentCompanion(t *testing.T) {
 }
 
 func TestScreenReconcilePreservesTrackDuringRPC(t *testing.T) {
+	t.Parallel()
 	s, r, room, p := screenService(t)
 	if err := s.joined(t.Context(), 42, room, p); err != nil {
 		t.Fatalf("screen: %v", err)
@@ -76,6 +78,7 @@ func (r *screenRooms) ListParticipants(context.Context, string) ([]Participant, 
 }
 
 func TestScreenReconcileRestoresOwnerBeforeCompanion(t *testing.T) {
+	t.Parallel()
 	s, r, _, p := screenService(t)
 	p.Screens = []string{"track"}
 	s.rooms = &screenRooms{refreshRooms: r, participants: []Participant{p, {Identity: "1", SID: "PA_1", Join: "join"}}}
@@ -98,6 +101,7 @@ func TestScreenReconcileRestoresOwnerBeforeCompanion(t *testing.T) {
 }
 
 func TestScreenReconcileRemovesOrphan(t *testing.T) {
+	t.Parallel()
 	s, r, _, p := screenService(t)
 	s.rooms = &screenRooms{refreshRooms: r, participants: []Participant{p}}
 	if err := s.Reconcile(t.Context()); err != nil {
@@ -109,6 +113,7 @@ func TestScreenReconcileRemovesOrphan(t *testing.T) {
 }
 
 func TestScreenReconcileClearsMissingCompanion(t *testing.T) {
+	t.Parallel()
 	s, r, room, p := screenService(t)
 	p.Screens = []string{"track"}
 	if err := s.joined(t.Context(), 42, room, p); err != nil {
@@ -130,6 +135,7 @@ func (*screenUnavailableRooms) ListParticipants(context.Context, string) ([]Part
 }
 
 func TestScreenReconcileKeepsCompanionWhenRoomCannotBeListed(t *testing.T) {
+	t.Parallel()
 	s, r, room, p := screenService(t)
 	p.Screens = []string{"screen"}
 	if err := s.joined(t.Context(), 42, room, p); err != nil {
@@ -165,6 +171,7 @@ func (r *screenMultiRooms) ListParticipants(ctx context.Context, room string) ([
 }
 
 func TestScreenReconcileRemovesOrphanAlongsideValidCompanion(t *testing.T) {
+	t.Parallel()
 	for _, orphanFirst := range []bool{false, true} {
 		t.Run(map[bool]string{false: "valid first", true: "orphan first"}[orphanFirst], func(t *testing.T) {
 			s, r, _, p := screenService(t)

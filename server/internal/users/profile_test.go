@@ -19,6 +19,7 @@ type selfBody struct {
 }
 
 func TestUpdateAboutStatusAndLine(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c := e.client()
 	u := register(t, c, "alice", "password123")
@@ -104,6 +105,7 @@ func (l links) ProfileLink(_ context.Context, viewer, target snowflake.ID) ([]sn
 }
 
 func TestProfileVisibleToPeersOnly(t *testing.T) {
+	t.Parallel()
 	l := links{}
 	e := newEnv(t, func(o *users.Options) { o.Peers = l })
 	ca, cb, cc := e.client(), e.client(), e.client()

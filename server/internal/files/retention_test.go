@@ -115,6 +115,7 @@ func reconcile(t *testing.T, d *files.Disk, r files.References) files.Report {
 }
 
 func TestDeleteMovesImageToTrash(t *testing.T) {
+	t.Parallel()
 	disk, root := newDisk(t)
 	ref := saveAt(t, disk, root, files.KindAvatar, owner, 0, time.Now())
 	want, err := os.ReadFile(livePath(root, ref))
@@ -143,6 +144,7 @@ func TestDeleteMovesImageToTrash(t *testing.T) {
 }
 
 func TestDeleteOfMissingImageIsNoop(t *testing.T) {
+	t.Parallel()
 	disk, root := newDisk(t)
 	ref := saveAt(t, disk, root, files.KindAvatar, owner, 0, time.Now())
 	if err := disk.Delete(ref.Kind, ref.OwnerID, ref.Hash); err != nil {
@@ -157,6 +159,7 @@ func TestDeleteOfMissingImageIsNoop(t *testing.T) {
 }
 
 func TestReconcileRestoresReferencedImageFromTrash(t *testing.T) {
+	t.Parallel()
 	disk, root, _ := newClockDisk(t, 0)
 	ref := saveAt(t, disk, root, files.KindAvatar, owner, 0, time.Now())
 	if err := disk.Delete(ref.Kind, ref.OwnerID, ref.Hash); err != nil {
@@ -177,6 +180,7 @@ func TestReconcileRestoresReferencedImageFromTrash(t *testing.T) {
 }
 
 func TestReconcileTrashesOldOrphan(t *testing.T) {
+	t.Parallel()
 	disk, root, c := newClockDisk(t, 0)
 	ref := saveAt(t, disk, root, files.KindIcon, owner, 0, c.now.Add(-files.ReconcileGrace-time.Minute))
 	rep := reconcile(t, disk, &refs{})
@@ -192,6 +196,7 @@ func TestReconcileTrashesOldOrphan(t *testing.T) {
 }
 
 func TestReconcileKeepsRecentOrphan(t *testing.T) {
+	t.Parallel()
 	disk, root, c := newClockDisk(t, 0)
 	ref := saveAt(t, disk, root, files.KindIcon, owner, 0, c.now.Add(-files.ReconcileGrace+time.Minute))
 	rep := reconcile(t, disk, &refs{})
@@ -204,6 +209,7 @@ func TestReconcileKeepsRecentOrphan(t *testing.T) {
 }
 
 func TestReconcileKeepsFileReferencedDuringRun(t *testing.T) {
+	t.Parallel()
 	disk, root, c := newClockDisk(t, 0)
 	ref := saveAt(t, disk, root, files.KindAvatar, owner, 0, c.now.Add(-2*files.ReconcileGrace))
 	// The list says nothing refers to it; by the time of the move, the
@@ -218,6 +224,7 @@ func TestReconcileKeepsFileReferencedDuringRun(t *testing.T) {
 }
 
 func TestReconcileRestoresTrashedOrphanReferencedAgain(t *testing.T) {
+	t.Parallel()
 	disk, root, c := newClockDisk(t, 0)
 	ref := saveAt(t, disk, root, files.KindIcon, owner, 0, c.now.Add(-2*files.ReconcileGrace))
 	reconcile(t, disk, &refs{})
@@ -232,6 +239,7 @@ func TestReconcileRestoresTrashedOrphanReferencedAgain(t *testing.T) {
 }
 
 func TestReconcileWarnsAboutMissingReference(t *testing.T) {
+	t.Parallel()
 	disk, root, _ := newClockDisk(t, 0)
 	missing := files.Reference{Kind: files.KindAvatar, OwnerID: owner, Hash: "0123456789abcdef"}
 	present := saveAt(t, disk, root, files.KindIcon, owner, 0, time.Now())
@@ -251,6 +259,7 @@ func TestReconcileWarnsAboutMissingReference(t *testing.T) {
 }
 
 func TestReconcileLeavesUnexpectedEntriesAlone(t *testing.T) {
+	t.Parallel()
 	disk, root, c := newClockDisk(t, time.Hour)
 	if err := os.MkdirAll(filepath.Join(root, "avatars", owner.String()), 0o750); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
@@ -285,6 +294,7 @@ func TestReconcileLeavesUnexpectedEntriesAlone(t *testing.T) {
 }
 
 func TestReconcileContinuesPastFailedItem(t *testing.T) {
+	t.Parallel()
 	disk, root, c := newClockDisk(t, 0)
 	old := c.now.Add(-2 * files.ReconcileGrace)
 	bad := saveAt(t, disk, root, files.KindIcon, owner, 0, old)
@@ -320,6 +330,7 @@ func TestReconcileContinuesPastFailedItem(t *testing.T) {
 }
 
 func TestReconcileTouchesNothingWhenReferencesFail(t *testing.T) {
+	t.Parallel()
 	disk, root, c := newClockDisk(t, 0)
 	ref := saveAt(t, disk, root, files.KindIcon, owner, 0, c.now.Add(-2*files.ReconcileGrace))
 	if _, err := disk.Reconcile(t.Context(), &refs{err: errors.New("db down")}); err == nil {
@@ -331,6 +342,7 @@ func TestReconcileTouchesNothingWhenReferencesFail(t *testing.T) {
 }
 
 func TestPurgeKeepsEntriesWithinRetention(t *testing.T) {
+	t.Parallel()
 	disk, root, c := newClockDisk(t, 48*time.Hour)
 	ref := saveAt(t, disk, root, files.KindAvatar, owner, 0, c.now)
 	if err := disk.Delete(ref.Kind, ref.OwnerID, ref.Hash); err != nil {
@@ -347,6 +359,7 @@ func TestPurgeKeepsEntriesWithinRetention(t *testing.T) {
 }
 
 func TestPurgeRemovesExpiredEntries(t *testing.T) {
+	t.Parallel()
 	disk, root, c := newClockDisk(t, 48*time.Hour)
 	ref := saveAt(t, disk, root, files.KindAvatar, owner, 0, c.now)
 	if err := disk.Delete(ref.Kind, ref.OwnerID, ref.Hash); err != nil {
@@ -363,6 +376,7 @@ func TestPurgeRemovesExpiredEntries(t *testing.T) {
 }
 
 func TestPurgeNeverTouchesLiveFiles(t *testing.T) {
+	t.Parallel()
 	disk, root, c := newClockDisk(t, 48*time.Hour)
 	ref := saveAt(t, disk, root, files.KindAvatar, owner, 0, c.now.Add(-1000*time.Hour))
 	c.now = c.now.Add(1000 * time.Hour)
@@ -375,6 +389,7 @@ func TestPurgeNeverTouchesLiveFiles(t *testing.T) {
 }
 
 func TestPurgeWithoutRetentionKeepsTrash(t *testing.T) {
+	t.Parallel()
 	disk, root, c := newClockDisk(t, 0)
 	ref := saveAt(t, disk, root, files.KindAvatar, owner, 0, c.now)
 	if err := disk.Delete(ref.Kind, ref.OwnerID, ref.Hash); err != nil {
@@ -390,6 +405,7 @@ func TestPurgeWithoutRetentionKeepsTrash(t *testing.T) {
 }
 
 func TestRunPurgePurgesAtStart(t *testing.T) {
+	t.Parallel()
 	disk, root, c := newClockDisk(t, 48*time.Hour)
 	ref := saveAt(t, disk, root, files.KindAvatar, owner, 0, c.now)
 	if err := disk.Delete(ref.Kind, ref.OwnerID, ref.Hash); err != nil {
@@ -414,6 +430,7 @@ func TestRunPurgePurgesAtStart(t *testing.T) {
 }
 
 func TestRunPurgeStopsOnCancel(t *testing.T) {
+	t.Parallel()
 	disk, _ := newDisk(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})

@@ -6,6 +6,7 @@ import (
 )
 
 func TestCoalescedRemovalPreservesRetryBudget(t *testing.T) {
+	t.Parallel()
 	s := NewService(Options{Rooms: &replacementRoom{}, APIKey: "key", APISecret: "secret"})
 	key := removalKey{room: "42", identity: "1"}
 	s.removeLocked(key.room, key.identity, "PA_new")
@@ -22,6 +23,7 @@ func TestCoalescedRemovalPreservesRetryBudget(t *testing.T) {
 }
 
 func TestRemovalRetainsEveryRejectedSID(t *testing.T) {
+	t.Parallel()
 	r := &replacementRoom{}
 	s := NewService(Options{Rooms: r, APIKey: "key", APISecret: "secret"})
 	s.mu.Lock()
@@ -35,6 +37,7 @@ func TestRemovalRetainsEveryRejectedSID(t *testing.T) {
 }
 
 func TestStaleLocalStateDoesNotProtectRejectedParticipant(t *testing.T) {
+	t.Parallel()
 	r := &replacementRoom{}
 	s := NewService(Options{Rooms: r, APIKey: "key", APISecret: "secret"})
 	s.mu.Lock()
@@ -48,6 +51,7 @@ func TestStaleLocalStateDoesNotProtectRejectedParticipant(t *testing.T) {
 }
 
 func TestAcceptedSIDCancellationKeepsOtherRejectedSIDs(t *testing.T) {
+	t.Parallel()
 	r := &replacementRoom{}
 	s := NewService(Options{Rooms: r, APIKey: "key", APISecret: "secret"})
 	s.mu.Lock()

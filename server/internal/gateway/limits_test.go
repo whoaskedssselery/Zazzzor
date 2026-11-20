@@ -37,6 +37,7 @@ func oneEvery(d time.Duration, burst int) *ratelimit.Limiter {
 }
 
 func TestGatewayConnectionsPerUserCapped(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{MaxConnsPerUser: 2})
 	alice, _ := e.user("alice")
 	bob, _ := e.user("bob")
@@ -55,6 +56,7 @@ func TestGatewayConnectionsPerUserCapped(t *testing.T) {
 }
 
 func TestGatewayConnectionsCappedInAll(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{MaxConns: 1})
 	alice, _ := e.user("alice")
 	bob, _ := e.user("bob")
@@ -66,6 +68,7 @@ func TestGatewayConnectionsCappedInAll(t *testing.T) {
 }
 
 func TestGatewayUpgradesRateLimitedPerUser(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{UserUpgradeLimiter: oneEvery(time.Hour, 2)})
 	alice, _ := e.user("alice")
 	bob, _ := e.user("bob")
@@ -81,6 +84,7 @@ func TestGatewayUpgradesRateLimitedPerUser(t *testing.T) {
 // TestGatewayUpgradesRateLimitedPerIP: the per-address limit applies before
 // the session is looked at, so it also stops attempts without one.
 func TestGatewayUpgradesRateLimitedPerIP(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{IPUpgradeLimiter: oneEvery(time.Hour, 2)})
 	alice, _ := e.user("alice")
 	anon := testkit.NewClient(t, e.h)

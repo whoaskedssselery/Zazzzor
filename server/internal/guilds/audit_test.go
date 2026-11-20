@@ -82,6 +82,7 @@ func actions(p auditPage) []int {
 }
 
 func TestAuditLogRecordsModeration(t *testing.T) {
+	t.Parallel()
 	e, _ := newAuditEnv(t)
 	owner, ou := e.user("owner")
 	_, bu := e.user("bob")
@@ -151,6 +152,7 @@ func TestAuditLogRecordsModeration(t *testing.T) {
 }
 
 func TestAuditLogNeedsPermission(t *testing.T) {
+	t.Parallel()
 	e, log := newAuditEnv(t)
 	owner, _ := e.user("owner")
 	bob, bu := e.user("bob")

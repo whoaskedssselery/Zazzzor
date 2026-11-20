@@ -12,6 +12,7 @@ import (
 )
 
 func TestScreenAdmissionCannotRestoreEndedOwner(t *testing.T) {
+	t.Parallel()
 	for _, phase := range []string{"permission read", "grants RPC"} {
 		for _, cause := range []string{"leave", "departure", "replacement", "disabled", "screen departed"} {
 			t.Run(phase+"/"+cause, func(t *testing.T) {
@@ -65,6 +66,7 @@ func TestScreenAdmissionCannotRestoreEndedOwner(t *testing.T) {
 }
 
 func TestScreenObservationWaitsForStripeWithoutOverwritingTrack(t *testing.T) {
+	t.Parallel()
 	s, r, room, p := screenService(t)
 	if err := s.joined(t.Context(), 42, room, p); err != nil {
 		t.Fatalf("admission: %v", err)
@@ -88,6 +90,7 @@ func TestScreenObservationWaitsForStripeWithoutOverwritingTrack(t *testing.T) {
 }
 
 func TestScreenTokenCannotOutliveOwnerDuringPermissionRead(t *testing.T) {
+	t.Parallel()
 	s, _, _, _ := screenService(t)
 	entered, release, done := make(chan struct{}), make(chan struct{}), make(chan error, 1)
 	unblock := sync.OnceFunc(func() { close(release) })
@@ -109,6 +112,7 @@ func TestScreenTokenCannotOutliveOwnerDuringPermissionRead(t *testing.T) {
 }
 
 func TestScreenRefreshRevokesBeforeFailingPrimaryRPC(t *testing.T) {
+	t.Parallel()
 	for _, lost := range []permissions.Permission{permissions.Stream, permissions.Connect} {
 		t.Run(map[permissions.Permission]string{permissions.Stream: "stream", permissions.Connect: "connect"}[lost], func(t *testing.T) {
 			s, r, room, p := screenService(t)
@@ -129,6 +133,7 @@ func TestScreenRefreshRevokesBeforeFailingPrimaryRPC(t *testing.T) {
 }
 
 func TestScreenStaleRemovalProtectsRejoinedCompanion(t *testing.T) {
+	t.Parallel()
 	s, _, room, p := screenService(t)
 	if err := s.joined(t.Context(), 42, room, p); err != nil {
 		t.Fatalf("admission: %v", err)
@@ -152,6 +157,7 @@ func (r *screenRemovalRooms) ListParticipants(context.Context, string) ([]Partic
 }
 
 func TestScreenRemovalRechecksCompanionAfterRemoteListing(t *testing.T) {
+	t.Parallel()
 	s, r, room, p := screenService(t)
 	listed, release, done := make(chan struct{}), make(chan struct{}), make(chan error, 1)
 	unblock := sync.OnceFunc(func() { close(release) })

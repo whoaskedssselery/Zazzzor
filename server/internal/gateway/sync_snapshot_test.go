@@ -24,6 +24,7 @@ func (d *snapshotCounter) Snapshot(ctx context.Context, id snowflake.ID) (guilds
 }
 
 func TestGuildSyncLoadsOneSharedSnapshot(t *testing.T) {
+	t.Parallel()
 	dir := &snapshotCounter{}
 	e := newEnvWith(t, gateway.Options{}, func(m *app.Modules, o *gateway.Options) {
 		dir.Directory, o.Guilds = m.Guilds, dir
@@ -55,6 +56,7 @@ func TestGuildSyncLoadsOneSharedSnapshot(t *testing.T) {
 }
 
 func TestGuildSyncSkipsSnapshotWhenRecipientsAreOffline(t *testing.T) {
+	t.Parallel()
 	dir := &snapshotCounter{}
 	e := newEnvWith(t, gateway.Options{}, func(m *app.Modules, o *gateway.Options) {
 		dir.Directory, o.Guilds = m.Guilds, dir

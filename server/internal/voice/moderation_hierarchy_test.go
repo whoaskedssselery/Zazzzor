@@ -32,6 +32,7 @@ func hierarchySubject(userID, ownerID snowflake.ID, rank int) permissions.Subjec
 }
 
 func TestHierarchyForEveryModerationAction(t *testing.T) {
+	t.Parallel()
 	on := true
 	for _, action := range []struct {
 		name   string
@@ -77,6 +78,7 @@ func TestHierarchyForEveryModerationAction(t *testing.T) {
 
 // A target who left the guild after the voice-state lookup is 404, not 500.
 func TestModerationOfATargetWhoLeftTheGuildIsNotFound(t *testing.T) {
+	t.Parallel()
 	actor := hierarchySubject(2, 9, 3)
 	e, _, r := moderationEnv(t, permissions.All, func(o *voice.Options) { o.Members = hierarchyMembers{2: actor} })
 	on := true
@@ -96,6 +98,7 @@ func (m *countingMembers) Subject(context.Context, snowflake.ID, snowflake.ID) (
 }
 
 func TestNonMemberCheckedBeforeVoiceLookup(t *testing.T) {
+	t.Parallel()
 	for _, target := range []snowflake.ID{1, 999} {
 		t.Run(fmt.Sprint(target), func(t *testing.T) {
 			members := &countingMembers{}
@@ -112,6 +115,7 @@ func TestNonMemberCheckedBeforeVoiceLookup(t *testing.T) {
 }
 
 func TestModerationErrorsKeepHiddenChannelPrivate(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, ownerUser := e.user("hierarchyowner")
 	moderator, modUser := e.user("hierarchymod")

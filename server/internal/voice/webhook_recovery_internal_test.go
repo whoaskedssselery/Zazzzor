@@ -17,6 +17,7 @@ import (
 )
 
 func TestWebhookPanicReleasesDeliveryOwnership(t *testing.T) {
+	t.Parallel()
 	first := true
 	s := NewService(Options{Rooms: &replacementRoom{}, APIKey: "key", APISecret: "secret",
 		Channels: refreshChannels{read: func(context.Context, snowflake.ID) (permissions.Permission, error) {
@@ -45,6 +46,7 @@ func TestWebhookPanicReleasesDeliveryOwnership(t *testing.T) {
 }
 
 func TestWebhookLimitMessageUsesConfiguredByteLimit(t *testing.T) {
+	t.Parallel()
 	s := NewService(Options{Rooms: &replacementRoom{}, APIKey: "key", APISecret: "secret"})
 	req := httptest.NewRequest(http.MethodPost, WebhookPath, bytes.NewReader(make([]byte, MaxWebhookBytes+1)))
 	response := httptest.NewRecorder()

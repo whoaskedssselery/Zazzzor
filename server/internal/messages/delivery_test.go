@@ -48,6 +48,7 @@ func (e *env) countMessages(channelID string) int {
 // A message is either stored and announced or neither: a failure loading
 // the author leaves nothing behind for the client to duplicate on retry.
 func TestCreateFailingBeforeTheEventStoresNothing(t *testing.T) {
+	t.Parallel()
 	users := &flakyUsers{}
 	e := newEnv(t, withFlakyUsers(users))
 	alice, _ := e.user("alice")
@@ -64,6 +65,7 @@ func TestCreateFailingBeforeTheEventStoresNothing(t *testing.T) {
 }
 
 func TestEditFailingBeforeTheEventChangesNothing(t *testing.T) {
+	t.Parallel()
 	users := &flakyUsers{}
 	e := newEnv(t, withFlakyUsers(users))
 	alice, _ := e.user("alice")
@@ -85,6 +87,7 @@ func TestEditFailingBeforeTheEventChangesNothing(t *testing.T) {
 // A retry with the same nonce (the client lost the response) gets the
 // message the first try stored, announced once.
 func TestNonceRetryReturnsTheSameMessage(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	_, general, _ := newGuild(t, alice, "home")
@@ -110,6 +113,7 @@ func TestNonceRetryReturnsTheSameMessage(t *testing.T) {
 
 // A nonce belongs to one author in one channel.
 func TestNonceIsPerAuthorAndChannel(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	bob, bobUser := e.user("bob")
@@ -141,6 +145,7 @@ func TestNonceIsPerAuthorAndChannel(t *testing.T) {
 // After messages.NonceTTL the nonce is free again, and the stale claim is
 // dropped.
 func TestNonceExpires(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	_, general, _ := newGuild(t, alice, "home")
@@ -163,6 +168,7 @@ func TestNonceExpires(t *testing.T) {
 
 // Retries racing each other still store one message.
 func TestNonceConcurrentRetries(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, aliceUser := e.user("alice")
 	_, general, _ := newGuild(t, alice, "home")

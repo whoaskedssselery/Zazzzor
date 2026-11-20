@@ -54,8 +54,10 @@ jobs:
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
           working-directory: server
+      # Tests run in parallel inside each package; four at a time keep the
+      # shared runner host from stretching their timeouts.
       - name: go test (race; testcontainers use the runner's Docker)
-        run: go test -race -count=1 ./...
+        run: go test -race -count=1 -parallel 4 ./...
 
   govulncheck:
     name: Go vulnerabilities (govulncheck)

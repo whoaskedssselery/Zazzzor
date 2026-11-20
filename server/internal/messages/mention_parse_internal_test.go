@@ -6,6 +6,7 @@ import (
 )
 
 func TestParseMentionsKeepsAppearanceOrder(t *testing.T) {
+	t.Parallel()
 	content := "<@42>, <@&15> <@42> @here and @everyone"
 	want := []mentionToken{
 		{kind: mentionUser, id: 42},
@@ -20,6 +21,7 @@ func TestParseMentionsKeepsAppearanceOrder(t *testing.T) {
 }
 
 func TestParseMentionsRequiresCanonicalSnowflakes(t *testing.T) {
+	t.Parallel()
 	content := "<@0> <@01> <@&+1> <@!-2> <@> <@&9223372036854775808> <@9223372036854775807>"
 	want := []mentionToken{{kind: mentionUser, id: 9223372036854775807}}
 	if got := parseMentions(content); !slices.Equal(got, want) {
@@ -28,6 +30,7 @@ func TestParseMentionsRequiresCanonicalSnowflakes(t *testing.T) {
 }
 
 func TestParseMentionsRequiresWordBoundariesForBroadcasts(t *testing.T) {
+	t.Parallel()
 	letter := string(rune(0x0430))
 	content := "abc@everyone @everyone2 _@here @here_ " + letter + "@here @everyone" + letter + " (@everyone), @here!"
 	want := []mentionToken{{kind: mentionEveryone}, {kind: mentionHere}}
@@ -37,6 +40,7 @@ func TestParseMentionsRequiresWordBoundariesForBroadcasts(t *testing.T) {
 }
 
 func TestParseMentionsSkipsCodeWithMatchingBacktickRuns(t *testing.T) {
+	t.Parallel()
 	content := "`<@1>` ``<@&2> ` @here``\n```go\n<@3>\n```\n````txt\n``` @everyone <@&4>\n```` <@5>"
 	want := []mentionToken{{kind: mentionUser, id: 5}}
 	if got := parseMentions(content); !slices.Equal(got, want) {
@@ -45,6 +49,7 @@ func TestParseMentionsSkipsCodeWithMatchingBacktickRuns(t *testing.T) {
 }
 
 func TestParseMentionsReadsTextAfterUnclosedBackticks(t *testing.T) {
+	t.Parallel()
 	content := "``` @here `<@1>` <@2>"
 	want := []mentionToken{{kind: mentionHere}, {kind: mentionUser, id: 2}}
 	if got := parseMentions(content); !slices.Equal(got, want) {
@@ -53,6 +58,7 @@ func TestParseMentionsReadsTextAfterUnclosedBackticks(t *testing.T) {
 }
 
 func TestParseMentionsReadsTextAfterEscapedOpeningBacktick(t *testing.T) {
+	t.Parallel()
 	content := "\\`<@1>` @here"
 	want := []mentionToken{{kind: mentionUser, id: 1}, {kind: mentionHere}}
 	if got := parseMentions(content); !slices.Equal(got, want) {

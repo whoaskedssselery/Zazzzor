@@ -69,6 +69,7 @@ func lastMove(e *env) snowflake.ID {
 }
 
 func TestMoveBackCancelsPendingMove(t *testing.T) {
+	t.Parallel()
 	e, _, r, clock := pendingMoveEnv(t)
 	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Move: destination(42)}); err != nil {
 		t.Fatalf("move back: %v", err)
@@ -80,6 +81,7 @@ func TestMoveBackCancelsPendingMove(t *testing.T) {
 }
 
 func TestMoveBackRefusesAnIssuedDestinationToken(t *testing.T) {
+	t.Parallel()
 	e, _, r, _ := pendingMoveEnv(t)
 	j, err := e.voice.Join(t.Context(), 44, auth.User{ID: 1}, "https://example.test")
 	if err != nil {
@@ -98,6 +100,7 @@ func TestMoveBackRefusesAnIssuedDestinationToken(t *testing.T) {
 }
 
 func TestDeletedDestinationCancelsPendingMove(t *testing.T) {
+	t.Parallel()
 	e, _, r, clock := pendingMoveEnv(t)
 	e.voice.RemoveChannel(t.Context(), 44)
 	if got := lastMove(e); got != 42 {
@@ -107,6 +110,7 @@ func TestDeletedDestinationCancelsPendingMove(t *testing.T) {
 }
 
 func TestLostDestinationConnectCancelsPendingMove(t *testing.T) {
+	t.Parallel()
 	e, c, r, clock := pendingMoveEnv(t)
 	c.targetChannels = map[snowflake.ID]permissions.Permission{44: permissions.ViewChannel}
 	e.voice.RefreshGuild(7)
@@ -116,6 +120,7 @@ func TestLostDestinationConnectCancelsPendingMove(t *testing.T) {
 }
 
 func TestDestinationDeletedDuringMoveCheckIsNotFound(t *testing.T) {
+	t.Parallel()
 	e, c, _ := moderationEnv(t, permissions.MoveMembers)
 	c.afterRead = func(user snowflake.ID) {
 		if user == 1 {

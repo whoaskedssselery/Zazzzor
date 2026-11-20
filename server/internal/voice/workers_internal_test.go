@@ -23,6 +23,7 @@ func (r *scriptedRemovalRoom) RemoveParticipant(context.Context, string, string)
 }
 
 func TestRemovalReplacementInheritsFailedAttempt(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	var s *Service
 	calls := 0
@@ -43,6 +44,7 @@ func TestRemovalReplacementInheritsFailedAttempt(t *testing.T) {
 }
 
 func TestRemovalRetriesPastReconcileUntilRecovery(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	failed, calls := true, 0
 	r := &scriptedRemovalRoom{remove: func() error {
@@ -69,6 +71,7 @@ func TestRemovalRetriesPastReconcileUntilRecovery(t *testing.T) {
 }
 
 func TestRefreshRetriesOnlyFailedUsersAndNewSyncCoversAll(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	reads := map[snowflake.ID]int{}
 	s, r := refreshService(t, func(_ context.Context, user snowflake.ID) (permissions.Permission, error) {
@@ -99,6 +102,7 @@ func TestRefreshRetriesOnlyFailedUsersAndNewSyncCoversAll(t *testing.T) {
 }
 
 func TestRefreshSupersededPermissionReadSkipsRemoteEffect(t *testing.T) {
+	t.Parallel()
 	entered, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	unblock := sync.OnceFunc(func() { close(release) })
 	defer unblock()
@@ -125,6 +129,7 @@ func TestRefreshSupersededPermissionReadSkipsRemoteEffect(t *testing.T) {
 }
 
 func TestRefreshQueueCoalescesRepeatedSyncs(t *testing.T) {
+	t.Parallel()
 	s, _ := refreshService(t, func(context.Context, snowflake.ID) (permissions.Permission, error) {
 		return permissions.ViewChannel | permissions.Connect, nil
 	})
@@ -164,6 +169,7 @@ func (h *lockCheckingLog) WithAttrs([]slog.Attr) slog.Handler { return h }
 func (h *lockCheckingLog) WithGroup(string) slog.Handler      { return h }
 
 func TestWorkerWarningsReleaseStateLock(t *testing.T) {
+	t.Parallel()
 	for _, refresh := range []bool{false, true} {
 		t.Run(map[bool]string{false: "removal", true: "refresh"}[refresh], func(t *testing.T) {
 			now := time.Unix(1_700_000_000, 0)
@@ -213,6 +219,7 @@ func (c scriptedMoveChannels) Permissions(ctx context.Context, _ snowflake.ID, c
 }
 
 func TestRefreshCancelsMoveWhenDestinationPermissionLost(t *testing.T) {
+	t.Parallel()
 	for _, lost := range []permissions.Permission{permissions.ViewChannel, permissions.Connect} {
 		t.Run(map[permissions.Permission]string{permissions.ViewChannel: "view", permissions.Connect: "connect"}[lost], func(t *testing.T) {
 			now := time.Now()
@@ -241,6 +248,7 @@ func TestRefreshCancelsMoveWhenDestinationPermissionLost(t *testing.T) {
 }
 
 func TestMoveRefreshRejectsSupersededDestinationRead(t *testing.T) {
+	t.Parallel()
 	for _, replace := range []string{"new_sync", "new_session", "new_move"} {
 		t.Run(replace, func(t *testing.T) {
 			entered, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})

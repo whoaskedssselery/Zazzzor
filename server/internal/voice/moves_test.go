@@ -24,6 +24,7 @@ func destination(id snowflake.ID) *voice.MoveRequest { return &voice.MoveRequest
 func disconnect() *voice.MoveRequest { return &voice.MoveRequest{Disconnect: true} }
 
 func TestVoiceMoveChecksBothChannelsBeforeEffects(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name     string
 		src, dst permissions.Permission
@@ -57,6 +58,7 @@ func TestVoiceMoveChecksBothChannelsBeforeEffects(t *testing.T) {
 }
 
 func TestVoiceMoveWaitsForDestinationAdmission(t *testing.T) {
+	t.Parallel()
 	e, _, r := moderationEnv(t, permissions.MoveMembers)
 	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Move: destination(44)}); err != nil {
 		t.Fatalf("Move: %v", err)
@@ -85,6 +87,7 @@ func TestVoiceMoveWaitsForDestinationAdmission(t *testing.T) {
 }
 
 func TestVoiceMoveFallbackKeepsIssuedTargetToken(t *testing.T) {
+	t.Parallel()
 	var clock atomic.Int64
 	clock.Store(time.Now().UnixNano())
 	e, _, r := moderationEnv(t, permissions.MoveMembers, func(o *voice.Options) { o.Now = func() time.Time { return time.Unix(0, clock.Load()) } })
@@ -122,6 +125,7 @@ func TestVoiceMoveFallbackKeepsIssuedTargetToken(t *testing.T) {
 }
 
 func TestReconcilePreservesSourceUntilDestinationAdmission(t *testing.T) {
+	t.Parallel()
 	for _, obsolete := range []bool{true, false} {
 		t.Run(map[bool]string{true: "obsolete_token", false: "failed_grants"}[obsolete], func(t *testing.T) {
 			e, c, r := moderationEnv(t, permissions.MoveMembers)

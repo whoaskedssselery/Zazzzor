@@ -41,6 +41,7 @@ func uploadEmoji(t *testing.T, c *testkit.Client, path, name string, raw []byte)
 }
 
 func TestGuildEmojiPermissionsAndFile(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	bob, b := e.user("bob")
@@ -97,6 +98,7 @@ func TestGuildEmojiPermissionsAndFile(t *testing.T) {
 }
 
 func TestGuildEmojiCapacityAndGuildDeletion(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	g := createGuild(t, alice, "guild")
@@ -140,6 +142,7 @@ func TestGuildEmojiCapacityAndGuildDeletion(t *testing.T) {
 }
 
 func TestEmojiCommitRejectionLeavesNoLiveFile(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, owner := e.user("alice")
 	g := createGuild(t, alice, "guild")

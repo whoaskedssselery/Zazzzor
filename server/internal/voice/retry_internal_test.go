@@ -23,6 +23,7 @@ func (c *observedWait) Done() <-chan struct{} {
 }
 
 func TestRemovalTombstonesExpireWithoutJoins(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	s := NewService(Options{Now: func() time.Time { return now }})
 	s.RemoveMembers(t.Context(), 7, []snowflake.ID{1})
@@ -39,6 +40,7 @@ func TestRemovalTombstonesExpireWithoutJoins(t *testing.T) {
 }
 
 func TestConcurrentDeliveryWaitsForOutcome(t *testing.T) {
+	t.Parallel()
 	for _, success := range []bool{false, true} {
 		t.Run(fmt.Sprint(success), func(t *testing.T) {
 			s := NewService(Options{})
@@ -74,6 +76,7 @@ func TestConcurrentDeliveryWaitsForOutcome(t *testing.T) {
 }
 
 func TestDuplicateWaitCanBeCancelled(t *testing.T) {
+	t.Parallel()
 	s := NewService(Options{})
 	_, _ = s.beginEvent(t.Context(), "event")
 	ctx, cancel := context.WithCancel(t.Context())

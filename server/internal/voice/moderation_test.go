@@ -121,6 +121,7 @@ func moderationEnv(t *testing.T, actor permissions.Permission, opts ...func(*voi
 }
 
 func TestModerationChecksEachPermissionBeforeUpdating(t *testing.T) {
+	t.Parallel()
 	on := true
 	for _, tc := range []struct {
 		name    string
@@ -155,6 +156,7 @@ func TestModerationChecksEachPermissionBeforeUpdating(t *testing.T) {
 }
 
 func TestModerationSurvivesRejoinAndRestrictsOldTokens(t *testing.T) {
+	t.Parallel()
 	e, c, r := moderationEnv(t, permissions.MuteMembers|permissions.DeafenMembers)
 	user := auth.User{ID: 1, DisplayName: "target"}
 	old, err := e.voice.Join(t.Context(), 42, user, "https://example.test")
@@ -202,6 +204,7 @@ func TestModerationSurvivesRejoinAndRestrictsOldTokens(t *testing.T) {
 }
 
 func TestRemovalDuringMediaRPCDoesNotRestoreState(t *testing.T) {
+	t.Parallel()
 	for _, operation := range []string{"moderation", "webhook"} {
 		t.Run(operation, func(t *testing.T) {
 			e, _, r := moderationEnv(t, permissions.MuteMembers)

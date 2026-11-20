@@ -21,12 +21,14 @@ type stateBody struct {
 }
 
 func TestUpdateSelfOutsideVoiceIsConflict(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	problemOf(t, alice.Do(http.MethodPatch, selfPath, map[string]any{"self_mute": true}), http.StatusConflict, "not_in_voice")
 }
 
 func TestUpdateSelfNeedsAField(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a := e.user("alice")
 	_, _, vc := newGuild(t, alice, "home")
@@ -36,6 +38,7 @@ func TestUpdateSelfNeedsAField(t *testing.T) {
 }
 
 func TestUpdateSelfAnnouncesOnlyChanges(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a := e.user("alice")
 	_, _, vc := newGuild(t, alice, "home")
@@ -58,6 +61,7 @@ func TestUpdateSelfAnnouncesOnlyChanges(t *testing.T) {
 }
 
 func TestReconnectKeepsTheSelfFlags(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a := e.user("alice")
 	g, _, vc := newGuild(t, alice, "home")
@@ -70,6 +74,7 @@ func TestReconnectKeepsTheSelfFlags(t *testing.T) {
 }
 
 func TestLeaveClearsTheStateAndRemovesTheParticipant(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	e.run()
 	alice, a := e.user("alice")
@@ -96,6 +101,7 @@ func TestLeaveClearsTheStateAndRemovesTheParticipant(t *testing.T) {
 }
 
 func TestLeaveRevokesAPendingToken(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, a := e.user("alice")
 	g, _, vc := newGuild(t, alice, "home")
@@ -109,6 +115,7 @@ func TestLeaveRevokesAPendingToken(t *testing.T) {
 }
 
 func TestSelfAndLeaveWithoutLiveKitAreUnavailable(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, func(o *voice.Options) { o.Rooms, o.APIKey, o.APISecret = nil, "", "" })
 	alice, _ := e.user("alice")
 	problemOf(t, alice.Do(http.MethodPatch, selfPath, map[string]any{"self_mute": true}),

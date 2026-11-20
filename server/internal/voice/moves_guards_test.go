@@ -11,6 +11,7 @@ import (
 )
 
 func TestFlagsRequireParticipantConnect(t *testing.T) {
+	t.Parallel()
 	e, c, r := moderationEnv(t, permissions.MuteMembers)
 	c.target &^= permissions.Connect
 	before := len(r.updates)
@@ -22,6 +23,7 @@ func TestFlagsRequireParticipantConnect(t *testing.T) {
 }
 
 func TestHiddenMoveDestinationErrorDependsOnViewer(t *testing.T) {
+	t.Parallel()
 	for _, actorHidden := range []bool{false, true} {
 		t.Run(map[bool]string{false: "target", true: "actor"}[actorHidden], func(t *testing.T) {
 			e, c, _ := moderationEnv(t, permissions.MoveMembers)

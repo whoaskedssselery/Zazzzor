@@ -13,6 +13,7 @@ import (
 )
 
 func TestGuildEmojiSnapshotsAndAudience(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, a := e.user("alice")
 	bob, b := e.user("bob")

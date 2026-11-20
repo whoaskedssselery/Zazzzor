@@ -14,6 +14,7 @@ import (
 const relationshipPath = "/api/v1/users/@me/relationships"
 
 func TestFriendGatewayWithoutSharedGuild(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{PresenceGrace: 50 * time.Millisecond})
 	alice, a := e.user("alice")
 	bob, b := e.user("bob")
@@ -120,6 +121,7 @@ func TestFriendGatewayWithoutSharedGuild(t *testing.T) {
 }
 
 func TestStaleFriendDispatchDoesNotSendPresence(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, a := e.user("alice")
 	bob, b := e.user("bob")

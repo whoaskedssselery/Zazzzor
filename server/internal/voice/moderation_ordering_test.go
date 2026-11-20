@@ -58,6 +58,7 @@ func directOrderedHook(t *testing.T, s *voice.Service) error {
 }
 
 func TestMediaOperationsWaitForPendingModeration(t *testing.T) {
+	t.Parallel()
 	for _, operation := range []string{"moderation", "token", "webhook", "reconcile"} {
 		t.Run(operation, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
@@ -121,6 +122,7 @@ func TestMediaOperationsWaitForPendingModeration(t *testing.T) {
 }
 
 func TestCanceledStripeAcquisitionReturnsBeforeOwnerReleases(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		s, _, r := orderingService(t)
 		entered, release := make(chan struct{}), make(chan struct{})

@@ -19,6 +19,7 @@ import (
 // from the pool instead of using the transaction, the callers would each
 // hold one connection and wait forever for another.
 func TestSmallPoolDoesNotWedge(t *testing.T) {
+	t.Parallel()
 	u, err := url.Parse(testkit.PostgresURL(t))
 	if err != nil {
 		t.Fatal(err)

@@ -31,6 +31,7 @@ func (v *dispatchViewers) ViewersAmong(ctx context.Context, id snowflake.ID, can
 }
 
 func TestChannelDispatchChecksOnlyConnectedCandidates(t *testing.T) {
+	t.Parallel()
 	v := &dispatchViewers{}
 	e := newEnvWith(t, gateway.Options{}, func(m *app.Modules, o *gateway.Options) {
 		v.Resolver, o.Channels = m.Channels, v

@@ -22,6 +22,7 @@ import (
 )
 
 func TestRegisterLoginLogout(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c := e.client()
 
@@ -73,6 +74,7 @@ func TestRegisterLoginLogout(t *testing.T) {
 }
 
 func TestRegisterNormalizesAndValidates(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c := e.client()
 
@@ -136,6 +138,7 @@ func TestRegisterNormalizesAndValidates(t *testing.T) {
 }
 
 func TestRegisterDuplicate(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c := e.client()
 	register(t, c, "bob", "password123")
@@ -146,6 +149,7 @@ func TestRegisterDuplicate(t *testing.T) {
 }
 
 func TestRegisterClosed(t *testing.T) {
+	t.Parallel()
 	open := false
 	e := newEnv(t, func(o *auth.Options) {
 		o.RegistrationOpen = func(context.Context) (bool, error) { return open, nil }
@@ -158,6 +162,7 @@ func TestRegisterClosed(t *testing.T) {
 }
 
 func TestLoginSameErrorForUnknownAndWrongPassword(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c := e.client()
 	register(t, c, "dave", "password123")
@@ -181,6 +186,7 @@ func TestLoginSameErrorForUnknownAndWrongPassword(t *testing.T) {
 }
 
 func TestLoginDisabledAccount(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c := e.client()
 	u := register(t, c, "erin", "password123")
@@ -197,6 +203,7 @@ func TestLoginDisabledAccount(t *testing.T) {
 }
 
 func TestLoginRateLimited(t *testing.T) {
+	t.Parallel()
 	const burst = 2
 	const refill = time.Hour
 	e := newEnv(t, func(o *auth.Options) {
@@ -222,6 +229,7 @@ func TestLoginRateLimited(t *testing.T) {
 }
 
 func TestRegisterRateLimited(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c := e.client()
 	for i := range 3 {
@@ -238,6 +246,7 @@ func TestRegisterRateLimited(t *testing.T) {
 }
 
 func TestRateLimitKeyedByForwardedClient(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, func(o *auth.Options) {
 		o.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}
 		o.LoginLimiter = ratelimit.New(rate.Every(time.Hour), 1, time.Hour)
@@ -268,6 +277,7 @@ func TestRateLimitKeyedByForwardedClient(t *testing.T) {
 }
 
 func TestSessionStoredHashed(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c := e.client()
 	resp := c.Do(http.MethodPost, "/api/v1/auth/register", creds("gina", "password123"))
@@ -302,6 +312,7 @@ func TestSessionStoredHashed(t *testing.T) {
 }
 
 func TestCookieAttributes(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c := e.client()
 	for _, resp := range []*testkit.Response{
@@ -328,6 +339,7 @@ func TestCookieAttributes(t *testing.T) {
 }
 
 func TestExpiredSessionRejected(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c := e.client()
 	register(t, c, "judy", "password123")
@@ -349,6 +361,7 @@ func TestExpiredSessionRejected(t *testing.T) {
 }
 
 func TestSessionRenewedAtMostDaily(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c := e.client()
 	register(t, c, "kate", "password123")
@@ -389,6 +402,7 @@ func TestSessionRenewedAtMostDaily(t *testing.T) {
 }
 
 func TestLogoutPublishesSessionRevoked(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c := e.client()
 	u := register(t, c, "liam", "password123")
@@ -412,6 +426,7 @@ func TestLogoutPublishesSessionRevoked(t *testing.T) {
 }
 
 func TestLogsCarryNoSecrets(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c := e.client()
 	const pw = "s3cret-Pa55word"
@@ -429,6 +444,7 @@ func TestLogsCarryNoSecrets(t *testing.T) {
 }
 
 func TestLoginThrottledPerUsername(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, func(o *auth.Options) {
 		o.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}
 	})

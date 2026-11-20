@@ -13,6 +13,7 @@ import (
 )
 
 func TestScreenTokenBindsToActiveSession(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c, u := e.user("alice")
 	g, _, vc := newGuild(t, c, "home")
@@ -42,6 +43,7 @@ func TestScreenTokenBindsToActiveSession(t *testing.T) {
 }
 
 func TestScreenEndpointRequiresStream(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	c, u := e.user("bob")
@@ -53,6 +55,7 @@ func TestScreenEndpointRequiresStream(t *testing.T) {
 }
 
 func TestScreenEndpointRequiresVoiceSession(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c, u := e.user("alice")
 	_, _, vc := newGuild(t, c, "home")
@@ -62,12 +65,14 @@ func TestScreenEndpointRequiresVoiceSession(t *testing.T) {
 }
 
 func TestScreenEndpointWithoutVoice(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, func(o *voice.Options) { o.APIKey = "" })
 	c, _ := e.user("alice")
 	problemOf(t, c.Do(http.MethodPost, joinPath("42")+"/screen", nil), http.StatusServiceUnavailable, "voice_unavailable")
 }
 
 func TestScreenTokenInDirectCallDoesNotRingOrCreatePresence(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c, u, _, _, dm := dmPair(t, e)
 	e.connect(c, u, dm, "RM_dm", "PA_1")

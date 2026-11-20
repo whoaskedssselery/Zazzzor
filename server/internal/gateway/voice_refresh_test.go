@@ -12,6 +12,7 @@ import (
 )
 
 func TestVoiceRefreshPermissionMatrix(t *testing.T) {
+	t.Parallel()
 	for _, mechanism := range []string{"everyone", "overwrite"} {
 		for _, tc := range []struct {
 			name string
@@ -55,6 +56,7 @@ func TestVoiceRefreshPermissionMatrix(t *testing.T) {
 }
 
 func TestVoiceRefreshKeepsHiddenChannelPrivate(t *testing.T) {
+	t.Parallel()
 	e, lk := voiceEnv(t)
 	owner, _ := e.user("owner")
 	member, u := e.user("member")
@@ -77,6 +79,7 @@ func TestVoiceRefreshKeepsHiddenChannelPrivate(t *testing.T) {
 }
 
 func TestVoiceRefreshFollowsCategorySyncAndMemberRoles(t *testing.T) {
+	t.Parallel()
 	for _, category := range []bool{true, false} {
 		t.Run(map[bool]string{true: "category_sync", false: "member_roles"}[category], func(t *testing.T) {
 			e, lk := voiceEnv(t)

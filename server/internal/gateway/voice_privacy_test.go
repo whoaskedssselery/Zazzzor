@@ -9,6 +9,7 @@ import (
 )
 
 func TestVoiceMoveFromHiddenChannelDoesNotExposeItsLeave(t *testing.T) {
+	t.Parallel()
 	e, _ := voiceEnv(t)
 	owner, _ := e.user("owner")
 	moving, u := e.user("moving")
@@ -44,6 +45,7 @@ func TestVoiceMoveFromHiddenChannelDoesNotExposeItsLeave(t *testing.T) {
 }
 
 func TestGuildSyncDiscardsVoiceStatesOfNewlyHiddenChannels(t *testing.T) {
+	t.Parallel()
 	e, _ := voiceEnv(t)
 	owner, speaker := e.user("owner")
 	viewer, observer := e.user("viewer")

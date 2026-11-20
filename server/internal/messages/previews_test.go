@@ -46,6 +46,7 @@ func startPreviews(t *testing.T, e *env) {
 }
 
 func TestPreviewCreateEditAndCache(t *testing.T) {
+	t.Parallel()
 	var calls atomic.Int32
 	var img bytes.Buffer
 	if err := png.Encode(&img, image.NewRGBA(image.Rect(0, 0, 2, 3))); err != nil {
@@ -152,6 +153,7 @@ func TestPreviewCreateEditAndCache(t *testing.T) {
 }
 
 func TestDeletedMessageDoesNotPublishPendingPreview(t *testing.T) {
+	t.Parallel()
 	fetching := make(chan string, 4)
 	release := make(chan struct{})
 	const target = "https://deleted.test"
@@ -222,6 +224,7 @@ func waitPreviewAfter(t *testing.T, e *env, after int) messages.PublicMessage {
 }
 
 func TestPartialPreviewIsRetriedAfterAnHour(t *testing.T) {
+	t.Parallel()
 	var calls atomic.Int32
 	var mu sync.Mutex
 	now := time.Now()

@@ -59,6 +59,7 @@ func dmList(t *testing.T, c *testkit.Client) []privateChannelBody {
 }
 
 func TestOpenDirectChannelIsUniqueAndPrivate(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, a := e.user("alice")
 	bob, b := e.user("bob")
@@ -108,6 +109,7 @@ func TestOpenDirectChannelIsUniqueAndPrivate(t *testing.T) {
 }
 
 func TestDirectChannelBlockKeepsHistory(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, a := e.user("alice")
 	bob, b := e.user("bob")

@@ -16,6 +16,7 @@ import (
 )
 
 func TestGetMe(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c := e.client()
 	problemOf(t, c.Do(http.MethodGet, "/api/v1/users/@me", nil), http.StatusUnauthorized, "unauthenticated")
@@ -32,6 +33,7 @@ func TestGetMe(t *testing.T) {
 }
 
 func TestUpdateDisplayName(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c := e.client()
 	u := register(t, c, "alice", "password123")
@@ -95,6 +97,7 @@ func TestUpdateDisplayName(t *testing.T) {
 }
 
 func TestChangePasswordRevokesOtherSessions(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c1, c2 := e.client(), e.client()
 	register(t, c1, "alice", "password123")
@@ -135,6 +138,7 @@ func TestChangePasswordRevokesOtherSessions(t *testing.T) {
 }
 
 func TestChangePasswordRateLimited(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c := e.client()
 	register(t, c, "alice", "password123")
@@ -165,6 +169,7 @@ func avatarPath(e *env, u userBody) string {
 }
 
 func TestAvatarUploadNormalizes(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c := e.client()
 	u := register(t, c, "alice", "password123")
@@ -252,6 +257,7 @@ func TestAvatarUploadNormalizes(t *testing.T) {
 }
 
 func TestAvatarRejectsNonImage(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c := e.client()
 	register(t, c, "alice", "password123")
@@ -279,6 +285,7 @@ func TestAvatarRejectsNonImage(t *testing.T) {
 }
 
 func TestAvatarTooLarge(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c := e.client()
 	register(t, c, "alice", "password123")

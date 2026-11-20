@@ -110,6 +110,7 @@ func readPNG(t *testing.T, path string) image.Image {
 }
 
 func TestSaveImageNormalizes(t *testing.T) {
+	t.Parallel()
 	d, dir := newDisk(t)
 	src := encodeJPEG(t, gradient(800, 600))
 
@@ -157,6 +158,7 @@ func TestSaveImageNormalizes(t *testing.T) {
 }
 
 func TestSaveImageAcceptsFormats(t *testing.T) {
+	t.Parallel()
 	d, _ := newDisk(t)
 	webp, err := base64.StdEncoding.DecodeString(tinyWebP)
 	if err != nil {
@@ -187,6 +189,7 @@ func TestSaveImageAcceptsFormats(t *testing.T) {
 }
 
 func TestSaveImageRejects(t *testing.T) {
+	t.Parallel()
 	d, dir := newDisk(t)
 	full := encodePNG(t, gradient(50, 50))
 	for name, src := range map[string][]byte{
@@ -213,6 +216,7 @@ func TestSaveImageRejects(t *testing.T) {
 }
 
 func TestSaveImageTooLarge(t *testing.T) {
+	t.Parallel()
 	d, _ := newDisk(t)
 	src := io.MultiReader(bytes.NewReader(encodePNG(t, gradient(10, 10))), bytes.NewReader(make([]byte, files.MaxImageBytes)))
 	if _, err := d.SaveImage(t.Context(), files.KindAvatar, owner, src); !errors.Is(err, files.ErrTooLarge) {
@@ -221,6 +225,7 @@ func TestSaveImageTooLarge(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
+	t.Parallel()
 	d, dir := newDisk(t)
 	hash, err := d.SaveImage(t.Context(), files.KindAvatar, owner, bytes.NewReader(encodePNG(t, gradient(20, 20))))
 	if err != nil {
@@ -248,6 +253,7 @@ func router(d *files.Disk) http.Handler {
 }
 
 func TestServeFile(t *testing.T) {
+	t.Parallel()
 	d, _ := newDisk(t)
 	hash, err := d.SaveImage(t.Context(), files.KindAvatar, owner, bytes.NewReader(encodePNG(t, gradient(20, 20))))
 	if err != nil {
@@ -284,6 +290,7 @@ func TestServeFile(t *testing.T) {
 }
 
 func TestFilesRejectTraversal(t *testing.T) {
+	t.Parallel()
 	d, dir := newDisk(t)
 	// A file outside the store that a traversal would reach.
 	secret := filepath.Join(dir, "etc.png")

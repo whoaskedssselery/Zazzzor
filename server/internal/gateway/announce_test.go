@@ -17,6 +17,7 @@ import (
 // snapshot still give the new member their own state and the others the
 // new member list.
 func TestJoinAnnouncedWithoutSnapshot(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, _ := e.user("alice")
 	bob, bu := e.user("bob")

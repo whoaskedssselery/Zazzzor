@@ -35,6 +35,7 @@ func (l *auditLog) actions() []audit.Action {
 }
 
 func TestChannelChangesAreAudited(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("owner")
 	g := createGuild(t, owner, "log")

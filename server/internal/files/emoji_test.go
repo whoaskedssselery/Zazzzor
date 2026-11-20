@@ -14,6 +14,7 @@ import (
 )
 
 func TestPrepareEmojiFitsStaticImages(t *testing.T) {
+	t.Parallel()
 	disk, err := files.NewDisk(t.TempDir(), files.Options{})
 	if err != nil {
 		t.Fatalf("create disk: %v", err)
@@ -47,6 +48,7 @@ func TestPrepareEmojiFitsStaticImages(t *testing.T) {
 }
 
 func TestPrepareEmojiPreservesAnimatedGIF(t *testing.T) {
+	t.Parallel()
 	disk, err := files.NewDisk(t.TempDir(), files.Options{})
 	if err != nil {
 		t.Fatalf("create disk: %v", err)
@@ -69,6 +71,7 @@ func TestPrepareEmojiPreservesAnimatedGIF(t *testing.T) {
 }
 
 func TestPrepareEmojiAcceptsWebP(t *testing.T) {
+	t.Parallel()
 	raw, err := base64.StdEncoding.DecodeString(tinyWebP)
 	if err != nil {
 		t.Fatalf("decode fixture: %v", err)

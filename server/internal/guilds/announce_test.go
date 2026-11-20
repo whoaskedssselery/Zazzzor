@@ -36,6 +36,7 @@ func (u *flakyUsers) UsersByIDsIn(ctx context.Context, dbtx auth.DB, ids []snowf
 // read: the gateway then builds the state itself (GUILD_CREATE for the new
 // member, GUILD_SYNC for the rest), or makes them reconnect.
 func TestJoinAnnouncedWhenTheSnapshotFails(t *testing.T) {
+	t.Parallel()
 	users := &flakyUsers{}
 	e := newEnv(t, func(o *guilds.Options) {
 		users.Users = o.Users

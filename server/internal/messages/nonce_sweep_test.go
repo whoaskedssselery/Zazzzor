@@ -7,6 +7,7 @@ import (
 )
 
 func TestSweepExpiresInactiveAuthorsNoncesInBatches(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c, user := e.user("alice")
 	_, ch, _ := newGuild(t, c, "club")

@@ -46,6 +46,7 @@ func (r *retryGrantRoom) ListParticipants(ctx context.Context, room string) ([]P
 }
 
 func TestRecoveredAdmissionCancelsItsFailedRemoval(t *testing.T) {
+	t.Parallel()
 	for _, inflight := range []bool{false, true} {
 		t.Run(map[bool]string{false: "queued", true: "inflight"}[inflight], func(t *testing.T) {
 			r := &retryGrantRoom{}

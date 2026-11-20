@@ -20,6 +20,7 @@ const (
 )
 
 func TestNewGuildHasDefaultChannels(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c, _ := e.user("alice")
 	g := createGuild(t, c, "home")
@@ -55,6 +56,7 @@ func TestNewGuildHasDefaultChannels(t *testing.T) {
 }
 
 func TestHiddenChannelIsNotFound(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	bobC, bob := e.user("bob")
@@ -96,6 +98,7 @@ func TestHiddenChannelIsNotFound(t *testing.T) {
 }
 
 func TestCategorySyncInheritsOverwrites(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	bobC, bob := e.user("bob")
@@ -162,6 +165,7 @@ func TestCategorySyncInheritsOverwrites(t *testing.T) {
 }
 
 func TestOverwriteCannotGrantMissingPermission(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	modC, mod := e.user("mod")
@@ -220,6 +224,7 @@ func TestOverwriteCannotGrantMissingPermission(t *testing.T) {
 }
 
 func TestParentMustBeCategoryOfSameGuild(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	g := createGuild(t, owner, "one")
@@ -263,6 +268,7 @@ func TestParentMustBeCategoryOfSameGuild(t *testing.T) {
 }
 
 func TestCreateChannelValidation(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	bobC, bob := e.user("bob")
@@ -303,6 +309,7 @@ func TestCreateChannelValidation(t *testing.T) {
 }
 
 func TestDeleteCategoryKeepsChildren(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, alice := e.user("alice")
 	bobC, bob := e.user("bob")
@@ -354,6 +361,7 @@ func TestDeleteCategoryKeepsChildren(t *testing.T) {
 }
 
 func TestReorderChannels(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	bobC, bob := e.user("bob")
@@ -443,6 +451,7 @@ func sameMap[K comparable, V comparable](a, b map[K]V) bool {
 }
 
 func TestViewersRespectsOverwrites(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, alice := e.user("alice")
 	_, bob := e.user("bob")
@@ -495,6 +504,7 @@ func TestViewersRespectsOverwrites(t *testing.T) {
 }
 
 func TestChannelEventsPublished(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	g := createGuild(t, owner, "home")
@@ -519,6 +529,7 @@ func TestChannelEventsPublished(t *testing.T) {
 }
 
 func TestCategoryOverwriteUpdatesSyncedChannels(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	g := createGuild(t, owner, "home")
@@ -543,6 +554,7 @@ func TestCategoryOverwriteUpdatesSyncedChannels(t *testing.T) {
 }
 
 func TestDeleteGuildWithChannels(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	g := createGuild(t, owner, "home")
@@ -557,6 +569,7 @@ func TestDeleteGuildWithChannels(t *testing.T) {
 }
 
 func TestDeleteRoleDropsItsOverwrites(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	g := createGuild(t, owner, "home")
@@ -594,6 +607,7 @@ func moverEnv(t *testing.T) (e *env, owner, mover, bobC *testkit.Client, g guild
 }
 
 func TestMoveKeepsVisibility(t *testing.T) {
+	t.Parallel()
 	_, owner, mover, bobC, g, private, public := moverEnv(t)
 	secret := byName(t, listChannels(t, owner, g), channels.DefaultTextChannel)
 	open := byName(t, listChannels(t, owner, g), channels.DefaultVoiceChannel)
@@ -629,6 +643,7 @@ func TestMoveKeepsVisibility(t *testing.T) {
 }
 
 func TestSyncRequiresOverwriteAuthorization(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("alice")
 	modC, mod := e.user("mod")

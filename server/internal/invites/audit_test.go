@@ -24,6 +24,7 @@ func (l *auditLog) Record(_ context.Context, _ audit.Tx, e audit.Entry) error {
 }
 
 func TestInvitesAreAudited(t *testing.T) {
+	t.Parallel()
 	log := &auditLog{}
 	e := newEnv(t, func(o *invites.Options) { o.Audit = log })
 	owner, _ := e.user("owner")

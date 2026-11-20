@@ -52,6 +52,7 @@ func pendingFile(t *testing.T, c *testkit.Client, channel, name string, content 
 }
 
 func TestAttachmentImageAndRange(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c, _ := e.user("alice")
 	_, ch, _ := newGuild(t, c, "club")
@@ -84,6 +85,7 @@ func TestAttachmentImageAndRange(t *testing.T) {
 }
 
 func TestAttachmentHTMLDownloadsAsBinary(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	c, _ := e.user("alice")
 	_, ch, _ := newGuild(t, c, "club")
@@ -99,6 +101,7 @@ func TestAttachmentHTMLDownloadsAsBinary(t *testing.T) {
 }
 
 func TestAttachmentPrivacyAndBinding(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	bob, b := e.user("bob")
@@ -144,6 +147,7 @@ func TestAttachmentPrivacyAndBinding(t *testing.T) {
 }
 
 func TestDiscardPendingAttachmentIsOwnerOnly(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	owner, _ := e.user("owner")
 	member, u := e.user("member")

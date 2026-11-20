@@ -13,6 +13,7 @@ import (
 // Server mute belongs to a membership: someone kicked and invited back does
 // not come back muted.
 func TestRemovedMemberRejoinsWithoutServerMute(t *testing.T) {
+	t.Parallel()
 	e, _, _ := moderationEnv(t, permissions.MuteMembers)
 	on := true
 	if err := e.voice.Moderate(t.Context(), 7, 2, 1, voice.ModerationFields{Mute: &on}); err != nil {

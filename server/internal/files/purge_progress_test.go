@@ -25,6 +25,7 @@ func (c *walkBudget) Err() error {
 }
 
 func TestPurgeMakesProgressBeforeTraversalCompletes(t *testing.T) {
+	t.Parallel()
 	disk, root, clock := newClockDisk(t, time.Hour)
 	dir := filepath.Join(root, "trash", "attachments", "1", "2")
 	if err := os.MkdirAll(dir, 0o700); err != nil {

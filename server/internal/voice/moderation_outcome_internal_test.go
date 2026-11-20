@@ -46,6 +46,7 @@ func (r *outcomeRooms) RemoveParticipant(context.Context, string, string) error 
 }
 
 func TestAppliedRPCReportsSuccessWithoutOverwritingReplacement(t *testing.T) {
+	t.Parallel()
 	for _, disconnect := range []bool{false, true} {
 		for _, change := range []string{"replacement", "member_removed", "channel_removed", "left"} {
 			t.Run(map[bool]string{false: "flags", true: "disconnect"}[disconnect]+"/"+change, func(t *testing.T) {
@@ -100,6 +101,7 @@ func TestAppliedRPCReportsSuccessWithoutOverwritingReplacement(t *testing.T) {
 // A disconnect removes the replacement too and gives up, unavailable, when
 // the user keeps reconnecting.
 func TestDisconnectRemovesReplacementSessions(t *testing.T) {
+	t.Parallel()
 	for _, replacements := range []int{1, 2} {
 		t.Run(map[int]string{1: "once", 2: "twice"}[replacements], func(t *testing.T) {
 			r := &outcomeRooms{}
@@ -131,6 +133,7 @@ func TestDisconnectRemovesReplacementSessions(t *testing.T) {
 // A combined request applies its flags but reports a move that could not
 // start because the session was replaced or the destination deleted.
 func TestCombinedModerationReportsAMoveThatDidNotStart(t *testing.T) {
+	t.Parallel()
 	for _, change := range []string{"replacement", "destination_removed"} {
 		t.Run(change, func(t *testing.T) {
 			r := &outcomeRooms{}
@@ -160,6 +163,7 @@ func TestCombinedModerationReportsAMoveThatDidNotStart(t *testing.T) {
 // TestMemberRemovalClearsMoveAfterSourceLeft exercises the move lifetime
 // independently of the source state, which participant_left already removed.
 func TestMemberRemovalClearsMoveAfterSourceLeft(t *testing.T) {
+	t.Parallel()
 	s := NewService(Options{})
 	source := &session{state: State{GuildID: 7, ChannelID: 42, UserID: 1}}
 	s.moves[1] = &pendingMove{source: source, channelID: 44}

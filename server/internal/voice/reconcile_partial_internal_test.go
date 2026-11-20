@@ -52,6 +52,7 @@ func (c partialChannels) Permissions(_ context.Context, user, channel snowflake.
 }
 
 func TestReconcileIsolatesRoomPermissionFailures(t *testing.T) {
+	t.Parallel()
 	for _, lookupFailure := range []bool{false, true} {
 		t.Run(map[bool]string{false: "permissions", true: "lookup"}[lookupFailure], func(t *testing.T) {
 			failure := errors.New("temporary database failure")
@@ -81,6 +82,7 @@ func TestReconcileIsolatesRoomPermissionFailures(t *testing.T) {
 }
 
 func TestReconcileReportsPartialListingFailures(t *testing.T) {
+	t.Parallel()
 	failure := errors.New("temporary room listing failure")
 	r := &reconcileRooms{
 		rooms:        []Room{{Name: "42"}, {Name: "43"}},
@@ -99,6 +101,7 @@ func TestReconcileReportsPartialListingFailures(t *testing.T) {
 }
 
 func TestReconcileWrapsRoomListFailure(t *testing.T) {
+	t.Parallel()
 	failure := errors.New("room API unavailable")
 	s := NewService(Options{Rooms: &reconcileRooms{roomsError: failure}, APIKey: "key", APISecret: "secret"})
 	if err := s.Reconcile(t.Context()); !errors.Is(err, failure) || !strings.Contains(err.Error(), "voice: reconcile: list rooms") {
@@ -107,6 +110,7 @@ func TestReconcileWrapsRoomListFailure(t *testing.T) {
 }
 
 func TestReconcileDoesNotReplaceAnUnknownRoomFromAnotherRoom(t *testing.T) {
+	t.Parallel()
 	for _, listingFailure := range []bool{false, true} {
 		for _, reversed := range []bool{false, true} {
 			name := map[bool]string{false: "database", true: "listing"}[listingFailure] + map[bool]string{false: "/first", true: "/last"}[reversed]

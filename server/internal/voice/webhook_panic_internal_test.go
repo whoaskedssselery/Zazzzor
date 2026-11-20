@@ -23,6 +23,7 @@ func (p *panicPublisher) Publish(context.Context, events.Event) {
 }
 
 func TestWebhookLockedPublishPanicReleasesStateAndDelivery(t *testing.T) {
+	t.Parallel()
 	s, _ := refreshService(t, func(context.Context, snowflake.ID) (permissions.Permission, error) {
 		return permissions.ViewChannel | permissions.Connect, nil
 	})
@@ -60,6 +61,7 @@ func TestWebhookLockedPublishPanicReleasesStateAndDelivery(t *testing.T) {
 }
 
 func TestWebhookDestinationAdmissionClearsCompletedMove(t *testing.T) {
+	t.Parallel()
 	s, _ := refreshService(t, func(context.Context, snowflake.ID) (permissions.Permission, error) {
 		return permissions.ViewChannel | permissions.Connect, nil
 	})

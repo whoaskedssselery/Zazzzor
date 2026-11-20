@@ -13,6 +13,7 @@ import (
 // An old reply must not become a way to read the original's later edits
 // after history access is revoked, including through a nonce retry.
 func TestReplyOperationsRespectRevokedHistory(t *testing.T) {
+	t.Parallel()
 	for _, action := range []string{"edit", "no-op edit", "nonce retry"} {
 		t.Run(action, func(t *testing.T) {
 			e := newEnv(t)
@@ -81,6 +82,7 @@ func (c *historyRevocation) Permissions(ctx context.Context, user, channel snowf
 }
 
 func TestReplyEditRechecksHistoryAfterLoadingOriginal(t *testing.T) {
+	t.Parallel()
 	resolver := &historyRevocation{}
 	e := newEnv(t, func(o *messages.Options) {
 		resolver.Channels = o.Channels

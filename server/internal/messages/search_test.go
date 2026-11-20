@@ -33,6 +33,7 @@ func contents(ms []messageBody) []string {
 }
 
 func TestSearchGuildMessages(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	bob, bu := e.user("bob")
@@ -97,6 +98,7 @@ func TestSearchGuildMessages(t *testing.T) {
 }
 
 func TestSearchOneChannel(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t)
 	alice, _ := e.user("alice")
 	bob, bu := e.user("bob")

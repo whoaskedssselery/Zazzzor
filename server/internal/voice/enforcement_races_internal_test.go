@@ -23,6 +23,7 @@ func waitRefreshSignal(t *testing.T, signal <-chan struct{}) {
 }
 
 func TestRefreshKeepsSyncArrivingDuringWork(t *testing.T) {
+	t.Parallel()
 	for _, duringRPC := range []bool{false, true} {
 		t.Run(map[bool]string{false: "permission_read", true: "media_rpc"}[duringRPC], func(t *testing.T) {
 			entered, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
@@ -66,6 +67,7 @@ func TestRefreshKeepsSyncArrivingDuringWork(t *testing.T) {
 }
 
 func TestRefreshDoesNotOutliveMemberRemovalOrReplacement(t *testing.T) {
+	t.Parallel()
 	for _, replacement := range []bool{false, true} {
 		t.Run(map[bool]string{false: "removed", true: "replacement"}[replacement], func(t *testing.T) {
 			entered, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
@@ -98,6 +100,7 @@ func TestRefreshDoesNotOutliveMemberRemovalOrReplacement(t *testing.T) {
 }
 
 func TestRefreshRPCDoesNotCommitToAReplacement(t *testing.T) {
+	t.Parallel()
 	entered, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	unblock := sync.OnceFunc(func() { close(release) })
 	defer unblock()
@@ -129,6 +132,7 @@ func TestRefreshRPCDoesNotCommitToAReplacement(t *testing.T) {
 }
 
 func TestRefreshSkipsObsoleteWorkBeforePermissionRead(t *testing.T) {
+	t.Parallel()
 	for _, replacedSession := range []bool{false, true} {
 		t.Run(map[bool]string{false: "new_sync", true: "new_session"}[replacedSession], func(t *testing.T) {
 			reads := 0
