@@ -121,16 +121,15 @@ export const MessageToolbar = (props: MessageActionHandlers) => {
   const items = useItems(props);
   const quick = items.filter((i) => i.key === "reply" || i.key === "edit" || i.key === "delete");
   return (
-    <div className="absolute -top-4 right-4 z-10 hidden items-center rounded-md bg-overlay p-0.5 shadow-float group-focus-within:flex group-hover:flex has-[[data-state=open]]:flex">
+    <div className="absolute -top-5 right-4 z-10 hidden items-center gap-0.5 rounded-md bg-overlay p-1 shadow-float group-focus-within:flex group-hover:flex has-[[data-state=open]]:flex">
       {props.onReact && (
         <EmojiPicker onPick={props.onReact} emojis={props.emojis}>
-          <IconButton size="sm" label="Добавить реакцию" icon={SmilePlus} />
+          <IconButton label="Добавить реакцию" icon={SmilePlus} />
         </EmojiPicker>
       )}
       {quick.map((i) => (
         <IconButton
           key={i.key}
-          size="sm"
           label={i.label}
           icon={i.icon}
           variant={i.danger ? "danger" : "ghost"}
@@ -141,7 +140,7 @@ export const MessageToolbar = (props: MessageActionHandlers) => {
       ))}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <IconButton size="sm" label="Ещё" icon={Ellipsis} />
+          <IconButton label="Ещё" icon={Ellipsis} />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {items.map((i) => (
@@ -167,8 +166,9 @@ const MenuRow = ({ item, kind }: { item: Item; kind: "dropdown" | "context" }) =
           item.run({ shiftKey: false });
         }}
       >
-        <Icon aria-hidden className="size-4" />
+        {/* The label first: a menu row puts its icon at the end, as Discord does. */}
         {item.label}
+        <Icon aria-hidden />
       </Row>
     </>
   );
