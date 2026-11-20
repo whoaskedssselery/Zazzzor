@@ -4,9 +4,11 @@ import { useEffect } from "react";
 import { loadSession, onUnauthorized, safeNext, useSession } from "@/entities/session";
 import { NotificationPrompt, useMentionAlerts, useUnreadBadge } from "@/features/notify";
 import { CallNotices, NativeSharePicker, useCallSounds, useSwitchKeys } from "@/features/voice-call";
+import { SplashScreen } from "@/shared/ui";
 import { ConnectionBanner } from "@/widgets/connection-banner";
 import { IncomingCalls } from "@/widgets/incoming-call";
 import { useGatewaySession } from "./gateway-session";
+import { useSplash } from "./splash";
 
 /** `beforeLoad` of the protected layout: no session → /login?next=<this page>. */
 export const requireSession = async ({
@@ -47,7 +49,9 @@ export const redirectSignedIn = async ({
  * While the session is authenticated the gateway runs (useGatewaySession),
  * mentions alert the user (useMentionAlerts), the tab shows what is unread
  * (useUnreadBadge), and the connection banner and the offer of desktop
- * notifications sit in their own rows above the screen.
+ * notifications sit in their own rows above the screen. Until the first
+ * data arrives the loading screen covers it all (useSplash), and the page
+ * under it is inert.
  *
  * Sign-out and a 401 from another request clear the cache and navigate
  * themselves. queryClient.clear() does not notify mounted observers, so the
@@ -66,9 +70,10 @@ export const AuthGuard = () => {
   useUnreadBadge();
   useCallSounds();
   useSwitchKeys(authenticated);
+  const splash = useSplash();
   if (!authenticated) return null;
   return (
-    <div className="flex h-dvh flex-col">
+    <div className="flex h-dvh flex-col" inert={splash === "showing"}>
       <ConnectionBanner />
       <NotificationPrompt />
       <div className="min-h-0 flex-1 overflow-auto">
@@ -78,6 +83,7 @@ export const AuthGuard = () => {
       <CallNotices />
       <IncomingCalls />
       <NativeSharePicker />
+      {splash !== "gone" && <SplashScreen leaving={splash === "leaving"} />}
     </div>
   );
 };

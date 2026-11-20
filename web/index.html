@@ -9,8 +9,65 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>Zazzzor</title>
     <script src="/theme-boot.js"></script>
+    <!--
+      The boot splash: the loading screen of SplashScreen (src/shared/ui),
+      drawn before the bundle runs. The router removes it once the first page
+      is on screen (useBootSplashHandOver). Colours from tokens.css, the
+      animation from logo.css; keep them in step.
+    -->
+    <style>
+      #boot-splash {
+        --logo-face: #3dba86;
+        --logo-shadow: #1f6b49;
+        position: fixed;
+        inset: 0;
+        z-index: 1400;
+        display: grid;
+        place-items: center;
+        background: #0e0d0c;
+      }
+      [data-theme="light"] #boot-splash {
+        --logo-face: #1a7f55;
+        --logo-shadow: #0b3d28;
+        background: #dcd9d4;
+      }
+      @keyframes logo-letter {
+        0% { opacity: 0; }
+        12%, 80% { opacity: 1; }
+        96%, 100% { opacity: 0; }
+      }
+      @keyframes logo-lift {
+        0%, 8% { transform: translate(var(--logo-dx), var(--logo-dy)); }
+        28%, 74% { transform: translate(0, 0); }
+        92%, 100% { transform: translate(var(--logo-dx), var(--logo-dy)); }
+      }
+      #boot-splash g, #boot-splash .f {
+        animation: 2400ms infinite logo-letter linear;
+        animation-delay: calc(var(--logo-i) * 160ms);
+      }
+      #boot-splash .f { animation-name: logo-lift; animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1); }
+      @media (prefers-reduced-motion: reduce) {
+        #boot-splash g, #boot-splash .f { animation: none; }
+      }
+    </style>
   </head>
   <body>
+    <div id="boot-splash" aria-hidden="true">
+      <svg viewBox="0 0 48 48" width="96" height="96" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <g style="--logo-i: 0; --logo-dx: 1.6px; --logo-dy: 2px">
+          <path d="M6 24H25L6 42H25" stroke-width="6.5" stroke="var(--logo-shadow)" transform="translate(1.6 2)" />
+          <path class="f" d="M6 24H25L6 42H25" stroke-width="6.5" stroke="var(--logo-face)" />
+        </g>
+        <g style="--logo-i: 1; --logo-dx: 1.1px; --logo-dy: 1.4px">
+          <path d="M29 14H38L29 23H38" stroke-width="4" stroke="var(--logo-shadow)" transform="translate(1.1 1.4)" />
+          <path class="f" d="M29 14H38L29 23H38" stroke-width="4" stroke="var(--logo-face)" />
+        </g>
+        <g style="--logo-i: 2; --logo-dx: 0.8px; --logo-dy: 1px">
+          <path d="M37 4H43L37 10H43" stroke-width="2.8" stroke="var(--logo-shadow)" transform="translate(0.8 1)" />
+          <path class="f" d="M37 4H43L37 10H43" stroke-width="2.8" stroke="var(--logo-face)" />
+        </g>
+      </svg>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/app/main.tsx"></script>
   </body>
