@@ -90,7 +90,9 @@ func Postgres(t testing.TB) *pgxpool.Pool {
 	u := PostgresURL(t)
 	ctx, cancel := context.WithTimeout(context.Background(), createDBTimout)
 	defer cancel()
-	pool, err := db.Open(ctx, u)
+	// The server's own five seconds for a connection are short for a CI host
+	// busy creating and dropping databases for parallel tests.
+	pool, err := db.OpenWith(ctx, u, db.Options{AcquireTimeout: createDBTimout})
 	if err != nil {
 		t.Fatalf("testkit: connect to test database: %v", err)
 	}
