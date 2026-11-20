@@ -7,7 +7,8 @@ description = "Share a Windows screen or window and one app's sound to a Zazzzor
 
 [dependencies]
 anyhow = "=1.0.104"
-livekit = "=0.10.0"
+# wss:// needs TLS; native-tls is SChannel on Windows, with the system certificate store.
+livekit = { version = "=0.10.0", features = ["native-tls"] }
 log = "=0.4.35"
 serde = { version = "=1.0.229", features = ["derive"] }
 tokio = { version = "=1.54.1", features = ["macros", "rt-multi-thread", "sync", "time"] }
