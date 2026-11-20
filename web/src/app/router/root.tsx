@@ -1,16 +1,20 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, Outlet } from "@tanstack/react-router";
 import { Button } from "@/shared/ui";
+import { useBootSplashHandOver } from "./splash";
 
 export interface RouterContext {
   queryClient: QueryClient;
 }
 
-const RootLayout = () => (
-  <div className="min-h-dvh bg-chat text-fg">
-    <Outlet />
-  </div>
-);
+const RootLayout = () => {
+  useBootSplashHandOver();
+  return (
+    <div className="min-h-dvh bg-chat text-fg">
+      <Outlet />
+    </div>
+  );
+};
 
 /** Last-resort screen for an error no page handled. No technical details for users. */
 const RootError = () => (

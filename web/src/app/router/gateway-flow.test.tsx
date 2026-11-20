@@ -28,6 +28,28 @@ describe("gateway", () => {
     });
   });
 
+  it("covers the app with the loading screen until READY, the page under it inert", async () => {
+    server.use(sessionHandler(testUser), readyGateway(makeReady(testUser, [makeGuildState("10", testUser)])));
+    renderApp("/channels/@me");
+    await screen.findByRole("heading", { level: 1, name: "Друзья" });
+    await waitFor(() => {
+      expect(getGuildsState().order).toEqual(["10"]);
+    });
+    // READY: the screen fades out, then goes; the page takes input again.
+    await waitFor(() => {
+      expect(document.querySelector("[data-splash]")).toBeNull();
+    });
+    expect(screen.getByRole("heading", { level: 1, name: "Друзья" }).closest("[inert]")).toBeNull();
+  });
+
+  it("keeps the loading screen over the app while the gateway is silent", async () => {
+    server.use(sessionHandler(testUser));
+    renderApp("/channels/@me");
+    const heading = await screen.findByRole("heading", { level: 1, name: "Друзья" });
+    expect(document.querySelector("[data-splash]")).not.toBeNull();
+    expect(heading.closest("[inert]")).not.toBeNull();
+  });
+
   it("does not connect without a session", async () => {
     let connections = 0;
     server.use(
