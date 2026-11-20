@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	"golang.org/x/crypto/argon2"
@@ -22,9 +23,21 @@ type argonParams struct {
 	threads uint8
 }
 
+// productionParams are the server's cost of a new hash.
+var productionParams = argonParams{memory: 64 * 1024, time: 3, threads: 2}
+
+// testParams are a test binary's: its tests register users by the hundred,
+// and a hash stores its own parameters, so verifying works the same way.
+var testParams = argonParams{memory: 8 * 1024, time: 1, threads: 1}
+
 // currentParams hash every new password; hashes made with other parameters
 // are upgraded on the next successful login.
-var currentParams = argonParams{memory: 64 * 1024, time: 3, threads: 2}
+var currentParams = func() argonParams {
+	if testing.Testing() {
+		return testParams
+	}
+	return productionParams
+}()
 
 const (
 	saltLen = 16
