@@ -1,0 +1,70 @@
+/*
+ * The loading animation of the mark (Logo with `animated`, and the boot
+ * splash in index.html, which copies these rules). Each letter fades in
+ * flat on its shadow, lifts off it, holds, then sinks back and fades; the
+ * letters follow one another 160 ms apart, the largest first, so the «zzz»
+ * climbs. Logo puts every animated mark on one clock.
+ */
+@keyframes logo-letter {
+  0% {
+    opacity: 0;
+  }
+  12%,
+  80% {
+    opacity: 1;
+  }
+  96%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes logo-lift {
+  0%,
+  8% {
+    transform: translate(var(--logo-dx), var(--logo-dy));
+  }
+  28%,
+  74% {
+    transform: translate(0, 0);
+  }
+  92%,
+  100% {
+    transform: translate(var(--logo-dx), var(--logo-dy));
+  }
+}
+
+.logo-animated .logo-letter,
+.logo-animated .logo-face {
+  animation-duration: 2400ms;
+  animation-iteration-count: infinite;
+  animation-delay: calc(var(--logo-i) * 160ms);
+}
+
+.logo-animated .logo-letter {
+  animation-name: logo-letter;
+  animation-timing-function: linear;
+}
+
+.logo-animated .logo-face {
+  animation-name: logo-lift;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* SplashScreen: «Подключение…» shows only when loading takes a while. */
+@keyframes splash-caption {
+  from {
+    opacity: 0;
+  }
+}
+
+.splash-caption {
+  animation: splash-caption var(--duration-slow) var(--ease-out) 1500ms both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logo-animated .logo-letter,
+  .logo-animated .logo-face {
+    animation: none;
+  }
+}
