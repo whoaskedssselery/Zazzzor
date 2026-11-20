@@ -26,6 +26,7 @@ import {
   GuildIcon,
   IconButton,
   Input,
+  Logo,
   RoleColorDot,
   Select,
   Skeleton,
@@ -185,6 +186,15 @@ const Showcase = () => (
           <GuildIcon name="Дача" size={40} />
         </span>
         <span className="text-sm text-fg-faint">Наведите: круг становится квадратом.</span>
+      </Row>
+    </Section>
+
+    <Section title="Логотип" note="«Ззз» на объёмной тени; анимированный — экран загрузки при запуске.">
+      <Row>
+        {[16, 24, 32, 48, 96].map((size) => (
+          <Logo key={size} size={size} label={`Логотип, ${String(size)} px`} />
+        ))}
+        <Logo size={96} animated label="Логотип, анимация загрузки" />
       </Row>
     </Section>
 

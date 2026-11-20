@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "../../shared/ui/fonts/fonts.css";
 @import "../../shared/ui/tokens.css";
+@import "../../shared/ui/logo.css";
 
 /*
  * Tailwind's theme is replaced, not extended: only Zazzzor's tokens exist as

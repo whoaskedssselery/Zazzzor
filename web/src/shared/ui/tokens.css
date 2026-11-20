@@ -67,6 +67,10 @@
   --warning: #e6b04f;
   --badge-count: var(--danger);
 
+  /* The mark: jade letters on a darker jade extrusion. */
+  --logo-face: var(--accent);
+  --logo-shadow: #1f6b49;
+
   /* Presence: online is the accent ("here"), away the warning amber, do not
      disturb the alarm red, offline a quiet grey. */
   --status-online: var(--accent);
@@ -146,6 +150,9 @@
   --warning: #b07610;
   --badge-count: var(--danger);
 
+  --logo-face: var(--accent);
+  --logo-shadow: #0b3d28;
+
   --status-online: #1d8a5a;
   --status-offline: #7c766e;
   --status-idle: var(--warning);
@@ -188,6 +195,8 @@
   --z-dropdown: 1100;
   --z-toast: 1200;
   --z-tooltip: 1300;
+  /* The loading screen covers everything until the first data arrives. */
+  --z-splash: 1400;
 
   /* Motion: state changes only, short. */
   --duration-fast: 120ms;
