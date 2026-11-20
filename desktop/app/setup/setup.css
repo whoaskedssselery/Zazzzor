@@ -1,29 +1,92 @@
-/* The colours, radii and type of the web client (web/src/shared/ui/tokens.css), dark and light. */
+/*
+ * The first-run screen of the desktop app, in the web client's world
+ * (web/src/shared/ui/tokens.css): the darkest surface, warm off-white text,
+ * jade for the one action, Golos Text. The mark rises in once on open and
+ * plays the web client's loading loop while the address is checked.
+ */
+
+/* Golos Text (The Golos Text Project Authors), SIL Open Font License 1.1, see fonts/OFL.txt. */
+@font-face {
+  font-family: "Golos Text";
+  font-weight: 400;
+  font-display: swap;
+  src: url(fonts/golos-text-cyrillic-400-normal.woff2) format("woff2");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Golos Text";
+  font-weight: 600;
+  font-display: swap;
+  src: url(fonts/golos-text-cyrillic-600-normal.woff2) format("woff2");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Golos Text";
+  font-weight: 700;
+  font-display: swap;
+  src: url(fonts/golos-text-cyrillic-700-normal.woff2) format("woff2");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Golos Text";
+  font-weight: 400;
+  font-display: swap;
+  src: url(fonts/golos-text-latin-400-normal.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122;
+}
+@font-face {
+  font-family: "Golos Text";
+  font-weight: 600;
+  font-display: swap;
+  src: url(fonts/golos-text-latin-600-normal.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122;
+}
+@font-face {
+  font-family: "Golos Text";
+  font-weight: 700;
+  font-display: swap;
+  src: url(fonts/golos-text-latin-700-normal.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122;
+}
+
 :root {
-  color-scheme: dark light;
-  --bg: #1e1c1a;
-  --bg-input: #2a2825;
+  color-scheme: dark;
+  --bg: #0e0d0c;
+  --bg-input: #1e1c1a;
+  --bg-hover: rgb(236 228 216 / 0.06);
   --text: #ebe7e1;
   --text-muted: #b3ada5;
+  --text-faint: #9d968e;
   --text-danger: #f07068;
   --accent: #3dba86;
   --accent-hover: #4ac792;
   --on-accent: #0b1a13;
   --border: #3a3733;
-  font-family: "Golos Text", system-ui, "Segoe UI", Roboto, sans-serif;
+  --border-strong: #4a4641;
+  --focus-ring: #62d0a2;
+  --logo-face: var(--accent);
+  --logo-shadow: #1f6b49;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  font-family: "Golos Text", system-ui, "Segoe UI", sans-serif;
 }
 
 @media (prefers-color-scheme: light) {
   :root {
-    --bg: #f8f7f4;
-    --bg-input: #e8e5e0;
+    color-scheme: light;
+    --bg: #ebe8e3;
+    --bg-input: #f8f7f4;
+    --bg-hover: rgb(60 50 40 / 0.06);
     --text: #1c1a17;
     --text-muted: #4d4842;
+    --text-faint: #5f5952;
     --text-danger: #a82d27;
     --accent: #1a7f55;
     --accent-hover: #166d49;
     --on-accent: #ffffff;
-    --border: #d3cfc9;
+    --border: #d6d2cc;
+    --border-strong: #b5afa7;
+    --focus-ring: #1a7f55;
+    --logo-shadow: #0b3d28;
   }
 }
 
@@ -31,101 +94,222 @@
   box-sizing: border-box;
 }
 
+::selection {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
 body {
   margin: 0;
   min-height: 100vh;
   display: grid;
   place-items: center;
-  padding: 24px 16px;
+  padding: 32px 16px 48px;
   background: var(--bg);
   color: var(--text);
+  -webkit-font-smoothing: antialiased;
 }
 
 main {
   width: 100%;
-  max-width: 400px;
+  max-width: 460px;
+}
+
+/*
+ * The mark and the name lined up on the large first Z, as LogoLockup in the
+ * web client: capitals as tall as the Z (Golos caps are 0.7 em, the Z 24.5 of
+ * the mark's 48 units), the baseline on its bottom stroke (2.75 units up).
+ */
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 40px;
+  font-size: 1.75rem;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .logo {
-  width: 48px;
-  height: 48px;
-  display: block;
-  margin-bottom: 20px;
+  position: relative;
+  top: 2.2px;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+}
+
+.logo .shadow {
+  stroke: var(--logo-shadow);
+}
+
+.logo .face {
+  stroke: var(--logo-face);
+}
+
+/* The letters' order and the depth of their shadows, as in Logo.tsx. */
+.l0 {
+  --i: 0;
+  --dx: 1.6px;
+  --dy: 2px;
+}
+.l1 {
+  --i: 1;
+  --dx: 1.1px;
+  --dy: 1.4px;
+}
+.l2 {
+  --i: 2;
+  --dx: 0.8px;
+  --dy: 1px;
+}
+
+/* On open: each letter fades in flat on its shadow and lifts off it, the largest first. */
+@keyframes letter-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes face-in {
+  from {
+    transform: translate(var(--dx), var(--dy));
+  }
+}
+.letter {
+  animation: letter-in 360ms linear both;
+  animation-delay: calc(120ms + var(--i) * 140ms);
+}
+.face {
+  animation: face-in 700ms var(--ease-out) both;
+  animation-delay: calc(120ms + var(--i) * 140ms);
+}
+
+/* While the address is checked: the web client's loading loop (web/src/shared/ui/logo.css). */
+@keyframes logo-letter {
+  0% {
+    opacity: 0;
+  }
+  12%,
+  80% {
+    opacity: 1;
+  }
+  96%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes logo-lift {
+  0%,
+  8% {
+    transform: translate(var(--dx), var(--dy));
+  }
+  28%,
+  74% {
+    transform: translate(0, 0);
+  }
+  92%,
+  100% {
+    transform: translate(var(--dx), var(--dy));
+  }
+}
+main[data-busy] .letter {
+  animation: logo-letter 2400ms linear infinite;
+  animation-delay: calc(var(--i) * 160ms);
+}
+main[data-busy] .face {
+  animation: logo-lift 2400ms var(--ease-out) infinite;
+  animation-delay: calc(var(--i) * 160ms);
 }
 
 h1 {
-  margin: 0 0 6px;
-  font-size: 1.5rem;
-  line-height: 1.875rem;
-  font-weight: 600;
+  margin: 0 0 8px;
+  font-size: 2rem;
+  line-height: 2.375rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .hint {
-  margin: 0 0 24px;
+  margin: 0 0 32px;
+  max-width: 44ch;
+  text-wrap: pretty;
   color: var(--text-muted);
-  font-size: 0.875rem;
-  line-height: 1.125rem;
+  font-size: 1rem;
+  line-height: 1.375rem;
 }
 
 label {
   display: block;
-  margin-bottom: 6px;
-  font-size: 0.75rem;
-  line-height: 1rem;
+  margin-bottom: 8px;
+  font-size: 0.875rem;
+  line-height: 1.125rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  color: var(--text-muted);
 }
 
-input {
-  width: 100%;
-  height: 40px;
-  padding: 0 12px;
+/* The address and its button are one control, like a browser's address bar. */
+.field {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--bg-input);
-  color: var(--text);
-  font: inherit;
+  transition: border-color 120ms var(--ease-out);
 }
 
-input:focus-visible,
-button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+.field:hover {
+  border-color: var(--border-strong);
 }
 
-input[aria-invalid="true"] {
+.field:focus-within {
+  border-color: var(--focus-ring);
+}
+
+.field:has(input[aria-invalid="true"]) {
   border-color: var(--text-danger);
 }
 
-.error {
-  min-height: 1.125rem;
-  margin: 6px 0 16px;
-  color: var(--text-danger);
-  font-size: 0.875rem;
-  line-height: 1.125rem;
+input {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  caret-color: var(--accent);
+  font: inherit;
+  font-size: 1rem;
 }
 
-.actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
+input::placeholder {
+  color: var(--text-faint);
+}
+
+/* The field's border shows focus; the input itself needs no ring of its own. */
+input:focus {
+  outline: none;
 }
 
 button {
-  height: 40px;
-  padding: 0 16px;
-  border: 0;
-  border-radius: 8px;
   font: inherit;
-  font-weight: 600;
   cursor: pointer;
 }
 
+button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 #submit {
+  height: 44px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 8px;
   background: var(--accent);
   color: var(--on-accent);
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background-color 120ms var(--ease-out);
 }
 
 #submit:hover {
@@ -133,15 +317,45 @@ button {
 }
 
 #submit:disabled {
-  opacity: 0.6;
   cursor: progress;
 }
 
-#cancel {
+.error {
+  min-height: 1.25rem;
+  margin: 8px 0 0;
+  color: var(--text-danger);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+.back {
+  margin: 8px 0 0 -8px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
   background: transparent;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.back:hover {
+  background: var(--bg-hover);
   color: var(--text);
 }
 
-#cancel:hover {
-  background: var(--bg-input);
+.later {
+  margin: 40px 0 0;
+  color: var(--text-faint);
+  font-size: 0.8125rem;
+  line-height: 1.125rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .letter,
+  .face,
+  main[data-busy] .letter,
+  main[data-busy] .face {
+    animation: none;
+  }
 }
