@@ -67,6 +67,9 @@ has() { grep -qE "$1" <<<"$changed"; }
 ci=".github/workflows/ci.yml"
 ci_value() { grep -E "^\s+$1:" "$ci" | head -1 | sed -E 's/.*:\s*//'; }
 gomodcache="$(go env GOMODCACHE)"
+# The build and lint caches of the Linux containers below, kept between runs
+# in a volume of their own (Windows paths would not hold Linux builds).
+gocache="zazzzor-check-cache:/root/.cache"
 
 # --- hygiene: files that must never be committed ---------------------------
 # Agent and editor state stays local; the shared harness files are listed
@@ -170,14 +173,14 @@ if has '^server/'; then
   run "go mod tidy" bash -c 'cd server && go mod tidy -diff'
   run "sqlc diff" bash -c 'cd server && go tool sqlc diff'
   run golangci-lint env MSYS_NO_PATHCONV=1 docker run --rm -v "$(hostpath "$PWD"):/repo" \
-    -v "$(hostpath "$gomodcache"):/go/pkg/mod" -w /repo/server \
+    -v "$(hostpath "$gomodcache"):/go/pkg/mod" -v "$gocache" -w /repo/server \
     "golangci/golangci-lint:$(ci_value GOLANGCI_LINT_VERSION)" golangci-lint run ./...
   run "go test -race" env MSYS_NO_PATHCONV=1 docker run --rm -v "$(hostpath "$PWD"):/repo" \
-    -v "$(hostpath "$gomodcache"):/go/pkg/mod" -w /repo/server \
+    -v "$(hostpath "$gomodcache"):/go/pkg/mod" -v "$gocache" -w /repo/server \
     -v /var/run/docker.sock:/var/run/docker.sock -e TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal \
-    golang:1.27.4 go test -race -count=1 ./...
+    golang:1.27.4 go test -race -count=1 -parallel 4 ./...
   run govulncheck env MSYS_NO_PATHCONV=1 docker run --rm -v "$(hostpath "$PWD"):/repo" \
-    -v "$(hostpath "$gomodcache"):/go/pkg/mod" -w /repo/server \
+    -v "$(hostpath "$gomodcache"):/go/pkg/mod" -v "$gocache" -w /repo/server \
     golang:1.27.4 go run "golang.org/x/vuln/cmd/govulncheck@$(ci_value GOVULNCHECK_VERSION)" ./...
   run "test containers removed" bash -c '[[ -z "$(docker ps -aq --filter label=zazzzor.test=1)" ]]'
 else
