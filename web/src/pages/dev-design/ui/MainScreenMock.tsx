@@ -6,7 +6,6 @@ import {
   CirclePlus,
   Hash,
   Headphones,
-  House,
   Mic,
   Pencil,
   Plus,
@@ -17,7 +16,7 @@ import {
   Volume2,
 } from "lucide-react";
 import { type CSSProperties, type ReactNode, useState } from "react";
-import { Avatar, Badge, cn, GuildIcon, IconButton, type Presence, roleTextStyle, Tooltip } from "@/shared/ui";
+import { Avatar, Badge, cn, GuildIcon, IconButton, Logo, type Presence, roleTextStyle, Tooltip } from "@/shared/ui";
 
 /*
  * A static mock of the main screen on made-up data, to judge the design
@@ -89,8 +88,8 @@ export const MainScreenMock = () => {
 const Rail = () => (
   <nav aria-label="Серверы" className="flex min-h-0 flex-col items-center gap-2 overflow-y-auto bg-rail py-3">
     <RailItem label="Личные сообщения">
-      <span className="flex size-12 items-center justify-center rounded-[50%] bg-guild text-on-guild transition-[border-radius,background-color,color] duration-(--duration-base) group-hover:rounded-xl group-hover:bg-accent group-hover:text-on-accent">
-        <House aria-hidden className="size-6" strokeWidth={1.75} />
+      <span className="flex size-12 items-center justify-center rounded-[50%] bg-guild text-on-guild transition-[border-radius,background-color,color] duration-(--duration-base) group-hover:rounded-xl">
+        <Logo size={30} />
       </span>
     </RailItem>
     <div aria-hidden className="h-0.5 w-8 shrink-0 rounded-full bg-control" />
@@ -132,7 +131,7 @@ const RailItem = ({
       <span
         aria-hidden
         className={cn(
-          "absolute top-1/2 left-0 w-1 -translate-y-1/2 rounded-r-full bg-fg transition-[height] duration-(--duration-base)",
+          "absolute top-1/2 left-0 w-1 -translate-y-1/2 rounded-r-full bg-accent transition-[height] duration-(--duration-base)",
           active ? "h-10" : unread ? "h-2" : "h-0",
         )}
       />
@@ -233,7 +232,7 @@ const ChannelRow = ({
   return (
     <div className="relative px-2">
       {unread && !selected && (
-        <span aria-hidden className="absolute top-1/2 left-0 h-2 w-1 -translate-y-1/2 rounded-r-full bg-fg" />
+        <span aria-hidden className="absolute top-1/2 left-0 h-2 w-1 -translate-y-1/2 rounded-r-full bg-accent" />
       )}
       <a
         href="#"

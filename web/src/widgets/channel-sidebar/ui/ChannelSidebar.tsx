@@ -206,7 +206,7 @@ const ChannelRow = ({ channel, siblings, selected }: { channel: Channel; sibling
   return (
     <li className={cn("group relative px-2", list.dragging?.id === channel.id && "opacity-50")} {...row}>
       {unread && !selected && (
-        <span aria-hidden className="absolute top-1/2 left-0 h-2 w-1 -translate-y-1/2 rounded-r-full bg-fg" />
+        <span aria-hidden className="absolute top-1/2 left-0 h-2 w-1 -translate-y-1/2 rounded-r-full bg-accent" />
       )}
       {voice ? (
         <button
