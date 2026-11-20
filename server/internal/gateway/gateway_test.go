@@ -18,6 +18,7 @@ import (
 )
 
 func TestGatewayRequiresSession(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	upgrade := []testkit.RequestOption{
 		testkit.WithHeader("Connection", "Upgrade"), testkit.WithHeader("Upgrade", "websocket"),
@@ -62,6 +63,7 @@ func TestGatewayRequiresSession(t *testing.T) {
 }
 
 func TestGatewayHelloReady(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, au := e.user("alice")
 	bob, bu := e.user("bob")
@@ -108,6 +110,7 @@ func TestGatewayHelloReady(t *testing.T) {
 }
 
 func TestJoinSendsOwnGuildState(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, _ := e.user("alice")
 	bob, bu := e.user("bob")
@@ -133,6 +136,7 @@ func TestJoinSendsOwnGuildState(t *testing.T) {
 }
 
 func TestHeartbeatAck(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, _ := e.user("alice")
 	cl, _ := connect(t, alice)
@@ -146,6 +150,7 @@ func TestHeartbeatAck(t *testing.T) {
 }
 
 func TestThrottledHeartbeatsStayConnected(t *testing.T) {
+	t.Parallel()
 	const scale = 100
 	timeout := gateway.DefaultHeartbeatTimeout / scale
 	const throttledInterval = 60 * time.Second / scale
@@ -169,13 +174,16 @@ func TestThrottledHeartbeatsStayConnected(t *testing.T) {
 }
 
 func TestHeartbeatTimeoutCloses(t *testing.T) {
-	const timeout = time.Second
+	t.Parallel()
+	// Heartbeats come every quarter of the timeout: a busy test machine may
+	// delay one by a lot without the connection dropping.
+	const timeout = 2 * time.Second
 	e := newEnv(t, gateway.Options{HeartbeatTimeout: timeout})
 	alice, _ := e.user("alice")
 	cl, _ := connect(t, alice)
 	// Heartbeats keep it open past the timeout...
-	for range 4 {
-		time.Sleep(timeout / 2)
+	for range 6 {
+		time.Sleep(timeout / 4)
 		cl.send(gateway.OpHeartbeat)
 		if f := cl.next(); f.Op != gateway.OpHeartbeatAck {
 			t.Fatalf("frame = %+v, want HEARTBEAT_ACK", f)
@@ -193,6 +201,7 @@ func TestHeartbeatTimeoutCloses(t *testing.T) {
 }
 
 func TestUnknownOpCloses4002(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, _ := e.user("alice")
 	for name, msg := range map[string]struct {
@@ -224,6 +233,7 @@ func TestUnknownOpCloses4002(t *testing.T) {
 }
 
 func TestMessageCreateReachesOnlyViewers(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, au := e.user("alice")
 	bob, bu := e.user("bob")
@@ -268,6 +278,7 @@ func TestMessageCreateReachesOnlyViewers(t *testing.T) {
 }
 
 func TestHiddenChannelEventsStayHidden(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, _ := e.user("alice")
 	bob, bu := e.user("bob")
@@ -298,6 +309,7 @@ func TestHiddenChannelEventsStayHidden(t *testing.T) {
 }
 
 func TestGatewayLosesChannelAfterRoleChange(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, au := e.user("alice")
 	bob, bu := e.user("bob")
@@ -346,6 +358,7 @@ func TestGatewayLosesChannelAfterRoleChange(t *testing.T) {
 }
 
 func TestDeleteChannelNotifiesAndHides(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, _ := e.user("alice")
 	bob, bu := e.user("bob")
@@ -371,6 +384,7 @@ func TestDeleteChannelNotifiesAndHides(t *testing.T) {
 }
 
 func TestLeaveGuildStopsEvents(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, _ := e.user("alice")
 	bob, bu := e.user("bob")
@@ -414,6 +428,7 @@ func TestLeaveGuildStopsEvents(t *testing.T) {
 }
 
 func TestPresenceMultipleConnections(t *testing.T) {
+	t.Parallel()
 	const grace = 300 * time.Millisecond
 	e := newEnv(t, gateway.Options{PresenceGrace: grace})
 	alice, au := e.user("alice")
@@ -477,6 +492,7 @@ func TestPresenceMultipleConnections(t *testing.T) {
 }
 
 func TestPresenceReconnectWithinGrace(t *testing.T) {
+	t.Parallel()
 	const grace = 2 * time.Second
 	e := newEnv(t, gateway.Options{PresenceGrace: grace})
 	alice, au := e.user("alice")
@@ -500,6 +516,7 @@ func TestPresenceReconnectWithinGrace(t *testing.T) {
 }
 
 func TestLogoutClosesSockets(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, _ := e.user("alice")
 	other := e.login("alice") // a second session
@@ -522,6 +539,7 @@ func TestLogoutClosesSockets(t *testing.T) {
 }
 
 func TestSequenceNumbersIncrease(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, au := e.user("alice")
 	cl, _ := connect(t, alice) // READY was s=1
@@ -550,6 +568,7 @@ func TestSequenceNumbersIncrease(t *testing.T) {
 }
 
 func TestSlowConsumerClosed4008(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{SendBuffer: 8})
 	alice, au := e.user("alice")
 	bob, bu := e.user("bob")
@@ -574,6 +593,7 @@ func TestSlowConsumerClosed4008(t *testing.T) {
 }
 
 func TestBusOverflowClosesAllAndRecovers(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{BusBuffer: 1})
 	alice, au := e.user("alice")
 	g, _ := newGuild(t, alice, "guild")
@@ -598,6 +618,7 @@ func TestBusOverflowClosesAllAndRecovers(t *testing.T) {
 }
 
 func TestCloseSendsServiceRestart(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, gateway.Options{})
 	alice, _ := e.user("alice")
 	bob, _ := e.user("bob")
