@@ -591,6 +591,7 @@ describe("the desktop app's screen share", () => {
   let calls: [string, Record<string, unknown> | undefined][];
   let status: NativeShareStatus;
   let commands: boolean;
+  let refused: boolean;
   let screenTokens: number;
 
   beforeEach(() => {
@@ -598,6 +599,7 @@ describe("the desktop app's screen share", () => {
     calls = [];
     status = { state: "idle" };
     commands = true;
+    refused = false;
     screenTokens = 0;
     resetNativeShare();
     Object.assign(globalThis, {
@@ -605,6 +607,9 @@ describe("the desktop app's screen share", () => {
         invoke: (cmd: string, args?: Record<string, unknown>) => {
           calls.push([cmd, args]);
           if (!commands) return Promise.reject(new Error(`Command ${cmd} not allowed by ACL`));
+          // Tauri rejects with the command's error string, not an Error.
+          // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
+          if (cmd === "share_start" && refused) return Promise.reject("cancelled");
           return Promise.resolve(cmd === "share_status" ? status : null);
         },
       },
@@ -666,6 +671,18 @@ describe("the desktop app's screen share", () => {
     await shareNatively(WINDOW, { sound: false, fps: 60 });
     expect(getCall().sharing).toBe(false);
     expect(notices).toEqual([SHARE_FAILED]);
+  });
+
+  it("says nothing when the person says no in the app's dialog", async () => {
+    await joinVoice(G, LOUNGE);
+    played.length = 0;
+    refused = true;
+    await shareNatively(WINDOW, { sound: false, fps: 60 });
+    expect(started()).toHaveLength(1);
+    expect(getCall().sharing).toBe(false);
+    expect(getNativeShare().source).toBeNull();
+    expect(notices).toEqual([]);
+    expect(played).toEqual([]);
   });
 
   it("stops the app's share", async () => {

@@ -539,7 +539,8 @@ const dropNativeShare = async (): Promise<void> => {
  * call's channel from the server, handed to the app, which joins the call
  * as the user's screen. `choice.sound` brings a window's application sound, or a
  * screen's whole system sound but the app's; `choice.fps` caps the frame
- * rate. A failure is said in a notice.
+ * rate. The app asks the person first; a no says nothing, a failure is
+ * said in a notice.
  */
 export const shareNatively = async (source: ShareSource, choice: ShareChoice, again = false): Promise<void> => {
   setNativeShare({ picking: false });
@@ -568,7 +569,9 @@ export const shareNatively = async (source: ShareSource, choice: ShareChoice, ag
     }
     if (mine !== generation) return;
     try {
-      await nativeShare.start({ url: joined.url, token: joined.token, id: source.id, ...choice });
+      // A no in the app's dialog changes nothing, as a closed picker.
+      const started = await nativeShare.start({ url: joined.url, token: joined.token, id: source.id, ...choice });
+      if (started === "cancelled") return;
     } catch {
       failed(SHARE_FAILED);
       return;
