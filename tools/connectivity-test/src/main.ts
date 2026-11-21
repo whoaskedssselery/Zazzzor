@@ -7,6 +7,7 @@ import {
   disconnectMessage,
   emptyConnectionEvents,
 } from "./connection-events";
+import { type Language, translations } from "./locale";
 import { isPickerCancelled, roomOptions, screenShareOptions } from "./media-options";
 import { aggregateSamples, formatReport } from "./report";
 import { type ShareEvent, type ShareState, shareReducer } from "./share-state";
@@ -28,12 +29,36 @@ if (!app) throw new Error("#app not found");
 const browser = detectBrowser(navigator.userAgent);
 const token = readTokenFromHash(location.hash);
 
-app.append(h("h1", { textContent: "Проверка связи" }));
+const url = new URL(location.href);
+const language: Language = url.searchParams.get("lang") === "ru" ? "ru" : "en";
+const text = translations[language];
+document.documentElement.lang = language;
+document.title = `Zazzzor — ${text.title}`;
+
+const languages = h("nav");
+languages.setAttribute("aria-label", text.language);
+for (const [locale, label] of [["en", "English"], ["ru", "Русский"]] as const) {
+  if (locale === language) {
+    const active = h("span", { textContent: label });
+    active.lang = locale;
+    active.setAttribute("aria-current", "true");
+    languages.append(active);
+  } else {
+    const link = h("a", { textContent: label });
+    url.searchParams.set("lang", locale);
+    link.href = url.href;
+    link.lang = locale;
+    link.hreflang = locale;
+    languages.append(link);
+  }
+  if (locale === "en") languages.append(" · ");
+}
+app.append(h("h1", { textContent: text.title }), languages);
 
 if (!token) {
-  app.append(h("p", { className: "warn", textContent: "Нужна ссылка с приглашением" }));
+  app.append(h("p", { className: "warn", textContent: text.missingInvite }));
 } else if (isTokenExpired(token, new Date())) {
-  app.append(h("p", { className: "warn", textContent: "Ссылка истекла, попроси новую" }));
+  app.append(h("p", { className: "warn", textContent: text.expiredInvite }));
 } else {
   start(app, token);
 }
@@ -51,7 +76,7 @@ function errorMessage(err: unknown): string {
 
 function start(root: HTMLElement, accessToken: string): void {
   const room = new Room(roomOptions());
-  // One measurement phase (e.g. «одна демка»): reset by «Новый замер», the connection stays.
+  // A measurement phase can be reset while the connection stays open.
   const samples: ConnectivitySummary[] = [];
   let prevInbound = new Map<string, InboundVideoStat>();
   let events: ConnectionEvents = emptyConnectionEvents();
@@ -62,11 +87,11 @@ function start(root: HTMLElement, accessToken: string): void {
   let share: ShareState = { status: "idle" };
   let timer: number | undefined;
 
-  const status = h("p", { textContent: "Не подключено" });
-  const connectBtn = h("button", { textContent: "Подключиться" });
-  const shareBtn = h("button", { textContent: "Начать демку" });
-  const copyBtn = h("button", { textContent: "Скопировать отчёт" });
-  const resetBtn = h("button", { textContent: "Новый замер" });
+  const status = h("p", { textContent: text.disconnected });
+  const connectBtn = h("button", { textContent: text.connect });
+  const shareBtn = h("button", { textContent: text.startShare });
+  const copyBtn = h("button", { textContent: text.copyReport });
+  const resetBtn = h("button", { textContent: text.reset });
   const shareError = h("p", { className: "warn" });
   const participants = h("p");
   const videos = h("div", { className: "videos" });
@@ -76,7 +101,7 @@ function start(root: HTMLElement, accessToken: string): void {
   resetBtn.disabled = true;
 
   if (!browser.reliable60fps) {
-    root.append(h("p", { className: "banner", textContent: "Для проверки 60 fps открой ссылку в Chrome или Edge" }));
+    root.append(h("p", { className: "banner", textContent: text.browserWarning }));
   }
   root.append(
     status,
@@ -92,20 +117,20 @@ function start(root: HTMLElement, accessToken: string): void {
   const renderParticipants = (): void => {
     if (room.state !== "connected") return;
     const names = [room.localParticipant.identity, ...[...room.remoteParticipants.values()].map((p) => p.identity)];
-    participants.textContent = `Участники: ${names.join(", ")}`;
+    participants.textContent = text.participants + names.join(", ");
   };
 
   const dispatch = (event: ShareEvent): void => {
     share = shareReducer(share, event);
     shareBtn.textContent =
-      share.status === "sharing" ? "Остановить" : share.status === "starting" ? "Запуск…" : "Начать демку";
+      share.status === "sharing" ? text.stopShare : share.status === "starting" ? text.startingShare : text.startShare;
     shareBtn.disabled = room.state !== "connected" || share.status === "starting";
-    shareError.textContent = share.status === "error" ? `Не удалось начать демку: ${share.message}` : "";
+    shareError.textContent = share.status === "error" ? text.shareFailed + share.message : "";
   };
 
   const renderLive = (summary: ConnectivitySummary | null): void => {
     live.replaceChildren(
-      renderLiveStats(summary, { prevInbound, agg: samples.length ? aggregateSamples(samples) : null, events, labels }),
+      renderLiveStats(summary, language, { prevInbound, agg: samples.length ? aggregateSamples(samples) : null, events, labels }),
     );
   };
 
@@ -124,7 +149,7 @@ function start(root: HTMLElement, accessToken: string): void {
       // The video track has no sound (demo audio is a separate track with its
       // own <audio>); muted also lets the browser autoplay it.
       media.muted = true;
-      media.title = "Двойной клик — во весь экран";
+      media.title = text.fullscreen;
       media.addEventListener("dblclick", () => {
         if (document.fullscreenElement) void document.exitFullscreen();
         else media.requestFullscreen().catch((err: unknown) => console.warn("fullscreen failed", err));
@@ -147,39 +172,38 @@ function start(root: HTMLElement, accessToken: string): void {
       if (pub.source === Track.Source.ScreenShare) dispatch({ type: "stopped" });
     })
     .on(RoomEvent.Reconnecting, () => {
-      status.textContent = "Связь прервалась, переподключаемся…";
+      status.textContent = text.reconnecting;
       record({ type: "reconnecting" });
     })
     .on(RoomEvent.Reconnected, () => {
-      status.textContent = `Подключено как ${identity} (после переподключения)`;
+      status.textContent = text.connectedAs + identity + text.reconnected;
       record({ type: "reconnected" });
     })
     .on(RoomEvent.Disconnected, (reason) => {
       window.clearInterval(timer);
-      status.textContent = disconnectMessage(reason);
+      status.textContent = disconnectMessage(reason, language);
       connectBtn.disabled = false;
       dispatch({ type: "stopped" });
       record({ type: "disconnected", reason });
     });
 
   const refreshReport = (): string => {
-    const text = samples.length
+    const report = samples.length
       ? formatReport(
           { name: identity, browser: browser.name, userAgent: navigator.userAgent, startedAt, now: new Date() },
           aggregateSamples(samples),
           events,
         )
-      : "Данных пока нет: сначала подключись и подожди пару секунд";
-    reportOut.textContent = text;
-    return text;
+      : text.reportEmpty;
+    reportOut.textContent = report;
+    return report;
   };
 
   const tick = async (): Promise<void> => {
-    // pcManager в livekit-client 2.23.0 — внутренний API (RTCEngine.pcManager), может измениться.
+    // RTCEngine.pcManager is internal to livekit-client and may change.
     const pcs = room.engine.pcManager;
     if (!pcs) return;
-    // Транспорты разбираем по отдельности: id записей getStats() у разных
-    // RTCPeerConnection могут совпадать, и общий Map перепутал бы их.
+    // Read the transports separately because their getStats() IDs may overlap.
     const [pub, sub] = await Promise.all([readSummary(pcs.publisher), readSummary(pcs.subscriber)]);
     if (!pub && !sub) return;
     const summary = mergeSummaries(pub, sub);
@@ -190,11 +214,11 @@ function start(root: HTMLElement, accessToken: string): void {
 
   connectBtn.addEventListener("click", async () => {
     connectBtn.disabled = true;
-    status.textContent = "Подключаемся…";
+    status.textContent = text.connecting;
     try {
       await room.connect(signalUrl(location), accessToken);
     } catch (err) {
-      status.textContent = `Не удалось подключиться: ${errorMessage(err)}`;
+      status.textContent = text.connectionFailed + errorMessage(err);
       connectBtn.disabled = false;
       return;
     }
@@ -204,14 +228,14 @@ function start(root: HTMLElement, accessToken: string): void {
       startedAt = new Date();
       phaseStarted = true;
     }
-    status.textContent = `Подключено как ${identity}`;
+    status.textContent = text.connectedAs + identity;
     resetBtn.disabled = false;
     renderParticipants();
     dispatch({ type: "stopped" });
     try {
       await room.localParticipant.setMicrophoneEnabled(true);
     } catch {
-      status.textContent += " (микрофон недоступен)";
+      status.textContent += text.microphoneUnavailable;
     }
     window.clearInterval(timer);
     timer = window.setInterval(() => {
@@ -236,12 +260,12 @@ function start(root: HTMLElement, accessToken: string): void {
   });
 
   copyBtn.addEventListener("click", async () => {
-    const text = refreshReport();
+    const report = refreshReport();
     try {
-      await navigator.clipboard.writeText(text);
-      copyBtn.textContent = "Скопировано";
+      await navigator.clipboard.writeText(report);
+      copyBtn.textContent = text.copied;
     } catch {
-      copyBtn.textContent = "Скопируй текст ниже вручную";
+      copyBtn.textContent = text.copyManually;
     }
   });
 
@@ -250,7 +274,7 @@ function start(root: HTMLElement, accessToken: string): void {
     prevInbound = new Map();
     events = emptyConnectionEvents();
     startedAt = new Date();
-    copyBtn.textContent = "Скопировать отчёт";
+    copyBtn.textContent = text.copyReport;
     reportOut.textContent = "";
     renderLive(null);
   });

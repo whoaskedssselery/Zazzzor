@@ -1,4 +1,5 @@
 import type { ConnectionEvents } from "./connection-events";
+import { type Language, translations } from "./locale";
 import type { ConnectivityAggregate } from "./report";
 import { type ConnectivitySummary, type InboundVideoStat, inboundInterval } from "./stats";
 
@@ -15,8 +16,7 @@ export function h<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-const fmt = (n: number | null, digits = 0, unit = ""): string =>
-  n === null ? "нет данных" : `${n.toFixed(digits)}${unit}`;
+
 const resolution = (w: number, hgt: number): string => (w > 0 ? `${w}×${hgt}` : "—");
 
 function row(label: string, value: string, warn = false): HTMLElement {
@@ -31,20 +31,23 @@ export interface LiveContext {
   labels: Map<string, string>;
 }
 
-/** Строит таблицу живых показателей. Только текст, без innerHTML. */
-export function renderLiveStats(summary: ConnectivitySummary | null, ctx: LiveContext): HTMLElement {
-  if (!summary) return h("p", { textContent: "Ждём первых данных…" });
+/** Builds the live measurements table. */
+export function renderLiveStats(summary: ConnectivitySummary | null, language: Language, ctx: LiveContext): HTMLElement {
+  const text = translations[language];
+  const fmt = (n: number | null, digits: number, unit: string): string =>
+    n === null ? text.noData : `${n.toFixed(digits)}${unit}`;
+  if (!summary) return h("p", { textContent: text.waiting });
   const table = h("table");
   table.append(
     row("Протокол", summary.protocol),
-    row("Тип кандидата", summary.candidateType),
-    row("RTT", fmt(summary.rttMs, 0, " мс")),
+    row(text.candidateType, summary.candidateType),
+    row("RTT", fmt(summary.rttMs, 0, text.ms)),
   );
   if (summary.outbound) {
     const o = summary.outbound;
     table.append(
-      row("Отправка", `${resolution(o.width, o.height)} @ ${o.fps.toFixed(0)} fps`),
-      row("Ограничение", o.qualityLimitation, o.qualityLimitation !== "none"),
+      row(text.outbound, `${resolution(o.width, o.height)} @ ${o.fps.toFixed(0)} fps`),
+      row(text.qualityLimit, o.qualityLimitation, o.qualityLimitation !== "none"),
     );
   }
   for (const i of summary.inbound) {
@@ -53,19 +56,19 @@ export function renderLiveStats(summary: ConnectivitySummary | null, ctx: LiveCo
     const stalled = i.fps === 0;
     table.append(
       row(
-        `Приём от ${ctx.labels.get(i.trackId) ?? "участника"}`,
-        `${resolution(i.width, i.height)} @ ${stalled ? "0 fps — замер" : `${i.fps.toFixed(0)} fps`}, ` +
-          `${fmt(interval?.kbps ?? null, 0, " кбит/с")}, потери ${fmt(interval?.lossPercent ?? null, 1, "%")}`,
+        text.receiveFrom + (ctx.labels.get(i.trackId) ?? text.participant),
+        `${resolution(i.width, i.height)} @ ${stalled ? text.stalled : `${i.fps.toFixed(0)} fps`}, ` +
+          `${fmt(interval?.kbps ?? null, 0, text.kbps)}, ${text.loss}${fmt(interval?.lossPercent ?? null, 1, "%")}`,
         stalled,
       ),
     );
   }
   if (ctx.agg) {
     table.append(
-      row("Макс. потери за 2 с", fmt(ctx.agg.maxLossPercent, 1, "%")),
+      row(text.maxLoss, fmt(ctx.agg.maxLossPercent, 1, "%")),
       row(
-        "Замеров с остановкой кадров",
-        `${ctx.agg.inboundStallSamples} из ${ctx.agg.inboundStreamSamples}`,
+        text.stalledSamples,
+        `${ctx.agg.inboundStallSamples}${text.of}${ctx.agg.inboundStreamSamples}`,
         ctx.agg.inboundStallSamples > 0,
       ),
     );
@@ -73,8 +76,8 @@ export function renderLiveStats(summary: ConnectivitySummary | null, ctx: LiveCo
   const e = ctx.events;
   table.append(
     row(
-      "Обрывы связи",
-      `отключений ${e.disconnects}, попыток переподключения ${e.reconnectAttempts}, переподключений ${e.reconnects}`,
+      text.connectionDrops,
+      `${text.disconnects}${e.disconnects}, ${text.reconnectAttempts}${e.reconnectAttempts}, ${text.reconnects}${e.reconnects}`,
       e.disconnects + e.reconnectAttempts > 0,
     ),
   );

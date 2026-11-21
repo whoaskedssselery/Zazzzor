@@ -34,12 +34,12 @@ test("reason names come from the protocol enum", () => {
 });
 
 test("duplicate identity explains the second tab", () => {
-  expect(disconnectMessage(DisconnectReason.DUPLICATE_IDENTITY)).toBe(
+  expect(disconnectMessage(DisconnectReason.DUPLICATE_IDENTITY, "ru")).toBe(
     "Эта ссылка открыта в другой вкладке или на другом устройстве",
   );
 });
 
 test("other reasons keep the technical name for the report", () => {
-  expect(disconnectMessage(DisconnectReason.SIGNAL_CLOSE)).toBe("Соединение потеряно (SIGNAL_CLOSE)");
-  expect(disconnectMessage(undefined)).toBe("Соединение потеряно (UNKNOWN_REASON)");
+  expect(disconnectMessage(DisconnectReason.SIGNAL_CLOSE)).toBe("Connection lost (SIGNAL_CLOSE)");
+  expect(disconnectMessage(undefined)).toBe("Connection lost (UNKNOWN_REASON)");
 });
