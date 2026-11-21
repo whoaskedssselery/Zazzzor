@@ -1,6 +1,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown } from "lucide-react";
 import { type ReactNode, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
+import { t } from "@/shared/i18n";
 import type { ChatRow } from "../model/rows";
 
 /** Within this many pixels of the end the list counts as read to the bottom and follows new messages. */
@@ -204,7 +205,7 @@ export const MessageList = ({
           className="absolute bottom-3 left-1/2 flex -translate-x-1/2 cursor-pointer items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-sm font-semibold text-on-accent shadow-float hover:bg-accent-hover"
           onClick={toBottom}
         >
-          Новые сообщения
+          {t("chat:newMessages")}
           <ArrowDown aria-hidden className="size-4" />
         </button>
       )}

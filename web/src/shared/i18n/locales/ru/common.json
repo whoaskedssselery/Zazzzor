@@ -51,5 +51,9 @@
   "notFound": {
     "title": "Страница не найдена",
     "text": "Такого адреса в Zazzzor нет."
-  }
+  },
+  "quoted": "«{{name}}»",
+  "reconnecting": "Переподключение…",
+  "someone": "Кто-то",
+  "member": "Участник"
 }

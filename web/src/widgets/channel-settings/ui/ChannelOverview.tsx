@@ -3,11 +3,10 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import type { Channel } from "@/entities/guild";
 import { ApiError, api, errorText, unwrap } from "@/shared/api";
+import { t } from "@/shared/i18n";
 import { runeLength, trimContent } from "@/shared/lib";
 import { Button, ConfirmDialog, Field, FormAlert, Input, SaveBar, Textarea } from "@/shared/ui";
 
-const NAME_RULE = "Название: от 1 до 100 символов.";
-const TOPIC_RULE = "Тема: до 1024 символов.";
 const TEXT = 0;
 const CATEGORY = 4;
 
@@ -47,8 +46,8 @@ export const ChannelOverview = ({
   const save = useMutation({
     mutationFn: async () => unwrap(await api.PATCH("/channels/{channel_id}", { params: { path }, body: changes })),
     onError: (e) => {
-      if (e instanceof ApiError && "name" in e.fields) setNameError(NAME_RULE);
-      if (e instanceof ApiError && "topic" in e.fields) setTopicError(TOPIC_RULE);
+      if (e instanceof ApiError && "name" in e.fields) setNameError(t("guild:channel.nameRule"));
+      if (e instanceof ApiError && "topic" in e.fields) setTopicError(t("guild:channel.topicRule"));
     },
   });
   const remove = useMutation({
@@ -64,18 +63,18 @@ export const ChannelOverview = ({
     const length = runeLength(nextName);
     const nameBad = length < 1 || length > 100;
     const topicBad = runeLength(nextTopic) > 1024;
-    setNameError(nameBad ? NAME_RULE : undefined);
-    setTopicError(topicBad ? TOPIC_RULE : undefined);
+    setNameError(nameBad ? t("guild:channel.nameRule") : undefined);
+    setTopicError(topicBad ? t("guild:channel.topicRule") : undefined);
     if (!nameBad && !topicBad) save.mutate();
   };
 
   const error = save.error ?? remove.error;
   const fieldError = error instanceof ApiError && ("name" in error.fields || "topic" in error.fields);
-  const kind = isCategory ? "категорию" : "канал";
+  const deleteLabel = isCategory ? t("guild:channel.deleteCategory") : t("guild:channel.deleteChannel");
   return (
     <section aria-labelledby="channel-overview-title">
       <h2 id="channel-overview-title" className="mb-5 text-xl font-semibold">
-        Обзор
+        {t("guild:channel.overview")}
       </h2>
       {error && !fieldError && <FormAlert>{errorText(error)}</FormAlert>}
       <form
@@ -86,7 +85,11 @@ export const ChannelOverview = ({
           submit();
         }}
       >
-        <Field htmlFor="channel-name" label={isCategory ? "Название категории" : "Название канала"} error={nameError}>
+        <Field
+          htmlFor="channel-name"
+          label={isCategory ? t("guild:channel.categoryName") : t("guild:channel.channelName")}
+          error={nameError}
+        >
           <Input
             value={name}
             maxLength={200}
@@ -97,7 +100,12 @@ export const ChannelOverview = ({
           />
         </Field>
         {hasTopic && (
-          <Field htmlFor="channel-topic" label="Тема канала" hint="Видна в шапке канала." error={topicError}>
+          <Field
+            htmlFor="channel-topic"
+            label={t("guild:channel.topic")}
+            hint={t("guild:channel.topicHint")}
+            error={topicError}
+          >
             <Textarea
               value={topic}
               rows={3}
@@ -115,7 +123,7 @@ export const ChannelOverview = ({
             setDeleting(true);
           }}
         >
-          {`Удалить ${kind}`}
+          {deleteLabel}
         </Button>
       </div>
       {dirty && (
@@ -134,11 +142,13 @@ export const ChannelOverview = ({
       <ConfirmDialog
         open={deleting}
         onOpenChange={setDeleting}
-        title={isCategory ? `Удалить категорию «${channel.name}»?` : `Удалить #${channel.name}?`}
-        description={
-          isCategory ? "Её каналы останутся и переедут наверх списка." : "Все сообщения канала пропадут навсегда."
+        title={
+          isCategory
+            ? t("guild:channel.deleteCategoryTitle", { name: channel.name })
+            : t("guild:channel.deleteChannelTitle", { name: channel.name })
         }
-        confirmLabel={`Удалить ${kind}`}
+        description={isCategory ? t("guild:channel.deleteCategoryText") : t("guild:channel.deleteChannelText")}
+        confirmLabel={deleteLabel}
         tone="danger"
         onConfirm={() => {
           remove.mutate();

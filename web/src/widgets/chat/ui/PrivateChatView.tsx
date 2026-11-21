@@ -10,6 +10,7 @@ import {
   useGuilds,
 } from "@/entities/guild";
 import type { MentionSuggestion } from "@/features/send-message";
+import { t } from "@/shared/i18n";
 import type { MentionNames } from "@/shared/lib";
 import { Avatar } from "@/shared/ui";
 import type { ChatScope } from "../model/scope";
@@ -31,7 +32,7 @@ const Welcome = ({ channel }: { channel: DMChannel }) => {
       <h2 className="mt-3 text-xl font-bold break-words">{name}</h2>
       {peer && <p className="text-base text-fg-muted">{peer.username}</p>}
       <p className="mt-2 text-base text-fg-muted">
-        {peer ? `Это начало вашей переписки с @${peer.display_name}.` : `Добро пожаловать в группу «${name}».`}
+        {peer ? t("chat:dmStart", { name: peer.display_name }) : t("chat:groupWelcome", { name })}
       </p>
     </div>
   );
@@ -70,14 +71,16 @@ export const PrivateChatView = ({ channel }: { channel: DMChannel }) => {
   };
   const scope: ChatScope = {
     channelId: channel.id,
-    listLabel: peer ? `Сообщения с @${peer.display_name}` : `Сообщения в группе ${name}`,
-    composerLabel: peer ? `Сообщение для @${peer.display_name}` : `Сообщение в группу ${name}`,
-    composerPlaceholder: peer ? `Написать @${peer.display_name}` : `Написать в «${name}»`,
-    dropHint: peer ? `Файлы уйдут в переписку с @${peer.display_name}` : `Файлы уйдут в «${name}»`,
+    listLabel: peer ? t("chat:dmList", { name: peer.display_name }) : t("chat:groupList", { name }),
+    composerLabel: peer ? t("chat:dmComposer", { name: peer.display_name }) : t("chat:groupComposer", { name }),
+    composerPlaceholder: peer
+      ? t("chat:dmPlaceholder", { name: peer.display_name })
+      : t("chat:groupPlaceholder", { name }),
+    dropHint: peer ? t("chat:dmDrop", { name: peer.display_name }) : t("chat:groupDrop", { name }),
     welcome: <Welcome channel={channel} />,
     can: { read: true, send: true, manage: false, attach: true, react: true },
     author: (user) => ({ name: user.display_name, color: 0, avatarUrl: user.avatar_url }),
-    typingName: (userId) => people.get(userId)?.display_name ?? "Кто-то",
+    typingName: (userId) => people.get(userId)?.display_name ?? t("common:someone"),
     mentions,
     mentionables: () =>
       channel.recipients

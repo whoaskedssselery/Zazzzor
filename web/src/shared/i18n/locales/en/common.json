@@ -51,5 +51,9 @@
   "notFound": {
     "title": "Page not found",
     "text": "There is no such address in Zazzzor."
-  }
+  },
+  "quoted": "“{{name}}”",
+  "reconnecting": "Reconnecting…",
+  "someone": "Someone",
+  "member": "Member"
 }

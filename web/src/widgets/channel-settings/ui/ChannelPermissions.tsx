@@ -14,6 +14,7 @@ import {
   userDisplay,
 } from "@/entities/guild";
 import { api, errorText, unwrap } from "@/shared/api";
+import { onLanguage, t } from "@/shared/i18n";
 import {
   Button,
   cn,
@@ -28,8 +29,12 @@ import {
   useToast,
 } from "@/shared/ui";
 
-export const SYNCED = "Синхронизировано с категорией";
-export const NOT_SYNCED = "Права отличаются от категории";
+export let SYNCED = "";
+export let NOT_SYNCED = "";
+onLanguage(() => {
+  SYNCED = t("guild:channel.synced");
+  NOT_SYNCED = t("guild:channel.notSynced");
+});
 
 /** One target of an overwrite: a role (type 0) or a member (type 1). */
 interface Target {
@@ -45,9 +50,30 @@ const triOf = (allow: bigint, deny: bigint, bit: bigint): Tri =>
   has(allow, bit) ? "allow" : has(deny, bit) ? "deny" : "inherit";
 
 const TRI: { value: Tri; label: string; icon: typeof X; on: string }[] = [
-  { value: "deny", label: "Запретить", icon: X, on: "bg-danger text-on-danger" },
-  { value: "inherit", label: "Наследовать", icon: Slash, on: "bg-control-hover text-fg" },
-  { value: "allow", label: "Разрешить", icon: Check, on: "bg-accent text-on-accent" },
+  {
+    value: "deny",
+    get label() {
+      return t("guild:channel.deny");
+    },
+    icon: X,
+    on: "bg-danger text-on-danger",
+  },
+  {
+    value: "inherit",
+    get label() {
+      return t("guild:channel.inherit");
+    },
+    icon: Slash,
+    on: "bg-control-hover text-fg",
+  },
+  {
+    value: "allow",
+    get label() {
+      return t("guild:channel.allow");
+    },
+    icon: Check,
+    on: "bg-accent text-on-accent",
+  },
 ];
 
 /** Deny, inherit or allow one permission for the chosen target. */
@@ -213,17 +239,18 @@ export const ChannelPermissions = ({
   return (
     <section aria-labelledby="channel-permissions-title">
       <h2 id="channel-permissions-title" className="mb-2 text-xl font-semibold">
-        Права доступа
+        {t("guild:channel.permissions")}
       </h2>
       {parent && (
         <div className="mb-5 flex items-center gap-3 rounded-md bg-panel px-3 py-2 text-sm">
           <p className="min-w-0 flex-1">
             {channel.permission_synced ? (
               <>
-                <span className="font-semibold text-fg-success">{SYNCED}</span> «{parent.name}»
+                <span className="font-semibold text-fg-success">{SYNCED}</span>{" "}
+                {t("common:quoted", { name: parent.name })}
               </>
             ) : (
-              <span className="text-fg-muted">{`${NOT_SYNCED} «${parent.name}»`}</span>
+              <span className="text-fg-muted">{`${NOT_SYNCED} ${t("common:quoted", { name: parent.name })}`}</span>
             )}
           </p>
           {!channel.permission_synced && (
@@ -235,7 +262,7 @@ export const ChannelPermissions = ({
                 sync.mutate();
               }}
             >
-              Синхронизировать
+              {t("guild:channel.sync")}
             </Button>
           )}
         </div>
@@ -247,11 +274,11 @@ export const ChannelPermissions = ({
             <DropdownMenuTrigger asChild>
               <Button variant="secondary" size="sm">
                 <Plus aria-hidden className="size-4" />
-                Добавить роль или участника
+                {t("guild:channel.addTarget")}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="max-h-80 overflow-y-auto">
-              {addableRoles.length > 0 && <DropdownMenuLabel>Роли</DropdownMenuLabel>}
+              {addableRoles.length > 0 && <DropdownMenuLabel>{t("guild:channel.roles")}</DropdownMenuLabel>}
               {addableRoles.map((r) => (
                 <DropdownMenuItem
                   key={r.id}
@@ -262,7 +289,7 @@ export const ChannelPermissions = ({
                   {r.name}
                 </DropdownMenuItem>
               ))}
-              {addableMembers.length > 0 && <DropdownMenuLabel>Участники</DropdownMenuLabel>}
+              {addableMembers.length > 0 && <DropdownMenuLabel>{t("guild:channel.members")}</DropdownMenuLabel>}
               {addableMembers.map((m) => {
                 const d = userDisplay(entry, m.user);
                 return (
@@ -278,23 +305,23 @@ export const ChannelPermissions = ({
               })}
             </DropdownMenuContent>
           </DropdownMenu>
-          <ul aria-label="Роли и участники с правами" className="flex flex-col gap-0.5">
-            {shown.map((t) => (
-              <li key={t.id}>
+          <ul aria-label={t("guild:channel.targets")} className="flex flex-col gap-0.5">
+            {shown.map((target) => (
+              <li key={target.id}>
                 <button
                   type="button"
-                  aria-current={t.id === chosen?.id ? "true" : undefined}
+                  aria-current={target.id === chosen?.id ? "true" : undefined}
                   className={cn(
                     "flex h-9 w-full cursor-pointer items-center gap-2 rounded-md px-2 text-left text-base hover:bg-hover",
-                    t.id === chosen?.id && "bg-selected",
+                    target.id === chosen?.id && "bg-selected",
                   )}
                   onClick={() => {
-                    choose(t);
+                    choose(target);
                   }}
                 >
-                  {t.type === 0 && <RoleColorDot color={t.color} />}
-                  <span className="min-w-0 flex-1 truncate">{t.name}</span>
-                  {t.type === 1 && <span className="text-xs text-fg-faint">участник</span>}
+                  {target.type === 0 && <RoleColorDot color={target.color} />}
+                  <span className="min-w-0 flex-1 truncate">{target.name}</span>
+                  {target.type === 1 && <span className="text-xs text-fg-faint">{t("guild:channel.memberTag")}</span>}
                 </button>
               </li>
             ))}
@@ -313,13 +340,13 @@ export const ChannelPermissions = ({
                     remove.mutate(chosen);
                   }}
                 >
-                  Убрать
+                  {t("guild:channel.removeTarget")}
                 </Button>
               )}
             </div>
             {locked && (
               <p className="mb-4 rounded-md bg-panel px-3 py-2 text-sm text-fg-muted">
-                Эта роль не ниже вашей высшей: менять её права нельзя.
+                {t("guild:channel.roleLocked")}
               </p>
             )}
             <div className="flex flex-col gap-8">
@@ -337,7 +364,7 @@ export const ChannelPermissions = ({
                             <p className="mt-0.5 text-sm text-fg-muted">
                               {item.description}
                               {!locked && !grantable && (
-                                <span className="mt-0.5 block text-fg-warning">У вас нет этого права</span>
+                                <span className="mt-0.5 block text-fg-warning">{t("guild:channel.notYours")}</span>
                               )}
                             </p>
                           </div>
