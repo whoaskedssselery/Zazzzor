@@ -101,14 +101,19 @@ const BrowserOwnStream = ({ compact }: { compact: boolean }) => {
     return attachOwnStream(el);
   }, []);
   return (
-    <article ref={tile} aria-label="Ваша демонстрация экрана" className="group relative flex size-full min-w-0">
+    <article
+      ref={tile}
+      aria-label="Ваша демонстрация экрана"
+      className="group relative flex size-full min-w-0 [&:fullscreen]:pointer-events-auto"
+    >
       <VideoFrame video={video}>
         <Badge variant="live" className="absolute top-2 left-2">
           В ЭФИРЕ
         </Badge>
         <div
+          data-controls
           className={cn(
-            "absolute right-2 bottom-2 z-10 flex gap-2 opacity-0 transition-opacity duration-(--duration-base) group-focus-within:opacity-100 group-hover:opacity-100",
+            "absolute right-2 bottom-2 z-10 flex gap-2 opacity-0 transition-opacity duration-(--duration-base) group-focus-within:opacity-100 group-hover:opacity-100 group-hover/tile:opacity-100",
             compact && "hidden",
           )}
         >
@@ -172,15 +177,16 @@ export const StreamTile = ({
       ref={tile}
       aria-label={title}
       className={cn(
-        "group relative flex size-full min-w-0 flex-col items-center justify-center overflow-hidden rounded-lg",
+        "group relative flex size-full min-w-0 flex-col items-center justify-center overflow-hidden rounded-lg [&:fullscreen]:pointer-events-auto",
         !watching && "bg-rail",
       )}
     >
       {watching ? (
         <VideoFrame video={video}>
           <div
+            data-controls
             className={cn(
-              "absolute right-2 bottom-2 z-10 flex gap-2 opacity-0 transition-opacity duration-(--duration-base) group-focus-within:opacity-100 group-hover:opacity-100",
+              "absolute right-2 bottom-2 z-10 flex gap-2 opacity-0 transition-opacity duration-(--duration-base) group-focus-within:opacity-100 group-hover:opacity-100 group-hover/tile:opacity-100",
               compact && "hidden",
             )}
           >
