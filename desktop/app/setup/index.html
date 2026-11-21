@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="setup.css" />
   </head>
   <body>
-    <main id="main">
+    <main id="main" data-pending>
       <!-- The mark of the web client (web/src/shared/ui/components/Logo.tsx); same paths. -->
       <p class="brand" translate="no">
         <svg class="logo" viewBox="0 0 48 48" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -26,10 +26,10 @@
         </svg>
         Zazzzor
       </p>
-      <h1>Где ваш сервер?</h1>
-      <p class="hint">Адрес, который дал владелец сервера. Тот же, что вы открываете в браузере.</p>
+      <h1 data-text="title">Where is your server?</h1>
+      <p class="hint" data-text="hint">The address the server's owner gave you. The same one you open in a browser.</p>
       <form id="form" novalidate>
-        <label for="url">Адрес сервера</label>
+        <label for="url" data-text="label">Server address</label>
         <div class="field">
           <input
             id="url"
@@ -42,12 +42,12 @@
             required
             aria-describedby="error"
           />
-          <button type="submit" id="submit">Подключиться</button>
+          <button type="submit" id="submit" data-text="connect">Connect</button>
         </div>
         <p id="error" class="error" role="alert"></p>
-        <button type="button" id="cancel" class="back" hidden>Вернуться к текущему серверу</button>
+        <button type="button" id="cancel" class="back" hidden data-text="back">Back to the current server</button>
       </form>
-      <p class="later">Сменить сервер можно в любой момент: меню значка Zazzzor в трее, «Сменить сервер…».</p>
+      <p class="later" data-text="later">You can change the server at any time: the Zazzzor tray icon's menu, “Change server…”.</p>
     </main>
     <script src="setup.js"></script>
   </body>

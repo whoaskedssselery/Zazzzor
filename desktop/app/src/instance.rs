@@ -8,34 +8,36 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+use crate::lang::texts;
+
 /// What the settings file holds.
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct Settings {
     instance: Option<String>,
 }
 
-/// Turns what someone typed into the instance's origin, or says in Russian,
-/// for the setup page, why it is not one. A missing scheme means https, as in
+/// Turns what someone typed into the instance's origin, or says, in the
+/// app's language for the setup page, why it is not one. A missing scheme means https, as in
 /// a browser's address bar; a path is dropped, since the web client lives at
 /// the root.
 pub fn parse(input: &str) -> Result<Url, String> {
     let input = input.trim();
     if input.is_empty() {
-        return Err("Введите адрес сервера.".into());
+        return Err(texts().enter_address.into());
     }
     let with_scheme = if input.contains("://") { input.to_owned() } else { format!("https://{input}") };
-    let url = Url::parse(&with_scheme).map_err(|_| "Это не похоже на адрес сайта.".to_owned())?;
+    let url = Url::parse(&with_scheme).map_err(|_| texts().not_an_address.to_owned())?;
     if url.scheme() != "https" && url.scheme() != "http" {
-        return Err("Адрес должен начинаться с https:// или http://.".into());
+        return Err(texts().wrong_scheme.into());
     }
     if url.host_str().is_none_or(str::is_empty) {
-        return Err("В адресе нет имени сервера.".into());
+        return Err(texts().no_host.into());
     }
     if !url.username().is_empty() || url.password().is_some() {
-        return Err("Адрес не должен содержать логин или пароль.".into());
+        return Err(texts().has_credentials.into());
     }
     let origin = url.origin().ascii_serialization();
-    Url::parse(&format!("{origin}/")).map_err(|_| "Это не похоже на адрес сайта.".to_owned())
+    Url::parse(&format!("{origin}/")).map_err(|_| texts().not_an_address.to_owned())
 }
 
 /// Whether `url` belongs to the instance at `origin` (same scheme, host and port).

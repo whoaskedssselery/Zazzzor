@@ -156,9 +156,12 @@ impl Backend for Desktop {
     fn confirm(&self, version: &str) -> bool {
         self.0
             .dialog()
-            .message(format!("Доступно обновление Zazzzor {version}. Перезапустить и установить?"))
+            .message(crate::lang::texts().update_available(version))
             .title("Zazzzor")
-            .buttons(MessageDialogButtons::OkCancelCustom("Да".into(), "Позже".into()))
+            .buttons(MessageDialogButtons::OkCancelCustom(
+                crate::lang::texts().update_yes.into(),
+                crate::lang::texts().update_later.into(),
+            ))
             .blocking_show()
     }
 
@@ -169,7 +172,7 @@ impl Backend for Desktop {
     }
 
     fn latest(&self) {
-        self.0.dialog().message("Установлена последняя версия").title("Zazzzor").show(|_| {});
+        self.0.dialog().message(crate::lang::texts().up_to_date).title("Zazzzor").show(|_| {});
     }
 }
 

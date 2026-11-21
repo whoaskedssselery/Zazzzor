@@ -13,6 +13,8 @@ fn main() {
         "share_status",
         "hotkeys_ptt",
         "hotkeys_toggles",
+        "set_language",
+        "current_language",
     ];
     tauri_build::try_build(
         tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(commands)),

@@ -1,5 +1,6 @@
 //! What the instance's own pages may ask of the app: the screen share's
-//! commands (share.rs) and the push-to-talk key (hotkeys.rs), nothing else.
+//! commands (share.rs), the push-to-talk key (hotkeys.rs) and their
+//! language (lang.rs), nothing else.
 //! A remote capability for the instance's origin allows them, and each
 //! command checks again that the calling page is the instance's.
 
@@ -8,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use tauri::ipc::CapabilityBuilder;
 use tauri::{AppHandle, Manager, Url, WebviewWindow};
 
-use crate::{hotkeys, instance, share};
+use crate::{hotkeys, instance, lang, share};
 
 /// Allows the instance's pages at `origin` to call the commands they may.
 /// A capability cannot be taken back, so one for an earlier instance stays;
@@ -17,7 +18,7 @@ pub fn allow_instance(app: &AppHandle, origin: &Url) -> tauri::Result<()> {
     let base = origin.origin().ascii_serialization();
     let mut capability = CapabilityBuilder::new(format!("instance-{base}")).remote(format!("{base}/*")).local(false);
     capability = capability.window(crate::MAIN);
-    for command in share::COMMANDS.iter().chain(&hotkeys::COMMANDS) {
+    for command in share::COMMANDS.iter().chain(&hotkeys::COMMANDS).chain(&lang::COMMANDS) {
         capability = capability.permission(format!("allow-{}", command.replace('_', "-")));
     }
     app.add_capability(capability)
