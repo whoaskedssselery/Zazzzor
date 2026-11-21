@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { HttpResponse } from "msw";
 import { renderApp, sessionHandler, testUser } from "@/app/test";
 import { resetGuilds } from "@/entities/guild";
-import { NO_SUCH_USER, PASSWORD_ONCE } from "@/features/admin-users";
+import { PASSWORD_ONCE } from "@/features/admin-users";
 import { apiHandler, makeReady, problem, readyGateway, server } from "@/shared/test";
 
 const petya = {
@@ -98,7 +98,7 @@ describe("administration", () => {
     const { user } = renderApp("/admin/users");
     await user.type(await screen.findByRole("textbox", { name: "Логин" }), "nobody");
     await user.click(screen.getByRole("button", { name: "Найти" }));
-    expect(await screen.findByText(NO_SUCH_USER)).toBeTruthy();
+    expect(await screen.findByText("Пользователь с таким логином не найден.")).toBeTruthy();
   });
 
   it("resets the password after asking and shows the new one once", async () => {

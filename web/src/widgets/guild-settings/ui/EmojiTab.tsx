@@ -3,7 +3,7 @@ import { Trash2, Upload } from "lucide-react";
 import { type ChangeEvent, useRef, useState } from "react";
 import { type GuildEmoji, type GuildEntry, userDisplay } from "@/entities/guild";
 import { api, errorText, unwrap } from "@/shared/api";
-import { IMAGE_ACCEPT, WRONG_IMAGE } from "@/shared/lib";
+import { IMAGE_ACCEPT, wrongImageText } from "@/shared/lib";
 import { Button, ConfirmDialog, IconButton, Input, useToast } from "@/shared/ui";
 
 /** The server's limits (C11): per kind, and the file size. */
@@ -17,7 +17,7 @@ const TYPES = new Set(IMAGE_ACCEPT.split(","));
 
 /** Why the server would refuse `file` as an emoji, before sending it; null when it would not. */
 export const emojiFileProblem = (file: File): string | null => {
-  if (!TYPES.has(file.type)) return WRONG_IMAGE;
+  if (!TYPES.has(file.type)) return wrongImageText();
   if (file.size > MAX_EMOJI_BYTES) return EMOJI_TOO_LARGE;
   return null;
 };

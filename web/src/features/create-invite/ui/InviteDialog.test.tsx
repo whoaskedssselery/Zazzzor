@@ -2,7 +2,6 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { HttpResponse } from "msw";
 import type { components } from "@/shared/api";
 import { apiHandler, makeUser, renderRouted, server } from "@/shared/test";
-import { COPIED } from "@/shared/ui";
 import { COPY_FAILED, InviteDialog, lifetimeNote } from "./InviteDialog";
 
 type CreateInviteRequest = components["schemas"]["CreateInviteRequest"];
@@ -73,7 +72,7 @@ describe("InviteDialog", () => {
     const { user } = await open();
     await linkField();
     await user.click(screen.getByRole("button", { name: "Копировать" }));
-    expect(await screen.findByRole("button", { name: COPIED })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Скопировано" })).toBeTruthy();
     expect(await navigator.clipboard.readText()).toBe(LINK);
   });
 
@@ -147,7 +146,7 @@ describe("InviteDialog", () => {
     const { user } = await open(onOpenChange);
     await linkField();
     await user.click(screen.getByRole("button", { name: "Копировать" }));
-    await screen.findByRole("button", { name: COPIED });
+    await screen.findByRole("button", { name: "Скопировано" });
     await user.keyboard("{Escape}");
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });

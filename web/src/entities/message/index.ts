@@ -48,4 +48,10 @@ export {
 } from "./model/reactions";
 export { Attachments } from "./ui/Attachments";
 export { type Embed, Embeds } from "./ui/Embeds";
-export { type AuthorView, DELETED_USER, MessageItem, type MessageItemProps, REPLY_DELETED } from "./ui/MessageItem";
+export {
+  type AuthorView,
+  deletedUserText,
+  MessageItem,
+  type MessageItemProps,
+  replyDeletedText,
+} from "./ui/MessageItem";

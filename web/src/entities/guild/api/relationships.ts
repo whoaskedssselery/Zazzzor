@@ -1,9 +1,10 @@
 import { useMutation } from "@tanstack/react-query";
 import { ApiError, api, errorText, unwrap } from "@/shared/api";
+import { t } from "@/shared/i18n";
 import { useToast } from "@/shared/ui";
 
 /** The answer to a request for a username nobody has (or the user's own). */
-export const NO_SUCH_USER = "Пользователя с таким именем нет. Проверьте написание.";
+export const noSuchUserText = (): string => t("guild:noSuchUser");
 
 // The user's friends, blocks and requests change only by the server's
 // RELATIONSHIP_ADD and _REMOVE: these calls ask for a change and say when
@@ -23,7 +24,7 @@ export const useRequestFriend = () =>
 
 /** The text of a failed friend request. */
 export const requestErrorText = (e: unknown): string =>
-  e instanceof ApiError && e.status === 404 ? NO_SUCH_USER : errorText(e);
+  e instanceof ApiError && e.status === 404 ? noSuchUserText() : errorText(e);
 
 /** Accepting a request (1) or blocking (2) user `id`; a refusal is a toast. */
 export const useSetRelationship = () => {

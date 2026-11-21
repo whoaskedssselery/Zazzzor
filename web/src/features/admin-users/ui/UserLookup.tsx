@@ -1,6 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { type SubmitEvent, useRef, useState } from "react";
 import { ApiError, api, type components, errorText, unwrap } from "@/shared/api";
+import { t } from "@/shared/i18n";
 import {
   Badge,
   Button,
@@ -18,7 +19,7 @@ import {
 
 type AdminUser = components["schemas"]["AdminUser"];
 
-export const NO_SUCH_USER = "Пользователь с таким логином не найден.";
+export const noSuchUserText = (): string => t("admin:lookup.notFound");
 export const PASSWORD_ONCE = "Пароль показывается только сейчас. Передайте его пользователю и попросите сменить.";
 const COPY_FAILED = "Не получилось скопировать: пароль выделен, скопируйте его вручную.";
 
@@ -50,7 +51,7 @@ export const UserLookup = () => {
           htmlFor="lookup-username"
           label="Логин"
           className="min-w-0 flex-1"
-          error={missing ? NO_SUCH_USER : undefined}
+          error={missing ? noSuchUserText() : undefined}
         >
           <Input
             value={username}

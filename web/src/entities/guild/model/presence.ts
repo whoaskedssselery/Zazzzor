@@ -1,13 +1,14 @@
+import { t, textTable } from "@/shared/i18n";
 import type { PresenceStatus } from "./reducer";
 import { useGuilds } from "./store";
 
 /** What a presence says, as a line under a name. */
-export const PRESENCE_LABEL: Record<PresenceStatus, string> = {
-  online: "В сети",
-  idle: "Нет на месте",
-  dnd: "Не беспокоить",
-  offline: "Не в сети",
-};
+export const PRESENCE_LABEL = textTable<PresenceStatus>({
+  online: () => t("guild:presence.online"),
+  idle: () => t("guild:presence.idle"),
+  dnd: () => t("guild:presence.dnd"),
+  offline: () => t("guild:presence.offline"),
+});
 
 /** Whether someone shows as online (away and do not disturb count). */
 export const isShownOnline = (status: PresenceStatus | undefined): boolean =>

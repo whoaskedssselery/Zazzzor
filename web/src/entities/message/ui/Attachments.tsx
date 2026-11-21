@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight, Download, ExternalLink, FileText, X } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { type CSSProperties, type ReactNode, useState } from "react";
+import { t } from "@/shared/i18n";
 import { cn, IconButton, overlayClass } from "@/shared/ui";
 import { type Attachment, attachmentKind, formatSize } from "../model/attachment";
 
@@ -35,7 +36,7 @@ const FileCard = ({ attachment: a, children }: { attachment: Attachment; childre
       <a
         href={downloadUrl(a)}
         download={a.filename}
-        aria-label={`Скачать ${a.filename}`}
+        aria-label={t("chat:attachment.download", { name: a.filename })}
         className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-hover hover:text-fg"
       >
         <Download aria-hidden className="size-5" />
@@ -94,7 +95,7 @@ const ImageViewer = ({
                   href={current.url}
                   target="_blank"
                   rel="noreferrer"
-                  aria-label="Открыть оригинал"
+                  aria-label={t("chat:attachment.openOriginal")}
                   className="inline-flex size-9 items-center justify-center rounded-md hover:bg-[rgb(255_255_255/0.1)]"
                 >
                   <ExternalLink aria-hidden className="size-5" />
@@ -102,13 +103,13 @@ const ImageViewer = ({
                 <a
                   href={current.url}
                   download={current.filename}
-                  aria-label="Скачать"
+                  aria-label={t("chat:attachment.downloadShort")}
                   className="inline-flex size-9 items-center justify-center rounded-md hover:bg-[rgb(255_255_255/0.1)]"
                 >
                   <Download aria-hidden className="size-5" />
                 </a>
                 <DialogPrimitive.Close
-                  aria-label="Закрыть"
+                  aria-label={t("common:close")}
                   className="inline-flex size-9 cursor-pointer items-center justify-center rounded-md hover:bg-[rgb(255_255_255/0.1)]"
                 >
                   <X aria-hidden className="size-5" />
@@ -124,7 +125,7 @@ const ImageViewer = ({
                 {many && (
                   <>
                     <IconButton
-                      label="Предыдущее изображение"
+                      label={t("chat:attachment.previous")}
                       icon={ChevronLeft}
                       className="absolute left-4 size-11 rounded-full bg-[rgb(0_0_0/0.5)] text-on-avatar hover:bg-[rgb(0_0_0/0.7)]"
                       onClick={() => {
@@ -132,7 +133,7 @@ const ImageViewer = ({
                       }}
                     />
                     <IconButton
-                      label="Следующее изображение"
+                      label={t("chat:attachment.next")}
                       icon={ChevronRight}
                       className="absolute right-4 size-11 rounded-full bg-[rgb(0_0_0/0.5)] text-on-avatar hover:bg-[rgb(0_0_0/0.7)]"
                       onClick={() => {
@@ -175,7 +176,7 @@ export const Attachments = ({ attachments }: { attachments: Attachment[] }) => {
             <button
               key={a.id}
               type="button"
-              aria-label={`Открыть ${a.filename}`}
+              aria-label={t("chat:attachment.open", { name: a.filename })}
               className={cn(
                 "block max-w-full cursor-zoom-in overflow-hidden rounded-lg bg-skeleton",
                 images.length > 1 && "aspect-[4/3] w-full",

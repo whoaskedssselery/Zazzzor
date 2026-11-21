@@ -1,1 +1,1 @@
-export { NO_SUCH_USER, PASSWORD_ONCE, UserLookup } from "./ui/UserLookup";
+export { noSuchUserText, PASSWORD_ONCE, UserLookup } from "./ui/UserLookup";

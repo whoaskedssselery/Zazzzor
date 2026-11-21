@@ -1,4 +1,5 @@
 import type { components } from "@/shared/api";
+import { currentLanguage, t } from "@/shared/i18n";
 import type { Message } from "./cache";
 
 /**
@@ -30,13 +31,13 @@ const INLINE: Readonly<Record<string, AttachmentKind>> = {
 /** The way `contentType` (the type the server sniffed, not the file name) is shown. */
 export const attachmentKind = (contentType: string): AttachmentKind => INLINE[contentType] ?? "file";
 
-const number = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 });
+const number = () => new Intl.NumberFormat(currentLanguage(), { maximumFractionDigits: 1 });
 
 /** «512 Б», «1,2 КБ», «24,8 МБ». */
 export const formatSize = (bytes: number): string => {
-  if (bytes < 1024) return `${String(bytes)} Б`;
-  if (bytes < 1024 * 1024) return `${number.format(bytes / 1024)} КБ`;
-  return `${number.format(bytes / (1024 * 1024))} МБ`;
+  if (bytes < 1024) return t("common:size.bytes", { size: String(bytes) });
+  if (bytes < 1024 * 1024) return t("common:size.kilobytes", { size: number().format(bytes / 1024) });
+  return t("common:size.megabytes", { size: number().format(bytes / (1024 * 1024)) });
 };
 
 /** The files of `message`. */

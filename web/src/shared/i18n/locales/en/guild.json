@@ -1,0 +1,132 @@
+{
+  "presence": {
+    "online": "Online",
+    "idle": "Idle",
+    "dnd": "Do not disturb",
+    "offline": "Offline"
+  },
+  "onlyYou": "Only you",
+  "noSuchUser": "There is no user with that name. Check the spelling.",
+  "settingsTabs": {
+    "overview": "Overview",
+    "roles": "Roles",
+    "emoji": "Emoji",
+    "members": "Members",
+    "bans": "Bans",
+    "invites": "Invites",
+    "audit": "Audit log"
+  },
+  "channelTabs": {
+    "overview": "Overview",
+    "permissions": "Permissions"
+  },
+  "permissionGroups": {
+    "general": "General",
+    "members": "Members",
+    "text": "Text channels",
+    "voice": "Voice channels",
+    "server": "Server"
+  },
+  "permissions": {
+    "VIEW_CHANNEL": {
+      "name": "View channels",
+      "description": "See channels and read their messages as they arrive."
+    },
+    "MANAGE_CHANNELS": {
+      "name": "Manage channels",
+      "description": "Create, rename, move and delete channels."
+    },
+    "MANAGE_ROLES": {
+      "name": "Manage roles",
+      "description": "Create roles below their own highest one and change channel permissions."
+    },
+    "MANAGE_EXPRESSIONS": {
+      "name": "Manage emoji",
+      "description": "Upload, rename and delete the server's emoji."
+    },
+    "VIEW_AUDIT_LOG": {
+      "name": "View audit log",
+      "description": "See who kicked and banned members and changed roles, channels, invites and emoji."
+    },
+    "CREATE_INVITE": {
+      "name": "Create invites",
+      "description": "Invite new members to the server."
+    },
+    "CHANGE_NICKNAME": {
+      "name": "Change own nickname",
+      "description": "Set their own nickname on this server."
+    },
+    "MANAGE_NICKNAMES": {
+      "name": "Manage nicknames",
+      "description": "Change other members' nicknames."
+    },
+    "KICK_MEMBERS": {
+      "name": "Kick members",
+      "description": "Remove members below their role from the server."
+    },
+    "BAN_MEMBERS": {
+      "name": "Ban members",
+      "description": "Remove members below their role with no way back."
+    },
+    "SEND_MESSAGES": {
+      "name": "Send messages",
+      "description": "Write in text channels."
+    },
+    "ATTACH_FILES": {
+      "name": "Attach files",
+      "description": "Send images and files."
+    },
+    "ADD_REACTIONS": {
+      "name": "Add reactions",
+      "description": "Add new reactions. Joining a reaction already there needs no permission."
+    },
+    "MENTION_EVERYONE": {
+      "name": "Mention @everyone",
+      "description": "Mention all members at once."
+    },
+    "MANAGE_MESSAGES": {
+      "name": "Manage messages",
+      "description": "Delete other members' messages."
+    },
+    "READ_MESSAGE_HISTORY": {
+      "name": "Read message history",
+      "description": "See messages sent before they joined the channel."
+    },
+    "CONNECT": {
+      "name": "Connect",
+      "description": "Join voice channels."
+    },
+    "SPEAK": {
+      "name": "Speak",
+      "description": "Turn on the microphone in voice channels."
+    },
+    "STREAM": {
+      "name": "Share screen",
+      "description": "Share a screen or a window in a voice channel."
+    },
+    "USE_VOICE_ACTIVITY": {
+      "name": "Voice activity",
+      "description": "Speak without holding a key."
+    },
+    "MUTE_MEMBERS": {
+      "name": "Mute members",
+      "description": "Mute others in voice channels."
+    },
+    "DEAFEN_MEMBERS": {
+      "name": "Deafen members",
+      "description": "Cut others' sound in voice channels."
+    },
+    "MOVE_MEMBERS": {
+      "name": "Move members",
+      "description": "Move others between voice channels and disconnect them."
+    },
+    "MANAGE_GUILD": {
+      "name": "Manage server",
+      "description": "Change the name and icon, see and delete invites."
+    },
+    "ADMINISTRATOR": {
+      "name": "Administrator",
+      "description": "Every permission and access to every channel. Dangerous: give it only to those you trust."
+    }
+  }
+}
