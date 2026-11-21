@@ -23,7 +23,8 @@ use zazzzor_share::sources::{self, Source};
 
 use crate::bridge::from_instance;
 
-/// The commands of this module, as the app's ACL names them.
+/// The commands of this module, as the app's ACL names them; each checks
+/// `from_instance` first (bridge.rs).
 pub const COMMANDS: [&str; 5] = ["share_sources", "share_thumbnail", "share_start", "share_stop", "share_status"];
 
 /// What `share_start` returns when the person said no: the page takes it
