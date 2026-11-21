@@ -116,9 +116,13 @@ hygiene() {
 run hygiene hygiene
 
 # --- commits ---------------------------------------------------------------
+# Only this branch's own commits: merge commits carry GitHub's subjects, and
+# what origin/main already has was checked when it merged, so an older base
+# does not fail on history.
 commits() {
-  local bad=0 sha subject body lines
-  for sha in $(git rev-list --reverse "$base"..HEAD); do
+  local bad=0 sha subject body lines merged
+  merged="$(git rev-parse -q --verify origin/main)"
+  for sha in $(git rev-list --reverse --no-merges "$base"..HEAD ${merged:+--not "$merged"}); do
     subject="$(git log -1 --format=%s "$sha")"
     body="$(git log -1 --format=%b "$sha")"
     lines="$(git show --numstat --format= "$sha" | awk '{s += $1 + $2} END {print s + 0}')"
