@@ -1,5 +1,7 @@
 # Zazzzor for Windows
 
+**English** · [Русский](README.ru.md)
+
 The desktop client's shell: a Tauri 2 app with one window that opens the
 instance's own web client, the way Discord's desktop app opens discord.com,
 and a tray icon. There is no bundled copy of the UI: whatever the server
@@ -18,14 +20,14 @@ target/release/zazzzor-desktop.exe
 `cargo run` works too (a debug build keeps the console window). No Tauri
 CLI or Node is needed: `setup/` is plain HTML, CSS and JS. The screen
 share links the prebuilt libwebrtc, which `webrtc-sys` downloads at build
-time (~110 MB; `LK_CUSTOM_WEBRTC` points at a local copy, see
-`desktop/share/README.md`), and with it the C runtime statically
-(`.cargo/config.toml`).
+time (~110 MB). Set `LK_CUSTOM_WEBRTC` to a local copy if needed.
+See the [screen share README](../share/README.md). The app also links the
+C runtime statically ([.cargo/config.toml](.cargo/config.toml)).
 
 On the first start the window asks for the server's address
-("Подключение к серверу"): the address Zazzzor opens at in a browser. A
+("Where is your server?"): the address Zazzzor opens at in a browser. A
 bare host means `https://`; a path is dropped. For the local e2e stack
-(`pnpm e2e:up` and the `web-e2e` dev server, see `web/e2e/compose.yml`)
+(`pnpm e2e:up` and the `web-e2e` dev server, see [web/e2e/compose.yml](../../web/e2e/compose.yml))
 it is `http://localhost:4173`.
 
 Where things are kept, per Windows user:
@@ -61,9 +63,9 @@ folder's labels is the owner's call.
   browser. The setup commands (`current_instance`, `set_instance`,
   `open_instance`) answer only the bundled setup page, which the server's
   pages cannot navigate to.
-- **The native screen share** (`desktop/share`): a screen or a window at
-  up to 1080p60 on the GPU's encoder, with one application's sound (or the
-  whole system's but the app's own, so the call is not sent back). The
+- **The [native screen share](../share/README.md).** Share a screen or a
+  window at up to 1080p60 on the GPU's encoder, with one application's
+  sound (or the whole system's but the app's own, so the call is not sent back). The
   server's pages, and only the chosen server's, may call five share commands:
   `share_sources`, `share_thumbnail`, `share_start`, `share_stop` and
   `share_status`. A capability for the server's origin is added at run
@@ -84,18 +86,21 @@ folder's labels is the owner's call.
   watch the combinations saved in the voice settings (`hotkeys_toggles`,
   e.g. "Control+Shift+KeyM"); the same hook reports each press while the
   window is behind, and a held combination flips once.
-- **Start with Windows.** "Запускать вместе с Windows" in the tray menu
+- **Start with Windows.** "Start with Windows" in the tray menu
   writes the app under the user's Run key with `--autostart`; started so,
   the app stays in the tray.
 - **Tray.** Closing the window hides it to the tray; a left click on the
-  icon or "Открыть Zazzzor" brings it back; "Сменить сервер…" opens the
-  setup page with the current address and a "Отмена" back; "Остановить
-  демонстрацию" (enabled, and the tooltip says so, while a share runs)
-  stops the share; "Выйти" quits.
+  icon or "Open Zazzzor" brings it back. "Change server…" opens the setup
+  page with the current address and a "Back to the current server" button.
+  "Stop sharing" is available during an active share, which the tooltip
+  also indicates. "Quit" exits the app.
 - **One instance.** A second launch brings the running window to the front
   and exits.
 - **Window state.** Size, position and the maximised state are restored on
   the next start (saved when the window hides and when the app quits).
+- **Language.** Setup, tray menus, and update dialogs follow the web client's
+  language. Until the web client first reports its language, the app uses
+  Russian if Windows is set to Russian, and English otherwise.
 
 ## Checked
 
@@ -107,8 +112,8 @@ its DevTools protocol (`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=
   `http://localhost:4173` is saved and opened;
 - the server's page calling `set_instance` or `current_instance` is
   refused, and it cannot navigate to the setup page or to another origin;
-- sign-in, the channel list, "В сети" (gateway connected) and "Голос
-  подключён" (LiveKit) in a voice channel; after a restart the session is
+- sign-in, the channel list, "Online" (gateway connected) and "Voice
+  connected" (LiveKit) in a voice channel; after a restart the session is
   still signed in;
 - `Notification.requestPermission()` and `getUserMedia({audio})` are
   granted without a prompt; a notification fires `show`;
@@ -124,9 +129,10 @@ and how a notification looks in the Windows notification centre.
 
 ## Releases
 
-Desktop versions are independent of the server: `desktop-vX.Y.Z` tags build a
-Russian NSIS installer for the current Windows user. WebView2 is downloaded
-only when needed. [Installation instructions for friends](../../deploy/desktop.md)
+Desktop versions are independent of server versions. A `desktop-vX.Y.Z` tag
+builds a per-user NSIS installer with English first and Russian also available.
+WebView2 is downloaded only when needed.
+[Installation instructions for friends](../../deploy/desktop.md)
 explain the expected SmartScreen warning: there is deliberately no Authenticode
 certificate or code-signing step. Update signatures are separate and mandatory.
 
@@ -174,7 +180,7 @@ replaced published files. To recover from a bad release, publish a newer version
 with the fix/revert; the updater intentionally does not downgrade clients.
 
 Updates are checked at startup and every six hours. Download and minisign/version
-verification happen before the single **Да / Позже** prompt; Later suppresses
+verification happen before the single **Yes / Later** prompt. **Later** suppresses
 further prompts until restart. The tray item uses the same worker and reports
 when the client is current. Network/signature failures stay in `update.log`
 under Tauri's per-user app log directory. The update source is compiled into the

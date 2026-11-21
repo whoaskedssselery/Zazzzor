@@ -1,8 +1,10 @@
 # zazzzor-share
 
+**English** · [Русский](README.ru.md)
+
 The native screen share of the Zazzzor desktop client: a monitor or a
 window, with the sound of one application, sent to a Zazzzor call over a
-LiveKit connection of its own. The desktop app (`desktop/app`) runs it as
+LiveKit connection of its own. The [desktop app](../app/README.md) runs it as
 the user's screen companion (`<user id>.screen`, see `joinVoiceScreen` in
 the API); the web client shows that share as the person's own.
 
@@ -113,9 +115,9 @@ window-level control or no per-process sound); the SDK's own NVENC path
 
 On the owner's PC (Windows 11 build 26300, RTX 4060 with driver 621.01,
 monitors 2560×1440@200, 1920×1080@165 and 1920×1080@60), sharing to the
-local e2e stack (`web/e2e/compose.yml`) and watched in the web client on
-the same machine. CPU is this process's share of all cores, averaged over
-two-second samples.
+local e2e stack ([web/e2e/compose.yml](../../web/e2e/compose.yml)) and
+watched in the web client on the same machine. CPU is this process's
+share of all cores, averaged over two-second samples.
 
 | What | Encoder | Captured / sent fps | Encode | Convert | CPU | Bitrate |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -153,7 +155,7 @@ internet.
   ran from anywhere under `WebstormProjects\projects\Zazzzor`, and worked
   for the same binary copied to `%USERPROFILE%\capture-probe`. The privacy
   settings allow capture for desktop apps; the cause is the folder's sandbox
-  ACL (see `desktop/app/README.md`). `list` leaves out what cannot be captured.
+  ACL (see the [desktop app README](../app/README.md)). `list` leaves out what cannot be captured.
 - **A minimised window gives no frames**; the window must be restored.
 
 ## Next
