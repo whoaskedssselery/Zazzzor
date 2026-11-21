@@ -1,6 +1,7 @@
 import { Link, useParams } from "@tanstack/react-router";
 import { Users } from "lucide-react";
 import { incomingCount, useGuilds } from "@/entities/guild";
+import { t } from "@/shared/i18n";
 import { Badge, cn, formatCount } from "@/shared/ui";
 import { PrivateList } from "@/widgets/private-list";
 import { FriendsView } from "./Friends";
@@ -16,9 +17,9 @@ export const HomeSidebar = () => {
   return (
     <>
       <div className="flex h-(--header-height) shrink-0 items-center px-4 text-base font-semibold shadow-[0_1px_0_var(--border)]">
-        Главная
+        {t("friends:home")}
       </div>
-      <nav aria-label="Главная" className="flex flex-col gap-0.5 p-2">
+      <nav aria-label={t("friends:home")} className="flex flex-col gap-0.5 p-2">
         <Link
           to="/channels/@me"
           aria-current={friends ? "page" : undefined}
@@ -28,9 +29,9 @@ export const HomeSidebar = () => {
           )}
         >
           <Users aria-hidden className="size-5" />
-          Друзья
+          {t("friends:friends")}
           {incoming > 0 && (
-            <Badge variant="count" className="ml-auto" aria-label={`Входящих заявок: ${String(incoming)}`}>
+            <Badge variant="count" className="ml-auto" aria-label={t("friends:incomingCount", { count: incoming })}>
               {formatCount(incoming)}
             </Badge>
           )}

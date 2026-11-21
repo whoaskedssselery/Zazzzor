@@ -4,6 +4,7 @@ import { dmPeer, privateName, useConnectionStatus, useGuilds } from "@/entities/
 import { NotifyButton } from "@/features/notify";
 import { AddPeopleButton, RenameGroupDialog } from "@/features/private-groups";
 import { SearchButton } from "@/features/search-messages";
+import { t } from "@/shared/i18n";
 import { Avatar } from "@/shared/ui";
 import { MembersButton, NavButton, ShellHeader } from "@/widgets/app-shell";
 import { PrivateChatView } from "@/widgets/chat";
@@ -30,7 +31,7 @@ export const DirectMessagePage = ({ channelId }: { channelId: string }) => {
           <NavButton />
         </ShellHeader>
         <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-center">
-          {ready && <p className="max-w-sm text-base text-fg-muted">Этой переписки у вас больше нет.</p>}
+          {ready && <p className="max-w-sm text-base text-fg-muted">{t("friends:dmGone")}</p>}
         </div>
       </>
     );
@@ -58,7 +59,7 @@ export const DirectMessagePage = ({ channelId }: { channelId: string }) => {
             <h1 className="min-w-0 truncate text-base font-semibold">
               <button
                 type="button"
-                aria-label={`${name}, изменить название группы`}
+                aria-label={t("friends:renameGroup", { name })}
                 className="group/name flex max-w-full cursor-pointer items-center gap-1.5 rounded-sm hover:underline"
                 onClick={() => {
                   setRenaming(true);
@@ -76,7 +77,7 @@ export const DirectMessagePage = ({ channelId }: { channelId: string }) => {
         <div className="ml-auto flex shrink-0 items-center">
           <CallButton channel={channel} />
           <NotifyButton guildId={null} channelId={channel.id} />
-          <SearchButton scope={{ kind: "channel", channelId: channel.id }} placeholder="Искать в переписке" />
+          <SearchButton scope={{ kind: "channel", channelId: channel.id }} placeholder={t("friends:searchDm")} />
           <AddPeopleButton channel={channel} />
           {!peer && <MembersButton />}
         </div>

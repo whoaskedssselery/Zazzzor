@@ -12,6 +12,7 @@ import {
   useJoinInvite,
 } from "@/features/join-guild";
 import { ApiError } from "@/shared/api";
+import { t } from "@/shared/i18n";
 import { Avatar, Button, FormAlert, GuildIcon, Skeleton } from "@/shared/ui";
 
 /** The invite cannot lead anywhere any more (unknown, expired or used up). */
@@ -39,7 +40,7 @@ const Loading = () => (
     <Skeleton className="mt-3 h-7 w-56 rounded-sm" />
     <Skeleton className="mt-8 h-11 w-full rounded-md" />
     <span className="sr-only" role="status">
-      Загружаем приглашение…
+      {t("guild:invitePage.loading")}
     </span>
   </Card>
 );
@@ -51,7 +52,7 @@ const Dead = ({ text, title }: { text: string; title: string }) => (
     </h1>
     <p className="mt-2 text-base text-fg-muted">{text}</p>
     <Button asChild size="lg" className="mt-8 w-full">
-      <Link to="/channels/@me">На главную</Link>
+      <Link to="/channels/@me">{t("guild:invitePage.home")}</Link>
     </Button>
   </Card>
 );
@@ -68,20 +69,20 @@ const Preview = ({ invite }: { invite: Invite }) => {
       <p className="mt-5 flex items-center gap-2 text-sm text-fg-muted">
         <Avatar name={invite.inviter.display_name} src={invite.inviter.avatar_url} size={20} />
         <span>
-          <span className="font-semibold text-fg">{invite.inviter.display_name}</span> приглашает вас на сервер
+          <span className="font-semibold text-fg">{invite.inviter.display_name}</span> {t("guild:invitePage.invites")}
         </span>
       </p>
       <h1 id="invite-title" className="mt-2 text-xl font-semibold break-words text-balance">
         {invite.guild.name}
       </h1>
       <p className="mt-1 text-base text-fg-muted">
-        <span className="sr-only">Канал </span>
+        <span className="sr-only">{`${t("guild:invitePage.channel")} `}</span>
         <span>{`#${invite.channel.name}`}</span>
       </p>
       {message !== null && <FormAlert className="mt-6 mb-0 w-full text-left">{message}</FormAlert>}
       {member ? (
         <>
-          <p className="mt-6 text-base font-medium text-fg">Вы уже на этом сервере</p>
+          <p className="mt-6 text-base font-medium text-fg">{t("guild:invitePage.already")}</p>
           <Button
             size="lg"
             className="mt-4 w-full"
@@ -89,7 +90,7 @@ const Preview = ({ invite }: { invite: Invite }) => {
               openGuild(invite.guild.id, { prefer: invite.channel.id });
             }}
           >
-            Открыть
+            {t("guild:invitePage.open")}
           </Button>
         </>
       ) : (
@@ -101,7 +102,7 @@ const Preview = ({ invite }: { invite: Invite }) => {
             if (!join.pending) join.join({ code: invite.code, channelId: invite.channel.id });
           }}
         >
-          Принять приглашение
+          {t("guild:invitePage.accept")}
         </Button>
       )}
     </Card>
@@ -119,9 +120,9 @@ export const InvitePage = ({ code }: { code: string }) => {
   if (preview.isPending) return <Loading />;
   if (preview.isError) {
     return isDead(preview.error) ? (
-      <Dead title={INVALID_INVITE} text="Возможно, у него истёк срок или закончились использования. Попросите новое." />
+      <Dead title={INVALID_INVITE} text={t("guild:invitePage.deadText")} />
     ) : (
-      <Dead title="Не удалось открыть приглашение" text={inviteErrorText(preview.error)} />
+      <Dead title={t("guild:invitePage.failed")} text={inviteErrorText(preview.error)} />
     );
   }
   return <Preview invite={preview.data} />;

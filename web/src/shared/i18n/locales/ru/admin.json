@@ -28,5 +28,10 @@
   "instanceTitle": "Сервер Zazzzor",
   "registrationOpen": "Регистрация открыта",
   "registrationOpenHint": "Любой, кто откроет сайт, может создать аккаунт.",
-  "registrationClosedHint": "Новые аккаунты создать нельзя. Те, что уже есть, работают как прежде."
+  "registrationClosedHint": "Новые аккаунты создать нельзя. Те, что уже есть, работают как прежде.",
+  "tab": {
+    "instance": "Сервер Zazzzor",
+    "users": "Пользователи"
+  },
+  "title": "Администрирование"
 }

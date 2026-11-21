@@ -8,10 +8,15 @@ import {
   useNavigateToFallback,
 } from "@/entities/channel";
 import { getGuildsState, useConnectionStatus, useGuilds } from "@/entities/guild";
+import { onLanguage, t } from "@/shared/i18n";
 import { useToast } from "@/shared/ui";
 
-export const CHANNEL_LOST = "Канал больше недоступен";
-export const GUILD_LOST = "Сервер больше недоступен";
+export let CHANNEL_LOST = "";
+export let GUILD_LOST = "";
+onLanguage(() => {
+  CHANNEL_LOST = t("guild:channelLost");
+  GUILD_LOST = t("guild:guildLost");
+});
 
 /** What this page has seen of its server and channel so far. */
 interface Seen {

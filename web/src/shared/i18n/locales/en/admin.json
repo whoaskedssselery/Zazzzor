@@ -28,5 +28,10 @@
   "instanceTitle": "Zazzzor server",
   "registrationOpen": "Registration is open",
   "registrationOpenHint": "Anyone who opens the site can create an account.",
-  "registrationClosedHint": "New accounts can't be created. Existing ones work as before."
+  "registrationClosedHint": "New accounts can't be created. Existing ones work as before.",
+  "tab": {
+    "instance": "Zazzzor server",
+    "users": "Users"
+  },
+  "title": "Administration"
 }

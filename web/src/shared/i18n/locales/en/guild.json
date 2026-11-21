@@ -318,5 +318,20 @@
     "removeTarget": "Remove",
     "roleLocked": "This role is not below your highest: you can't change its permissions.",
     "notYours": "You don't have this permission"
+  },
+  "channelLost": "The channel is no longer available",
+  "guildLost": "The server is no longer available",
+  "searchServer": "Search the server",
+  "noTextChannels": "This server has no text channels available to you.",
+  "invitePage": {
+    "loading": "Loading the invite…",
+    "home": "Go home",
+    "invites": "invites you to the server",
+    "channel": "Channel",
+    "already": "You are already on this server",
+    "open": "Open",
+    "accept": "Accept invite",
+    "deadText": "It may have expired or run out of uses. Ask for a new one.",
+    "failed": "Couldn't open the invite"
   }
 }

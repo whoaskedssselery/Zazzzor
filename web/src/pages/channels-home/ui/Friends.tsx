@@ -16,6 +16,7 @@ import {
   useRequestFriend,
   useSetRelationship,
 } from "@/entities/guild";
+import { t } from "@/shared/i18n";
 import {
   Avatar,
   Badge,
@@ -42,11 +43,11 @@ export type FriendsTab = "online" | "all" | "pending" | "blocked" | "add";
 const statusText = (r: Relationship, status: PresenceStatus, line: string | null): string => {
   switch (r.type) {
     case RELATIONSHIP.INCOMING:
-      return "Входящая заявка";
+      return t("friends:incoming");
     case RELATIONSHIP.OUTGOING:
-      return "Исходящая заявка";
+      return t("friends:outgoing");
     case RELATIONSHIP.BLOCKED:
-      return "Заблокирован";
+      return t("friends:blocked");
     default:
       return status !== "offline" && line !== null ? line : PRESENCE_LABEL[status];
   }
@@ -69,7 +70,7 @@ const Row = ({ r, onAsk }: { r: Relationship; onAsk: (a: Ask) => void }) => {
       actions = (
         <>
           <IconButton
-            label={`Принять заявку от ${name}`}
+            label={t("friends:acceptFrom", { name })}
             icon={Check}
             className="rounded-full bg-control hover:text-fg-success"
             onClick={() => {
@@ -77,7 +78,7 @@ const Row = ({ r, onAsk }: { r: Relationship; onAsk: (a: Ask) => void }) => {
             }}
           />
           <IconButton
-            label={`Отклонить заявку от ${name}`}
+            label={t("friends:declineFrom", { name })}
             icon={X}
             className="rounded-full bg-control hover:text-fg-danger"
             onClick={() => {
@@ -90,7 +91,7 @@ const Row = ({ r, onAsk }: { r: Relationship; onAsk: (a: Ask) => void }) => {
     case RELATIONSHIP.OUTGOING:
       actions = (
         <IconButton
-          label={`Отменить заявку для ${name}`}
+          label={t("friends:cancelFor", { name })}
           icon={X}
           className="rounded-full bg-control hover:text-fg-danger"
           onClick={() => {
@@ -108,7 +109,7 @@ const Row = ({ r, onAsk }: { r: Relationship; onAsk: (a: Ask) => void }) => {
             remove.mutate(r.id);
           }}
         >
-          Разблокировать
+          {t("friends:unblock")}
         </Button>
       );
       break;
@@ -116,7 +117,7 @@ const Row = ({ r, onAsk }: { r: Relationship; onAsk: (a: Ask) => void }) => {
       actions = (
         <>
           <IconButton
-            label={`Написать ${name}`}
+            label={t("friends:messageTo", { name })}
             icon={MessageCircle}
             className="rounded-full bg-control"
             disabled={open.isPending}
@@ -133,7 +134,11 @@ const Row = ({ r, onAsk }: { r: Relationship; onAsk: (a: Ask) => void }) => {
           />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <IconButton label={`Действия с ${name}`} icon={Ellipsis} className="rounded-full bg-control" />
+              <IconButton
+                label={t("friends:actionsWith", { name })}
+                icon={Ellipsis}
+                className="rounded-full bg-control"
+              />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem
@@ -142,7 +147,7 @@ const Row = ({ r, onAsk }: { r: Relationship; onAsk: (a: Ask) => void }) => {
                   onAsk({ kind: "remove", r });
                 }}
               >
-                Удалить из друзей
+                {t("friends:removeFriend")}
                 <UserMinus aria-hidden />
               </DropdownMenuItem>
               <DropdownMenuItem
@@ -151,7 +156,7 @@ const Row = ({ r, onAsk }: { r: Relationship; onAsk: (a: Ask) => void }) => {
                   onAsk({ kind: "block", r });
                 }}
               >
-                Заблокировать
+                {t("friends:block")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -224,9 +229,9 @@ const AddFriend = () => {
   return (
     <section aria-labelledby="add-friend-title" className="border-b border-border px-6 py-5">
       <h2 id="add-friend-title" className="text-base font-semibold">
-        Добавить в друзья
+        {t("friends:addAsFriend")}
       </h2>
-      <p className="mt-1 text-sm text-fg-muted">Введите имя пользователя: то, под которым друг входит в Zazzzor.</p>
+      <p className="mt-1 text-sm text-fg-muted">{t("friends:addHint")}</p>
       <form
         noValidate
         onSubmit={submit}
@@ -237,8 +242,8 @@ const AddFriend = () => {
       >
         <Input
           value={username}
-          aria-label="Имя пользователя"
-          placeholder="Имя пользователя"
+          aria-label={t("friends:username")}
+          placeholder={t("friends:username")}
           autoComplete="off"
           spellCheck={false}
           maxLength={64}
@@ -250,12 +255,12 @@ const AddFriend = () => {
           }}
         />
         <Button type="submit" size="sm" disabled={name === "" || request.isPending}>
-          Отправить заявку
+          {t("friends:sendRequest")}
         </Button>
       </form>
       <p aria-live="polite" className="mt-2 min-h-5 text-sm">
         {request.isError && <span className="text-fg-danger">{requestErrorText(request.error)}</span>}
-        {sent !== null && <span className="text-fg-success">{`Заявка для ${sent} отправлена.`}</span>}
+        {sent !== null && <span className="text-fg-success">{t("friends:requestSentTo", { name: sent })}</span>}
       </p>
     </section>
   );
@@ -284,7 +289,7 @@ export const FriendsView = () => {
         setTab("add");
       }}
     >
-      Добавить в друзья
+      {t("friends:addAsFriend")}
     </Button>
   );
 
@@ -300,41 +305,41 @@ export const FriendsView = () => {
         <NavButton />
         <span className="flex shrink-0 items-center gap-2 font-semibold">
           <Users aria-hidden className="size-5 text-fg-muted" />
-          <h1 className="text-base max-sm:sr-only">Друзья</h1>
+          <h1 className="text-base max-sm:sr-only">{t("friends:friends")}</h1>
         </span>
         <span aria-hidden className="mx-2 h-6 w-px shrink-0 bg-border max-sm:hidden" />
-        <TabsList aria-label="Друзья" className="min-w-0 overflow-x-auto p-1 [scrollbar-width:none]">
-          <TabsTrigger value="online">В сети</TabsTrigger>
-          <TabsTrigger value="all">Все</TabsTrigger>
+        <TabsList aria-label={t("friends:friends")} className="min-w-0 overflow-x-auto p-1 [scrollbar-width:none]">
+          <TabsTrigger value="online">{t("friends:online")}</TabsTrigger>
+          <TabsTrigger value="all">{t("friends:all")}</TabsTrigger>
           <TabsTrigger
             value="pending"
-            aria-label={incoming > 0 ? `Ожидание, входящих заявок: ${String(incoming)}` : "Ожидание"}
+            aria-label={incoming > 0 ? t("friends:pendingCount", { count: incoming }) : t("friends:pending")}
           >
-            Ожидание
+            {t("friends:pending")}
             {incoming > 0 && (
               <Badge variant="count" className="ml-1.5">
                 {formatCount(incoming)}
               </Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="blocked">Заблокированные</TabsTrigger>
+          <TabsTrigger value="blocked">{t("friends:blockedTab")}</TabsTrigger>
           <TabsTrigger
             value="add"
             className="bg-accent text-on-accent hover:bg-accent-hover hover:text-on-accent data-[state=active]:bg-transparent data-[state=active]:text-fg-success"
           >
-            Добавить в друзья
+            {t("friends:addAsFriend")}
           </TabsTrigger>
         </TabsList>
       </ShellHeader>
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <TabsContent value="online" className="flex flex-1 flex-col">
           <List
-            title="В сети"
+            title={t("friends:online")}
             people={lists.online}
             onAsk={setAsk}
             empty={
               <>
-                <p>Никого из друзей сейчас нет в сети.</p>
+                <p>{t("friends:noneOnline")}</p>
                 {lists.all.length === 0 && goAdd}
               </>
             }
@@ -342,26 +347,31 @@ export const FriendsView = () => {
         </TabsContent>
         <TabsContent value="all" className="flex flex-1 flex-col">
           <List
-            title="Все друзья"
+            title={t("friends:allFriends")}
             people={lists.all}
             onAsk={setAsk}
             empty={
               <>
-                <p>Друзей пока нет. Добавьте кого-нибудь по имени пользователя.</p>
+                <p>{t("friends:noFriendsYet")}</p>
                 {goAdd}
               </>
             }
           />
         </TabsContent>
         <TabsContent value="pending" className="flex flex-1 flex-col">
-          <List title="Ожидание" people={lists.pending} onAsk={setAsk} empty={<p>Заявок нет.</p>} />
+          <List
+            title={t("friends:pending")}
+            people={lists.pending}
+            onAsk={setAsk}
+            empty={<p>{t("friends:noRequests")}</p>}
+          />
         </TabsContent>
         <TabsContent value="blocked" className="flex flex-1 flex-col">
           <List
-            title="Заблокированные"
+            title={t("friends:blockedTab")}
             people={lists.blocked}
             onAsk={setAsk}
-            empty={<p>Вы никого не заблокировали.</p>}
+            empty={<p>{t("friends:noneBlocked")}</p>}
           />
         </TabsContent>
         <TabsContent value="add">
@@ -375,15 +385,11 @@ export const FriendsView = () => {
         }}
         title={
           ask?.kind === "block"
-            ? `Заблокировать ${ask.r.user.display_name}?`
-            : `Удалить ${ask?.r.user.display_name ?? ""} из друзей?`
+            ? t("friends:blockTitle", { name: ask.r.user.display_name })
+            : t("friends:removeTitle", { name: ask?.r.user.display_name ?? "" })
         }
-        description={
-          ask?.kind === "block"
-            ? "Дружба закончится, а новые заявки от этого человека перестанут приходить. Он об этом не узнает."
-            : "Вы перестанете видеть друг друга в списках друзей. Можно будет снова отправить заявку."
-        }
-        confirmLabel={ask?.kind === "block" ? "Заблокировать" : "Удалить из друзей"}
+        description={ask?.kind === "block" ? t("friends:blockText") : t("friends:removeText")}
+        confirmLabel={ask?.kind === "block" ? t("friends:block") : t("friends:removeFriend")}
         tone="danger"
         pending={set.isPending || remove.isPending}
         onConfirm={() => {
