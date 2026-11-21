@@ -234,7 +234,53 @@ fi
 # code builds on Windows only. The MSVC tools of this machine failed with a
 # temp folder under AppData, so the build keeps its own; LK_CUSTOM_WEBRTC,
 # when set, saves downloading libwebrtc again.
+#
+# cargo audit reads only the lockfiles and needs no Rust toolchain. It is
+# the prebuilt binary of the version CI pins, checked against CI's
+# checksum and kept in the user's cache folder.
+cargo_audit() {
+  local version asset ext sum bin name dir lock bad=0
+  version="$(ci_value CARGO_AUDIT_VERSION)"
+  case "$(uname -s)" in
+    MINGW* | MSYS* | CYGWIN*)
+      asset=x86_64-pc-windows-msvc ext=zip bin=cargo-audit.exe
+      sum="$(ci_value CARGO_AUDIT_SHA256_WINDOWS)"
+      ;;
+    Linux)
+      asset=x86_64-unknown-linux-musl ext=tgz bin=cargo-audit
+      sum="$(ci_value CARGO_AUDIT_SHA256_LINUX)"
+      ;;
+    *)
+      echo "no prebuilt cargo-audit for $(uname -s) is pinned in $ci"
+      return 1
+      ;;
+  esac
+  name="cargo-audit-$asset-v$version"
+  dir="${XDG_CACHE_HOME:-$HOME/.cache}/zazzzor-check"
+  if [[ ! -x "$dir/$name/$bin" ]]; then
+    mkdir -p "$dir" || return 1
+    curl -fsSL -o "$dir/$name.$ext" \
+      "https://github.com/rustsec/rustsec/releases/download/cargo-audit/v$version/$name.$ext" || return 1
+    if ! echo "$sum  $dir/$name.$ext" | sha256sum --check --strict; then
+      rm -f "$dir/$name.$ext"
+      return 1
+    fi
+    if [[ "$ext" == zip ]]; then
+      unzip -oq "$dir/$name.$ext" -d "$dir" || return 1
+    else
+      tar -xzf "$dir/$name.$ext" -C "$dir" || return 1
+    fi
+    rm -f "$dir/$name.$ext"
+  fi
+  for lock in desktop/*/Cargo.lock; do
+    echo "== $lock"
+    "$dir/$name/$bin" audit --file "$lock" || bad=1
+  done
+  return "$bad"
+}
+
 if has '^desktop/'; then
+  run "desktop cargo audit" cargo_audit
   [[ -d "$HOME/.cargo/bin" ]] && PATH="$HOME/.cargo/bin:$PATH"
   if ! command -v cargo >/dev/null 2>&1; then
     echo "===== desktop: cargo not found, skipped" >>"$log"

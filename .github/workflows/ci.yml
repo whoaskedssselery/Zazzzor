@@ -22,6 +22,11 @@ env:
   REDOCLY_CLI_VERSION: 2.66.0
   GITLEAKS_VERSION: 8.30.1
   GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+  # The prebuilt binaries of the rustsec release (check.sh uses the Linux
+  # one on Linux).
+  CARGO_AUDIT_VERSION: 0.22.2
+  CARGO_AUDIT_SHA256_WINDOWS: 0a7316540862c13d954f648917ceacca593747baed6eec180fafa590be2710ab
+  CARGO_AUDIT_SHA256_LINUX: 7fb9497f8594b389e5fce5ef9b92db08432996895b2e0c5a0167a69ed445c428
 
 # Which runner a job gets: a pull request from a fork always runs on
 # GitHub's runners, because the self-hosted ones keep their files, caches and
@@ -294,6 +299,24 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # Reads only the lockfiles, so it needs no build. New advisories show up
+      # here even when no dependency changed.
+      - name: Known vulnerabilities in Rust dependencies (cargo audit)
+        run: |
+          $name = "cargo-audit-x86_64-pc-windows-msvc-v$env:CARGO_AUDIT_VERSION"
+          $zip = Join-Path $env:RUNNER_TEMP "$name.zip"
+          Invoke-WebRequest -UseBasicParsing -OutFile $zip `
+            "https://github.com/rustsec/rustsec/releases/download/cargo-audit/v$env:CARGO_AUDIT_VERSION/$name.zip"
+          if ((Get-FileHash -Algorithm SHA256 $zip).Hash -ne $env:CARGO_AUDIT_SHA256_WINDOWS) { throw "$name.zip: checksum mismatch" }
+          Expand-Archive -Force $zip $env:RUNNER_TEMP
+          $audit = Join-Path $env:RUNNER_TEMP "$name\cargo-audit.exe"
+          $failed = @()
+          foreach ($lock in Get-ChildItem desktop\*\Cargo.lock) {
+            Write-Output "::group::$($lock.Directory.Name)"
+            & $audit audit --file $lock.FullName; if ($LASTEXITCODE) { $failed += $lock.Directory.Name }
+            Write-Output "::endgroup::"
+          }
+          if ($failed) { Write-Output "::error::vulnerable dependencies in: $($failed -join ', ')"; exit 1 }
       - uses: ./.github/actions/desktop-rust
       # Every crate under desktop/, each with a build folder of its own: their
       # flags differ (the capture links the C runtime statically), and one
