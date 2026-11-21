@@ -1,4 +1,5 @@
 import { DisconnectReason } from "livekit-client";
+import { type Language, translations } from "./locale";
 
 /** Room connection events over one measurement phase. */
 export interface ConnectionEvents {
@@ -40,17 +41,17 @@ export function disconnectReasonName(reason: DisconnectReason | undefined): stri
   return typeof name === "string" ? name : "UNKNOWN_REASON";
 }
 
-const MESSAGES: Partial<Record<DisconnectReason, string>> = {
-  [DisconnectReason.DUPLICATE_IDENTITY]: "Эта ссылка открыта в другой вкладке или на другом устройстве",
-  [DisconnectReason.CLIENT_INITIATED]: "Ты отключился",
-  [DisconnectReason.SERVER_SHUTDOWN]: "Сервер перезапускается, подключись снова через минуту",
-  [DisconnectReason.PARTICIPANT_REMOVED]: "Тебя удалили из комнаты",
-  [DisconnectReason.ROOM_DELETED]: "Комната закрыта",
-  [DisconnectReason.ROOM_CLOSED]: "Комната закрыта",
+const MESSAGES: Partial<Record<DisconnectReason, keyof (typeof translations)["en"]>> = {
+  [DisconnectReason.DUPLICATE_IDENTITY]: "duplicateIdentity",
+  [DisconnectReason.CLIENT_INITIATED]: "left",
+  [DisconnectReason.SERVER_SHUTDOWN]: "serverShutdown",
+  [DisconnectReason.PARTICIPANT_REMOVED]: "removed",
+  [DisconnectReason.ROOM_DELETED]: "roomClosed",
+  [DisconnectReason.ROOM_CLOSED]: "roomClosed",
 };
 
-export function disconnectMessage(reason: DisconnectReason | undefined): string {
-  return (
-    (reason !== undefined ? MESSAGES[reason] : undefined) ?? `Соединение потеряно (${disconnectReasonName(reason)})`
-  );
+export function disconnectMessage(reason: DisconnectReason | undefined, language: Language = "en"): string {
+  const text = translations[language];
+  const key = reason === undefined ? undefined : MESSAGES[reason];
+  return key ? text[key] : `${text.connectionLost} (${disconnectReasonName(reason)})`;
 }

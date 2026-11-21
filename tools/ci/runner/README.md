@@ -1,29 +1,34 @@
-# Linux-раннеры CI
+# Linux CI runners
 
-1. Из корня репозитория соберите образ. Системные зависимости Chromium и
-   Firefox устанавливаются при сборке, версия Playwright берётся из
-   `pnpm-lock.yaml`. После обновления Playwright пересоберите образ.
+[Русский](README.ru.md)
+
+1. Build the image from the repository root. The build installs the
+   Chromium and Firefox system dependencies and reads the Playwright
+   version from `pnpm-lock.yaml`. Rebuild the image after updating
+   Playwright.
 
    ```bash
    docker build -f tools/ci/runner/Dockerfile -t zazzzor-runner:playwright .
    ```
 
-2. В CI браузеры ставятся без apt в
-   `/var/lib/zz-runner/playwright/<версия Playwright>`. Существующие тома
-   `zz-work-1`, `zz-work-2`, `zz-work-3` сохраняют их между заданиями и
-   пересозданиями контейнеров. GitHub-hosted раннеры продолжают использовать
-   `--with-deps`. Если образ собран под другую версию Playwright (или старый),
-   шаг предупреждает, что его пора пересобрать, и ставит системные пакеты
-   через apt, как раньше: CI не ломается, только медленнее.
+2. CI installs the browsers without apt into
+   `/var/lib/zz-runner/playwright/<Playwright version>`. The existing
+   volumes `zz-work-1`, `zz-work-2`, and `zz-work-3` persist them
+   across jobs and container replacements. GitHub-hosted runners
+   continue to use `--with-deps`. If the runner image is old or was
+   built for a different Playwright version, the step warns that a
+   rebuild is due and falls back to installing system packages with
+   apt. CI takes longer on that fallback.
 
-3. Перед заменой дождитесь завершения задания нужного раннера. Проверьте
-   вкладку Actions → Runners и его журнал; не останавливайте занятой раннер.
-   Команды ниже заменяют только выбранный `zazzzor-runner-N`, сохраняют его
-   рабочие тома и используют существующий `zz-dind-N`. Нужны `gh` с доступом
-   к управлению раннерами и новый регистрационный токен.
+3. Wait for the selected runner to finish its job before replacing it.
+   Check Actions → Runners and the runner log. Only stop an idle
+   runner. The commands below replace the selected `zazzzor-runner-N`,
+   preserve its work volumes, and reuse its existing `zz-dind-N` container.
+   You need `gh` with runner management access and a fresh registration
+   token.
 
    ```bash
-   i=1 # затем отдельно 2 и 3, каждый раз проверяя, что раннер свободен
+   i=1 # Then repeat separately for 2 and 3, checking each runner is idle.
    repo=whoaskedssselery/Zazzzor
    token="$(gh api --method POST "repos/$repo/actions/runners/registration-token" --jq .token)"
    docker stop "zazzzor-runner-$i"
@@ -38,13 +43,16 @@
    docker logs --tail 30 "zazzzor-runner-$i"
    ```
 
-4. Запустите CI и проверьте шаг браузеров и оба браузерных проекта.
-   Первый прогон скачивает браузеры, следующие используют рабочий том.
-   Не удаляйте `zz-work-*`, `zz-tmp-*` или контейнеры dind при замене раннера.
+4. Run CI and check the browser installation step and both browser
+   projects. The first run downloads the browsers. Later runs use the
+   work volume. Keep the `zz-work-*` and `zz-tmp-*` volumes and the DinD
+   containers in place during runner replacement.
 
-5. Для отката дождитесь освобождения раннера и повторите шаг 3 с прежним
-   образом `zazzzor-runner:local`; workflow менять не нужно.
+5. To roll back, wait for the runner to become idle and repeat step 3
+   with the previous `zazzzor-runner:local` image. The existing workflow
+   works with either image.
 
-Исходный Dockerfile и `start.sh` находились во временной папке локальной
-сборки. Эта папка в репозитории хранит их вместе с установкой зависимостей
-Playwright; команды не меняют существующие контейнеры автоматически.
+The original Dockerfile and `start.sh` lived in a temporary local build
+directory. This directory now keeps them alongside the Playwright
+dependency installation. Apply the replacement commands above to update
+an existing runner.

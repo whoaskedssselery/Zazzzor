@@ -1,5 +1,7 @@
 # Agent harness
 
+[Русский](README.ru.md)
+
 What coding agents (Claude Code, Codex) share in this repository, and how a
 fresh clone gets their skills back in one command.
 

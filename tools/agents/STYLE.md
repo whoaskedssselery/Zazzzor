@@ -1,5 +1,7 @@
 # House style for Zazzzor: the mistakes already made, and the house way
 
+[Русский](STYLE.ru.md)
+
 Every rule here comes from a real code review of this repository. When a review finds a new recurring mistake, it is added here. Before you commit, walk this list against your diff.
 
 Most important first.
@@ -94,16 +96,16 @@ Nothing may stop forever without a signal.
 ## 12. Shell scripts look like `deploy/scripts/stack.sh`
 
 - `#!/usr/bin/env bash` and `set -euo pipefail`. Use bash, not POSIX sh, unless the script runs inside a busybox/alpine image. If it does, say so in the header and test it there.
-- A Russian header that says what the script does, plus a «Использование» block with every command and variable.
+- Write an English header that explains the script and a `Usage` block that lists every command and variable. Localized help may supplement the English help when the existing output contract is preserved. Maintain operator guides in both languages.
 - One statement per line. A why-comment over each function and each non-obvious step.
-- Errors are actionable Russian sentences that name the fix, printed through `die` (exit 2).
+- Errors give the operator a concrete fix and go through `die` (exit 2). Use English for new messages. Preserve existing diagnostics unless the task explicitly changes them.
 - Quote every expansion. Arrays for argument lists.
 - Make it executable in git: `git update-index --chmod=+x path`, and check with `git ls-files -s path`; it must show 100755.
 - Run `shellcheck -x` clean (the check script does this).
 
-## 13. Owner-facing docs are Russian, short and numbered
+## 13. Keep owner-facing docs short, numbered and bilingual
 
-Write `deploy/README.md` the way it is already written: short sentences, numbered steps, commands in `bash` blocks, and a warning before anything destructive. Every new variable goes into `.env.example` with a one-line Russian comment.
+Maintain the [primary English guide](../../deploy/README.md) and the [Russian translation](../../deploy/README.ru.md) together. Use short sentences, numbered steps and `bash` blocks for commands. Put a warning before any destructive action. Declare each new variable once in the shared `.env.example` and give it a one-line comment in each language, English first.
 
 ## 14. Commits: one logical change each, with a body when the why isn't obvious
 
@@ -129,10 +131,11 @@ One bad item must not abort the whole run; log it, skip it, report it. Never des
 
 ## 16. Optional settings in `.env.example` are commented out
 
-`load_env` keeps the **first** value of a key, whereas compose keeps the last. An active line in the example therefore shadows anything the owner appends later. New switches, and variables that only one deployment variant uses, go in commented out with their default. The docs then say «раскомментируйте и измените», never «добавьте».
+`load_env` keeps the **first** value of a key, whereas compose keeps the last. An active line in the example therefore shadows anything the owner appends later. New switches, and variables that only one deployment variant uses, go in commented out with their default. Tell the reader to uncomment and edit the line.
 - ❌ `ZAZZZOR_EDGE=caddy` and `TRAEFIK_SUBNET=` as active lines (C3).
 - ✅ The existing pattern:
   ```
+  # How long deleted images stay in the trash. Use more than one day (192h = 8 days).
   # Сколько удалённые картинки лежат в корзине; больше суток (192h = 8 суток).
   # ZAZZZOR_FILE_RETENTION=192h
   ```

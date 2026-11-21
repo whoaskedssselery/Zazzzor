@@ -4,9 +4,10 @@ import { defineConfig } from "@playwright/test";
 
 /** The page is checked under the same CSP that Caddy sends in production. */
 function cspFromCaddyfile(): string {
-  const caddyfile = readFileSync(fileURLToPath(new URL("../../deploy/caddy/Caddyfile", import.meta.url)), "utf8");
-  const csp = /Content-Security-Policy "([^"]+)"/.exec(caddyfile)?.[1];
-  if (!csp) throw new Error("Content-Security-Policy not found in deploy/caddy/Caddyfile");
+  const caddyfile = readFileSync(fileURLToPath(new URL("../../deploy/caddy/static.caddy", import.meta.url)), "utf8");
+  const connectivity = /^\(connectivity\) \{([\s\S]*?)^\}/m.exec(caddyfile)?.[1];
+  const csp = /Content-Security-Policy "([^"]+)"/.exec(connectivity ?? "")?.[1];
+  if (!csp) throw new Error("Connectivity CSP not found in deploy/caddy/static.caddy");
   return csp;
 }
 

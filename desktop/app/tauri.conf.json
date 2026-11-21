@@ -29,8 +29,8 @@
       "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true },
       "nsis": {
         "installMode": "currentUser",
-        "languages": ["Russian"],
-        "displayLanguageSelector": false,
+        "languages": ["English", "Russian"],
+        "displayLanguageSelector": true,
         "installerIcon": "icons/icon.ico",
         "installerHooks": "windows/installer-hooks.nsh"
       }

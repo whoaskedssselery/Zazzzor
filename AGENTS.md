@@ -1,5 +1,7 @@
 # AGENTS.md
 
+[Русский](AGENTS.ru.md)
+
 Shared rules for every coding agent in this repository (Codex reads this
 file; Claude Code reads it through `CLAUDE.md`). People follow the same
 rules. Also binding: [`tools/agents/STYLE.md`](tools/agents/STYLE.md), the
@@ -24,7 +26,7 @@ home Linux server, Docker, no cloud services.
 - `web/`: React 19 client, Feature-Sliced Design (layers enforced by
   ESLint), TanStack Router and Query, Tailwind CSS; Biome formats it.
 - `deploy/`: Compose and Swarm stacks, Caddy, the backup image, scripts and
-  the server owner's guide (in Russian).
+  the server owner's guide in English and Russian.
 - `desktop/`: the Windows desktop client in Rust (Tauri around the web
   client, native screen capture); each crate builds on Windows only.
 
