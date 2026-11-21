@@ -14,6 +14,10 @@ use crate::{hotkeys, instance, lang, share};
 /// Allows the instance's pages at `origin` to call the commands they may.
 /// A capability cannot be taken back, so one for an earlier instance stays;
 /// the commands still refuse any page but the current instance's.
+///
+/// So every command in these lists must begin with `from_instance`: one
+/// that leaned on the capability alone would stay callable by every
+/// instance the person ever opened.
 pub fn allow_instance(app: &AppHandle, origin: &Url) -> tauri::Result<()> {
     let base = origin.origin().ascii_serialization();
     let mut capability = CapabilityBuilder::new(format!("instance-{base}")).remote(format!("{base}/*")).local(false);

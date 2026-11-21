@@ -28,7 +28,8 @@ On the first start the window asks for the server's address
 ("Where is your server?"): the address Zazzzor opens at in a browser. A
 bare host means `https://`; a path is dropped. For the local e2e stack
 (`pnpm e2e:up` and the `web-e2e` dev server, see [web/e2e/compose.yml](../../web/e2e/compose.yml))
-it is `http://localhost:4173`.
+it is `http://localhost:4173`. Plain `http://` is accepted only for
+`localhost` and loopback addresses; any other server needs `https://`.
 
 Where things are kept, per Windows user:
 
@@ -74,9 +75,12 @@ folder's labels is the owner's call.
   asks its server for the companion token (`POST
   /channels/{id}/voice/screen`) and hands it over; the app joins only the
   LiveKit of the same host. The share stops when the app quits. The
-  chosen server is trusted with this as Discord's app trusts discord.com:
-  its pages could list windows and start a share without the picker, so
-  only a server the person picked gets the commands.
+  page sees the windows and their thumbnails only while the app's window
+  is shown: sources are listed at most every two seconds, and each listed
+  source gives one thumbnail within a minute. Before a share starts, the
+  app's own dialog names the window (or the screen's number) and the
+  server's host and asks to share or cancel; a reshare of the same source
+  after the call reconnects does not ask again until the share is stopped.
 - **Push-to-talk everywhere.** In a call with push-to-talk the page asks
   the app to watch its key (`hotkeys_ptt`); a low-level keyboard hook
   reports it while the window is behind, so it works in a game. The hook

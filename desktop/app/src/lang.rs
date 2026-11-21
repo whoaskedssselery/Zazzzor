@@ -11,7 +11,8 @@ use tauri::{Manager, State, WebviewWindow};
 
 use crate::bridge::from_instance;
 
-/// The commands the instance's pages may call (bridge.rs).
+/// The commands the instance's pages may call (bridge.rs); each checks
+/// `from_instance` first.
 pub const COMMANDS: [&str; 1] = ["set_language"];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

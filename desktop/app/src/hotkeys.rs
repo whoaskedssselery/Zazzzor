@@ -26,7 +26,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use crate::bridge::from_instance;
 use crate::instance;
 
-/// The commands of this module, as the app's ACL names them.
+/// The commands of this module, as the app's ACL names them; each checks
+/// `from_instance` first (bridge.rs).
 pub const COMMANDS: [&str; 2] = ["hotkeys_ptt", "hotkeys_toggles"];
 
 /// A switch the page flips on a key combination.
