@@ -171,6 +171,12 @@ bash tools/agents/setup.sh
 
 Details: [`tools/agents/README.md`](tools/agents/README.md).
 
+## Contributing and security
+
+How to set up, check and send a change: [CONTRIBUTING.md](CONTRIBUTING.md).
+Found a vulnerability? Report it privately as [SECURITY.md](SECURITY.md)
+describes, never in a public issue.
+
 ## License
 
 [Apache License 2.0](LICENSE).
