@@ -1,5 +1,6 @@
 import { newer } from "@/entities/guild";
 import type { Message, PendingMessage } from "@/entities/message";
+import { currentLanguage } from "@/shared/i18n";
 
 /** A message continues the group above it when it follows the same author within this long. */
 export const GROUP_MS = 7 * 60_000;
@@ -13,7 +14,7 @@ export type ChatRow =
   | { kind: "message"; key: string; message: Message; grouped: boolean }
   | { kind: "pending"; key: string; pending: PendingMessage; grouped: boolean };
 
-const dayFormat = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+const dayFormat = () => new Intl.DateTimeFormat(currentLanguage(), { day: "numeric", month: "long", year: "numeric" });
 
 const dayKey = (d: Date) => `${String(d.getFullYear())}-${String(d.getMonth())}-${String(d.getDate())}`;
 
@@ -55,7 +56,7 @@ export function buildRows(
   for (const m of messages) {
     const at = new Date(m.created_at);
     if (prev === undefined || dayKey(new Date(prev.created_at)) !== dayKey(at)) {
-      rows.push({ kind: "day", key: `day-${dayKey(at)}`, label: dayFormat.format(at) });
+      rows.push({ kind: "day", key: `day-${dayKey(at)}`, label: dayFormat().format(at) });
     }
     if (divide && readFrom !== null && newer(m.id, readFrom) && m.author?.id !== meId) {
       rows.push({ kind: "new", key: "new" });
