@@ -30,6 +30,9 @@
 			Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-src https://www.youtube-nocookie.com; frame-ancestors 'none'"
 			Referrer-Policy no-referrer
 			X-Content-Type-Options nosniff
+			# Browsers stay on HTTPS for a year. No preload and no
+			# includeSubDomains: owners often use a shared DuckDNS name.
+			Strict-Transport-Security "max-age=31536000"
 		}
 		root * /srv/web
 		# Built files have content hashes in their names and may be cached for

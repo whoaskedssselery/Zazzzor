@@ -65,6 +65,8 @@ for path in / /channels/@me; do
   # The noise suppression models are WebAssembly; nothing more than compiling them is allowed.
   expect_header "$path" "^Content-Security-Policy:.*script-src 'self' 'wasm-unsafe-eval';"
   expect_header "$path" '^Cache-Control: no-cache'
+  # A year, without preload or includeSubDomains: DuckDNS names are shared.
+  expect_header "$path" '^Strict-Transport-Security: max-age=31536000[[:space:]]*$'
 done
 
 asset="$(sed -n 's/.*src="\(\/assets\/[^\"]*\.js\)".*/\1/p' "$tmp/index" | head -1)"
@@ -88,4 +90,11 @@ if cmp -s "$tmp/index" "$tmp/body"; then
   fail '/connectivity-test/ вернул SPA вместо страницы проверки связи'
 fi
 
-echo 'web test: OK (SPA, CSP, cache, asset 404, webhook 404, connectivity test)'
+# The TLS Caddyfile cannot be served here (it needs DuckDNS), so its adapted
+# JSON is checked instead: HSTS on both the web client and /api/*.
+adapted="$(docker run --rm --env-file deploy/.env.ci "$image" caddy adapt --config /etc/caddy/Caddyfile 2>/dev/null)" ||
+  fail 'caddy adapt не разобрал Caddyfile'
+hsts="$(grep -o '"Strict-Transport-Security":\["max-age=31536000"\]' <<<"$adapted" | wc -l)"
+((hsts >= 2)) || fail "в Caddyfile HSTS в $hsts блоках, ожидались веб-клиент и /api/*"
+
+echo 'web test: OK (SPA, CSP, HSTS, cache, asset 404, webhook 404, connectivity test)'
