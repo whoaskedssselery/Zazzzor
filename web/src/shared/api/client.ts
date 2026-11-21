@@ -1,5 +1,5 @@
 import createClient, { type Client } from "openapi-fetch";
-import { ERROR_TEXTS, GENERIC_ERROR, NETWORK_ERROR } from "./errors";
+import { errorCodeText, genericErrorText, networkErrorText } from "./errors";
 import type { paths } from "./schema.gen";
 
 /**
@@ -40,14 +40,14 @@ export function unwrap<T>(r: { data?: T; error?: unknown; response: Response }):
   return r.data as T;
 }
 
-/** Russian text for any error a request can end with. */
+/** The text, in the interface's language, for any error a request can end with. */
 export function errorText(e: unknown): string {
   if (e instanceof ApiError) {
-    return Object.hasOwn(ERROR_TEXTS, e.code) ? (ERROR_TEXTS[e.code] ?? GENERIC_ERROR) : GENERIC_ERROR;
+    return errorCodeText(e.code) ?? genericErrorText();
   }
   // fetch rejects with a TypeError when no response arrives at all.
-  if (e instanceof TypeError) return NETWORK_ERROR;
-  return GENERIC_ERROR;
+  if (e instanceof TypeError) return networkErrorText();
+  return genericErrorText();
 }
 
 /**
