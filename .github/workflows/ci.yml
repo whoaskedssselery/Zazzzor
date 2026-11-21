@@ -108,6 +108,10 @@ jobs:
           fi
       - name: Swarm stacks, TURN, deploy guards and the README path (fake values)
         run: bash deploy/scripts/stack-test.sh
+      # Writes .env non-interactively and interactively into a temp dir and
+      # checks the keys, mode 600, --force and that compose accepts it.
+      - name: deploy/.env generator (init-env.sh)
+        run: bash deploy/scripts/init-env-test.sh
       - name: Build the static web image and test plain HTTP
         run: |
           docker build -f deploy/caddy/Dockerfile -t zazzzor-caddy:ci .
