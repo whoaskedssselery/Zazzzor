@@ -1,9 +1,9 @@
-import { AppWindow, Maximize, Minimize, Monitor } from "lucide-react";
+import { AppWindow, Maximize, Minimize, Monitor, X } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { VolumeSlider } from "@/entities/call";
 import { attachOwnStream, attachStream, stopScreenShare, useNativeShare, watchStream } from "@/features/voice-call";
 import { t } from "@/shared/i18n";
-import { Badge, Button, cn } from "@/shared/ui";
+import { Badge, Button, cn, IconButton } from "@/shared/ui";
 
 /**
  * A video framed to its own shape, as large as its tile allows: the frame,
@@ -31,16 +31,33 @@ const VideoFrame = ({ video, children }: { video: RefObject<HTMLVideoElement | n
   return (
     <div className="flex size-full items-center justify-center [container-type:size]">
       <div
+        data-video-frame
         className="relative overflow-hidden rounded-lg bg-[#000]"
         style={{ aspectRatio: ratio, width: `min(100cqw, calc(100cqh * ${String(ratio)}))` }}
       >
         {/* The sound plays with the call's, so deafening silences a stream too; the video itself is muted. */}
         <video ref={video} autoPlay muted playsInline className="size-full object-contain" />
         {children}
+        {/* The stage's hover and focus ring, drawn round the picture rather than round its tile. */}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0 rounded-lg ring-inset transition-shadow duration-(--duration-fast) group-hover/tile:ring-2 group-hover/tile:ring-border-strong group-has-[>button:focus-visible]/tile:ring-2 group-has-[>button:focus-visible]/tile:ring-focus"
+        />
       </div>
     </div>
   );
 };
+
+/** An icon button on the picture: no plate of its own, white with a shadow so it reads on any frame. */
+const ON_PICTURE = "text-[#fff] hover:bg-[#000]/40 hover:text-[#fff] drop-shadow-[0_1px_2px_rgb(0_0_0/0.8)]";
+
+/** The corner of the picture that holds its icon buttons, shown while the pointer is on the tile. */
+const CORNER =
+  "absolute top-2 right-2 z-10 flex gap-1 opacity-0 transition-opacity duration-(--duration-base) group-focus-within:opacity-100 group-hover:opacity-100 group-hover/tile:opacity-100";
+
+/** The bottom-right corner, for the stream's volume. */
+const BOTTOM =
+  "absolute right-2 bottom-2 z-10 flex gap-2 opacity-0 transition-opacity duration-(--duration-base) group-focus-within:opacity-100 group-hover:opacity-100 group-hover/tile:opacity-100";
 
 /**
  * Puts `target` on the whole screen, and in full screen takes it back: a way
@@ -59,19 +76,17 @@ const FullscreenButton = ({ target }: { target: RefObject<HTMLElement | null> })
       document.removeEventListener("fullscreenchange", sync);
     };
   }, [target]);
-  const Icon = full ? Minimize : Maximize;
   return (
-    <Button
-      size="sm"
-      variant="secondary"
+    <IconButton
+      icon={full ? Minimize : Maximize}
+      label={full ? t("voice:stage.exitFullscreen") : t("voice:stage.fullscreen")}
+      tooltipSide="bottom"
+      className={ON_PICTURE}
       onClick={() => {
         if (full) void document.exitFullscreen();
         else void target.current?.requestFullscreen();
       }}
-    >
-      <Icon aria-hidden className="size-4" />
-      {full ? t("voice:stage.exitFullscreen") : t("voice:stage.fullscreen")}
-    </Button>
+    />
   );
 };
 
@@ -144,14 +159,10 @@ const BrowserOwnStream = ({ compact }: { compact: boolean }) => {
         <Badge variant="live" className="absolute top-2 left-2">
           {t("shell:live")}
         </Badge>
-        <div
-          data-controls
-          className={cn(
-            "absolute right-2 bottom-2 z-10 flex gap-2 opacity-0 transition-opacity duration-(--duration-base) group-focus-within:opacity-100 group-hover:opacity-100 group-hover/tile:opacity-100",
-            compact && "hidden",
-          )}
-        >
+        <div data-controls className={cn(CORNER, compact && "hidden")}>
           <FullscreenButton target={tile} />
+        </div>
+        <div data-controls className={cn(BOTTOM, compact && "hidden")}>
           <Button
             size="sm"
             variant="danger"
@@ -208,24 +219,20 @@ export const StreamTile = ({
     >
       {watching ? (
         <VideoFrame video={video}>
-          <div
-            data-controls
-            className={cn(
-              "absolute right-2 bottom-2 z-10 flex gap-2 opacity-0 transition-opacity duration-(--duration-base) group-focus-within:opacity-100 group-hover:opacity-100 group-hover/tile:opacity-100",
-              compact && "hidden",
-            )}
-          >
-            <VolumeSlider inline kind="stream" userId={userId} label={t("member:streamVolume")} />
+          <div data-controls className={cn(CORNER, compact && "hidden")}>
             <FullscreenButton target={tile} />
-            <Button
-              size="sm"
-              variant="secondary"
+            <IconButton
+              icon={X}
+              label={t("voice:stage.stopWatching")}
+              tooltipSide="bottom"
+              className={ON_PICTURE}
               onClick={() => {
                 watchStream(userId, false);
               }}
-            >
-              {t("voice:stage.stopWatching")}
-            </Button>
+            />
+          </div>
+          <div data-controls className={cn(BOTTOM, compact && "hidden")}>
+            <VolumeSlider inline kind="stream" userId={userId} label={t("member:streamVolume")} />
           </div>
         </VideoFrame>
       ) : (
