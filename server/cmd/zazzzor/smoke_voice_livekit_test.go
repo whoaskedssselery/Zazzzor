@@ -185,9 +185,9 @@ logging:
 		name, drop, want string
 	}{
 		{"success", "", ""},
-		{"missing admission webhook", "participant_joined", "вебхук входа"},
-		{"missing departure webhook", "participant_left", "не исчезло"},
-		{"LiveKit stopped", "", "LiveKit недоступен"},
+		{"missing admission webhook", "participant_joined", "join webhook"},
+		{"missing departure webhook", "participant_left", "did not clear"},
+		{"LiveKit stopped", "", "LiveKit is unreachable"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.name == "LiveKit stopped" {

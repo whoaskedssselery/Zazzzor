@@ -41,7 +41,7 @@ func TestConnectedViewersReadOnlyCandidateAssignments(t *testing.T) {
 	e := newEnv(t)
 	c, owner := e.user("owner")
 	g := createGuild(t, c, "club")
-	ch := byName(t, listChannels(t, c, g), "общий")
+	ch := byName(t, listChannels(t, c, g), channels.DefaultTextChannel)
 	if _, err := e.pool.Exec(t.Context(), `INSERT INTO users
 		(id, username, display_name, password_hash, created_at)
 		SELECT id, 'offline' || id, 'Offline', 'unused', now() FROM generate_series(10001, 10499) AS id`); err != nil {
