@@ -2,7 +2,7 @@ import { useMutation } from "@tanstack/react-query";
 import { type SubmitEvent, useState } from "react";
 import { useOpenGuild } from "@/entities/channel";
 import { ApiError, api, errorText, unwrap } from "@/shared/api";
-import { t } from "@/shared/i18n";
+import { currentLanguage, t } from "@/shared/i18n";
 import { runeLength, trimContent } from "@/shared/lib";
 import { Button, Dialog, DialogClose, DialogContent, Field, FormAlert, Input } from "@/shared/ui";
 
@@ -36,7 +36,8 @@ const CreateForm = ({ onDone }: { onDone: () => void }) => {
   // the answer; it opens once the store holds it, closing the dialog.
   const arrival = useOpenGuild(onDone);
   const create = useMutation({
-    mutationFn: async (value: string) => unwrap(await api.POST("/guilds", { body: { name: value } })),
+    mutationFn: async (value: string) =>
+      unwrap(await api.POST("/guilds", { body: { name: value, locale: currentLanguage() } })),
     onSuccess: (guild) => {
       arrival.open(guild.id);
     },

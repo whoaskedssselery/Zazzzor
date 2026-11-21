@@ -292,15 +292,25 @@ type Directory interface {
 
 var _ Directory = (*Service)(nil)
 
+// Locales are the interface languages a new guild can name its default
+// channels in (POST /guilds `locale`); DefaultLocale is used without one.
+var Locales = []string{"en", "ru"}
+
+// DefaultLocale names the channels of a guild created without a locale.
+const DefaultLocale = "en"
+
 // ChannelsBootstrapper creates the channels of a new guild inside the
-// transaction that creates the guild; an error rolls the creation back.
+// transaction that creates the guild, named in `locale` (one of Locales);
+// an error rolls the creation back.
 type ChannelsBootstrapper interface {
-	CreateDefaultChannels(ctx context.Context, tx pgx.Tx, guildID snowflake.ID) error
+	CreateDefaultChannels(ctx context.Context, tx pgx.Tx, guildID snowflake.ID, locale string) error
 }
 
 type noChannels struct{}
 
-func (noChannels) CreateDefaultChannels(context.Context, pgx.Tx, snowflake.ID) error { return nil }
+func (noChannels) CreateDefaultChannels(context.Context, pgx.Tx, snowflake.ID, string) error {
+	return nil
+}
 
 // OverwriteCleaner drops the channel overwrites that target a role or member
 // leaving the guild, inside the transaction (holding the guild lock) that

@@ -70,7 +70,8 @@ func Mount(r chi.Router, s *Service) {
 func fail(err error) error { return auth.ToProblem(ToProblem(err)) }
 
 type createGuildRequest struct {
-	Name string `json:"name"`
+	Name   string `json:"name"`
+	Locale string `json:"locale"`
 }
 
 func (s *Service) handleCreate(w http.ResponseWriter, r *http.Request) error {
@@ -78,7 +79,7 @@ func (s *Service) handleCreate(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	snap, err := s.CreateGuild(r.Context(), auth.CurrentUser(r), req.Name)
+	snap, err := s.CreateGuild(r.Context(), auth.CurrentUser(r), req.Name, req.Locale)
 	if err != nil {
 		return fail(err)
 	}

@@ -55,6 +55,33 @@ func TestNewGuildHasDefaultChannels(t *testing.T) {
 	}
 }
 
+func TestNewGuildNamesItsChannelsInTheCreatorsLanguage(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	c, _ := e.user("alice")
+	names := func(body map[string]string) []string {
+		resp := c.Do(http.MethodPost, "/api/v1/guilds", body)
+		expect(t, resp, http.StatusCreated)
+		var g guildBody
+		resp.JSON(&g)
+		var out []string
+		for _, ch := range listChannels(t, c, g) {
+			out = append(out, ch.Name)
+		}
+		return out
+	}
+	if got, want := names(map[string]string{"name": "home", "locale": "ru"}),
+		[]string{"Текстовые каналы", "общий", "Голосовые каналы", "Общий"}; !slices.Equal(got, want) {
+		t.Errorf("ru channels = %q, want %q", got, want)
+	}
+	if got, want := names(map[string]string{"name": "home", "locale": "en"}),
+		[]string{"Text channels", "general", "Voice channels", "General"}; !slices.Equal(got, want) {
+		t.Errorf("en channels = %q, want %q", got, want)
+	}
+	resp := c.Do(http.MethodPost, "/api/v1/guilds", map[string]string{"name": "home", "locale": "xx"})
+	expect(t, resp, http.StatusBadRequest)
+}
+
 func TestHiddenChannelIsNotFound(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)

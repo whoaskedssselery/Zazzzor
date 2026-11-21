@@ -75,7 +75,8 @@ describe("CreateGuildDialog", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/channels/50/61");
     });
-    expect(body).toEqual({ name: "Дача" });
+    // The default channels are named in the creator's language.
+    expect(body).toEqual({ name: "Дача", locale: "ru" });
   });
 
   it("shows why the server refused", async () => {
