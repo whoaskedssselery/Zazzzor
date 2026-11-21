@@ -2,6 +2,80 @@
 
 [English](README.md) · **Русский**
 
+## Быстрый старт
+
+Первая установка с настройками по умолчанию — несколько команд. Нумерованные
+разделы ниже объясняют каждый шаг и описывают Docker Swarm, Traefik и другие
+варианты.
+
+Что нужно:
+
+- Linux-сервер x86_64 с Docker Engine 25+ и Docker Compose v2.24+
+  ([раздел 2](#2-установка-docker-ubuntudebian)), `git` и `openssl`.
+- Поддомен DuckDNS, например `zazzzor.duckdns.org`, и его токен
+  ([раздел 4](#4-поддомен-и-токен-duckdns)). Сертификат Caddy получает через
+  DuckDNS, поэтому порт 80 остаётся закрытым.
+- Проброс портов с роутера на сервер
+  ([раздел 7](#7-проброс-портов-на-роутере)): **443/tcp** для HTTPS,
+  **7882/udp** для голоса и демонстрации экрана и **7881/tcp** — запасной
+  канал медиа, если UDP заблокирован.
+
+1. Скачайте код.
+
+   ```bash
+   git clone https://github.com/whoaskedssselery/Zazzzor.git zazzzor
+   cd zazzzor
+   ```
+
+2. Создайте `deploy/.env`. Скрипт спросит домен, токен DuckDNS, почту для
+   Let's Encrypt и логин администратора, сгенерирует все секреты и запишет
+   файл с правами 600. Секреты он не печатает и существующий `.env` без
+   `--force` не заменяет.
+
+   ```bash
+   bash deploy/scripts/init-env.sh --lang ru
+   ```
+
+   Без `--lang` язык выбирается по `LANG`. Чтобы запустить без вопросов,
+   передайте токен через окружение, а остальное — параметрами:
+   `DUCKDNS_TOKEN=<токен> bash deploy/scripts/init-env.sh --yes --domain zazzzor.duckdns.org --email ivan@mail.ru --admin ivan`.
+
+3. Создайте каталог резервных копий и проверьте, что порты свободны.
+
+   ```bash
+   sudo install -d -o 65532 -g 65532 -m 0700 /srv/zazzzor-backups
+   sudo bash deploy/scripts/check-ports.sh
+   ```
+
+4. Запустите стек. Первая сборка идёт несколько минут.
+
+   ```bash
+   docker compose -f deploy/docker-compose.yml up -d --build
+   docker compose -f deploy/docker-compose.yml ps
+   ```
+
+5. Создайте администратора с логином, который вы указали скрипту (здесь
+   `ivan`). Пароль вводится скрытно.
+
+   ```bash
+   read -rsp 'Пароль: ' PASS; echo
+   printf '%s\n' "$PASS" | docker compose -f deploy/docker-compose.yml exec -T api /zazzzor create-admin ivan
+   unset PASS
+   ```
+
+6. Войдите на `https://<домен>/`, откройте регистрацию в «Настройки
+   пользователя» → «Администрирование» → «Сервер Zazzzor» и запустите
+   проверку.
+
+   ```bash
+   bash deploy/scripts/smoke-api.sh https://zazzzor.duckdns.org
+   ```
+
+Postgres запоминает пароль при первом запуске, поэтому после запуска стека
+не пересоздавайте `.env` с `--force` (см. раздел 13). Если шаг не удался,
+подробности — в соответствующем разделе ниже, разбор проблем — в
+[разделе 13](#13-логи-перезапуск-если-что-то-не-работает).
+
 Инструкция от чистого Linux-сервера до работающего стека. Всё работает в
 Docker. Внутри стека:
 
