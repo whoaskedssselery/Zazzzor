@@ -143,6 +143,11 @@ export type TileMenu = (trigger: ReactElement) => ReactNode;
  * A tile's place on the stage. A click on it (behind its own buttons)
  * brings it to the front; a click on the front one sends it back. A right
  * click on a person's tile opens their menu.
+ *
+ * The button that zooms lies under the tile, which lets the pointer through
+ * to it everywhere but on its own controls: a button on top would take
+ * their clicks too, whatever their z-index (a frame with `container-type`
+ * keeps it to itself). A tile shows its controls on `group-hover/tile`.
  */
 const TileSlot = ({
   tile,
@@ -165,20 +170,23 @@ const TileSlot = ({
       className={cn("group/tile relative min-w-0 animate-pop-in list-none", className)}
       style={style}
     >
-      {tile.render(compact, () => {
-        if (!focused) onToggle();
-      })}
       <button
         type="button"
         aria-label={
           focused ? t("voice:stage.backToGrid", { name: tile.name }) : t("voice:stage.expand", { name: tile.name })
         }
         aria-pressed={focused}
-        className={cn(
-          "absolute inset-0 cursor-zoom-in rounded-lg ring-inset transition-shadow duration-(--duration-fast) group-data-[state=open]/tile:ring-2 group-data-[state=open]/tile:ring-border-strong hover:ring-2 hover:ring-border-strong focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none",
-          focused && "cursor-zoom-out",
-        )}
+        className="peer absolute inset-0 cursor-pointer rounded-lg focus-visible:outline-none"
         onClick={onToggle}
+      />
+      <div className="pointer-events-none contents [&_:is(button,a,input,[data-controls])]:pointer-events-auto">
+        {tile.render(compact, () => {
+          if (!focused) onToggle();
+        })}
+      </div>
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-0 rounded-lg ring-inset transition-shadow duration-(--duration-fast) group-hover/tile:ring-2 group-hover/tile:ring-border-strong group-data-[state=open]/tile:ring-2 group-data-[state=open]/tile:ring-border-strong peer-focus-visible:ring-2 peer-focus-visible:ring-focus"
       />
     </li>
   );
