@@ -105,6 +105,8 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
   let leaving = false;
   let listening = true;
   let screen: MediaStream | null = null;
+  /** Where the user's own share is previewed, to show a switched source there too. */
+  let ownPreview: HTMLVideoElement | null = null;
   let camera: LocalVideoTrack | null = null;
   /** Stops the 1080p/720p steering of the published screen share. */
   let stopSteering = () => {};
@@ -441,6 +443,16 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
     cameraViews.clear();
   };
 
+  /** The browser's own "Stop sharing" ends `video`, and with it the share of `stream`. */
+  const endWithTrack = (r: Room, stream: MediaStream, video: MediaStreamTrack) => {
+    video.addEventListener("ended", () => {
+      if (screen !== stream) return;
+      void unpublishScreen(r).then(() => {
+        emit("screenEnded");
+      });
+    });
+  };
+
   const unpublishScreen = async (r: Room) => {
     stopSteering();
     const stream = screen;
@@ -540,13 +552,7 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
       }
       video.contentHint = SCREEN_CONTENT_HINT;
       screen = stream;
-      // The browser's own "Stop sharing" ends the track.
-      video.addEventListener("ended", () => {
-        if (screen !== stream) return;
-        void unpublishScreen(r).then(() => {
-          emit("screenEnded");
-        });
-      });
+      endWithTrack(r, stream, video);
       // A stop (the browser's button, the user, the call ending) may come while a track is being
       // published: then this share is over, and whatever got published comes down again.
       const stopped = async (): Promise<boolean> => {
@@ -577,6 +583,52 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
       if (room) await unpublishScreen(room);
     },
 
+    async switchScreenShare(): Promise<ScreenShareResult> {
+      const r = room;
+      const old = screen;
+      const pub = r?.localParticipant.getTrackPublication(Track.Source.ScreenShare);
+      if (!r || !old || !pub?.videoTrack) return { ok: false, reason: "failed" };
+      const { capture } = screenShareOptions(currentBrowser(), canRestrictOwnAudio());
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getDisplayMedia(capture);
+      } catch (e) {
+        const cancelled = e instanceof DOMException && e.name === "NotAllowedError";
+        return { ok: false, reason: cancelled ? "cancelled" : "failed" };
+      }
+      const [video] = stream.getVideoTracks();
+      const [audio] = stream.getAudioTracks();
+      const drop = () => {
+        for (const t of stream.getTracks()) t.stop();
+      };
+      // The share or the call ended while the picker was open.
+      if (!video || room !== r || screen !== old) {
+        drop();
+        return { ok: false, reason: "cancelled" };
+      }
+      video.contentHint = SCREEN_CONTENT_HINT;
+      try {
+        // The same track, so the viewers keep it; only its source changes.
+        await pub.videoTrack.replaceTrack(video, true);
+        const sound = r.localParticipant.getTrackPublication(Track.Source.ScreenShareAudio)?.track;
+        if (sound) await r.localParticipant.unpublishTrack(sound);
+        if (audio) await r.localParticipant.publishTrack(audio, { source: Track.Source.ScreenShareAudio });
+      } catch {
+        drop();
+        return { ok: false, reason: "failed" };
+      }
+      screen = stream;
+      for (const t of old.getTracks()) t.stop();
+      endWithTrack(r, stream, video);
+      if (ownPreview) ownPreview.srcObject = new MediaStream([video]);
+      const surface = video.getSettings().displaySurface;
+      return {
+        ok: true,
+        surface: surface === "monitor" || surface === "window" || surface === "browser" ? surface : "unknown",
+        audio: audio !== undefined,
+      };
+    },
+
     watch(userId, on) {
       if (on) watching.add(userId);
       else watching.delete(userId);
@@ -600,7 +652,9 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
       // The captured stream itself, video only: the preview must not echo the shared sound.
       const video = screen?.getVideoTracks()[0];
       if (video) el.srcObject = new MediaStream([video]);
+      ownPreview = el;
       return () => {
+        if (ownPreview === el) ownPreview = null;
         el.srcObject = null;
       };
     },

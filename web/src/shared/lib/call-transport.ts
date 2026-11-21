@@ -80,6 +80,12 @@ export interface CallTransport {
   setVolume(userId: string, source: "voice" | "stream", volume: number): void;
   startScreenShare(): Promise<ScreenShareResult>;
   stopScreenShare(): Promise<void>;
+  /**
+   * Opens the browser's picker again during a share and puts what is picked
+   * in place of what was shared, on the same track: the viewers keep
+   * watching. A closed picker leaves the share as it was.
+   */
+  switchScreenShare(): Promise<ScreenShareResult>;
   /** Receive `userId`'s screen share (video and sound) or stop receiving it. */
   watch(userId: string, on: boolean): void;
   /** Shows `userId`'s screen share in `el` until the returned function runs. */

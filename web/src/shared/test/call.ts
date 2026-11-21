@@ -126,6 +126,11 @@ export class FakeTransport implements CallTransport {
   /** What linkStats answers; null as outside a call. */
   stats: LinkStats | null = null;
 
+  switchScreenShare(): Promise<ScreenShareResult> {
+    this.record("switchScreenShare");
+    return Promise.resolve(this.screenResult);
+  }
+
   linkStats(): Promise<LinkStats | null> {
     return Promise.resolve(this.stats);
   }
