@@ -239,7 +239,35 @@ fn window(
             }
         }
     });
+    #[cfg(windows)]
+    set_big_icon(&window);
     Ok(window)
+}
+
+/// Gives the window its large icon, which the taskbar and Alt+Tab show.
+/// Tauri sets only the small one, and without a large one Windows takes the
+/// exe's icon from its icon cache: after an update with a new icon the
+/// taskbar kept the old one. The icon is the exe's own, at the system's size.
+#[cfg(windows)]
+fn set_big_icon(window: &WebviewWindow) {
+    use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+    use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetSystemMetrics, ICON_BIG, IMAGE_ICON, LR_DEFAULTCOLOR, LoadImageW, SM_CXICON, SM_CYICON, SendMessageW,
+        WM_SETICON,
+    };
+    use windows::core::PCWSTR;
+
+    let Ok(hwnd) = window.hwnd() else { return };
+    // SAFETY: the module handle is this process's own exe; the resource id is
+    // an integer resource (MAKEINTRESOURCE); the icon lives as long as the process.
+    unsafe {
+        let Ok(module) = GetModuleHandleW(None) else { return };
+        let id = PCWSTR(usize::from(tauri::utils::platform::WINDOWS_APP_ICON_RESOURCE_ID) as *const u16);
+        let (w, h) = (GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON));
+        let Ok(icon) = LoadImageW(Some(module.into()), id, IMAGE_ICON, w, h, LR_DEFAULTCOLOR) else { return };
+        SendMessageW(HWND(hwnd.0), WM_SETICON, Some(WPARAM(ICON_BIG as usize)), Some(LPARAM(icon.0 as isize)));
+    }
 }
 
 /// Opens web and mail links in the person's default programs; anything else is ignored.
