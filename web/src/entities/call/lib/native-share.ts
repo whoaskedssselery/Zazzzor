@@ -67,6 +67,9 @@ export const decodeThumbnail = (bytes: ArrayBuffer | readonly number[]): Thumbna
   return { width, height, rgba };
 };
 
+/** What the app's `share_start` rejects with when the person said no in its dialog. */
+const CANCELLED = "cancelled";
+
 let available: Promise<boolean> | null = null;
 
 export const nativeShare = {
@@ -83,9 +86,19 @@ export const nativeShare = {
   sources: (): Promise<ShareSource[]> => desktopInvoke("share_sources"),
   thumbnail: async (id: string): Promise<Thumbnail> =>
     decodeThumbnail(await desktopInvoke<ArrayBuffer | number[]>("share_thumbnail", { id })),
-  /** Starts sharing source `id` (replacing a share in progress); `sound` brings its sound, `fps` caps the frame rate. */
-  start: (args: { url: string; token: string; id: string } & ShareChoice): Promise<void> =>
-    desktopInvoke("share_start", { ...args }),
+  /**
+   * Starts sharing source `id` (replacing a share in progress); `sound`
+   * brings its sound, `fps` caps the frame rate. The app asks the person
+   * first: a no is "cancelled", any other failure rejects.
+   */
+  start: (args: { url: string; token: string; id: string } & ShareChoice): Promise<"started" | "cancelled"> =>
+    desktopInvoke("share_start", { ...args }).then(
+      () => "started" as const,
+      (e: unknown) => {
+        if (e === CANCELLED) return "cancelled" as const;
+        throw e;
+      },
+    ),
   stop: (): Promise<void> => desktopInvoke("share_stop"),
   status: (): Promise<NativeShareStatus> => desktopInvoke("share_status"),
 };

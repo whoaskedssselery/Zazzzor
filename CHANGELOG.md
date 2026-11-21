@@ -15,6 +15,11 @@ release notes on its GitHub releases.
 
 ## [Unreleased]
 
+### Changed
+
+- The web client takes a "Cancel" in the desktop app's new share
+  confirmation (desktop 0.2.4) as a cancelled share and shows no error.
+
 ### Security
 
 - **HSTS.** The web client and the API now send
