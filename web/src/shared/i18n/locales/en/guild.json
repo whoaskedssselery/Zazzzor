@@ -128,5 +128,58 @@
       "name": "Administrator",
       "description": "Every permission and access to every channel. Dangerous: give it only to those you trust."
     }
+  },
+  "createChannel": {
+    "nameRule": "Name: 1 to 100 characters.",
+    "text": "Text",
+    "voice": "Voice",
+    "textHint": "Messages, links, images",
+    "voiceHint": "Voice, video and screen sharing",
+    "createCategory": "Create category",
+    "createChannel": "Create channel",
+    "inCategory": "In the “{{name}}” category",
+    "create": "Create",
+    "type": "Channel type",
+    "categoryName": "Category name",
+    "channelName": "Channel name"
+  },
+  "createGuild": {
+    "nameRule": "Name: 2 to 100 characters.",
+    "createdLate": "The server “{{name}}” was created, but the connection dropped. It will show up in the server list once the connection is back.",
+    "title": "Create a server",
+    "text": "A place for you and your friends. You'll set up channels and roles later.",
+    "name": "Server name"
+  },
+  "invite": {
+    "30m": "30 minutes",
+    "1h": "1 hour",
+    "6h": "6 hours",
+    "12h": "12 hours",
+    "1d": "1 day",
+    "7d": "7 days",
+    "never": "Never",
+    "noLimit": "No limit",
+    "copyFailed": "Couldn't copy: the link is selected, copy it by hand.",
+    "noExpiry": "The link won't expire",
+    "expiresIn": "The link will stop working in {{life}}",
+    "end": "{{when}}.",
+    "orAfter_one": "{{when}} or after {{count}} use.",
+    "orAfter_other": "{{when}} or after {{count}} uses.",
+    "title": "Invite friends to #{{channel}}",
+    "text": "Friends will join the server, straight into #{{channel}}.",
+    "sendLink": "Send a friend an invite link",
+    "creating": "Creating a link…",
+    "edit": "Edit invite link",
+    "lifetime": "Expires after",
+    "uses": "Max uses",
+    "createNew": "Create a new link",
+    "retry": "Try again"
+  },
+  "deleteGuild": {
+    "button": "Delete server",
+    "deleted": "Server “{{name}}” deleted",
+    "title": "Delete “{{name}}”?",
+    "text": "All channels and messages will be gone forever, and members will lose access. This can't be undone.",
+    "typeName": "Type the server's name"
   }
 }

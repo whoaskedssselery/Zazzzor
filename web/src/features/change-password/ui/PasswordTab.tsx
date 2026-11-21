@@ -3,22 +3,29 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod/mini";
 import { ApiError, api, errorText, fieldErrorText, tooManyAttemptsText, unwrap } from "@/shared/api";
+import { onLanguage, t } from "@/shared/i18n";
 import { runeLength } from "@/shared/lib";
 import { Button, Field, FormAlert, Input, useToast } from "@/shared/ui";
 
-export const PASSWORDS_DIFFER = "Пароли не совпадают.";
-export const PASSWORD_CHANGED = "Пароль изменён. Остальные сеансы завершены";
+export let PASSWORDS_DIFFER = "";
+export let PASSWORD_CHANGED = "";
+onLanguage(() => {
+  PASSWORDS_DIFFER = t("auth:passwordsDiffer");
+  PASSWORD_CHANGED = t("auth:passwordChanged");
+});
 
 const schema = z
   .object({
-    current_password: z.string().check(z.minLength(1, "Введите текущий пароль.")),
+    current_password: z.string().check(z.minLength(1, { error: () => t("auth:enterCurrent") })),
     new_password: z
       .string()
-      .check(z.refine((s) => runeLength(s) >= 8 && runeLength(s) <= 128, fieldErrorText("new_password"))),
+      .check(
+        z.refine((s) => runeLength(s) >= 8 && runeLength(s) <= 128, { error: () => fieldErrorText("new_password") }),
+      ),
     repeat: z.string(),
   })
   .check(
-    z.refine((v) => v.repeat === v.new_password, { message: PASSWORDS_DIFFER, path: ["repeat"], when: () => true }),
+    z.refine((v) => v.repeat === v.new_password, { error: () => PASSWORDS_DIFFER, path: ["repeat"], when: () => true }),
   );
 type Values = z.infer<typeof schema>;
 
@@ -69,27 +76,27 @@ export const PasswordTab = () => {
   return (
     <section aria-labelledby="password-title">
       <h2 id="password-title" className="mb-5 text-xl font-semibold">
-        Сменить пароль
+        {t("auth:changePassword")}
       </h2>
       {alert && <FormAlert>{alert}</FormAlert>}
       <form noValidate onSubmit={(e) => void onSubmit(e)} className="flex max-w-100 flex-col gap-5">
-        <Field htmlFor="password-current" label="Текущий пароль" error={errors.current_password?.message}>
+        <Field htmlFor="password-current" label={t("auth:currentPassword")} error={errors.current_password?.message}>
           <Input {...register("current_password")} type="password" autoComplete="current-password" />
         </Field>
         <Field
           htmlFor="password-new"
-          label="Новый пароль"
-          hint="От 8 до 128 символов."
+          label={t("auth:newPassword")}
+          hint={t("auth:passwordHint")}
           error={errors.new_password?.message}
         >
           <Input {...register("new_password")} type="password" autoComplete="new-password" />
         </Field>
-        <Field htmlFor="password-repeat" label="Новый пароль ещё раз" error={errors.repeat?.message}>
+        <Field htmlFor="password-repeat" label={t("auth:repeatPassword")} error={errors.repeat?.message}>
           <Input {...register("repeat")} type="password" autoComplete="new-password" />
         </Field>
-        <p className="text-sm text-fg-muted">После смены пароля вы выйдете на всех других устройствах.</p>
+        <p className="text-sm text-fg-muted">{t("auth:changeNote")}</p>
         <Button type="submit" loading={isSubmitting} className="self-start">
-          Сменить пароль
+          {t("auth:changePassword")}
         </Button>
       </form>
     </section>

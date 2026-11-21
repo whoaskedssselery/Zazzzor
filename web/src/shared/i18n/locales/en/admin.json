@@ -1,5 +1,26 @@
 {
   "lookup": {
-    "notFound": "No user with that username was found."
+    "notFound": "No user with that username was found.",
+    "passwordOnce": "The password is shown only now. Give it to the user and ask them to change it.",
+    "copyFailed": "Couldn't copy: the password is selected, copy it by hand.",
+    "title": "Users",
+    "username": "Username",
+    "find": "Find",
+    "disabledToast": "{{name}} is blocked",
+    "enabledToast": "{{name}} is unblocked",
+    "joined": "With us since {{date}}",
+    "blocked": "Blocked",
+    "resetPassword": "Reset password",
+    "unblock": "Unblock",
+    "block": "Block",
+    "resetTitle": "Reset the password of {{name}}?",
+    "resetText": "The old password will stop working, and all of the user's sessions will end.",
+    "unblockTitle": "Unblock {{name}}?",
+    "blockTitle": "Block {{name}}?",
+    "unblockText": "The user will be able to sign in again.",
+    "blockText": "The user will be signed out everywhere and can't sign in until unblocked.",
+    "tempTitle": "Temporary password for {{name}}",
+    "done": "Done",
+    "password": "Password"
   }
 }

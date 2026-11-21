@@ -1,7 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { type SubmitEvent, useRef, useState } from "react";
 import { ApiError, api, type components, errorText, unwrap } from "@/shared/api";
-import { t } from "@/shared/i18n";
+import { currentLanguage, onLanguage, t } from "@/shared/i18n";
 import {
   Badge,
   Button,
@@ -20,10 +20,12 @@ import {
 type AdminUser = components["schemas"]["AdminUser"];
 
 export const noSuchUserText = (): string => t("admin:lookup.notFound");
-export const PASSWORD_ONCE = "Пароль показывается только сейчас. Передайте его пользователю и попросите сменить.";
-const COPY_FAILED = "Не получилось скопировать: пароль выделен, скопируйте его вручную.";
+export let PASSWORD_ONCE = "";
+onLanguage(() => {
+  PASSWORD_ONCE = t("admin:lookup.passwordOnce");
+});
 
-const joined = new Intl.DateTimeFormat("ru", { day: "numeric", month: "long", year: "numeric" });
+const joined = () => new Intl.DateTimeFormat(currentLanguage(), { day: "numeric", month: "long", year: "numeric" });
 
 /**
  * «Пользователи»: an account looked up by its exact login (the server finds
@@ -44,12 +46,12 @@ export const UserLookup = () => {
   return (
     <section aria-labelledby="users-title">
       <h2 id="users-title" className="mb-5 text-xl font-semibold">
-        Пользователи
+        {t("admin:lookup.title")}
       </h2>
       <form noValidate onSubmit={submit} className="flex items-start gap-2">
         <Field
           htmlFor="lookup-username"
-          label="Логин"
+          label={t("admin:lookup.username")}
           className="min-w-0 flex-1"
           error={missing ? noSuchUserText() : undefined}
         >
@@ -64,7 +66,7 @@ export const UserLookup = () => {
           />
         </Field>
         <Button type="submit" className="mt-7 h-10" loading={find.isPending} disabled={username.trim() === ""}>
-          Найти
+          {t("admin:lookup.find")}
         </Button>
       </form>
       {find.isError && !missing && <FormAlert className="mt-4">{errorText(find.error)}</FormAlert>}
@@ -106,7 +108,11 @@ const UserCard = ({ found }: { found: AdminUser }) => {
     onSuccess: (disabled) => {
       setAsking(null);
       setUser((u) => ({ ...u, disabled }));
-      toast.show({ text: disabled ? `${user.username} заблокирован` : `${user.username} разблокирован` });
+      toast.show({
+        text: disabled
+          ? t("admin:lookup.disabledToast", { name: user.username })
+          : t("admin:lookup.enabledToast", { name: user.username }),
+      });
     },
     onError: (e) => {
       setAsking(null);
@@ -120,9 +126,11 @@ const UserCard = ({ found }: { found: AdminUser }) => {
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-lg font-semibold">{user.display_name}</h3>
           <p className="truncate text-sm text-fg-muted">{user.username}</p>
-          <p className="mt-1 text-xs text-fg-faint">С нами с {joined.format(new Date(user.created_at))}</p>
+          <p className="mt-1 text-xs text-fg-faint">
+            {t("admin:lookup.joined", { date: joined().format(new Date(user.created_at)) })}
+          </p>
         </div>
-        {user.disabled && <Badge>Заблокирован</Badge>}
+        {user.disabled && <Badge>{t("admin:lookup.blocked")}</Badge>}
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
         <Button
@@ -132,7 +140,7 @@ const UserCard = ({ found }: { found: AdminUser }) => {
             setAsking("reset");
           }}
         >
-          Сбросить пароль
+          {t("admin:lookup.resetPassword")}
         </Button>
         <Button
           variant={user.disabled ? "secondary" : "danger"}
@@ -141,7 +149,7 @@ const UserCard = ({ found }: { found: AdminUser }) => {
             setAsking("block");
           }}
         >
-          {user.disabled ? "Разблокировать" : "Заблокировать"}
+          {user.disabled ? t("admin:lookup.unblock") : t("admin:lookup.block")}
         </Button>
       </div>
       <ConfirmDialog
@@ -149,9 +157,9 @@ const UserCard = ({ found }: { found: AdminUser }) => {
         onOpenChange={(o) => {
           if (!o) setAsking(null);
         }}
-        title={`Сбросить пароль ${user.username}?`}
-        description="Старый пароль перестанет работать, а все сеансы пользователя завершатся."
-        confirmLabel="Сбросить пароль"
+        title={t("admin:lookup.resetTitle", { name: user.username })}
+        description={t("admin:lookup.resetText")}
+        confirmLabel={t("admin:lookup.resetPassword")}
         tone="danger"
         pending={reset.isPending}
         onConfirm={() => {
@@ -163,13 +171,13 @@ const UserCard = ({ found }: { found: AdminUser }) => {
         onOpenChange={(o) => {
           if (!o) setAsking(null);
         }}
-        title={user.disabled ? `Разблокировать ${user.username}?` : `Заблокировать ${user.username}?`}
-        description={
+        title={
           user.disabled
-            ? "Пользователь снова сможет войти."
-            : "Пользователь выйдет на всех устройствах и не сможет войти, пока его не разблокируют."
+            ? t("admin:lookup.unblockTitle", { name: user.username })
+            : t("admin:lookup.blockTitle", { name: user.username })
         }
-        confirmLabel={user.disabled ? "Разблокировать" : "Заблокировать"}
+        description={user.disabled ? t("admin:lookup.unblockText") : t("admin:lookup.blockText")}
+        confirmLabel={user.disabled ? t("admin:lookup.unblock") : t("admin:lookup.block")}
         tone={user.disabled ? "primary" : "danger"}
         pending={block.isPending}
         onConfirm={() => {
@@ -216,15 +224,19 @@ const PasswordShown = ({ password, username }: { password: string; username: str
   });
   return (
     <DialogContent
-      title={`Временный пароль ${username}`}
+      title={t("admin:lookup.tempTitle", { name: username })}
       description={PASSWORD_ONCE}
       footer={
         <DialogClose asChild>
-          <Button>Готово</Button>
+          <Button>{t("admin:lookup.done")}</Button>
         </DialogClose>
       }
     >
-      <Field htmlFor="temporary-password" label="Пароль" {...(copied === "failed" ? { hint: COPY_FAILED } : {})}>
+      <Field
+        htmlFor="temporary-password"
+        label={t("admin:lookup.password")}
+        {...(copied === "failed" ? { hint: t("admin:lookup.copyFailed") } : {})}
+      >
         <div className="flex gap-2">
           <Input ref={field} readOnly value={password} className="font-mono" />
           <CopyButton

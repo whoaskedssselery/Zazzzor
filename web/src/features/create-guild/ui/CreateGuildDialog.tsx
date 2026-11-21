@@ -2,13 +2,11 @@ import { useMutation } from "@tanstack/react-query";
 import { type SubmitEvent, useState } from "react";
 import { useOpenGuild } from "@/entities/channel";
 import { ApiError, api, errorText, unwrap } from "@/shared/api";
+import { t } from "@/shared/i18n";
 import { runeLength, trimContent } from "@/shared/lib";
 import { Button, Dialog, DialogClose, DialogContent, Field, FormAlert, Input } from "@/shared/ui";
 
-const NAME_RULE = "Название: от 2 до 100 символов.";
-
-const createdLate = (name: string): string =>
-  `Сервер «${name}» создан, но связь прервалась. Он появится в списке серверов, когда подключение восстановится.`;
+const createdLate = (name: string): string => t("guild:createGuild.createdLate", { name });
 
 interface CreateGuildDialogProps {
   open: boolean;
@@ -43,7 +41,7 @@ const CreateForm = ({ onDone }: { onDone: () => void }) => {
       arrival.open(guild.id);
     },
     onError: (e) => {
-      if (e instanceof ApiError && "name" in e.fields) setFieldError(NAME_RULE);
+      if (e instanceof ApiError && "name" in e.fields) setFieldError(t("guild:createGuild.nameRule"));
       else setAlert(errorText(e));
     },
   });
@@ -61,7 +59,7 @@ const CreateForm = ({ onDone }: { onDone: () => void }) => {
     const value = trimContent(name);
     const length = runeLength(value);
     if (length < 2 || length > 100) {
-      setFieldError(NAME_RULE);
+      setFieldError(t("guild:createGuild.nameRule"));
       return;
     }
     setFieldError(undefined);
@@ -70,17 +68,17 @@ const CreateForm = ({ onDone }: { onDone: () => void }) => {
 
   return (
     <DialogContent
-      title="Создать сервер"
-      description="Место для вас и ваших друзей. Каналы и роли настроите потом."
+      title={t("guild:createGuild.title")}
+      description={t("guild:createGuild.text")}
       size="sm"
       footer={
         <>
           <DialogClose asChild>
-            <Button variant="ghost">{overdue ? "Закрыть" : "Отмена"}</Button>
+            <Button variant="ghost">{overdue ? t("common:close") : t("common:cancel")}</Button>
           </DialogClose>
           {!overdue && (
             <Button type="submit" form={FORM_ID} loading={busy}>
-              Создать
+              {t("guild:createChannel.create")}
             </Button>
           )}
         </>
@@ -88,7 +86,7 @@ const CreateForm = ({ onDone }: { onDone: () => void }) => {
     >
       {message !== null && <FormAlert>{message}</FormAlert>}
       <form id={FORM_ID} noValidate onSubmit={submit}>
-        <Field htmlFor="create-guild-name" label="Название сервера" error={fieldError}>
+        <Field htmlFor="create-guild-name" label={t("guild:createGuild.name")} error={fieldError}>
           <Input
             value={name}
             onChange={(e) => {

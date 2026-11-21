@@ -1,10 +1,35 @@
 import { RadioGroup } from "radix-ui";
+import { t } from "@/shared/i18n";
 import { cn, type ThemePreference, useTheme } from "@/shared/ui";
 
 const OPTIONS: { value: ThemePreference; label: string; hint: string }[] = [
-  { value: "dark", label: "Тёмная", hint: "Для вечеров и тёмных комнат." },
-  { value: "light", label: "Светлая", hint: "Для дня и яркого света." },
-  { value: "system", label: "Как в системе", hint: "Меняется вместе с темой устройства." },
+  {
+    value: "dark",
+    get label() {
+      return t("settings:theme.dark");
+    },
+    get hint() {
+      return t("settings:theme.darkHint");
+    },
+  },
+  {
+    value: "light",
+    get label() {
+      return t("settings:theme.light");
+    },
+    get hint() {
+      return t("settings:theme.lightHint");
+    },
+  },
+  {
+    value: "system",
+    get label() {
+      return t("settings:theme.system");
+    },
+    get hint() {
+      return t("settings:theme.systemHint");
+    },
+  },
 ];
 
 /**
@@ -16,10 +41,10 @@ export const AppearanceTab = () => {
   return (
     <section aria-labelledby="appearance-title">
       <h2 id="appearance-title" className="mb-5 text-xl font-semibold">
-        Внешний вид
+        {t("settings:theme.title")}
       </h2>
       <h3 id="theme-label" className="mb-2 text-xs font-semibold text-fg-muted uppercase">
-        Тема
+        {t("settings:theme.label")}
       </h3>
       <RadioGroup.Root
         aria-labelledby="theme-label"

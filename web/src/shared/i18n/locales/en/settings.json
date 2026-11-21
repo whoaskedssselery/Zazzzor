@@ -9,5 +9,15 @@
     "language": "Language",
     "notifications": "Notifications",
     "voice": "Voice & video"
+  },
+  "theme": {
+    "dark": "Dark",
+    "darkHint": "For evenings and dark rooms.",
+    "light": "Light",
+    "lightHint": "For the day and bright light.",
+    "system": "System",
+    "systemHint": "Follows the device's theme.",
+    "title": "Appearance",
+    "label": "Theme"
   }
 }
