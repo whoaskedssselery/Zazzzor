@@ -15,6 +15,15 @@ release notes on its GitHub releases.
 
 ## [Unreleased]
 
+### Security
+
+- **HSTS.** The web client and the API now send
+  `Strict-Transport-Security: max-age=31536000`, through Caddy and through
+  Traefik alike, so browsers stay on HTTPS for a year. There is no
+  `preload` or `includeSubDomains`, since DuckDNS names are shared.
+  Nothing to do: the header comes with the new `zazzzor-caddy` image (for
+  Traefik, redeploy the stack).
+
 ## [0.1.0] - 2026-11-21
 
 The first versioned release: everything a group of friends needs to chat

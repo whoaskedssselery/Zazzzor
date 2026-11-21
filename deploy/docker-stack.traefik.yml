@@ -72,6 +72,8 @@ services:
         - "traefik.http.services.zazzzor-api.loadbalancer.server.port=8080"
         - "traefik.http.middlewares.zazzzor-headers.headers.contentTypeNosniff=true"
         - "traefik.http.middlewares.zazzzor-headers.headers.referrerPolicy=no-referrer"
+        # HSTS for a year; no preload or includeSubDomains (shared DuckDNS names).
+        - "traefik.http.middlewares.zazzzor-headers.headers.stsSeconds=31536000"
     networks:
       traefik:
       db:

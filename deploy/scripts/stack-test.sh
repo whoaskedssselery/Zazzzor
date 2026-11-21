@@ -125,6 +125,8 @@ expect "$tmp/traefik" 'Caddyfile.web' 'web не запускает Caddyfile.web
 reject "$tmp/traefik" 'duckdns:' 'Traefik-вариант запускает DuckDNS'
 expect "$tmp/traefik" 'traefik.http.routers.zazzzor-api.priority: "100"' 'у router API не приоритет 100'
 expect "$tmp/traefik" 'traefik.http.routers.zazzzor-web.priority: "1"' 'у router web не приоритет 1'
+expect "$tmp/traefik" 'traefik.http.middlewares.zazzzor-headers.headers.stsSeconds: "31536000"' 'у API за Traefik нет HSTS'
+reject "$tmp/traefik" 'stsPreload\|stsIncludeSubdomains' 'HSTS за Traefik с preload или поддоменами, а имя DuckDNS общее'
 expect "$tmp/traefik" '172.16.0.0/12' 'LiveKit не ограничен docker_gwbridge'
 expect "$tmp/traefik" 'mode: host' 'медиа-порты не в режиме host'
 expect "$tmp/traefik" 'PGHOST: postgres' 'backup ищет Postgres не по имени сервиса'

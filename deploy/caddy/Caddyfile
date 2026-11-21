@@ -37,6 +37,7 @@ import /etc/caddy/static.caddy
 		header {
 			X-Content-Type-Options nosniff
 			Referrer-Policy no-referrer
+			Strict-Transport-Security "max-age=31536000"
 		}
 		# JSON is compressed; images under /api/v1/files are already
 		# compressed and the gateway is a WebSocket.
