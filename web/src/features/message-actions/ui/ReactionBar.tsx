@@ -12,6 +12,7 @@ import {
   sameEmoji,
 } from "@/entities/message";
 import { api, type components, unwrap } from "@/shared/api";
+import { currentLanguage, t } from "@/shared/i18n";
 import { cn, Tooltip } from "@/shared/ui";
 import { EmojiGlyph, emojiLabel } from "./EmojiGlyph";
 import { EmojiPicker } from "./EmojiPicker";
@@ -28,9 +29,8 @@ export const reactorsText = (names: string[], count: number): string => {
   const shown = names.slice(0, NAMED);
   const rest = count - shown.length;
   if (shown.length === 0) return String(count);
-  if (rest <= 0)
-    return shown.length === 1 ? (shown[0] ?? "") : `${shown.slice(0, -1).join(", ")} и ${shown.at(-1) ?? ""}`;
-  return `${shown.join(", ")} и ещё ${String(rest)}`;
+  if (rest <= 0) return new Intl.ListFormat(currentLanguage(), { type: "conjunction" }).format(shown);
+  return t("chat:reactorsMore", { list: shown.join(", "), count: rest });
 };
 
 /** Who put a reaction, asked for when its tooltip opens. */
@@ -88,7 +88,7 @@ export const ReactionBar = ({
   const reactions = reactionsOf(message);
   if (reactions.length === 0) return null;
   return (
-    <ul aria-label="Реакции" className="mt-1 flex flex-wrap items-center gap-1">
+    <ul aria-label={t("chat:reactions")} className="mt-1 flex flex-wrap items-center gap-1">
       {reactions.map((r) => (
         <li key={r.emoji.id ?? r.emoji.name}>
           <Tooltip content={<Reactors message={message} reaction={r} nameOf={nameOf} emojis={emojis} />}>
@@ -126,7 +126,7 @@ export const ReactionBar = ({
           >
             <button
               type="button"
-              aria-label="Добавить реакцию"
+              aria-label={t("chat:addReaction")}
               className="flex h-7 cursor-pointer items-center rounded-md bg-control px-2 text-fg-muted transition-[color,scale] duration-(--duration-fast) hover:text-fg active:scale-95 pointer-coarse:h-9 pointer-coarse:px-2.5"
             >
               <SmilePlus aria-hidden className="size-4.5" />

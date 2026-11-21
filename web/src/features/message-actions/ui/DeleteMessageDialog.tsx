@@ -1,4 +1,5 @@
 import type { Message } from "@/entities/message";
+import { t } from "@/shared/i18n";
 import { ConfirmDialog } from "@/shared/ui";
 
 /**
@@ -19,9 +20,9 @@ export const DeleteMessageDialog = ({
     onOpenChange={(open) => {
       if (!open) onClose();
     }}
-    title="Удалить сообщение?"
-    description="Его не получится вернуть. Чтобы удалять без вопроса, держите Shift."
-    confirmLabel="Удалить"
+    title={t("chat:deleteTitle")}
+    description={t("chat:deleteText")}
+    confirmLabel={t("chat:delete")}
     tone="danger"
     onConfirm={() => {
       if (message) onConfirm(message);

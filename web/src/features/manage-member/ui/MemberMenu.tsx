@@ -12,6 +12,7 @@ import {
 import { type ReactNode, useState } from "react";
 import { VolumeSlider } from "@/entities/call";
 import { type GuildEntry, PRESENCE_LABEL, useGuilds, usePresence, useProfile } from "@/entities/guild";
+import { t } from "@/shared/i18n";
 import {
   Avatar,
   ContextMenu,
@@ -43,10 +44,10 @@ interface Item {
 const itemsFor = (entry: GuildEntry, meId: string, userId: string): Item[] => {
   const can = memberActions(entry, meId, userId);
   const items: Item[] = [];
-  if (can.nick) items.push({ key: "nick", label: "Изменить ник", icon: Pencil });
-  if (can.roles) items.push({ key: "roles", label: "Роли", icon: Shield });
-  if (can.kick) items.push({ key: "kick", label: "Выгнать", icon: UserMinus, danger: true });
-  if (can.ban) items.push({ key: "ban", label: "Забанить", icon: Gavel, danger: true });
+  if (can.nick) items.push({ key: "nick", label: t("member:nickTitle"), icon: Pencil });
+  if (can.roles) items.push({ key: "roles", label: t("member:roles"), icon: Shield });
+  if (can.kick) items.push({ key: "kick", label: t("member:kick"), icon: UserMinus, danger: true });
+  if (can.ban) items.push({ key: "ban", label: t("member:ban"), icon: Gavel, danger: true });
   return items;
 };
 
@@ -81,7 +82,7 @@ const VoiceItems = ({
             act({ mute: !voice.muted });
           }}
         >
-          {voice.muted ? "Включить микрофон на сервере" : "Выключить микрофон на сервере"}
+          {voice.muted ? t("member:serverMicOn") : t("member:serverMicOff")}
           <MicOff aria-hidden />
         </Row>
       )}
@@ -91,7 +92,7 @@ const VoiceItems = ({
             act({ deaf: !voice.deafened });
           }}
         >
-          {voice.deafened ? "Включить звук на сервере" : "Выключить звук на сервере"}
+          {voice.deafened ? t("member:serverSoundOn") : t("member:serverSoundOff")}
           <HeadphoneOff aria-hidden />
         </Row>
       )}
@@ -102,7 +103,7 @@ const VoiceItems = ({
             act({ channel_id: id });
           }}
         >
-          {`Переместить в «${entry.channels[id]?.name ?? "канал"}»`}
+          {t("member:moveTo", { channel: entry.channels[id]?.name ?? t("member:channel") })}
           <ArrowRightLeft aria-hidden />
         </Row>
       ))}
@@ -113,7 +114,7 @@ const VoiceItems = ({
             act({ channel_id: null });
           }}
         >
-          Отключить от голоса
+          {t("member:disconnect")}
           <PhoneOff aria-hidden />
         </Row>
       )}
@@ -128,7 +129,7 @@ const About = ({ userId }: { userId: string }) => {
   if (bio === "") return null;
   return (
     <span className="mt-2 block border-t border-border pt-2 font-normal">
-      <span className="block text-xs font-semibold text-fg-faint uppercase">О себе</span>
+      <span className="block text-xs font-semibold text-fg-faint uppercase">{t("member:about")}</span>
       <span className="mt-0.5 line-clamp-6 block text-sm break-words whitespace-pre-line text-fg">{bio}</span>
     </span>
   );
@@ -241,8 +242,8 @@ export const MemberMenu = ({
         {withVolume && (
           <>
             <Separator />
-            <VolumeSlider kind="voice" userId={userId} label="Громкость пользователя" />
-            {streaming && <VolumeSlider kind="stream" userId={userId} label="Громкость трансляции" />}
+            <VolumeSlider kind="voice" userId={userId} label={t("member:userVolume")} />
+            {streaming && <VolumeSlider kind="stream" userId={userId} label={t("member:streamVolume")} />}
           </>
         )}
         {items.length > 0 && <Separator />}
@@ -308,7 +309,11 @@ export const MemberMenu = ({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <IconButton size="sm" label={`Действия с ${member.nick ?? member.user.display_name}`} icon={Ellipsis} />
+          <IconButton
+            size="sm"
+            label={t("member:actionsWith", { name: member.nick ?? member.user.display_name })}
+            icon={Ellipsis}
+          />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">{rows("dropdown")}</DropdownMenuContent>
       </DropdownMenu>

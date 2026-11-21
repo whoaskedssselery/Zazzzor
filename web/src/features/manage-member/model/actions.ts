@@ -12,6 +12,7 @@ import {
   type Role,
 } from "@/entities/guild";
 import { api, errorText, unwrap } from "@/shared/api";
+import { t } from "@/shared/i18n";
 import { useToast } from "@/shared/ui";
 
 /** What the user may do to a member, as the server would allow it. */
@@ -69,7 +70,7 @@ export const useMemberMutations = (guildId: string) => {
       unwrap(await api.DELETE("/guilds/{guild_id}/members/{user_id}", { params: path(userId) }));
     },
     onSuccess: () => {
-      toast.show({ text: "Участник выгнан с сервера" });
+      toast.show({ text: t("member:kicked") });
     },
     onError,
   });
@@ -78,7 +79,7 @@ export const useMemberMutations = (guildId: string) => {
       unwrap(await api.PUT("/guilds/{guild_id}/bans/{user_id}", { params: path(userId), body: { reason } }));
     },
     onSuccess: () => {
-      toast.show({ text: "Участник забанен" });
+      toast.show({ text: t("member:banned") });
     },
     onError,
   });

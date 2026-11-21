@@ -1,3 +1,4 @@
+import { t, textTable } from "@/shared/i18n";
 /**
  * The emoji of the reaction picker: Unicode's, with Russian names and
  * keywords (emojibase), loaded the first time the picker opens.
@@ -24,17 +25,17 @@ export interface EmojiGroup {
 }
 
 /** emojibase's groups as the picker names them; 2 (skin tone parts) is not offered. */
-const GROUPS: Record<number, string> = {
-  0: "Смайлики и эмоции",
-  1: "Люди и жесты",
-  3: "Животные и природа",
-  4: "Еда и напитки",
-  5: "Путешествия и места",
-  6: "Занятия",
-  7: "Предметы",
-  8: "Символы",
-  9: "Флаги",
-};
+const GROUPS: Readonly<Record<number, string>> = textTable({
+  0: () => t("chat:emojiGroups.0"),
+  1: () => t("chat:emojiGroups.1"),
+  3: () => t("chat:emojiGroups.3"),
+  4: () => t("chat:emojiGroups.4"),
+  5: () => t("chat:emojiGroups.5"),
+  6: () => t("chat:emojiGroups.6"),
+  7: () => t("chat:emojiGroups.7"),
+  8: () => t("chat:emojiGroups.8"),
+  9: () => t("chat:emojiGroups.9"),
+});
 
 /**
  * The newest Unicode version offered: Windows 11 draws up to 15.0, newer

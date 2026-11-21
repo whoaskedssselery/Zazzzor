@@ -6,6 +6,8 @@ import enChat from "./en/chat.json";
 import enCommon from "./en/common.json";
 import enErrors from "./en/errors.json";
 import enGuild from "./en/guild.json";
+import enMember from "./en/member.json";
+import enNotify from "./en/notify.json";
 import enSettings from "./en/settings.json";
 import enVoice from "./en/voice.json";
 import ruAdmin from "./ru/admin.json";
@@ -14,6 +16,8 @@ import ruChat from "./ru/chat.json";
 import ruCommon from "./ru/common.json";
 import ruErrors from "./ru/errors.json";
 import ruGuild from "./ru/guild.json";
+import ruMember from "./ru/member.json";
+import ruNotify from "./ru/notify.json";
 import ruSettings from "./ru/settings.json";
 import ruVoice from "./ru/voice.json";
 
@@ -25,6 +29,8 @@ export const locales = {
     common: enCommon,
     errors: enErrors,
     guild: enGuild,
+    member: enMember,
+    notify: enNotify,
     settings: enSettings,
     voice: enVoice,
   },
@@ -35,6 +41,8 @@ export const locales = {
     common: ruCommon,
     errors: ruErrors,
     guild: ruGuild,
+    member: ruMember,
+    notify: ruNotify,
     settings: ruSettings,
     voice: ruVoice,
   },
