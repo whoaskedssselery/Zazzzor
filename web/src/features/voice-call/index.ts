@@ -26,6 +26,7 @@ export {
   NO_VIDEO,
   onCallNotice,
   onVoiceMove,
+  readLinkStats,
   reconcileVoiceFlags,
   SHARE_FAILED,
   SHARE_SOURCE_CLOSED,

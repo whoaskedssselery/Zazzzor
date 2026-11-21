@@ -1,10 +1,11 @@
 import { Link } from "@tanstack/react-router";
-import { PhoneOff } from "lucide-react";
+import { ChevronDown, PhoneOff } from "lucide-react";
 import { useCall } from "@/entities/call";
 import { privateName, useGuilds } from "@/entities/guild";
 import { CameraButton, leaveVoice, ScreenShareButton } from "@/features/voice-call";
 import { t, textTable } from "@/shared/i18n";
-import { cn, IconButton } from "@/shared/ui";
+import { cn, IconButton, Popover, PopoverContent, PopoverTrigger } from "@/shared/ui";
+import { LinkDetails } from "./LinkDetails";
 
 const STATUS = textTable({
   connecting: () => t("common:connecting"),
@@ -13,8 +14,9 @@ const STATUS = textTable({
 });
 
 /**
- * The call above the user panel, as in Discord: how the link is, which
- * channel of which server (a link back to it), and the way out.
+ * The call above the user panel, as in Discord: how the link is (a click
+ * on it shows the figures), which channel of which server (a link back to
+ * it), and the way out.
  */
 export const VoicePanel = () => {
   const status = useCall((s) => s.status);
@@ -32,9 +34,24 @@ export const VoicePanel = () => {
       className="flex shrink-0 items-center gap-1 border-b border-border bg-panel px-2 py-1.5"
     >
       <div className="min-w-0 flex-1 pl-1">
-        <p className={cn("text-sm font-semibold", status === "connected" ? "text-fg-success" : "text-fg-warning")}>
-          {STATUS[status]}
-        </p>
+        <Popover>
+          <PopoverTrigger
+            aria-label={`${STATUS[status]}. ${t("shell:link.details")}`}
+            className={cn(
+              "group/link -ml-1 flex cursor-pointer items-center gap-0.5 rounded-sm px-1 text-sm font-semibold hover:underline focus-visible:outline-2 focus-visible:outline-focus",
+              status === "connected" ? "text-fg-success" : "text-fg-warning",
+            )}
+          >
+            {STATUS[status]}
+            <ChevronDown
+              aria-hidden
+              className="size-3.5 transition-transform duration-(--duration-fast) group-data-[state=open]/link:rotate-180"
+            />
+          </PopoverTrigger>
+          <PopoverContent side="top" align="start">
+            <LinkDetails />
+          </PopoverContent>
+        </Popover>
         {guildId === null ? (
           <Link
             to="/channels/@me/$channelId"

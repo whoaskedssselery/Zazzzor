@@ -21,7 +21,7 @@ import {
 import { computeChannel, getGuildsState, has, myVoice, PERM } from "@/entities/guild";
 import { api, errorText, unwrap } from "@/shared/api";
 import { onLanguage, t } from "@/shared/i18n";
-import { playSound } from "@/shared/lib";
+import { type LinkStats, playSound } from "@/shared/lib";
 import { getNativeShare, resetNativeShareState, setNativeShare } from "./native-share";
 import { shareNotice } from "./notice";
 import { startPushToTalk } from "./push-to-talk";
@@ -463,6 +463,9 @@ export const watchStream = (userId: string, on: boolean): void => {
   setCall({ watching: on ? [...new Set([...watching, userId])] : watching.filter((id) => id !== userId) });
   transport?.watch(userId, on);
 };
+
+/** The link's figures now, or null outside a call (see LinkStats). */
+export const readLinkStats = (): Promise<LinkStats | null> => transport?.linkStats() ?? Promise.resolve(null);
 
 /** Shows `userId`'s screen share in `el`; the returned function lets go of it. */
 export const attachStream = (userId: string, el: HTMLVideoElement): (() => void) =>
