@@ -148,6 +148,8 @@ export type TileMenu = (trigger: ReactElement) => ReactNode;
  * to it everywhere but on its own controls: a button on top would take
  * their clicks too, whatever their z-index (a frame with `container-type`
  * keeps it to itself). A tile shows its controls on `group-hover/tile`.
+ * A playing video draws the hover ring round its picture instead
+ * (`data-video-frame`), not round the black bars beside it.
  */
 const TileSlot = ({
   tile,
@@ -186,7 +188,7 @@ const TileSlot = ({
       </div>
       <span
         aria-hidden
-        className="pointer-events-none absolute inset-0 rounded-lg ring-inset transition-shadow duration-(--duration-fast) group-hover/tile:ring-2 group-hover/tile:ring-border-strong group-data-[state=open]/tile:ring-2 group-data-[state=open]/tile:ring-border-strong peer-focus-visible:ring-2 peer-focus-visible:ring-focus"
+        className="pointer-events-none absolute inset-0 rounded-lg ring-inset transition-shadow duration-(--duration-fast) group-hover/tile:ring-2 group-hover/tile:ring-border-strong group-data-[state=open]/tile:ring-2 group-data-[state=open]/tile:ring-border-strong peer-focus-visible:ring-2 peer-focus-visible:ring-focus group-has-[[data-video-frame]]/tile:hidden"
       />
     </li>
   );

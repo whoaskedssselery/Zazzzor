@@ -72,7 +72,7 @@ export const VolumeSlider = ({
   );
   if (inline) {
     return (
-      <div className={cn("flex h-8 items-center gap-2 rounded-md bg-scrim px-2 text-[#fff]", className)}>
+      <div className={cn("flex h-8 items-center gap-2 rounded-md bg-control px-2 text-fg", className)}>
         <Icon aria-hidden className="size-4 shrink-0" />
         {slider}
         <output htmlFor={id} className="w-9 shrink-0 text-right text-xs font-medium tabular-nums">
