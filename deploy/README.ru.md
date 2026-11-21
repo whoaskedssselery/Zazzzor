@@ -1011,8 +1011,8 @@ GHCR, так что на сервере их можно не собирать:
 | `ghcr.io/whoaskedssselery/zazzzor-caddy` | Caddy с DuckDNS и статическими страницами (`deploy/caddy/Dockerfile`) |
 | `ghcr.io/whoaskedssselery/zazzzor-backup` | Postgres со скриптами резервного копирования (`deploy/backup/Dockerfile`); сервис `backup` стека за Traefik |
 
-Если в репозитории заданы переменная `DOCKERHUB_USERNAME` и секрет
-`DOCKERHUB_TOKEN` (токен Docker Hub с правом записи), те же образы с теми
+Если заданы переменная репозитория `DOCKERHUB_USERNAME` и секрет
+`DOCKERHUB_TOKEN` окружения `images` (токен Docker Hub с правом записи), те же образы с теми
 же тегами публикуются и в Docker Hub: `<DOCKERHUB_USERNAME>/zazzzor-api` и
 `<DOCKERHUB_USERNAME>/zazzzor-caddy` и `<DOCKERHUB_USERNAME>/zazzzor-backup`.
 Публичные образы оттуда сервер

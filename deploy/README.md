@@ -988,7 +988,8 @@ publishes them to GHCR. You can deploy without building on the server.
 | `ghcr.io/whoaskedssselery/zazzzor-backup` | Postgres and backup scripts (`deploy/backup/Dockerfile`) for the Traefik stack's `backup` service |
 
 With the repository variable `DOCKERHUB_USERNAME` and a write-enabled
-`DOCKERHUB_TOKEN` repository secret, the workflow also publishes images
+`DOCKERHUB_TOKEN` secret in the `images` environment, the workflow also
+publishes images
 with the same tags to Docker Hub under `<DOCKERHUB_USERNAME>/zazzzor-api`,
 `<DOCKERHUB_USERNAME>/zazzzor-caddy` and `<DOCKERHUB_USERNAME>/zazzzor-backup`.
 Public images require no login.

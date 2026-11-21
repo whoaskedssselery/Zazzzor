@@ -21,8 +21,15 @@ concurrency:
 jobs:
   release:
     name: Windows x64 NSIS draft
-    runs-on: ${{ vars.CI_WINDOWS_RUNNER || 'windows-latest' }}
-    timeout-minutes: 40
+    # Never CI_WINDOWS_RUNNER: that runner builds pull requests and keeps its
+    # toolchain and build folders between jobs, so an earlier job could
+    # plant code that reads the signing key (tools/ci/runner/README.md).
+    # RELEASE_WINDOWS_RUNNER must be a machine that runs no other jobs.
+    runs-on: ${{ vars.RELEASE_WINDOWS_RUNNER || 'windows-latest' }}
+    # Holds the updater signing key; the owner approves each run.
+    environment: release
+    # A cold build on GitHub's runner takes longer than the warm one at home.
+    timeout-minutes: 60
     permissions:
       contents: write
     defaults:
