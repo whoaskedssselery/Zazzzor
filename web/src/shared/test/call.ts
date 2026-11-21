@@ -1,4 +1,4 @@
-import type { CallTransport, CallTransportEvents, CameraResult, ScreenShareResult } from "@/shared/lib";
+import type { CallTransport, CallTransportEvents, CameraResult, LinkStats, ScreenShareResult } from "@/shared/lib";
 
 type Call = { method: string; args: unknown[] };
 
@@ -121,6 +121,13 @@ export class FakeTransport implements CallTransport {
   useDevice(kind: "audioinput" | "audiooutput", deviceId: string): Promise<void> {
     this.record("useDevice", kind, deviceId);
     return this.deviceError ? Promise.reject(this.deviceError) : Promise.resolve();
+  }
+
+  /** What linkStats answers; null as outside a call. */
+  stats: LinkStats | null = null;
+
+  linkStats(): Promise<LinkStats | null> {
+    return Promise.resolve(this.stats);
   }
 
   on<K extends keyof CallTransportEvents>(event: K, fn: CallTransportEvents[K]): () => void {

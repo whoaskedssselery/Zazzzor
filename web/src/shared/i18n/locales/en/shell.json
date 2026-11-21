@@ -69,5 +69,24 @@
   "call": "Call",
   "voiceChannelFallback": "Voice channel",
   "serverFallback": "Server",
-  "disconnect": "Disconnect"
+  "disconnect": "Disconnect",
+  "link": {
+    "details": "Connection details",
+    "title": "Connection",
+    "ping": "Ping",
+    "jitter": "Jitter",
+    "lossIn": "Loss to you",
+    "lossOut": "Loss from you",
+    "upload": "Upload",
+    "download": "Download",
+    "route": "Route",
+    "ms": "{{value}} ms",
+    "kbps": "{{value}} kbit/s",
+    "percent": "{{value}}%",
+    "unknown": "—",
+    "udp": "Direct (UDP)",
+    "tcp": "Direct (TCP)",
+    "relay": "Through a relay (TURN)",
+    "hint": "Updated every 2 seconds. Ping over 150 ms or loss over 2% is when voices start to break up."
+  }
 }

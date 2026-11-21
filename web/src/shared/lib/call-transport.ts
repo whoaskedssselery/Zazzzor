@@ -25,6 +25,26 @@ export interface NoiseStatus {
   reason?: "overload" | "failed";
 }
 
+/**
+ * How the link to the voice server is doing now, for the user who wants to
+ * know why it sounds bad. Each figure is null until it can be read: a rate
+ * needs two samples, the loss of what we send needs the server's report.
+ */
+export interface LinkStats {
+  /** Round trip to the voice server, ms. */
+  ping: number | null;
+  /** How much the arrival of the voices we hear wobbles, ms. */
+  jitter: number | null;
+  /** Packets lost on their way to us since the last sample, %. */
+  lossIn: number | null;
+  /** Packets of ours the server reports lost, %. */
+  lossOut: number | null;
+  upKbps: number | null;
+  downKbps: number | null;
+  /** UDP straight to the server, TCP, or through a TURN relay. */
+  route: "udp" | "tcp" | "relay" | null;
+}
+
 export interface CallTransportEvents {
   link: (state: CallLink, cause?: EndCause) => void;
   /** Who is speaking now, the user included. */
@@ -77,5 +97,7 @@ export interface CallTransport {
   /** Shows the user's own camera in `el` (a local preview) until the returned function runs. */
   attachOwnCamera(el: HTMLVideoElement): () => void;
   useDevice(kind: "audioinput" | "audiooutput", deviceId: string): Promise<void>;
+  /** The link's figures now (rates since the previous call), or null outside a call. */
+  linkStats(): Promise<LinkStats | null>;
   on<K extends keyof CallTransportEvents>(event: K, fn: CallTransportEvents[K]): () => void;
 }

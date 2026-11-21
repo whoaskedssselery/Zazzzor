@@ -16,6 +16,7 @@ import {
 import type { CallLink, CallTransport, CallTransportEvents, CameraResult, ScreenShareResult } from "@/shared/lib";
 import type { VoicePrefs } from "../model/prefs";
 import { canRestrictOwnAudio, currentBrowser } from "./browser";
+import { createLinkSampler } from "./link-stats";
 import {
   cameraOptions,
   connectOptions,
@@ -107,6 +108,8 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
   let camera: LocalVideoTrack | null = null;
   /** Stops the 1080p/720p steering of the published screen share. */
   let stopSteering = () => {};
+  /** Turns the call's stats into the link's figures; a new one for each room. */
+  let sampleLink = createLinkSampler();
   /** After one overload DeepFilterNet3 is not tried again in this tab. */
   const noiseMemory = { overloaded: false };
   const watching = new Set<string>();
@@ -462,6 +465,7 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
       leaving = false;
       const r = new Room(roomOptions());
       room = r;
+      sampleLink = createLinkSampler();
       document.body.append(sounds);
       stopDetector();
       detector = createSpeakingDetector((ids) => {
@@ -663,6 +667,22 @@ export const createLiveKitTransport = (prefs: () => Pick<VoicePrefs, "inputId" |
       return () => {
         el.srcObject = null;
       };
+    },
+
+    async linkStats() {
+      const r = room;
+      if (r === null) return null;
+      // Our own tracks carry the publishing connection, the voices we hear the receiving one.
+      const tracks = [
+        ...[...r.localParticipant.trackPublications.values()].map((p) => p.track),
+        ...[...r.remoteParticipants.values()].flatMap((p) =>
+          [...p.trackPublications.values()].filter((pub) => pub.kind === Track.Kind.Audio).map((pub) => pub.track),
+        ),
+      ];
+      const reports = await Promise.all(
+        tracks.flatMap((track) => (track ? [track.getRTCStatsReport().catch(() => undefined)] : [])),
+      );
+      return sampleLink(reports.filter((x): x is RTCStatsReport => x !== undefined));
     },
 
     async useDevice(kind, deviceId) {

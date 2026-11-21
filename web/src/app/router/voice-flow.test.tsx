@@ -230,6 +230,23 @@ describe("voice in the sidebar and the panels", () => {
     expect(left).toBe(1);
   });
 
+  it("shows the link's figures under the call's status", async () => {
+    crowd();
+    fake.stats = { ping: 212, jitter: 4, lossIn: 0.5, lossOut: null, upKbps: 48, downKbps: 120, route: "relay" };
+    const { user } = renderApp(`/channels/${G}/${TEXT}`);
+    await lounge();
+    await act(() => joinVoice(G, GAMES));
+    const panel = await screen.findByRole("region", { name: "Голосовая связь" });
+    await user.click(within(panel).getByRole("button", { name: /Голос подключён/ }));
+    const details = await screen.findByRole("dialog");
+    expect(await within(details).findByText("212 мс")).toBeTruthy();
+    expect(within(details).getByText("0.5%")).toBeTruthy();
+    expect(within(details).getByText("120 кбит/с")).toBeTruthy();
+    expect(within(details).getByText("Через ретранслятор (TURN)")).toBeTruthy();
+    // A figure not read yet says so instead of showing zero.
+    expect(within(details).getByText("—")).toBeTruthy();
+  });
+
   it("switches the microphone and sound; undeafening brings the microphone back as it was", async () => {
     crowd();
     const { user } = renderApp(`/channels/${G}/${TEXT}`);
