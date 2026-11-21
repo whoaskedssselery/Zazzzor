@@ -1,4 +1,6 @@
-import { LANGUAGES, resources } from "./resources";
+import { LANGUAGES, resources, SOURCE_LANGUAGE } from "./resources";
+
+const source = resources[SOURCE_LANGUAGE];
 
 /** Every key of `tree` as a dotted path, with its text. */
 const leaves = (tree: unknown, prefix = ""): [string, string][] =>
@@ -13,27 +15,29 @@ const base = (key: string) => key.replace(PLURAL, "");
 const forms = (lng: string) =>
   [...new Intl.PluralRules(lng).resolvedOptions().pluralCategories].sort().map((c) => `_${c}`);
 
-describe.each(LANGUAGES.filter((l) => l !== "ru"))("the %s texts", (lng) => {
-  const namespaces = Object.keys(resources.ru) as (keyof typeof resources.ru)[];
+describe.each(LANGUAGES.filter((l) => l !== SOURCE_LANGUAGE))("the %s texts", (lng) => {
+  const namespaces = Object.keys(source) as (keyof typeof source)[];
 
-  it("have the same namespaces as the Russian ones", () => {
+  it("have the same namespaces as the English ones", () => {
     expect(Object.keys(resources[lng]).sort()).toEqual(namespaces.sort());
   });
 
-  it.each(namespaces)("have every key of the Russian %s and no other", (ns) => {
-    const ru = new Set(leaves(resources.ru[ns]).map(([k]) => base(k)));
+  it.each(namespaces)("have every key of the English %s and no other", (ns) => {
+    const want = new Set(leaves(source[ns]).map(([k]) => base(k)));
     const own = new Set(leaves(resources[lng][ns]).map(([k]) => base(k)));
-    expect([...own].sort()).toEqual([...ru].sort());
+    expect([...own].sort()).toEqual([...want].sort());
   });
 
-  it.each(namespaces)("keep the placeholders of the Russian %s", (ns) => {
+  it.each(namespaces)("keep the placeholders of the English %s", (ns) => {
     const holes = (s: string) => [...(s.match(/\{\{\s*\w+\s*\}\}/g) ?? [])].sort();
-    const ru = new Map(leaves(resources.ru[ns]).map(([k, v]) => [base(k), holes(v)]));
-    for (const [k, v] of leaves(resources[lng][ns])) expect(holes(v), `${ns}:${k}`).toEqual(ru.get(base(k)));
+    const want = new Map(leaves(source[ns]).map(([k, v]) => [base(k), holes(v)]));
+    for (const [k, v] of leaves(resources[lng][ns])) expect(holes(v), `${ns}:${k}`).toEqual(want.get(base(k)));
   });
+});
 
-  it.each(namespaces)("are not left in Russian in %s", (ns) => {
-    for (const [k, v] of leaves(resources[lng][ns])) expect(v, `${ns}:${k}`).not.toMatch(/\p{Script=Cyrillic}/u);
+describe("the English texts", () => {
+  it.each(Object.keys(source) as (keyof typeof source)[])("have no Russian left in %s", (ns) => {
+    for (const [k, v] of leaves(source[ns])) expect(v, `${ns}:${k}`).not.toMatch(/\p{Script=Cyrillic}/u);
   });
 });
 

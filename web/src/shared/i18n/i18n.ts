@@ -1,13 +1,27 @@
 import i18next from "i18next";
 import { initReactI18next, useTranslation } from "react-i18next";
-import { isLanguage, type Language, resources } from "./resources";
+import { isLanguage, type Language, NAMESPACES, resources, SOURCE_LANGUAGE, TRANSLATED } from "./resources";
 
 export const LANGUAGE_STORAGE_KEY = "zazzzor.language";
 
 /**
- * The language to start in: the one chosen in this browser, else the first
- * of the browser's own languages that the interface has, else English (a
- * stranger is likelier to read it than Russian).
+ * The language a browser asks for: the first of its own languages that the
+ * interface has, else English (a stranger is likelier to read it than
+ * Russian).
+ */
+export const browserLanguage = (): Language => {
+  const wanted =
+    typeof navigator === "undefined" ? [] : navigator.languages.length > 0 ? navigator.languages : [navigator.language];
+  for (const tag of wanted) {
+    const base = tag.toLowerCase().split("-")[0];
+    if (isLanguage(base)) return base;
+  }
+  return SOURCE_LANGUAGE;
+};
+
+/**
+ * The language to start in: the one chosen in this browser, else the
+ * browser's own once the interface is translated (Russian until then).
  */
 export const readLanguage = (): Language => {
   try {
@@ -16,13 +30,7 @@ export const readLanguage = (): Language => {
   } catch {
     // Storage blocked (private mode): the browser's languages decide.
   }
-  const wanted =
-    typeof navigator === "undefined" ? [] : navigator.languages.length > 0 ? navigator.languages : [navigator.language];
-  for (const tag of wanted) {
-    const base = tag.toLowerCase().split("-")[0];
-    if (isLanguage(base)) return base;
-  }
-  return "en";
+  return TRANSLATED ? browserLanguage() : "ru";
 };
 
 /**
@@ -34,9 +42,9 @@ export const i18n = i18next.createInstance();
 void i18n.use(initReactI18next).init({
   resources,
   lng: readLanguage(),
-  fallbackLng: "ru",
+  fallbackLng: SOURCE_LANGUAGE,
   defaultNS: "common",
-  ns: ["common", "errors"],
+  ns: NAMESPACES,
   initAsync: false,
   // React escapes what it renders; escaping here too would show &amp; and the like.
   interpolation: { escapeValue: false },
@@ -53,7 +61,7 @@ i18n.on("languageChanged", syncDocument);
 export const t = i18n.t.bind(i18n);
 
 /** The current language. */
-export const currentLanguage = (): Language => (isLanguage(i18n.language) ? i18n.language : "ru");
+export const currentLanguage = (): Language => (isLanguage(i18n.language) ? i18n.language : SOURCE_LANGUAGE);
 
 /** Switches the interface to `lng` at once and keeps the choice in this browser. */
 export const setLanguage = (lng: Language): void => {
@@ -68,7 +76,7 @@ export const setLanguage = (lng: Language): void => {
 /** The current language, re-rendering when it changes, and its setter. */
 export const useLanguage = (): { language: Language; setLanguage: (lng: Language) => void } => {
   const { i18n: instance } = useTranslation();
-  return { language: isLanguage(instance.language) ? instance.language : "ru", setLanguage };
+  return { language: isLanguage(instance.language) ? instance.language : SOURCE_LANGUAGE, setLanguage };
 };
 
 export { useTranslation };

@@ -10,7 +10,6 @@ import { cn } from "@/shared/ui";
 export const LanguageTab = () => {
   const { t } = useTranslation();
   const { language, setLanguage } = useLanguage();
-  const partial = t("language.partial");
   return (
     <section aria-labelledby="language-title" lang={language}>
       <h2 id="language-title" className="mb-5 text-xl font-semibold">
@@ -49,7 +48,6 @@ export const LanguageTab = () => {
         ))}
       </RadioGroup.Root>
       <p className="mt-3 max-w-100 text-sm text-fg-muted">{t("language.hint")}</p>
-      {partial && <p className="mt-2 max-w-100 text-sm text-fg-muted">{partial}</p>}
     </section>
   );
 };

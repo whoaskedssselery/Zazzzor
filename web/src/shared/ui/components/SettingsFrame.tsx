@@ -1,11 +1,10 @@
 import { X } from "lucide-react";
 import { type ReactNode, useEffect, useEffectEvent, useState } from "react";
+import { useTranslation } from "@/shared/i18n";
 import { cn } from "../cn";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { IconButton } from "./IconButton";
 import { Skeleton } from "./Skeleton";
-
-export const LEAVE_UNSAVED = "Уйти без сохранения?";
 
 /** The look of one section in a settings frame's list. */
 export const settingsNavItemClass = (active: boolean): string =>
@@ -16,9 +15,10 @@ export const settingsNavItemClass = (active: boolean): string =>
 
 /**
  * Asks before unsaved changes are left: `guard(go)` runs `go` at once while
- * nothing is unsaved, else after «Уйти» in the returned `dialog`.
+ * nothing is unsaved, else after confirming in the returned `dialog`.
  */
 export const useLeaveGuard = (dirty: boolean, onLeave: () => void) => {
+  const { t } = useTranslation();
   const [pending, setPending] = useState<(() => void) | null>(null);
   const guard = (go: () => void) => {
     if (dirty) setPending(() => go);
@@ -30,9 +30,9 @@ export const useLeaveGuard = (dirty: boolean, onLeave: () => void) => {
       onOpenChange={(open) => {
         if (!open) setPending(null);
       }}
-      title={LEAVE_UNSAVED}
-      description="Несохранённые изменения пропадут."
-      confirmLabel="Уйти"
+      title={t("unsaved.title")}
+      description={t("unsaved.description")}
+      confirmLabel={t("unsaved.confirm")}
       tone="danger"
       onConfirm={() => {
         const go = pending;
@@ -64,6 +64,7 @@ export const SettingsFrame = ({
   onClose: () => void;
   children: ReactNode;
 }) => {
+  const { t } = useTranslation();
   const onKey = useEffectEvent((e: KeyboardEvent) => {
     // A dialog over the settings closes itself first.
     if (e.key !== "Escape" || e.defaultPrevented || document.querySelector("[role=dialog],[role=alertdialog]")) return;
@@ -98,7 +99,7 @@ export const SettingsFrame = ({
           <div className="min-w-0 flex-1">{children}</div>
           <div className="flex shrink-0 flex-col items-center gap-1 max-md:fixed max-md:top-2 max-md:right-2">
             <IconButton
-              label="Закрыть настройки"
+              label={t("closeSettings")}
               icon={X}
               className="size-9 rounded-full border-2 border-border-strong text-fg-muted"
               onClick={onClose}

@@ -3,9 +3,9 @@ import { i18n, type Texts, t } from "@/shared/i18n";
 type ErrorCode = keyof Texts["errors"]["codes"];
 type FieldName = keyof Texts["errors"]["fields"];
 
-/** Whether the source texts have `key` under `group`: an own key, never a path like "toString". */
+/** Whether the source (English) texts have `key` under `group`: an own key, never a path like "toString". */
 const hasText = (group: "codes" | "fields", key: string): boolean =>
-  Object.hasOwn((i18n.getResourceBundle("ru", "errors") as Texts["errors"])[group], key);
+  Object.hasOwn((i18n.getResourceBundle("en", "errors") as Texts["errors"])[group], key);
 
 /**
  * The user-facing error texts, in the interface's language: the `errors`
