@@ -1108,3 +1108,244 @@ private. The stack uses `zazzzor_pgdata` and `zazzzor_apidata`.
    `ZAZZZOR_EDGE=traefik`, the jobs join the internal attachable
    `<STACK_NAME>_db` network and connect to `postgres:5432`. The network
    is private to the API, Postgres and backup services.
+
+### Migrate from a manually deployed stack
+
+A stack deployed manually through `docker-stack.traefik.yml` and
+`docker stack deploy` can update in place with `stack.sh deploy`. This
+keeps the volumes and limits downtime to service restarts. The commands
+below assume `zazzzor`. If `docker stack ls` shows a different name,
+substitute it and `export STACK_NAME=<name>` before using `stack.sh`.
+
+1. Take a precautionary database dump. Leave the API running.
+
+   ```bash
+   PG=$(docker ps -q --filter label=com.docker.swarm.service.name=zazzzor_postgres)
+   docker exec "$PG" pg_dump -U zazzzor -d zazzzor -Fc > ~/zazzzor-before-traefik.dump
+   ls -l ~/zazzzor-before-traefik.dump
+   ```
+
+2. Inspect the values in the running services. **Keep the output
+   private. It contains secrets.**
+
+   ```bash
+   for s in api postgres livekit; do
+     docker service inspect "zazzzor_$s" --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}'
+   done
+   docker service inspect zazzzor_api zazzzor_web --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}'
+   ```
+
+3. Create `deploy/.env` with `cp deploy/.env.example deploy/.env` and
+   `chmod 600 deploy/.env`, then transfer the values below. **Reuse the
+   existing secrets and skip the `openssl rand` commands from section 5.**
+
+   | Old stack | New `deploy/.env` setting | Value |
+   |---|---|---|
+   | `DB_PASSWORD` (`POSTGRES_PASSWORD` on `zazzzor_postgres`) | `POSTGRES_PASSWORD` | **The existing password** |
+   | `ZAZZZOR_DOMAIN` | `ZAZZZOR_DOMAIN` | Same value |
+   | `PUBLIC_IP` (`node_ip` in `LIVEKIT_CONFIG`) | `LIVEKIT_NODE_IP` | Uncomment and copy the same value |
+   | `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` (key and secret under `keys:`) | `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | Same values |
+   | `TURN_DOMAIN` (TURN was always on) | `LIVEKIT_TURN_ENABLED`, `LIVEKIT_TURN_DOMAIN` | **`true`** and the same domain (step 6 above), so users behind VPNs retain voice access |
+   | `ADMIN_USERNAMES` | `ZAZZZOR_ADMIN_USERNAMES` | Same value |
+   | `TRAEFIK_SUBNET` (previously defaulted to `10.0.0.0/8`) | `TRAEFIK_SUBNET` | The actual `traefik` network CIDR (step 2 above) |
+   | `API_TAG` (`zazzzor-api:<tag>`) | `ZAZZZOR_API_TAG` | New `sha-…` tag from GHCR (step 3 above). Record the old tag for rollback |
+   | `WEB_TAG` (`zazzzor-caddy:<tag>`) | `ZAZZZOR_CADDY_TAG` | Same new `sha-…` tag. The old image lacks the web client |
+   | `traefik` network, `websecure`, `letsencrypt` | `TRAEFIK_NETWORK`, `TRAEFIK_ENTRYPOINT`, `TRAEFIK_CERTRESOLVER` | Keep these defaults |
+   | `postgres:18.6-alpine`, `livekit/livekit-server:v1.13.10` | `POSTGRES_VERSION`, `LIVEKIT_VERSION` | Keep the example versions |
+   | `zazzzor_pgdata`, `zazzzor_apidata` volumes | Same volumes | Keep the stack name to reuse the volumes |
+   | `zazzzor_zazzzor` network | `zazzzor_db` network | Created automatically. Remove the old network in migration step 7 |
+   | — | `ZAZZZOR_EDGE`, `*_REPOSITORY` | Use the block from step 2 above |
+   | — | `ZAZZZOR_BACKUP_DIR` | Backup directory (section 12, step 1) |
+
+4. Compare the passwords without printing them.
+
+   ```bash
+   old=$(docker service inspect zazzzor_postgres --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}' | sed -n 's/^POSTGRES_PASSWORD=//p')
+   new=$(sed -n 's/^POSTGRES_PASSWORD=//p' deploy/.env)
+   if [ -n "$old" ] && [ "$old" = "$new" ]; then echo 'password matches'; else echo 'passwords differ. Fix POSTGRES_PASSWORD before deploying.'; fi
+   ```
+
+5. Deploy as in step 3 above. Swarm creates `zazzzor_db` in place, moves
+   the API, Postgres and backup services to it and restarts each service
+   once. The API waits up to 60 seconds for the database.
+6. Run the checks in steps 6 and 7 above, including TURN if enabled, and
+   take a backup with `bash deploy/scripts/stack.sh backup`.
+7. Remove the now-unused old network.
+
+   ```bash
+   docker network rm zazzzor_zazzzor
+   ```
+
+   If Docker reports `has active endpoints`, locate its remaining
+   containers with
+   `docker network inspect zazzzor_zazzzor --format '{{range .Containers}}{{.Name}} {{end}}'`.
+
+If the deploy fails, Swarm rolls back the failing service. A rolled-back
+API may no longer reach Postgres because it returns to the old network
+while Postgres stays on the new one. Check
+`bash deploy/scripts/stack.sh logs api`, correct `deploy/.env` and
+redeploy. Check the password first. To restore the entire manual
+deployment, redeploy the old YAML with the original command. It reuses
+the same volumes. If the new API already upgraded the database schema
+and the old API cannot use it, restore the dump from migration step 1
+with the [manual restore procedure](#back-up-manually-if-the-scripts-fail)
+and the [Swarm command adjustments](#swarm-backups-and-database-password).
+
+### Voice API behind Traefik
+
+1. Use API and web images from the same release. Save the current
+   `deploy/.env`, including `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, the
+   Postgres password, `LIVEKIT_NODE_IP` and the TURN settings. Retain
+   `pgdata`, `apidata` and the existing Traefik settings.
+2. Save the SHA and image tags of the previous working release. Inspect
+   `stack.sh config` privately because the output contains secrets.
+   Update in place with `stack.sh deploy`. Swarm creates an internal
+   `<stack-name>_voice` network for the API and LiveKit. Keep the existing
+   external networks and ports.
+3. The API calls `http://voice-sfu:7880`. LiveKit sends signed events to
+   `http://voice-api:8080/api/v1/livekit/webhook`. These names exist only
+   on the control network. The public webhook path goes through a
+   priority-200 router to web, where Caddy returns 404. The API router
+   stays at priority 100. Media ports (7881/TCP and 7882/UDP), LiveKit's
+   interface filter and TURN through Traefik keep their settings.
+4. Verify that the webhook is private without supplying a token.
+
+   ```bash
+   curl -i -X POST https://<domain>/api/v1/livekit/webhook
+   ```
+
+   Expect 404. If the API issues a token but joining voice never
+   completes, check `stack.sh logs api` and `stack.sh logs livekit`.
+   SDK errors point to API → LiveKit. Webhook delivery errors point to
+   LiveKit → API. Verify both services have joined the `_voice` network
+   and use the same credentials. Keep the values private.
+   `/readyz` checks the database. The metric
+   `zazzzor_voice_reconcile_last_success_timestamp_seconds` is accessible
+   at `127.0.0.1:9464` inside the API container. In this configuration,
+   the loopback belongs to the container.
+5. The `stop-first` update can interrupt active calls and require clients
+   to reconnect. To roll back, restore the previous SHA, matching API
+   and web tags, and saved `.env` together, then run `stack.sh deploy`.
+   Retain all volumes. An unused `_voice` network can stay in place.
+   The voice networking update adds no database migrations.
+
+## Connectivity test (phase 1.1)
+
+Use `https://<domain>/connectivity-test/` to test voice and screen sharing
+through LiveKit. Friends open personal links, join a call, share a screen
+and send their reports. The test page uses the same stack from sections
+1–9.
+
+### Check the page
+
+Open `https://<domain>/connectivity-test/`. If you use a nonstandard
+public HTTPS port, include it in the URL
+(`https://<domain>:<port>/connectivity-test/`). The page reports a
+missing token when you open it directly. That is expected.
+
+Test on a phone using mobile data. Many home routers cannot reach their
+own public IP from inside the LAN.
+
+### Create links for friends
+
+```bash
+bash deploy/scripts/make-test-links.sh Alice Bob Carol
+```
+
+The script prints one line per person.
+
+```
+Alice: https://zazzzor.duckdns.org/connectivity-test/#token=eyJ...
+```
+
+Links last 24 hours. Send each link privately to its intended recipient.
+The name in the link appears in the call. Opening the link in another
+tab or device disconnects the earlier session with a message saying the
+link was opened elsewhere. If Docker requires `sudo`, run the script
+through `sudo`.
+
+**Before sending the links**, create one for yourself with
+`bash deploy/scripts/make-test-links.sh My-phone`. Open it on a phone
+using mobile data with Wi-Fi off. Select **Connect** and confirm that
+the metrics table shows UDP. If it shows `tcp` or fails to connect, fix the
+7882/UDP forwarding first. See
+[Troubleshoot connectivity](#troubleshoot-connectivity).
+
+The basic check measures direct UDP and fallback TCP, with TURN
+disabled. If the reports show that someone's network blocks UDP,
+consider enabling TURN/TLS on 443 as in section 17.
+
+### Test with friends
+
+1. Generate a separate link for every participant, including yourself.
+2. **As the server owner, join from outside your home network**, for
+   example through a mobile hotspot. A home connection may stay
+   inside your LAN or use hairpin NAT, where the router sends traffic
+   to its own public IP back to the LAN. The report would miss the
+   internet path.
+3. Voice call. Everyone opens Chrome or Edge with VPNs off and talks
+   for 2–3 minutes.
+4. One stream. One person shares a 1080p60 video with motion for
+   5 minutes while the others watch. Share the **Chrome tab** playing
+   the video and enable tab audio. A whole-screen share can capture
+   voices playing through the speakers and cause echoes.
+5. Two streams. Two people share separate video tabs for 5 minutes.
+
+Send these instructions with each link.
+
+> Open the link in Chrome or Edge, select **Connect** and allow microphone
+> access. Use **Start sharing** and **Stop sharing** for the screen sharing
+> stages. After each stage, select **Copy report** and send me the
+> unchanged text in one message. Then select **New measurement** to reset
+> the numbers while staying connected. Send three reports, one each for
+> voice only, one stream and two streams.
+
+Starting a new measurement resets the statistics and start time. Each
+report covers one stage.
+
+| Metric | Expected result |
+|---|---|
+| All participants connect | Yes, without VPN |
+| Transport (`protocolsSeen`) | `udp` for everyone. If you see `tcp`, review 7882/UDP forwarding |
+| One stream, viewers' `minInboundFps` | ≥ 55 |
+| One stream, `maxInboundHeight` / `minInboundHeight` | 1080 / at least 720 |
+| One stream, `minInboundKbps` | Typically 2000–8000 without drops into the hundreds of kbit/s |
+| Two streams, `minInboundFps` | ≥ 55. The resolution may drop below 1080p |
+| `maxLossPercent` (worst 2-second window) / `avgLossPercent` | < 5 / < 2 |
+| `disconnects` and `reconnectAttempts` | 0 |
+| Streamer's `outboundLimitations` | No `bandwidth` limitation for a single stream |
+
+Reports also include the browser version (`userAgent`), the stage's
+start and duration (`startedAt`, `durationSec`) and the reasons for
+disconnects (`disconnectReasons`).
+
+Keep reports that show non-UDP transport or high packet loss. They help
+decide whether to enable TURN/TLS on port 443.
+
+### Troubleshoot connectivity
+
+- **The page opens but the call cannot connect.** Check 7881/TCP and
+  7882/UDP forwarding and the server's firewall.
+- **LiveKit cannot discover its public IP.** At startup LiveKit asks a
+  STUN server for its public IP (Google and Twilio by default). Success
+  appears as `found external IP via STUN` in `logs livekit`. If STUN is
+  unreachable, use one of these settings in `deploy/.env`.
+  - Set other STUN servers, for example
+    `LIVEKIT_STUN_SERVERS=stun.cloudflare.com:3478,stun.l.google.com:19302`.
+  - Set `LIVEKIT_NODE_IP=<your-public-IP>` explicitly. To find it, use
+    <https://2ip.ru>. This bypasses STUN, so update the variable
+    whenever the IP changes.
+
+  Apply changes with `docker compose -f deploy/docker-compose.yml up -d`.
+- **The public IP changed.** DuckDNS updates the hostname, so the page
+  and sign-in may still work. LiveKit advertises its old IP until
+  restarted, breaking audio and video. Restart it to refresh the address.
+
+  ```bash
+  docker compose -f deploy/docker-compose.yml restart livekit
+  ```
+
+  If you set `LIVEKIT_NODE_IP`, update it to the new IP and run
+  `docker compose -f deploy/docker-compose.yml up -d`.
+- **Link port.** When the HTTPS port is different from 443 and
+  `ZAZZZOR_PUBLIC_PORT` is unset, the script adds the port to links.
