@@ -1,5 +1,7 @@
 # Zazzzor
 
+English · [Русский](README.ru.md)
+
 [![CI](https://github.com/whoaskedssselery/Zazzzor/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/whoaskedssselery/Zazzzor/actions/workflows/ci.yml)
 [![Images](https://github.com/whoaskedssselery/Zazzzor/actions/workflows/images.yml/badge.svg)](https://github.com/whoaskedssselery/Zazzzor/actions/workflows/images.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
@@ -9,7 +11,7 @@ and channels, chat, voice and 1080p60 screen sharing, with no cloud
 services and no VPN. Everything runs in Docker; images are published to
 Docker Hub.
 
-Download the Windows desktop client from [Releases](https://github.com/whoaskedssselery/Zazzzor/releases).
+Download the Windows desktop client from [Releases](https://github.com/whoaskedssselery/Zazzzor/releases). See the [Windows installation guide](deploy/desktop.md).
 
 ## Features
 
@@ -55,7 +57,7 @@ Download the Windows desktop client from [Releases](https://github.com/whoaskeds
 | 1.1 | Connectivity check from friends' networks: LiveKit, Caddy, a test page | done |
 | 1.2 | Backend and web client: servers, channels, chat, roles, administration | done |
 | 1.3 | Voice, calls and screen sharing in the browser | done, used on the live server |
-| 1.4 | Windows desktop client (Tauri, native screen and audio capture) | next |
+| 1.4 | Windows desktop client (Tauri, native screen and audio capture) | released |
 
 The web client runs in current Chrome, Edge and Firefox. Browsers share
 screen audio only from a Chrome or Edge tab; full window and game audio
@@ -68,7 +70,7 @@ comes with the desktop client.
 | [`server/`](server) | API and realtime gateway (`cmd/zazzzor`, modules in `internal/`) |
 | [`web/`](web) | Web client (`@zazzzor/web`), Playwright scenarios in `web/e2e/` |
 | [`api/openapi.yaml`](api/openapi.yaml) | The REST and gateway contract |
-| [`deploy/`](deploy) | Docker stacks, Caddy, the backup image, scripts and the [server guide](deploy/README.md) (in Russian) |
+| [`deploy/`](deploy) | Docker stacks, Caddy, the backup image, scripts and the [server guide](deploy/README.md) |
 | [`tools/connectivity-test/`](tools/connectivity-test) | A page that checks the connection to the server |
 | [`tools/agents/`](tools/agents) | The shared setup for coding agents: rules, checks, hooks, skills |
 
