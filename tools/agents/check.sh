@@ -224,6 +224,7 @@ fi
 if has '^deploy/|^\.github/'; then
   run "compose config" docker compose --env-file deploy/.env.ci -f deploy/docker-compose.yml config --quiet
   run "stack config" bash -c 'out="$(ENV_FILE=deploy/.env.ci ZAZZZOR_API_TAG=ci ZAZZZOR_CADDY_TAG=ci bash deploy/scripts/stack.sh config)" && ! grep -n "\${" <<<"$out"'
+  run "init-env" bash deploy/scripts/init-env-test.sh
 else
   record "deploy" SKIP
 fi
