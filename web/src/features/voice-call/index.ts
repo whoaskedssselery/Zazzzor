@@ -30,6 +30,7 @@ export {
   reconcileVoiceFlags,
   SHARE_FAILED,
   SHARE_SOURCE_CLOSED,
+  STREAM_GRACE_MS,
   setSelfDeaf,
   setSelfMute,
   setTransportFactory,
@@ -39,6 +40,7 @@ export {
   stopCamera,
   stopScreenShare,
   switchAudioDevice,
+  switchScreenShare,
   watchStream,
 } from "./model/session";
 export { comboName, comboOf } from "./model/switch-keys";
