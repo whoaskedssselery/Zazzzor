@@ -99,11 +99,28 @@ pub struct Texts {
     /// Followed by the error.
     pub save_failed: &'static str,
     pub no_instance: &'static str,
+    /// «{host}» is the instance's host, «{name}» the window's title.
+    share_ask_window: &'static str,
+    /// «{host}» is the instance's host, «{n}» the screen's number.
+    share_ask_screen: &'static str,
+    pub share_yes: &'static str,
+    pub share_no: &'static str,
 }
 
 impl Texts {
     pub fn update_available(&self, version: &str) -> String {
         self.update_available.replace("{version}", version)
+    }
+
+    /// The question before the instance at `host` shares the window titled
+    /// `name` (the host goes in first, so a title cannot pose as it).
+    pub fn share_ask_window(&self, name: &str, host: &str) -> String {
+        self.share_ask_window.replace("{host}", host).replace("{name}", name)
+    }
+
+    /// The question before the instance at `host` shares screen `n`.
+    pub fn share_ask_screen(&self, n: usize, host: &str) -> String {
+        self.share_ask_screen.replace("{host}", host).replace("{n}", &n.to_string())
     }
 }
 
@@ -126,6 +143,10 @@ const EN: Texts = Texts {
     has_credentials: "The address must not contain a username or password.",
     save_failed: "Couldn't save the address",
     no_instance: "No server chosen yet.",
+    share_ask_window: "{host} wants to show your window “{name}” in the call. Share it?",
+    share_ask_screen: "{host} wants to show your screen {n} in the call. Share it?",
+    share_yes: "Share",
+    share_no: "Cancel",
 };
 
 const RU: Texts = Texts {
@@ -147,11 +168,20 @@ const RU: Texts = Texts {
     has_credentials: "Адрес не должен содержать логин или пароль.",
     save_failed: "Не удалось сохранить адрес",
     no_instance: "Сервер ещё не выбран.",
+    share_ask_window: "{host} хочет показать в звонке ваше окно «{name}». Показать?",
+    share_ask_screen: "{host} хочет показать в звонке ваш экран {n}. Показать?",
+    share_yes: "Показать",
+    share_no: "Отмена",
 };
 
 /// The app's texts in the current language.
 pub fn texts() -> &'static Texts {
-    match current() {
+    texts_in(current())
+}
+
+/// The app's texts in `lang`.
+pub fn texts_in(lang: Lang) -> &'static Texts {
+    match lang {
         Lang::En => &EN,
         Lang::Ru => &RU,
     }

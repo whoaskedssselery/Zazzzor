@@ -2,13 +2,20 @@
 //! screens and windows with thumbnails, and a share started with a token
 //! the page got from its server (`POST /channels/{id}/voice/screen`), which
 //! joins the call as the user's screen companion. One share at a time.
+//!
+//! The page cannot share or look at anything on its own: it sees the
+//! sources and their thumbnails only while the window is shown and for a
+//! minute after it listed them for its picker, and a share starts only
+//! after the person agreed to it in the app's own dialog.
 
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::async_runtime::Mutex as AsyncMutex;
 use tauri::ipc::Response;
 use tauri::{AppHandle, Manager, State, Url, WebviewWindow};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use zazzzor_share::audio::Scope;
 use zazzzor_share::capture::{self, Target};
 use zazzzor_share::session::{End, Options, Session, Stats};
@@ -19,33 +26,116 @@ use crate::bridge::from_instance;
 /// The commands of this module, as the app's ACL names them.
 pub const COMMANDS: [&str; 5] = ["share_sources", "share_thumbnail", "share_start", "share_stop", "share_status"];
 
+/// What `share_start` returns when the person said no: the page takes it
+/// as a share they cancelled.
+pub const CANCELLED: &str = "cancelled";
+
 /// The share in progress and how the last one ended.
 #[derive(Default)]
 pub struct Sharing {
     session: AsyncMutex<Option<Session>>,
     ended: Mutex<Option<End>>,
+    picker: Mutex<Picker>,
 }
 
-/// The screens, then the windows, that can be shared.
+/// How long after the page listed the sources it may take their thumbnails.
+const PICKER_OPEN: Duration = Duration::from_secs(60);
+/// How often the sources are listed again; a page asking sooner gets the last list.
+const LIST_EVERY: Duration = Duration::from_secs(2);
+
+/// What the page's picker may see and what the person agreed to share.
+#[derive(Default)]
+struct Picker {
+    /// The last list and when it was taken.
+    listed: Option<(Instant, Vec<Source>)>,
+    /// The sources of the last list whose thumbnail was taken: one each.
+    thumbnailed: Vec<String>,
+    /// The instance and source the person last agreed to share, until the
+    /// share is stopped: the page may share it again (after the call
+    /// reconnected) without asking.
+    agreed: Option<(String, String)>,
+    /// Set while the dialog asks, so the page cannot open a second one.
+    asking: bool,
+}
+
+impl Picker {
+    /// The last list, if it is recent enough to be given again.
+    fn recent(&self, now: Instant) -> Option<Vec<Source>> {
+        let (at, list) = self.listed.as_ref()?;
+        (now.duration_since(*at) < LIST_EVERY).then(|| list.clone())
+    }
+
+    /// Keeps a new list: its sources' thumbnails may be taken for a while.
+    fn list(&mut self, now: Instant, list: Vec<Source>) {
+        self.listed = Some((now, list));
+        self.thumbnailed.clear();
+    }
+
+    /// Whether the thumbnail of `id` may be taken now; it is counted if so.
+    fn thumbnail(&mut self, id: &str, now: Instant) -> bool {
+        let Some((at, list)) = &self.listed else { return false };
+        let ok = now.duration_since(*at) < PICKER_OPEN
+            && list.iter().any(|s| s.id == id)
+            && !self.thumbnailed.iter().any(|t| t == id);
+        if ok {
+            self.thumbnailed.push(id.to_owned());
+        }
+        ok
+    }
+
+    /// The source `id` of the last list, to name it in the dialog.
+    fn source(&self, id: &str) -> Option<&Source> {
+        self.listed.as_ref()?.1.iter().find(|s| s.id == id)
+    }
+
+    fn agreed_to(&self, origin: &str, id: &str) -> bool {
+        self.agreed.as_ref().is_some_and(|(o, i)| o == origin && i == id)
+    }
+}
+
+/// Lets the page see the sources only while the window is shown.
+fn shown(window: &WebviewWindow) -> Result<(), String> {
+    let shown = window.is_visible().unwrap_or(false) && !window.is_minimized().unwrap_or(true);
+    if shown { Ok(()) } else { Err("the window is not shown".into()) }
+}
+
+/// The screens, then the windows, that can be shared. Listed at most once
+/// every two seconds, while the window is shown; a minute of thumbnails follows.
 #[tauri::command]
-pub async fn share_sources(window: WebviewWindow, app: State<'_, crate::App>) -> Result<Vec<Source>, String> {
+pub async fn share_sources(
+    window: WebviewWindow,
+    app: State<'_, crate::App>,
+    sharing: State<'_, Sharing>,
+) -> Result<Vec<Source>, String> {
     from_instance(&window, &app.instance)?;
+    shown(&window)?;
+    if let Some(list) = sharing.picker.lock().unwrap().recent(Instant::now()) {
+        return Ok(list);
+    }
     let own = std::process::id();
-    tauri::async_runtime::spawn_blocking(move || sources::list(own))
+    let list = tauri::async_runtime::spawn_blocking(move || sources::list(own))
         .await
         .map_err(|e| e.to_string())?
-        .map_err(|e| format!("{e:#}"))
+        .map_err(|e| format!("{e:#}"))?;
+    sharing.picker.lock().unwrap().list(Instant::now(), list.clone());
+    Ok(list)
 }
 
 /// A thumbnail of the source `id`, at most 320×180: its width and height as
-/// two little-endian u32, then RGBA rows.
+/// two little-endian u32, then RGBA rows. Only for a source of the last
+/// list, once, within a minute of it, while the window is shown.
 #[tauri::command]
 pub async fn share_thumbnail(
     id: String,
     window: WebviewWindow,
     app: State<'_, crate::App>,
+    sharing: State<'_, Sharing>,
 ) -> Result<Response, String> {
     from_instance(&window, &app.instance)?;
+    shown(&window)?;
+    if !sharing.picker.lock().unwrap().thumbnail(&id, Instant::now()) {
+        return Err("not a source of the open picker".into());
+    }
     let target = Target::parse(&id).map_err(|e| format!("{e:#}"))?;
     let thumb = tauri::async_runtime::spawn_blocking(move || sources::thumbnail(target, 320, 180))
         .await
@@ -62,7 +152,8 @@ pub async fn share_thumbnail(
 /// replacing a share in progress. With `sound`, a window brings its
 /// application's sound and a screen the whole system's except this app's
 /// (so the call itself is not sent back). At most `fps` frames per
-/// second (30 or 60; 60 when not said).
+/// second (30 or 60; 60 when not said). The app asks the person first,
+/// naming the source and the instance; a no is `CANCELLED`.
 #[tauri::command]
 pub async fn share_start(
     url: String,
@@ -77,6 +168,7 @@ pub async fn share_start(
     let sharing = window.app_handle().state::<Sharing>();
     check_signaling(&url, &home)?;
     let target = Target::parse(&id).map_err(|e| format!("{e:#}"))?;
+    ask(&window, &sharing, &home, &target, &id).await?;
     let scope = match (sound, target) {
         (false, _) => None,
         (true, Target::Window(hwnd)) => capture::window_process(hwnd).ok().map(Scope::Only),
@@ -101,9 +193,69 @@ pub async fn share_stop(window: WebviewWindow, app: State<'_, crate::App>) -> Re
     Ok(())
 }
 
+/// Asks the person whether to share `target` with the instance at `home`,
+/// unless they already agreed to it for the share going or just ended.
+async fn ask(window: &WebviewWindow, sharing: &Sharing, home: &Url, target: &Target, id: &str) -> Result<(), String> {
+    let origin = home.origin().ascii_serialization();
+    let message = {
+        let mut picker = sharing.picker.lock().unwrap();
+        if picker.agreed_to(&origin, id) {
+            return Ok(());
+        }
+        if picker.asking {
+            return Err("the app is already asking".into());
+        }
+        picker.asking = true;
+        let name = picker.source(id).map(|s| s.name.clone()).unwrap_or_default();
+        consent(crate::lang::texts(), home.host_str().unwrap_or_default(), target, &name)
+    };
+    let (app, parent) = (window.app_handle().clone(), window.clone());
+    // The dialog waits for the person: on a thread of its own, not the runtime's.
+    let answer = tauri::async_runtime::spawn_blocking(move || {
+        let t = crate::lang::texts();
+        app.dialog()
+            .message(message)
+            .title("Zazzzor")
+            .parent(&parent)
+            .buttons(MessageDialogButtons::OkCancelCustom(t.share_yes.into(), t.share_no.into()))
+            .blocking_show()
+    })
+    .await;
+    let mut picker = sharing.picker.lock().unwrap();
+    picker.asking = false;
+    match answer {
+        Ok(true) => {
+            picker.agreed = Some((origin, id.to_owned()));
+            Ok(())
+        }
+        Ok(false) => Err(CANCELLED.into()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// The dialog's question: a window by its title (cut if long), a screen by
+/// its number, and the instance's host.
+fn consent(t: &crate::lang::Texts, host: &str, target: &Target, name: &str) -> String {
+    const LONGEST: usize = 80;
+    match target {
+        Target::Monitor(n) => t.share_ask_screen(*n, host),
+        Target::Window(_) => {
+            let name = name.trim();
+            if name.chars().count() > LONGEST {
+                let cut: String = name.chars().take(LONGEST).collect();
+                t.share_ask_window(&format!("{cut}\u{2026}"), host)
+            } else {
+                t.share_ask_window(name, host)
+            }
+        }
+    }
+}
+
 /// Stops the share in progress, if any: from the page or the tray menu.
+/// A share started after this asks the person again.
 pub async fn stop(app: &AppHandle) {
     let sharing = app.state::<Sharing>();
+    sharing.picker.lock().unwrap().agreed = None;
     // Held until the tray is updated: a share started meanwhile waits, so this
     // stop cannot mark it as stopped.
     let mut current = sharing.session.lock().await;
@@ -188,6 +340,68 @@ pub fn stop_on_exit(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lang::{Lang, texts_in};
+    use zazzzor_share::sources::Kind;
+
+    fn source(id: &str) -> Source {
+        Source {
+            id: id.into(),
+            kind: Kind::Window,
+            name: "Notes".into(),
+            app: None,
+            pid: None,
+            width: 800,
+            height: 600,
+        }
+    }
+
+    #[test]
+    fn the_sources_are_listed_at_most_every_two_seconds() {
+        let start = Instant::now();
+        let mut picker = Picker::default();
+        assert!(picker.recent(start).is_none());
+        picker.list(start, vec![source("window:1")]);
+        assert_eq!(picker.recent(start + Duration::from_millis(1500)).map(|l| l.len()), Some(1));
+        assert!(picker.recent(start + LIST_EVERY).is_none());
+    }
+
+    #[test]
+    fn thumbnails_only_of_the_last_list_once_and_for_a_minute() {
+        let start = Instant::now();
+        let mut picker = Picker::default();
+        assert!(!picker.thumbnail("window:1", start), "nothing listed yet");
+        picker.list(start, vec![source("window:1"), source("window:2")]);
+        assert!(picker.thumbnail("window:1", start));
+        assert!(!picker.thumbnail("window:1", start), "the same source again");
+        assert!(!picker.thumbnail("window:3", start), "not in the list");
+        assert!(!picker.thumbnail("window:2", start + PICKER_OPEN), "the minute is over");
+        picker.list(start + PICKER_OPEN, vec![source("window:1")]);
+        assert!(picker.thumbnail("window:1", start + PICKER_OPEN));
+        assert!(!picker.thumbnail("window:2", start + PICKER_OPEN), "no longer listed");
+    }
+
+    #[test]
+    fn an_agreed_share_is_for_its_instance_and_source() {
+        let mut picker = Picker::default();
+        assert!(!picker.agreed_to("https://zz.example.com", "window:1"));
+        picker.agreed = Some(("https://zz.example.com".into(), "window:1".into()));
+        assert!(picker.agreed_to("https://zz.example.com", "window:1"));
+        assert!(!picker.agreed_to("https://zz.example.com", "window:2"));
+        assert!(!picker.agreed_to("https://evil.example.com", "window:1"));
+    }
+
+    #[test]
+    fn the_question_names_the_source_and_the_instance() {
+        let t = texts_in(Lang::En);
+        let window = consent(t, "zz.example.com", &Target::Window(7), " Notes ");
+        assert!(window.contains("\u{201c}Notes\u{201d}") && window.contains("zz.example.com"), "{window}");
+        let screen = consent(t, "zz.example.com", &Target::Monitor(2), "DISPLAY2");
+        assert!(screen.contains("screen 2") && !screen.contains("DISPLAY"), "{screen}");
+        let long = consent(t, "zz.example.com", &Target::Window(7), &"x".repeat(200));
+        assert!(long.contains(&format!("{}\u{2026}", "x".repeat(80))) && !long.contains(&"x".repeat(81)), "{long}");
+        let ru = consent(texts_in(Lang::Ru), "zz.example.com", &Target::Monitor(1), "");
+        assert!(ru.contains('1') && ru.contains("zz.example.com"), "{ru}");
+    }
 
     #[test]
     fn a_share_runs_at_30_or_60_fps() {
