@@ -16,6 +16,10 @@
 # Deploy by sha-<...> or a full version: those never move, so Swarm sees every
 # change and a rollback has a fixed target. 1.2 follows the newest 1.2.x;
 # latest/main are for convenience.
+#
+# After a tag's images are published, the release job drafts a GitHub
+# release from the tag's section of CHANGELOG.md; the owner publishes it,
+# never as the latest release (the desktop updater reads that one).
 name: Images
 
 on:
@@ -221,3 +225,62 @@ jobs:
             echo "$TAGS"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # A draft only: the owner reads it and publishes it by hand, with "Set as
+  # the latest release" unticked, because the desktop updater downloads
+  # latest.json from the latest release.
+  release:
+    if: github.event_name == 'push'
+    needs: [prepare, publish]
+    name: Draft the GitHub release
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+
+      - name: Draft the release from CHANGELOG.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          bash tools/release/changelog-section.test.sh
+          version="${TAG#v}"
+          notes="$RUNNER_TEMP/release-notes.md"
+          {
+            echo '> Publish this server release with **Set as the latest release** unticked:'
+            echo '> the Windows app updates itself from the latest release.'
+            echo
+            bash tools/release/changelog-section.sh "$version"
+            echo
+            echo '### Images'
+            echo
+            echo '```'
+            for image in zazzzor-api zazzzor-caddy zazzzor-backup; do
+              echo "ghcr.io/${OWNER,,}/$image:$version"
+            done
+            echo '```'
+            echo
+            echo 'Upgrade steps: [deploy/README.md](https://github.com/'"$GITHUB_REPOSITORY"'/blob/'"$TAG"'/deploy/README.md#server-versions).'
+          } > "$notes"
+
+          prerelease=()
+          [[ "$version" != *-* ]] || prerelease=(--prerelease)
+          if draft="$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null)"; then
+            if [[ "$draft" != true ]]; then
+              echo "::error::Release $TAG is already published; refusing to change it."
+              exit 1
+            fi
+            gh release edit "$TAG" --notes-file "$notes"
+          else
+            gh release create "$TAG" --draft --verify-tag --latest=false "${prerelease[@]}" \
+              --title "Zazzzor $version" --notes-file "$notes"
+          fi
+          echo "### Draft release $TAG" >> "$GITHUB_STEP_SUMMARY"
