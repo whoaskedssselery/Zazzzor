@@ -236,7 +236,7 @@ bash deploy/scripts/smoke-api.sh
 ошибке он пишет, на каком шаге и почему всё сломалось, например:
 
 ```
-ОШИБКА: шаг «регистрация»: ответ 403 registration_closed вместо 201 (регистрация закрыта в настройках сервера; откройте её на время проверки)
+ERROR: step "sign-up": status 403 registration_closed instead of 201 (registration is closed in the server settings; open it for the check)
 ```
 
 Особенности:

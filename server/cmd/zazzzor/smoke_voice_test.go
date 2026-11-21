@@ -68,7 +68,7 @@ func TestSmokeVoiceDisabledCleansUp(t *testing.T) {
 			f.ServeHTTP(w, r)
 		}
 	}), smokeOptions{Voice: true})
-	if code != 1 || !left.Load() || !strings.Contains(errOut, "голос может быть выключен") {
+	if code != 1 || !left.Load() || !strings.Contains(errOut, "voice may be off") {
 		t.Errorf("disabled smoke = %d, cleanup %v, stderr %q, want 1 and explained cleanup", code, left.Load(), errOut)
 	}
 	f.mu.Lock()
@@ -124,7 +124,7 @@ func TestSmokeVoiceStateFiltersEvents(t *testing.T) {
 			}
 			defer func() { _ = c.CloseNow() }()
 			err = smokeVoiceState(context.Background(), c, "100", "103", "1", false, 50*time.Millisecond)
-			if err == nil || !strings.Contains(err.Error(), "вебхук входа") {
+			if err == nil || !strings.Contains(err.Error(), "join webhook") {
 				t.Errorf("unrelated event error = %v, want admission timeout", err)
 			}
 		})
@@ -182,13 +182,13 @@ func TestSmokeVoiceStepFollowsWebSocketInOutput(t *testing.T) {
 	if code != 1 || !strings.Contains(out, "WebSocket: ok") {
 		t.Fatalf("smoke = %d, stdout %q, want 1 with the WebSocket step passed", code, out)
 	}
-	if !strings.Contains(errOut, "шаг «голос»") || strings.Contains(errOut, "шаг «WebSocket»") {
+	if !strings.Contains(errOut, `step "voice"`) || strings.Contains(errOut, `step "WebSocket"`) {
 		t.Errorf("stderr %q, want the failure named by the voice step alone", errOut)
 	}
 }
 
 func TestSmokeUsageExplainsVoiceLimits(t *testing.T) {
-	for _, want := range []string{"--voice", "сигнализац", "вебхук", "NAT", "звук", "экран"} {
+	for _, want := range []string{"--voice", "signalling", "webhook", "NAT", "sound", "screen"} {
 		if !strings.Contains(smokeUsage, want) {
 			t.Errorf("smokeUsage lacks %q", want)
 		}
@@ -205,7 +205,7 @@ func TestSmokeDisconnectStopsWaitingForBlockedSDK(t *testing.T) {
 		close(started)
 		<-blocked
 	})
-	if err == nil || !strings.Contains(err.Error(), "отключение LiveKit") {
+	if err == nil || !strings.Contains(err.Error(), "leaving LiveKit") {
 		t.Errorf("blocked disconnect = %v, want bounded disconnect error", err)
 	}
 	select {

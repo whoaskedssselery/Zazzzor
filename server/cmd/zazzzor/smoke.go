@@ -30,8 +30,8 @@ const (
 	smokeGatewayTimeout = 10 * time.Second
 	smokeVoiceTimeout   = 15 * time.Second
 	smokeReadLimit      = 1 << 20
-	smokeUsage          = "использование: zazzzor smoke [--voice] <base_url>, например zazzzor smoke --voice https://zazzzor.example\n" +
-		"--voice проверяет сигнализацию, токен и вебхуки LiveKit. Качество звука, RTP через NAT и демонстрацию экрана проверяйте отдельно."
+	smokeUsage          = "usage: zazzzor smoke [--voice] <base_url>, for example zazzzor smoke --voice https://zazzzor.example\n" +
+		"--voice checks LiveKit signalling, the token and webhooks. Check sound quality, RTP through NAT and screen sharing separately."
 )
 
 type smokeOptions struct {
@@ -60,13 +60,13 @@ func smokeCommand(args []string, env func(string) string, stdout, stderr io.Writ
 	base := strings.TrimRight(args[0], "/")
 	u, err := url.Parse(base)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		_, _ = fmt.Fprintf(stderr, "адрес должен начинаться с http:// или https://\n%s\n", smokeUsage)
+		_, _ = fmt.Fprintf(stderr, "the address must start with http:// or https://\n%s\n", smokeUsage)
 		return 2
 	}
 	origin, _, _ := strings.Cut(env("ZAZZZOR_ALLOWED_ORIGINS"), ",")
 	origin = strings.TrimSpace(origin)
 	if origin == "" {
-		_, _ = fmt.Fprintln(stderr, "не задан ZAZZZOR_ALLOWED_ORIGINS: из него берётся заголовок Origin для проверки")
+		_, _ = fmt.Fprintln(stderr, "ZAZZZOR_ALLOWED_ORIGINS is not set: the check takes its Origin header from it")
 		return 2
 	}
 	return runSmoke(context.Background(), base, origin, opts, stdout, stderr)
@@ -88,7 +88,7 @@ func runSmoke(ctx context.Context, base, origin string, opts smokeOptions, stdou
 		out:    stdout,
 	}
 	if err := s.run(ctx, opts); err != nil {
-		_, _ = fmt.Fprintf(stderr, "ОШИБКА: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "ERROR: %v\n", err)
 		return 1
 	}
 	_, _ = fmt.Fprintln(stdout, "OK")
@@ -108,7 +108,7 @@ type stepError struct {
 	err  error
 }
 
-func (e *stepError) Error() string { return fmt.Sprintf("шаг «%s»: %v", e.step, e.err) }
+func (e *stepError) Error() string { return fmt.Sprintf("step %q: %v", e.step, e.err) }
 func (e *stepError) Unwrap() error { return e.err }
 
 func (s *smokeSession) step(name string, err error) error {
@@ -120,7 +120,7 @@ func (s *smokeSession) step(name string, err error) error {
 }
 
 func (s *smokeSession) run(ctx context.Context, opts smokeOptions) (err error) {
-	if err = s.step("регистрация", s.register(ctx, "smoke_"+randomHex(4), randomHex(16))); err != nil {
+	if err = s.step("sign-up", s.register(ctx, "smoke_"+randomHex(4), randomHex(16))); err != nil {
 		return err
 	}
 	defer func() {
@@ -130,7 +130,7 @@ func (s *smokeSession) run(ctx context.Context, opts smokeOptions) (err error) {
 	}()
 
 	var guild struct{ ID string }
-	if err = s.step("создание сервера", s.do(ctx, http.MethodPost, "/api/v1/guilds",
+	if err = s.step("create server", s.do(ctx, http.MethodPost, "/api/v1/guilds",
 		map[string]string{"name": "smoke"}, http.StatusCreated, &guild)); err != nil {
 		return err
 	}
@@ -141,22 +141,22 @@ func (s *smokeSession) run(ctx context.Context, opts smokeOptions) (err error) {
 		derr := s.do(cleanup, http.MethodDelete, "/api/v1/guilds/"+guild.ID, nil, http.StatusNoContent, nil)
 		switch {
 		case err == nil:
-			err = s.step("удаление сервера", derr)
+			err = s.step("delete server", derr)
 		case derr != nil:
-			err = fmt.Errorf("%w (проверочный сервер %s тоже не удалось удалить: %v)", err, guild.ID, derr)
+			err = fmt.Errorf("%w (the check's server %s could not be deleted either: %v)", err, guild.ID, derr)
 		}
 	}()
 
 	channelID, err := s.textChannel(ctx, guild.ID)
-	if err = s.step("список каналов", err); err != nil {
+	if err = s.step("channel list", err); err != nil {
 		return err
 	}
 	var msg struct{ ID string }
-	if err = s.step("отправка сообщения", s.do(ctx, http.MethodPost, "/api/v1/channels/"+channelID+"/messages",
+	if err = s.step("send message", s.do(ctx, http.MethodPost, "/api/v1/channels/"+channelID+"/messages",
 		map[string]string{"content": "smoke"}, http.StatusCreated, &msg)); err != nil {
 		return err
 	}
-	if err = s.step("чтение истории", s.findMessage(ctx, channelID, msg.ID, "")); err != nil {
+	if err = s.step("read history", s.findMessage(ctx, channelID, msg.ID, "")); err != nil {
 		return err
 	}
 	if !opts.Voice {
@@ -167,7 +167,7 @@ func (s *smokeSession) run(ctx context.Context, opts smokeOptions) (err error) {
 	// failure is then named by the step it happened in, not by both.
 	err = s.gateway(ctx, opts.GatewayTimeout, func(ctx context.Context, c *websocket.Conn, ready json.RawMessage) error {
 		_ = s.step("WebSocket", nil)
-		return s.step("голос", s.voice(ctx, c, ready, guild.ID, opts.VoiceTimeout))
+		return s.step("voice", s.voice(ctx, c, ready, guild.ID, opts.VoiceTimeout))
 	})
 	if _, named := errors.AsType[*stepError](err); err == nil || named {
 		return err
@@ -180,7 +180,7 @@ func (s *smokeSession) register(ctx context.Context, user, pass string) error {
 	if err := s.signIn(ctx, "/api/v1/auth/register", user, pass, http.StatusCreated, nil); err != nil {
 		return err
 	}
-	_, _ = fmt.Fprintf(s.out, "пользователь %s создан\n", user)
+	_, _ = fmt.Fprintf(s.out, "user %s created\n", user)
 	return nil
 }
 
@@ -201,7 +201,7 @@ func (s *smokeSession) signIn(ctx context.Context, path, user, pass string, stat
 			return nil
 		}
 	}
-	return errors.New("в ответе нет cookie zz_session")
+	return errors.New("the response has no zz_session cookie")
 }
 
 func (s *smokeSession) textChannel(ctx context.Context, guildID string) (string, error) {
@@ -217,7 +217,7 @@ func (s *smokeSession) textChannel(ctx context.Context, guildID string) (string,
 			return c.ID, nil
 		}
 	}
-	return "", errors.New("у нового сервера нет текстового канала")
+	return "", errors.New("the new server has no text channel")
 }
 
 // findMessage confirms the message and, when specified, its bound attachment.
@@ -241,9 +241,9 @@ func (s *smokeSession) findMessage(ctx context.Context, channelID, messageID, at
 				return nil
 			}
 		}
-		return errors.New("в сообщении нет ожидаемого вложения")
+		return errors.New("the message lacks the expected attachment")
 	}
-	return errors.New("отправленного сообщения нет в истории")
+	return errors.New("the sent message is not in the history")
 }
 
 // gateway opens /api/v1/gateway with the session cookie and expects HELLO
@@ -264,10 +264,10 @@ func (s *smokeSession) gateway(parent context.Context, timeout time.Duration, fo
 	}
 	if err != nil {
 		if resp != nil && resp.StatusCode != http.StatusSwitchingProtocols {
-			return fmt.Errorf("подключение к /api/v1/gateway: ответ %d вместо 101 Switching Protocols%s",
+			return fmt.Errorf("connect to /api/v1/gateway: status %d instead of 101 Switching Protocols%s",
 				resp.StatusCode, statusHint(resp.StatusCode, ""))
 		}
-		return fmt.Errorf("подключение к /api/v1/gateway: %w", err)
+		return fmt.Errorf("connect to /api/v1/gateway: %w", err)
 	}
 	defer func() { _ = c.CloseNow() }()
 	c.SetReadLimit(smokeReadLimit)
@@ -282,12 +282,12 @@ func (s *smokeSession) gateway(parent context.Context, timeout time.Duration, fo
 		_, data, rerr := c.Read(ctx)
 		if rerr != nil {
 			if ctx.Err() != nil {
-				return f, fmt.Errorf("за %v не пришёл %s", timeout, what)
+				return f, fmt.Errorf("no %[2]s within %[1]v", timeout, what)
 			}
-			return f, fmt.Errorf("соединение закрылось до %s: %w", what, rerr)
+			return f, fmt.Errorf("the connection closed before %s: %w", what, rerr)
 		}
 		if json.Unmarshal(data, &f) != nil {
-			return f, fmt.Errorf("кадр вместо %s не JSON", what)
+			return f, fmt.Errorf("the frame in place of %s is not JSON", what)
 		}
 		return f, nil
 	}
@@ -296,7 +296,7 @@ func (s *smokeSession) gateway(parent context.Context, timeout time.Duration, fo
 		return err
 	}
 	if f.Op != 10 {
-		return fmt.Errorf("первый кадр op %d, ожидался HELLO (op 10)", f.Op)
+		return fmt.Errorf("first frame op %d, expected HELLO (op 10)", f.Op)
 	}
 	var hello struct {
 		HeartbeatIntervalMS int64 `json:"heartbeat_interval_ms"`
@@ -307,11 +307,11 @@ func (s *smokeSession) gateway(parent context.Context, timeout time.Duration, fo
 		return err
 	}
 	if f.Op != 0 || f.T != "READY" {
-		return fmt.Errorf("после HELLO пришёл кадр op %d t %q, ожидался READY", f.Op, f.T)
+		return fmt.Errorf("after HELLO came frame op %d t %q, expected READY", f.Op, f.T)
 	}
 	if follow != nil {
 		if hello.HeartbeatIntervalMS <= 0 || hello.HeartbeatIntervalMS > int64(time.Hour/time.Millisecond) {
-			return errors.New("HELLO не содержит допустимый интервал heartbeat")
+			return errors.New("HELLO has no valid heartbeat interval")
 		}
 		alive, stop := context.WithCancel(parent)
 		done := make(chan struct{})
@@ -340,7 +340,7 @@ func (s *smokeSession) gateway(parent context.Context, timeout time.Duration, fo
 		}
 	}
 	if err := c.Close(websocket.StatusNormalClosure, "smoke done"); err != nil {
-		return fmt.Errorf("закрытие соединения: %w", err)
+		return fmt.Errorf("close the connection: %w", err)
 	}
 	return nil
 }
@@ -381,7 +381,7 @@ func (s *smokeSession) uploadFile(ctx context.Context, method, path, name string
 	mw := multipart.NewWriter(&body)
 	for key, value := range fields {
 		if err := mw.WriteField(key, value); err != nil {
-			return fmt.Errorf("сборка поля формы: %w", err)
+			return fmt.Errorf("build a form field: %w", err)
 		}
 	}
 	part, err := mw.CreateFormFile("file", name)
@@ -392,7 +392,7 @@ func (s *smokeSession) uploadFile(ctx context.Context, method, path, name string
 		err = mw.Close()
 	}
 	if err != nil {
-		return fmt.Errorf("сборка запроса: %w", err)
+		return fmt.Errorf("build the request: %w", err)
 	}
 	resp, err := s.sendRaw(ctx, method, path, mw.FormDataContentType(), &body)
 	if err != nil {
@@ -414,7 +414,7 @@ func (s *smokeSession) fetch(ctx context.Context, path string) ([]byte, error) {
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, smokeReadLimit))
 	if err != nil {
-		return nil, fmt.Errorf("чтение ответа: %w", err)
+		return nil, fmt.Errorf("read the response: %w", err)
 	}
 	return data, nil
 }
@@ -437,7 +437,7 @@ func (s *smokeSession) sendRaw(ctx context.Context, method, path, contentType st
 	}
 	resp, err := s.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("API не отвечает по адресу %s: %w", s.base, err)
+		return nil, fmt.Errorf("the API does not answer at %s: %w", s.base, err)
 	}
 	return resp, nil
 }
@@ -445,7 +445,7 @@ func (s *smokeSession) sendRaw(ctx context.Context, method, path, contentType st
 func expectStatus(resp *http.Response, status int, out any) error {
 	data, err := io.ReadAll(io.LimitReader(resp.Body, smokeReadLimit))
 	if err != nil {
-		return fmt.Errorf("чтение ответа: %w", err)
+		return fmt.Errorf("read the response: %w", err)
 	}
 	if resp.StatusCode != status {
 		var p struct{ Code string }
@@ -454,11 +454,11 @@ func expectStatus(resp *http.Response, status int, out any) error {
 		if p.Code != "" {
 			code = " " + p.Code
 		}
-		return fmt.Errorf("ответ %d%s вместо %d%s", resp.StatusCode, code, status, statusHint(resp.StatusCode, p.Code))
+		return fmt.Errorf("status %d%s instead of %d%s", resp.StatusCode, code, status, statusHint(resp.StatusCode, p.Code))
 	}
 	if out != nil {
 		if err := json.Unmarshal(data, out); err != nil {
-			return errors.New("ответ не разбирается как JSON")
+			return errors.New("the response is not valid JSON")
 		}
 	}
 	return nil
@@ -468,15 +468,15 @@ func expectStatus(resp *http.Response, status int, out any) error {
 func statusHint(status int, code string) string {
 	switch {
 	case code == "origin_not_allowed":
-		return " (Origin проверки не входит в ZAZZZOR_ALLOWED_ORIGINS сервера)"
+		return " (the check's Origin is not in the server's ZAZZZOR_ALLOWED_ORIGINS)"
 	case code == "registration_closed":
-		return " (регистрация закрыта в настройках сервера; откройте её на время проверки)"
+		return " (registration is closed in the server settings; open it for the check)"
 	case status == http.StatusTooManyRequests:
-		return " (сработал лимит частоты: регистраций не больше 3 в час с одного адреса, новых серверов не больше 5 в час; подождите и повторите)"
+		return " (rate limited: at most 3 sign-ups an hour from one address and 5 new servers an hour; wait and retry)"
 	case status == http.StatusNotFound && code == "":
-		return " (такого пути нет: шлюз WebSocket не установлен или запрос ушёл не в API)"
+		return " (no such path: the WebSocket gateway is missing or the request did not reach the API)"
 	case status == http.StatusBadGateway || status == http.StatusServiceUnavailable:
-		return " (API не готов: смотрите docker compose ps и логи api)"
+		return " (the API is not ready: see docker compose ps and the api logs)"
 	}
 	return ""
 }

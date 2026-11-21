@@ -24,7 +24,7 @@ func (s *Service) checkAttachmentSpace() error {
 	}
 	if free < s.minFreeBytes {
 		return &httpx.Problem{Status: http.StatusInsufficientStorage, Code: "storage_full",
-			Detail: "На сервере закончилось место для файлов. Сообщите администратору."}
+			Detail: "The server is out of space for files. Tell an administrator."}
 	}
 	return nil
 }

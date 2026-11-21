@@ -24,7 +24,7 @@ func TestCreateAdminFromStdin(t *testing.T) {
 	}{
 		{"unlisted", "alice", "password123", "not listed", 1},
 		{"invalid password", "boss", "bad", "invalid password", 1},
-		{"configured username", "BOSS", "password123", "boss создан", 0},
+		{"configured username", "BOSS", "password123", "boss created", 0},
 		{"already exists", "boss", "different-password", "username taken", 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -19,30 +19,30 @@ import (
 func (s *smokeSession) voice(ctx context.Context, c *websocket.Conn, ready json.RawMessage, guildID string, timeout time.Duration) (err error) {
 	var identity struct{ User struct{ ID string } }
 	if json.Unmarshal(ready, &identity) != nil || identity.User.ID == "" {
-		return errors.New("READY не содержит пользователя для проверки голоса")
+		return errors.New("READY has no user to check voice with")
 	}
 	var channel struct{ ID string }
 	if err = s.do(ctx, http.MethodPost, "/api/v1/guilds/"+guildID+"/channels",
 		map[string]any{"name": "smoke-voice", "type": 2}, http.StatusCreated, &channel); err != nil {
-		return fmt.Errorf("создание голосового канала: %w", err)
+		return fmt.Errorf("create a voice channel: %w", err)
 	}
 	if channel.ID == "" {
-		return errors.New("API не вернул ID голосового канала")
+		return errors.New("the API returned no voice channel ID")
 	}
 	// A token request can reach the server even if reading its answer fails.
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), smokeRequestTimeout)
 		defer cancel()
 		if leaveErr := s.do(cleanup, http.MethodDelete, "/api/v1/users/@me/voice", nil, http.StatusNoContent, nil); leaveErr != nil {
-			err = errors.Join(err, fmt.Errorf("уборка голосового подключения: %w", leaveErr))
+			err = errors.Join(err, fmt.Errorf("clean up the voice connection: %w", leaveErr))
 		}
 	}()
 	var join struct{ URL, Token string }
 	if err = s.do(ctx, http.MethodPost, "/api/v1/channels/"+channel.ID+"/voice", nil, http.StatusOK, &join); err != nil {
-		return fmt.Errorf("токен голоса не выдан (голос может быть выключен; проверьте настройки LiveKit): %w", err)
+		return fmt.Errorf("no voice token (voice may be off; check the LiveKit settings): %w", err)
 	}
 	if join.URL == "" || join.Token == "" {
-		return errors.New("API не вернул адрес LiveKit или токен голоса")
+		return errors.New("the API returned no LiveKit address or voice token")
 	}
 	room := lksdk.NewRoom(&lksdk.RoomCallback{})
 	disconnect := sync.OnceFunc(room.Disconnect)
@@ -58,7 +58,7 @@ func (s *smokeSession) voice(ctx context.Context, c *websocket.Conn, ready json.
 		lksdk.WithAutoSubscribe(false), lksdk.WithConnectTimeout(timeout), lksdk.WithLogger(logger.GetDiscardLogger()))
 	cancel()
 	if connectErr != nil {
-		return fmt.Errorf("LiveKit недоступен или отклонил токен; проверьте /rtc и LiveKit (таймаут подключения %v)", timeout)
+		return fmt.Errorf("LiveKit is unreachable or refused the token; check /rtc and LiveKit (connect timeout %v)", timeout)
 	}
 	if err = smokeVoiceState(ctx, c, guildID, channel.ID, identity.User.ID, false, timeout); err != nil {
 		return err
@@ -85,7 +85,7 @@ func smokeDisconnect(ctx context.Context, disconnect func()) error {
 	case <-done:
 		return nil
 	case <-ctx.Done():
-		return errors.New("отключение LiveKit не завершилось вовремя; выполняется уборка через API")
+		return errors.New("leaving LiveKit did not finish in time; cleaning up through the API")
 	}
 }
 
@@ -99,11 +99,11 @@ func smokeVoiceState(parent context.Context, c *websocket.Conn, guildID, channel
 		if err != nil {
 			if ctx.Err() != nil {
 				if left {
-					return fmt.Errorf("голосовое состояние не исчезло после выхода за %v; проверьте адрес вебхука и ключи LiveKit", timeout)
+					return fmt.Errorf("the voice state did not clear within %v of leaving; check the webhook address and LiveKit keys", timeout)
 				}
-				return fmt.Errorf("вебхук входа LiveKit не пришёл за %v; проверьте адрес вебхука и ключи LiveKit", timeout)
+				return fmt.Errorf("the LiveKit join webhook did not arrive within %v; check the webhook address and LiveKit keys", timeout)
 			}
-			return errors.New("шлюз закрылся при ожидании голосового состояния")
+			return errors.New("the gateway closed while waiting for the voice state")
 		}
 		// Other events share the connection and may have other shapes: a frame
 		// that is not the awaited voice state is skipped, never an error.
