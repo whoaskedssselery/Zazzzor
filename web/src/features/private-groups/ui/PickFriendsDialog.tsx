@@ -2,6 +2,7 @@ import { Search } from "lucide-react";
 import { type SubmitEvent, useMemo, useState } from "react";
 import { friendLists, useGuilds } from "@/entities/guild";
 import { errorText } from "@/shared/api";
+import { t } from "@/shared/i18n";
 import { Avatar, Button, Checkbox, Dialog, DialogClose, DialogContent, FormAlert, Input } from "@/shared/ui";
 
 export interface PickFriendsDialogProps {
@@ -80,7 +81,7 @@ const PickForm = ({
       footer={
         <>
           <DialogClose asChild>
-            <Button variant="ghost">Отмена</Button>
+            <Button variant="ghost">{t("common:cancel")}</Button>
           </DialogClose>
           <Button type="submit" form={FORM_ID} loading={busy} disabled={picked.length === 0}>
             {confirmLabel(picked.length)}
@@ -93,9 +94,7 @@ const PickForm = ({
       <form id={FORM_ID} noValidate onSubmit={submit} className="-mx-1 flex flex-col gap-3 px-1 pt-1">
         {friends.length === 0 ? (
           <p className="py-6 text-center text-base text-fg-muted">
-            {all.length === 0
-              ? "Сюда можно позвать только друзей, а их пока нет. Добавьте кого-нибудь на главной."
-              : "Все ваши друзья уже здесь."}
+            {all.length === 0 ? t("friends:noFriends") : t("friends:allHere")}
           </p>
         ) : (
           <>
@@ -106,8 +105,8 @@ const PickForm = ({
               />
               <Input
                 value={query}
-                aria-label="Найти друга"
-                placeholder="Имя друга"
+                aria-label={t("friends:findFriend")}
+                placeholder={t("friends:friendName")}
                 autoComplete="off"
                 autoFocus
                 className="pl-9"
@@ -117,9 +116,9 @@ const PickForm = ({
               />
             </div>
             <p aria-live="polite" className="text-sm text-fg-muted">
-              {left > 0 ? `Можно выбрать ещё ${String(left)}` : "Больше выбрать нельзя"}
+              {left > 0 ? t("friends:canPickMore", { count: left }) : t("friends:noMore")}
             </p>
-            <ul aria-label="Друзья" className="-mx-2 max-h-72 overflow-y-auto">
+            <ul aria-label={t("friends:list")} className="-mx-2 max-h-72 overflow-y-auto">
               {shown.map((r) => {
                 const on = picked.includes(r.id);
                 const id = `pick-${r.id}`;
@@ -146,7 +145,7 @@ const PickForm = ({
                   </li>
                 );
               })}
-              {shown.length === 0 && <li className="py-4 text-center text-sm text-fg-muted">Никого не нашлось.</li>}
+              {shown.length === 0 && <li className="py-4 text-center text-sm text-fg-muted">{t("friends:nobody")}</li>}
             </ul>
           </>
         )}

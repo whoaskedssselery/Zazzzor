@@ -19,5 +19,35 @@
     "systemHint": "Follows the device's theme.",
     "title": "Appearance",
     "label": "Theme"
+  },
+  "status": {
+    "online": "Online",
+    "idle": "Idle",
+    "dnd": "Do not disturb",
+    "dndHint": "No sounds or notifications",
+    "invisible": "Invisible",
+    "invisibleHint": "Others see you offline",
+    "failed": "Couldn't change your status",
+    "title": "Status",
+    "set": "Set a custom status",
+    "edit": "Edit custom status",
+    "clear": "Clear custom status",
+    "dialogTitle": "Custom status",
+    "dialogText": "Your friends and the members of your servers see it while you are online.",
+    "save": "Save",
+    "what": "What's going on?",
+    "placeholder": "For example: in class until six"
+  },
+  "profile": {
+    "saved": "Changes saved",
+    "bioTooLong": "No longer than {{max}} characters",
+    "title": "Profile",
+    "changeAvatar": "Change avatar",
+    "removeAvatar": "Remove avatar",
+    "avatarRule": "A square of at least 128×128, up to 4 MB.",
+    "displayName": "Display name",
+    "about": "About me",
+    "aboutHint": "Seen by your friends and the members of your servers. {{used}} of {{max}}.",
+    "username": "Username"
   }
 }

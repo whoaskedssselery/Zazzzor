@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type ChangeEvent, useEffect, useRef, useState } from "react";
 import { type User, updateSignedIn } from "@/entities/session";
 import { ApiError, api, errorText, fieldErrorText, unwrap } from "@/shared/api";
+import { t } from "@/shared/i18n";
 import { fileForm, IMAGE_ACCEPT, imageProblem, runeLength, trimContent, useObjectUrl } from "@/shared/lib";
 import { Avatar, Button, Field, FormAlert, Input, SaveBar, Textarea, useToast } from "@/shared/ui";
 
@@ -69,11 +70,11 @@ export const ProfileTab = ({ user, onDirtyChange }: { user: User; onDirtyChange:
     },
     onSuccess: (_, sent) => {
       setAvatar((current) => (current === sent ? null : current));
-      toast.show({ text: "Изменения сохранены", tone: "success" });
+      toast.show({ text: t("settings:profile.saved"), tone: "success" });
     },
     onError: (e) => {
       if (e instanceof ApiError && "display_name" in e.fields) setNameError(NAME_RULE);
-      if (e instanceof ApiError && "bio" in e.fields) setBioError(`Не длиннее ${String(BIO_MAX)} символов`);
+      if (e instanceof ApiError && "bio" in e.fields) setBioError(t("settings:profile.bioTooLong", { max: BIO_MAX }));
     },
   });
 
@@ -94,7 +95,7 @@ export const ProfileTab = ({ user, onDirtyChange }: { user: User; onDirtyChange:
     }
     setNameError(undefined);
     if (runeLength(bio.trim()) > BIO_MAX) {
-      setBioError(`Не длиннее ${String(BIO_MAX)} символов`);
+      setBioError(t("settings:profile.bioTooLong", { max: BIO_MAX }));
       return;
     }
     setBioError(undefined);
@@ -118,7 +119,7 @@ export const ProfileTab = ({ user, onDirtyChange }: { user: User; onDirtyChange:
   return (
     <section aria-labelledby="profile-title">
       <h2 id="profile-title" className="mb-5 text-xl font-semibold">
-        Профиль
+        {t("settings:profile.title")}
       </h2>
       {failed && <FormAlert>{errorText(save.error)}</FormAlert>}
       <div className="flex gap-8 max-sm:flex-col">
@@ -140,7 +141,7 @@ export const ProfileTab = ({ user, onDirtyChange }: { user: User; onDirtyChange:
               picker.current?.click();
             }}
           >
-            Сменить аватар
+            {t("settings:profile.changeAvatar")}
           </Button>
           {shown !== null && (
             <Button
@@ -151,10 +152,10 @@ export const ProfileTab = ({ user, onDirtyChange }: { user: User; onDirtyChange:
                 setAvatar(user.avatar_url === null ? null : "remove");
               }}
             >
-              Удалить аватар
+              {t("settings:profile.removeAvatar")}
             </Button>
           )}
-          <p className="max-w-40 text-center text-xs text-fg-muted">Квадрат не меньше 128×128, до 4 МБ.</p>
+          <p className="max-w-40 text-center text-xs text-fg-muted">{t("settings:profile.avatarRule")}</p>
           {avatarError && (
             <p role="alert" className="max-w-40 text-center text-xs text-fg-danger">
               {avatarError}
@@ -169,7 +170,7 @@ export const ProfileTab = ({ user, onDirtyChange }: { user: User; onDirtyChange:
             submit();
           }}
         >
-          <Field htmlFor="profile-name" label="Отображаемое имя" error={nameError}>
+          <Field htmlFor="profile-name" label={t("settings:profile.displayName")} error={nameError}>
             <Input
               value={name}
               maxLength={64}
@@ -181,8 +182,8 @@ export const ProfileTab = ({ user, onDirtyChange }: { user: User; onDirtyChange:
           </Field>
           <Field
             htmlFor="profile-bio"
-            label="О себе"
-            hint={`Видят друзья и участники ваших серверов. ${String(runeLength(bio.trim()))} из ${String(BIO_MAX)}.`}
+            label={t("settings:profile.about")}
+            hint={t("settings:profile.aboutHint", { used: runeLength(bio.trim()), max: BIO_MAX })}
             error={bioError}
             className="mt-5"
           >
@@ -195,7 +196,7 @@ export const ProfileTab = ({ user, onDirtyChange }: { user: User; onDirtyChange:
             />
           </Field>
           <dl className="mt-5">
-            <dt className="text-sm font-semibold text-fg-muted">Имя пользователя</dt>
+            <dt className="text-sm font-semibold text-fg-muted">{t("settings:profile.username")}</dt>
             <dd className="mt-1 text-base">{user.username}</dd>
           </dl>
         </form>

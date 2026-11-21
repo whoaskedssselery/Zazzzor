@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SETTINGS_KEY, type InstanceSettings as Settings } from "@/entities/session";
 import { api, errorText, unwrap } from "@/shared/api";
+import { t } from "@/shared/i18n";
 import { Switch, useToast } from "@/shared/ui";
 
 /**
@@ -17,7 +18,7 @@ export const InstanceSettings = ({ settings }: { settings: Settings }) => {
     onSuccess: (next) => {
       queryClient.setQueryData(ADMIN_SETTINGS_KEY, next);
       toast.show({
-        text: next.registration_open ? "Регистрация открыта" : "Регистрация закрыта",
+        text: next.registration_open ? t("admin:registrationOpened") : t("admin:registrationClosed"),
         tone: "success",
       });
     },
@@ -29,17 +30,15 @@ export const InstanceSettings = ({ settings }: { settings: Settings }) => {
   return (
     <section aria-labelledby="instance-title">
       <h2 id="instance-title" className="mb-5 text-xl font-semibold">
-        Сервер Zazzzor
+        {t("admin:instanceTitle")}
       </h2>
       <div className="flex items-start gap-4 rounded-lg bg-sidebar p-4">
         <div className="min-w-0 flex-1">
           <label htmlFor="registration-open" className="block text-base font-medium">
-            Регистрация открыта
+            {t("admin:registrationOpen")}
           </label>
           <p id="registration-open-hint" className="mt-1 text-sm text-fg-muted">
-            {open
-              ? "Любой, кто откроет сайт, может создать аккаунт."
-              : "Новые аккаунты создать нельзя. Те, что уже есть, работают как прежде."}
+            {open ? t("admin:registrationOpenHint") : t("admin:registrationClosedHint")}
           </p>
         </div>
         <Switch

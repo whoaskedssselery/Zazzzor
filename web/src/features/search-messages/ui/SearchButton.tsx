@@ -4,6 +4,7 @@ import { type ReactNode, type SubmitEvent, useMemo, useState } from "react";
 import { RELATIONSHIP, useGuilds, userDisplay } from "@/entities/guild";
 import { requestFocus } from "@/entities/message";
 import { errorText } from "@/shared/api";
+import { t } from "@/shared/i18n";
 import { formatMessageTime, markdownText, snowflakeTime } from "@/shared/lib";
 import {
   Avatar,
@@ -33,7 +34,7 @@ const useNames = (scope: SearchScope): Names => {
   return useMemo(
     () => ({
       author: (m) => {
-        if (m.author === null) return { name: "Удалённый пользователь", avatarUrl: null };
+        if (m.author === null) return { name: t("chat:deletedUser"), avatarUrl: null };
         if (!entry) return { name: m.author.display_name, avatarUrl: m.author.avatar_url };
         const d = userDisplay(entry, m.author);
         return { name: d.name, avatarUrl: d.avatarUrl };
@@ -62,8 +63,8 @@ const useFilters = (scope: SearchScope) => {
           .sort((a, b) => a.position - b.position)
           .map((c) => ({ value: c.id, label: `#${c.name}` }))
       : [];
-    const authors: SelectOption[] = [{ value: ANY, label: "От кого угодно" }, ...people];
-    const where: SelectOption[] = [{ value: ANY, label: "Во всех каналах" }, ...channels];
+    const authors: SelectOption[] = [{ value: ANY, label: t("chat:search.anyone") }, ...people];
+    const where: SelectOption[] = [{ value: ANY, label: t("chat:search.anywhere") }, ...channels];
     return { authors, where: entry ? where : null };
   }, [entry, priv, me]);
 };
@@ -82,12 +83,12 @@ const Result = ({ m, names, blocked, onOpen }: ResultProps) => {
   const words = markdownText(m.content);
   let text: ReactNode = words;
   if (blocked) {
-    text = <span className="text-fg-muted italic">Сообщение заблокированного пользователя</span>;
+    text = <span className="text-fg-muted italic">{t("chat:search.blocked")}</span>;
   } else if (words === "" && m.attachments.length > 0) {
     text = (
       <span className="inline-flex items-center gap-1 text-fg-muted">
         <Paperclip aria-hidden className="size-3.5" />
-        Вложение
+        {t("chat:search.attachment")}
       </span>
     );
   }
@@ -151,11 +152,11 @@ export const SearchButton = ({ scope, placeholder }: { scope: SearchScope; place
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <IconButton label="Поиск по сообщениям" icon={Search} pressed={open} tooltipSide="bottom" />
+        <IconButton label={t("chat:search.title")} icon={Search} pressed={open} tooltipSide="bottom" />
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        aria-label="Поиск по сообщениям"
+        aria-label={t("chat:search.title")}
         className="flex max-h-[min(36rem,80vh)] w-[min(28rem,calc(100vw-1rem))] flex-col"
       >
         <search className="border-b border-border">
@@ -163,7 +164,7 @@ export const SearchButton = ({ scope, placeholder }: { scope: SearchScope; place
             <div className="flex gap-2">
               <Input
                 type="search"
-                aria-label="Что искать"
+                aria-label={t("chat:search.what")}
                 placeholder={placeholder}
                 value={content}
                 maxLength={200}
@@ -181,12 +182,12 @@ export const SearchButton = ({ scope, placeholder }: { scope: SearchScope; place
                 disabled={!canSearch(draft)}
                 loading={results.isFetching && !results.isFetchingNextPage}
               >
-                Найти
+                {t("chat:search.find")}
               </Button>
             </div>
             <div className="flex gap-2">
               <Select
-                aria-label="Автор"
+                aria-label={t("chat:search.author")}
                 className="min-w-0 flex-1"
                 options={filters.authors}
                 value={authorId === "" ? ANY : authorId}
@@ -196,7 +197,7 @@ export const SearchButton = ({ scope, placeholder }: { scope: SearchScope; place
               />
               {filters.where && (
                 <Select
-                  aria-label="Канал"
+                  aria-label={t("chat:search.channel")}
                   className="min-w-0 flex-1"
                   options={filters.where}
                   value={channelId === "" ? ANY : channelId}
@@ -210,23 +211,21 @@ export const SearchButton = ({ scope, placeholder }: { scope: SearchScope; place
         </search>
         <div className="min-h-0 flex-1 overflow-y-auto p-2" aria-live="polite">
           {ask === null ? (
-            <p className="px-2 py-6 text-center text-sm text-fg-muted">
-              Слова находятся в любой форме и по началу: «кин» найдёт «кино».
-            </p>
+            <p className="px-2 py-6 text-center text-sm text-fg-muted">{t("chat:search.tip")}</p>
           ) : results.isError ? (
             <p role="alert" className="px-2 py-6 text-center text-sm text-fg-danger">
               {errorText(results.error)}
             </p>
           ) : results.isPending ? (
             <div className="flex justify-center py-6">
-              <Spinner label="Ищем…" />
+              <Spinner label={t("chat:search.searching")} />
             </div>
           ) : (
             <>
               <p data-search-total className="px-2 pb-1 text-xs font-semibold text-fg-faint uppercase">
                 {foundText(total ?? 0)}
               </p>
-              <ul aria-label="Результаты поиска">
+              <ul aria-label={t("chat:search.results")}>
                 {found.map((m) => (
                   <Result
                     key={m.id}
@@ -246,7 +245,7 @@ export const SearchButton = ({ scope, placeholder }: { scope: SearchScope; place
                     void results.fetchNextPage();
                   }}
                 >
-                  Показать ещё
+                  {t("chat:search.more")}
                 </Button>
               )}
             </>

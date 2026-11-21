@@ -1,6 +1,7 @@
 import { CirclePlus, SendHorizontal } from "lucide-react";
 import { type ClipboardEvent, type KeyboardEvent, useMemo, useRef, useState } from "react";
 import type { MessageStub } from "@/entities/message";
+import { onLanguage, t } from "@/shared/i18n";
 import { runeLength, trimContent, useAutoHeight } from "@/shared/lib";
 import { cn, IconButton, useToast } from "@/shared/ui";
 import { getDraft, setDraft, useDraft } from "../model/drafts";
@@ -27,7 +28,10 @@ const COUNTER_FROM = 3800;
 /** The field grows with its text up to this height, then scrolls. */
 const MAX_HEIGHT_PX = 320;
 
-export const NO_SEND_PERMISSION = "У вас нет прав на отправку сообщений в этом канале";
+export let NO_SEND_PERMISSION = "";
+onLanguage(() => {
+  NO_SEND_PERMISSION = t("chat:send.noSend");
+});
 
 /** The message being answered and the name its author goes by here. */
 export interface ReplyTarget {
@@ -254,7 +258,7 @@ export const Composer = ({
             <>
               <IconButton
                 className="mb-1.5 shrink-0"
-                label="Прикрепить файлы"
+                label={t("chat:send.attach")}
                 icon={CirclePlus}
                 onClick={() => picker.current?.click()}
               />
@@ -301,7 +305,7 @@ export const Composer = ({
           />
           {length > COUNTER_FROM && (
             <output
-              aria-label="Осталось символов"
+              aria-label={t("chat:send.charsLeft")}
               className={cn("mb-3 shrink-0 text-xs tabular-nums", tooLong ? "text-fg-danger" : "text-fg-muted")}
             >
               {MAX_LENGTH - length}
@@ -309,7 +313,7 @@ export const Composer = ({
           )}
           <IconButton
             className="mb-1.5"
-            label={uploading ? "Файлы ещё загружаются" : "Отправить"}
+            label={uploading ? t("chat:send.uploading") : t("chat:send.send")}
             icon={SendHorizontal}
             disabled={empty || tooLong || uploading}
             onClick={submit}

@@ -22,5 +22,11 @@
     "tempTitle": "Временный пароль {{name}}",
     "done": "Готово",
     "password": "Пароль"
-  }
+  },
+  "registrationOpened": "Регистрация открыта",
+  "registrationClosed": "Регистрация закрыта",
+  "instanceTitle": "Сервер Zazzzor",
+  "registrationOpen": "Регистрация открыта",
+  "registrationOpenHint": "Любой, кто откроет сайт, может создать аккаунт.",
+  "registrationClosedHint": "Новые аккаунты создать нельзя. Те, что уже есть, работают как прежде."
 }

@@ -181,5 +181,22 @@
     "title": "Delete “{{name}}”?",
     "text": "All channels and messages will be gone forever, and members will lose access. This can't be undone.",
     "typeName": "Type the server's name"
+  },
+  "join": {
+    "invalid": "The invite is invalid",
+    "banned": "You are banned from this server",
+    "late": "You joined the server, but the connection dropped. It will show up in the server list once the connection is back.",
+    "notAnInvite": "Paste a link like https://site/invite/AbCd1234 or a code of 8 letters and digits.",
+    "title": "Join a server",
+    "text": "Enter the invite you were sent.",
+    "join": "Join",
+    "label": "Invite link or code",
+    "hint": "For example: https://zazzzor.example/invite/AbCd1234 or AbCd1234"
+  },
+  "leave": {
+    "done": "You left the server “{{name}}”",
+    "title": "Leave “{{name}}”?",
+    "text": "You can come back only with a new invite.",
+    "confirm": "Leave server"
   }
 }

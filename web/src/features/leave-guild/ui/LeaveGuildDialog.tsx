@@ -1,6 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { api, errorText, unwrap } from "@/shared/api";
+import { t } from "@/shared/i18n";
 import { ConfirmDialog, useToast } from "@/shared/ui";
 
 interface LeaveGuildDialogProps {
@@ -25,7 +26,7 @@ export const LeaveGuildDialog = ({ open, onOpenChange, guildId, guildName }: Lea
     },
     // Hook-level callbacks: they still run after the page they started on is gone.
     onSuccess: () => {
-      toast.show({ text: `Вы покинули сервер «${guildName}»` });
+      toast.show({ text: t("guild:leave.done", { name: guildName }) });
     },
     onError: (e) => {
       toast.show({ text: errorText(e), tone: "error" });
@@ -35,9 +36,9 @@ export const LeaveGuildDialog = ({ open, onOpenChange, guildId, guildName }: Lea
     <ConfirmDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={`Покинуть «${guildName}»?`}
-      description="Вернуться получится только по новому приглашению."
-      confirmLabel="Покинуть сервер"
+      title={t("guild:leave.title", { name: guildName })}
+      description={t("guild:leave.text")}
+      confirmLabel={t("guild:leave.confirm")}
       tone="danger"
       onConfirm={() => {
         leave.mutate();

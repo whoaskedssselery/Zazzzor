@@ -1,6 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { useOpenGuild } from "@/entities/channel";
 import { ApiError, api, type components, errorText, unwrap } from "@/shared/api";
+import { onLanguage, t } from "@/shared/i18n";
 
 export type Invite = components["schemas"]["Invite"];
 
@@ -28,8 +29,14 @@ export function parseInviteCode(input: string): string | null {
   return parts.length === 2 && first === "invite" && code !== undefined && CODE.test(code) ? code : null;
 }
 
-export const INVALID_INVITE = "Приглашение недействительно";
-export const BANNED = "Вы заблокированы на этом сервере";
+export let INVALID_INVITE = "";
+export let BANNED = "";
+export let JOINED_LATE = "";
+onLanguage(() => {
+  INVALID_INVITE = t("guild:join.invalid");
+  BANNED = t("guild:join.banned");
+  JOINED_LATE = t("guild:join.late");
+});
 
 /** Why an invite cannot be used, in the invite's own words; anything else as the common texts say it. */
 export function inviteErrorText(e: unknown): string {
@@ -44,10 +51,6 @@ export function inviteErrorText(e: unknown): string {
 export async function previewInvite(code: string): Promise<Invite> {
   return unwrap(await api.GET("/invites/{code}", { params: { path: { code } } }));
 }
-
-/** Shown when the joined server has not arrived over the gateway in time. */
-export const JOINED_LATE =
-  "Вы вступили на сервер, но связь прервалась. Он появится в списке серверов, когда подключение восстановится.";
 
 /**
  * Joins through an invite and opens its channel: POST /invites/{code}, then

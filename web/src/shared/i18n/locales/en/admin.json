@@ -22,5 +22,11 @@
     "tempTitle": "Temporary password for {{name}}",
     "done": "Done",
     "password": "Password"
-  }
+  },
+  "registrationOpened": "Registration is open",
+  "registrationClosed": "Registration is closed",
+  "instanceTitle": "Zazzzor server",
+  "registrationOpen": "Registration is open",
+  "registrationOpenHint": "Anyone who opens the site can create an account.",
+  "registrationClosedHint": "New accounts can't be created. Existing ones work as before."
 }
