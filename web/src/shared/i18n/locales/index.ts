@@ -7,6 +7,7 @@ import enCommon from "./en/common.json";
 import enErrors from "./en/errors.json";
 import enGuild from "./en/guild.json";
 import enSettings from "./en/settings.json";
+import enVoice from "./en/voice.json";
 import ruAdmin from "./ru/admin.json";
 import ruAuth from "./ru/auth.json";
 import ruChat from "./ru/chat.json";
@@ -14,6 +15,7 @@ import ruCommon from "./ru/common.json";
 import ruErrors from "./ru/errors.json";
 import ruGuild from "./ru/guild.json";
 import ruSettings from "./ru/settings.json";
+import ruVoice from "./ru/voice.json";
 
 export const locales = {
   en: {
@@ -24,6 +26,7 @@ export const locales = {
     errors: enErrors,
     guild: enGuild,
     settings: enSettings,
+    voice: enVoice,
   },
   ru: {
     admin: ruAdmin,
@@ -33,5 +36,6 @@ export const locales = {
     errors: ruErrors,
     guild: ruGuild,
     settings: ruSettings,
+    voice: ruVoice,
   },
 } as const;

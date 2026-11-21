@@ -91,3 +91,14 @@ export const textTable = <K extends string>(read: Record<K, () => string>): Read
   for (const key of Object.keys(read) as K[]) Object.defineProperty(table, key, { get: read[key], enumerable: true });
   return table;
 };
+
+/**
+ * Runs `apply` now and again on every language switch, before anything is
+ * drawn in the new language: how a module keeps the texts it exports as
+ * `export let NAME: string` in the language of the moment, while every
+ * import of NAME stays as it is (an ES module export is a live binding).
+ */
+export const onLanguage = (apply: () => void): void => {
+  apply();
+  i18n.on("languageChanged", apply);
+};

@@ -1,50 +1,96 @@
 import { RadioGroup } from "radix-ui";
 import { useEffect, useState } from "react";
 import { type NoiseStatus, readVoicePrefs, useCall, type VoicePrefs, writeVoicePrefs } from "@/entities/call";
+import { onLanguage, t } from "@/shared/i18n";
 import { inDesktopApp } from "@/shared/lib";
 import { Button, cn, Field, Select } from "@/shared/ui";
 import { applySwitchKeys, applyVoicePrefs, switchAudioDevice } from "../model/session";
 import { comboName, comboOf } from "../model/switch-keys";
 
-export const PTT_FOCUS_HINT = "Push-to-talk работает, пока окно Zazzzor активно; в фоне — в приложении для Windows.";
-export const PTT_GLOBAL_HINT = "Push-to-talk работает в любом окне, и в играх тоже.";
-export const SWITCH_FOCUS_HINT = "Сочетания работают, пока окно Zazzzor активно; в фоне — в приложении для Windows.";
-export const SWITCH_GLOBAL_HINT = "Сочетания работают в любом окне, и в играх тоже.";
+export let PTT_FOCUS_HINT = "";
+export let PTT_GLOBAL_HINT = "";
+export let SWITCH_FOCUS_HINT = "";
+export let SWITCH_GLOBAL_HINT = "";
+onLanguage(() => {
+  PTT_FOCUS_HINT = t("voice:tab.pttFocus");
+  PTT_GLOBAL_HINT = t("voice:tab.pttGlobal");
+  SWITCH_FOCUS_HINT = t("voice:tab.switchFocus");
+  SWITCH_GLOBAL_HINT = t("voice:tab.switchGlobal");
+});
 
 /** The switches a combination may flip, by the setting that keeps it. */
 type KeyField = "muteKey" | "deafenKey";
 const SWITCH_KEYS: { field: KeyField; label: string }[] = [
-  { field: "muteKey", label: "Выключить микрофон" },
-  { field: "deafenKey", label: "Выключить звук" },
+  {
+    field: "muteKey",
+    get label() {
+      return t("voice:tab.switchMute");
+    },
+  },
+  {
+    field: "deafenKey",
+    get label() {
+      return t("voice:tab.switchDeafen");
+    },
+  },
 ];
 const DEFAULT = "default";
 
 const MODES: { value: VoicePrefs["mode"]; label: string; hint: string }[] = [
-  { value: "voice", label: "Активация по голосу", hint: "Микрофон передаёт, пока он включён." },
-  { value: "ptt", label: "Push-to-talk", hint: "Микрофон передаёт, только пока зажата клавиша." },
+  {
+    value: "voice",
+    get label() {
+      return t("voice:tab.modeVoice");
+    },
+    get hint() {
+      return t("voice:tab.modeVoiceHint");
+    },
+  },
+  {
+    value: "ptt",
+    get label() {
+      return t("voice:tab.modePtt");
+    },
+    get hint() {
+      return t("voice:tab.modePttHint");
+    },
+  },
 ];
 
 const NOISE: { value: VoicePrefs["noise"]; label: string }[] = [
-  { value: "enhanced", label: "Улучшенное" },
-  { value: "standard", label: "Стандартное" },
-  { value: "off", label: "Выкл" },
+  {
+    value: "enhanced",
+    get label() {
+      return t("voice:tab.noiseEnhanced");
+    },
+  },
+  {
+    value: "standard",
+    get label() {
+      return t("voice:tab.noiseStandard");
+    },
+  },
+  {
+    value: "off",
+    get label() {
+      return t("voice:tab.noiseOff");
+    },
+  },
 ];
 
 /** What cleans the microphone in the call now, and why it is not what was chosen. */
 const noiseNow = ({ running, reason }: NoiseStatus): string => {
   switch (running) {
     case "loading":
-      return "Сейчас: загружается улучшенное, пока без шумоподавления";
+      return t("voice:tab.nowLoading");
     case "enhanced":
-      return "Сейчас: улучшенное";
+      return t("voice:tab.nowEnhanced");
     case "rnnoise":
-      return reason === "overload"
-        ? "Сейчас: запасное — компьютер не успевает с улучшенным"
-        : "Сейчас: запасное — улучшенное не загрузилось";
+      return reason === "overload" ? t("voice:tab.nowFallbackOverload") : t("voice:tab.nowFallbackFailed");
     case "standard":
-      return reason === "failed" ? "Сейчас: стандартное — улучшенное не загрузилось" : "Сейчас: стандартное";
+      return reason === "failed" ? t("voice:tab.nowStandardFailed") : t("voice:tab.nowStandard");
     case "off":
-      return reason === "failed" ? "Сейчас: выключено — шумоподавление не загрузилось" : "Сейчас: выключено";
+      return reason === "failed" ? t("voice:tab.nowOffFailed") : t("voice:tab.nowOff");
   }
 };
 
@@ -92,12 +138,16 @@ const useDevices = () => {
     setDevices((list) => [...list.filter((d) => d.deviceId !== device.deviceId), device]);
   };
   const options = (kind: MediaDeviceKind, unnamed: string) => [
-    { value: DEFAULT, label: "Как в системе" },
+    { value: DEFAULT, label: t("voice:tab.systemDefault") },
     ...devices
       .filter((d) => d.kind === kind && d.deviceId !== "" && d.deviceId !== DEFAULT)
       .map((d, i) => ({ value: d.deviceId, label: d.label || `${unnamed} ${String(i + 1)}` })),
   ];
-  return { inputs: options("audioinput", "Микрофон"), outputs: options("audiooutput", "Устройство вывода"), add };
+  return {
+    inputs: options("audioinput", t("voice:tab.microphone")),
+    outputs: options("audiooutput", t("voice:tab.outputDevice")),
+    add,
+  };
 };
 
 /**
@@ -155,10 +205,10 @@ export const VoiceTab = () => {
   return (
     <section aria-labelledby="voice-title" className="flex max-w-120 flex-col gap-6">
       <h2 id="voice-title" className="text-xl font-semibold">
-        Голос и видео
+        {t("voice:tab.title")}
       </h2>
       <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
-        <Field htmlFor="voice-input" label="Устройство ввода">
+        <Field htmlFor="voice-input" label={t("voice:tab.inputDevice")}>
           <Select
             options={inputs}
             value={prefs.inputId ?? DEFAULT}
@@ -169,7 +219,7 @@ export const VoiceTab = () => {
           />
         </Field>
         {canChooseOutput() && (
-          <Field htmlFor="voice-output" label="Устройство вывода">
+          <Field htmlFor="voice-output" label={t("voice:tab.outputDevice")}>
             <Select options={outputs} value={prefs.outputId ?? DEFAULT} onValueChange={chooseOutput} />
             {hasOutputPicker() && (
               <Button
@@ -186,7 +236,7 @@ export const VoiceTab = () => {
                     .catch(() => undefined);
                 }}
               >
-                Выбрать устройство вывода
+                {t("voice:tab.pickOutput")}
               </Button>
             )}
           </Field>
@@ -195,7 +245,7 @@ export const VoiceTab = () => {
 
       <div>
         <h3 id="voice-mode" className="mb-2 text-sm font-semibold text-fg-muted">
-          Режим ввода
+          {t("voice:tab.inputMode")}
         </h3>
         <RadioGroup.Root
           aria-labelledby="voice-mode"
@@ -235,10 +285,10 @@ export const VoiceTab = () => {
 
       {prefs.mode === "ptt" && (
         <div>
-          <h3 className="mb-2 text-sm font-semibold text-fg-muted">Клавиша</h3>
+          <h3 className="mb-2 text-sm font-semibold text-fg-muted">{t("voice:tab.key")}</h3>
           <div className="flex items-center gap-3">
             {listening === "ptt" ? (
-              <span className="text-base text-fg">Нажмите клавишу…</span>
+              <span className="text-base text-fg">{t("voice:tab.pressKey")}</span>
             ) : (
               <kbd className="rounded-md bg-control px-2.5 py-1 font-mono text-base">{keyName(prefs.pttKey)}</kbd>
             )}
@@ -250,7 +300,7 @@ export const VoiceTab = () => {
                 setListening("ptt");
               }}
             >
-              Изменить клавишу
+              {t("voice:tab.changeKey")}
             </Button>
           </div>
           <p className="mt-2 text-sm text-fg-muted">{inDesktopApp() ? PTT_GLOBAL_HINT : PTT_FOCUS_HINT}</p>
@@ -258,7 +308,7 @@ export const VoiceTab = () => {
       )}
 
       <div>
-        <h3 className="mb-2 text-sm font-semibold text-fg-muted">Горячие клавиши</h3>
+        <h3 className="mb-2 text-sm font-semibold text-fg-muted">{t("voice:tab.hotkeys")}</h3>
         <div className="flex flex-col gap-2">
           {SWITCH_KEYS.map(({ field, label }) => {
             const combo = prefs[field];
@@ -266,7 +316,7 @@ export const VoiceTab = () => {
               <div key={field} className="flex flex-wrap items-center gap-3">
                 <span className="w-40 text-base">{label}</span>
                 {listening === field ? (
-                  <span className="text-base text-fg">Нажмите сочетание…</span>
+                  <span className="text-base text-fg">{t("voice:tab.pressCombo")}</span>
                 ) : (
                   <kbd
                     className={cn(
@@ -274,30 +324,30 @@ export const VoiceTab = () => {
                       combo === null ? "text-fg-muted" : "font-mono",
                     )}
                   >
-                    {combo === null ? "Не назначено" : comboName(combo)}
+                    {combo === null ? t("voice:tab.unassigned") : comboName(combo)}
                   </kbd>
                 )}
                 <Button
                   variant="secondary"
                   size="sm"
-                  aria-label={`Изменить: ${label}`}
+                  aria-label={t("voice:tab.changeOf", { label })}
                   disabled={listening !== null}
                   onClick={() => {
                     setListening(field);
                   }}
                 >
-                  Изменить
+                  {t("voice:tab.change")}
                 </Button>
                 {combo !== null && listening !== field && (
                   <Button
                     variant="ghost"
                     size="sm"
-                    aria-label={`Сбросить: ${label}`}
+                    aria-label={t("voice:tab.resetOf", { label })}
                     onClick={() => {
                       save({ ...readVoicePrefs(), [field]: null });
                     }}
                   >
-                    Сбросить
+                    {t("common:reset")}
                   </Button>
                 )}
               </div>
@@ -307,11 +357,7 @@ export const VoiceTab = () => {
         <p className="mt-2 text-sm text-fg-muted">{inDesktopApp() ? SWITCH_GLOBAL_HINT : SWITCH_FOCUS_HINT}</p>
       </div>
 
-      <Field
-        htmlFor="voice-noise"
-        label="Шумоподавление"
-        hint="Улучшенное — нейросеть на вашем компьютере, первая загрузка около 23 МБ; стандартное — браузера."
-      >
+      <Field htmlFor="voice-noise" label={t("voice:tab.noise")} hint={t("voice:tab.noiseHint")}>
         <Select
           options={NOISE}
           value={prefs.noise}

@@ -3,6 +3,7 @@ export {
   currentLanguage,
   i18n,
   LANGUAGE_STORAGE_KEY,
+  onLanguage,
   readLanguage,
   setLanguage,
   t,
