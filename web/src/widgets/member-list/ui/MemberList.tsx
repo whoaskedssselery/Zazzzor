@@ -1,6 +1,7 @@
 import { useId, useMemo } from "react";
 import { useGuilds } from "@/entities/guild";
 import { MemberMenu } from "@/features/manage-member";
+import { t } from "@/shared/i18n";
 import { Avatar, cn, roleTextStyle } from "@/shared/ui";
 import { groupMembers, type MemberGroup, type MemberRow } from "../model/groups";
 
@@ -68,7 +69,7 @@ export const MemberList = ({ guildId }: { guildId: string }) => {
   const presences = useGuilds((s) => s.presences);
   const groups = useMemo(() => (entry ? groupMembers(entry, presences) : []), [entry, presences]);
   return (
-    <aside aria-label="Участники" className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+    <aside aria-label={t("shell:members")} className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
       {groups.map((g) => (
         <Group key={g.id} guildId={guildId} group={g} />
       ))}

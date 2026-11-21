@@ -1,5 +1,6 @@
 import { HeadphoneOff, Headphones, Maximize, Mic, MicOff, Minimize, PhoneOff } from "lucide-react";
 import { CameraButton, leaveVoice, ScreenShareButton, useSelfSwitches } from "@/features/voice-call";
+import { t } from "@/shared/i18n";
 import { cn, IconButton } from "@/shared/ui";
 
 const pill =
@@ -15,7 +16,7 @@ export const CallControls = ({ fullscreen, onFullscreen }: { fullscreen: boolean
   return (
     <div
       role="toolbar"
-      aria-label="Управление звонком"
+      aria-label={t("voice:stage.callControls")}
       className="relative flex shrink-0 items-center justify-center gap-2 px-4 pt-2 pb-4 [@media(max-height:560px)]:pb-2"
     >
       <IconButton
@@ -37,7 +38,7 @@ export const CallControls = ({ fullscreen, onFullscreen }: { fullscreen: boolean
       <CameraButton className={pill} />
       <ScreenShareButton className={pill} />
       <IconButton
-        label="Отключиться"
+        label={t("shell:disconnect")}
         icon={PhoneOff}
         className={cn(
           pill,
@@ -48,7 +49,7 @@ export const CallControls = ({ fullscreen, onFullscreen }: { fullscreen: boolean
         }}
       />
       <IconButton
-        label={fullscreen ? "Выйти из полноэкранного режима" : "Во весь экран"}
+        label={fullscreen ? t("voice:stage.exitFullscreen") : t("voice:stage.fullscreen")}
         icon={fullscreen ? Minimize : Maximize}
         className="absolute right-4 text-fg-muted"
         onClick={onFullscreen}

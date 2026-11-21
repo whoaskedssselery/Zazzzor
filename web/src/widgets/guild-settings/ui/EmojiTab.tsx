@@ -3,21 +3,26 @@ import { Trash2, Upload } from "lucide-react";
 import { type ChangeEvent, useRef, useState } from "react";
 import { type GuildEmoji, type GuildEntry, userDisplay } from "@/entities/guild";
 import { api, errorText, unwrap } from "@/shared/api";
-import { IMAGE_ACCEPT, WRONG_IMAGE } from "@/shared/lib";
+import { onLanguage, t } from "@/shared/i18n";
+import { IMAGE_ACCEPT, wrongImageText } from "@/shared/lib";
 import { Button, ConfirmDialog, IconButton, Input, useToast } from "@/shared/ui";
 
 /** The server's limits (C11): per kind, and the file size. */
 export const MAX_PER_KIND = 50;
 export const MAX_EMOJI_BYTES = 256 * 1024;
-export const EMOJI_TOO_LARGE = "Файл эмодзи больше 256 КБ.";
-export const EMOJI_NAME_RULE = "Имя: от 2 до 32 латинских букв, цифр или _.";
+export let EMOJI_TOO_LARGE = "";
+export let EMOJI_NAME_RULE = "";
+onLanguage(() => {
+  EMOJI_TOO_LARGE = t("guild:emoji.tooLarge");
+  EMOJI_NAME_RULE = t("guild:emoji.nameRule");
+});
 
 const NAME = /^[A-Za-z0-9_]{2,32}$/;
 const TYPES = new Set(IMAGE_ACCEPT.split(","));
 
 /** Why the server would refuse `file` as an emoji, before sending it; null when it would not. */
 export const emojiFileProblem = (file: File): string | null => {
-  if (!TYPES.has(file.type)) return WRONG_IMAGE;
+  if (!TYPES.has(file.type)) return wrongImageText();
   if (file.size > MAX_EMOJI_BYTES) return EMOJI_TOO_LARGE;
   return null;
 };
@@ -79,7 +84,7 @@ const Row = ({
       <div className="min-w-0 flex-1">
         <Input
           value={name}
-          aria-label={`Имя эмодзи :${emoji.name}:`}
+          aria-label={t("guild:emoji.nameOf", { name: emoji.name })}
           maxLength={32}
           autoComplete="off"
           spellCheck={false}
@@ -97,7 +102,12 @@ const Row = ({
         />
       </div>
       <span className="w-40 truncate text-sm text-fg-muted max-sm:hidden">{author ?? "—"}</span>
-      <IconButton label={`Удалить :${emoji.name}:`} icon={Trash2} variant="danger" onClick={onDelete} />
+      <IconButton
+        label={t("guild:emoji.deleteOf", { name: emoji.name })}
+        icon={Trash2}
+        variant="danger"
+        onClick={onDelete}
+      />
     </li>
   );
 };
@@ -118,10 +128,10 @@ const Group = ({
   <section aria-label={title} className="mt-6">
     <h3 className="flex items-center justify-between border-b border-border pb-2 text-xs font-semibold text-fg-faint uppercase">
       {title}
-      <span className="tabular-nums">{`${String(list.length)} из ${String(MAX_PER_KIND)}`}</span>
+      <span className="tabular-nums">{t("guild:emoji.count", { count: list.length, max: MAX_PER_KIND })}</span>
     </h3>
     {list.length === 0 ? (
-      <p className="py-3 text-sm text-fg-muted">Пока нет.</p>
+      <p className="py-3 text-sm text-fg-muted">{t("guild:emoji.noneYet")}</p>
     ) : (
       <ul className="divide-y divide-border">
         {list.map((e) => {
@@ -178,7 +188,7 @@ export const EmojiTab = ({ entry }: { entry: GuildEntry }) => {
         }),
       ),
     onSuccess: (e) => {
-      toast.show({ text: `Эмодзи :${e.name}: добавлен`, tone: "success" });
+      toast.show({ text: t("guild:emoji.added", { name: e.name }), tone: "success" });
     },
     onError: fail,
   });
@@ -224,11 +234,11 @@ export const EmojiTab = ({ entry }: { entry: GuildEntry }) => {
   return (
     <section aria-labelledby="emoji-title">
       <h2 id="emoji-title" className="mb-2 text-xl font-semibold">
-        Эмодзи
+        {t("guild:emoji.title")}
       </h2>
       <p className="max-w-prose text-base text-fg-muted">
-        Свои эмодзи сервера: участники ставят их в сообщения как <code className="text-fg">:имя:</code> и в реакции.
-        PNG, JPEG, GIF или WebP до 256 КБ. Картинка ужмётся до 128×128, анимированный GIF должен уже быть не больше.
+        {t("guild:emoji.introBefore")} <code className="text-fg">{t("guild:emoji.introCode")}</code>{" "}
+        {t("guild:emoji.introAfter")}
       </p>
       <input
         ref={picker}
@@ -248,10 +258,10 @@ export const EmojiTab = ({ entry }: { entry: GuildEntry }) => {
         }}
       >
         <Upload aria-hidden className="size-4" />
-        Загрузить эмодзи
+        {t("guild:emoji.upload")}
       </Button>
       <Group
-        title="Обычные"
+        title={t("guild:emoji.static")}
         list={still}
         entry={entry}
         onRename={(emoji, name) => {
@@ -261,7 +271,7 @@ export const EmojiTab = ({ entry }: { entry: GuildEntry }) => {
         onDelete={setDeleting}
       />
       <Group
-        title="Анимированные"
+        title={t("guild:emoji.animated")}
         list={animated}
         entry={entry}
         onRename={(emoji, name) => {
@@ -275,9 +285,9 @@ export const EmojiTab = ({ entry }: { entry: GuildEntry }) => {
         onOpenChange={(open) => {
           if (!open) setDeleting(null);
         }}
-        title={`Удалить :${deleting?.name ?? ""}:?`}
-        description="Он пропадёт из сообщений и выбора эмодзи. Реакции с ним останутся, но покажутся именем без картинки."
-        confirmLabel="Удалить"
+        title={t("guild:emoji.deleteTitle", { name: deleting?.name ?? "" })}
+        description={t("guild:emoji.deleteText")}
+        confirmLabel={t("guild:emoji.delete")}
         tone="danger"
         pending={remove.isPending}
         onConfirm={() => {

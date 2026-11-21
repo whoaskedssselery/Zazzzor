@@ -4,13 +4,13 @@ import { type SubmitEvent, useState } from "react";
 import { homeCategory } from "@/entities/channel";
 import { useGuilds } from "@/entities/guild";
 import { ApiError, api, errorText, unwrap } from "@/shared/api";
+import { t } from "@/shared/i18n";
 import { runeLength, trimContent } from "@/shared/lib";
 import { Button, cn, Dialog, DialogClose, DialogContent, Field, FormAlert, Input } from "@/shared/ui";
 
 /** What is created: a text or voice channel, or a category. */
 export type NewChannelKind = "channel" | "category";
 
-const NAME_RULE = "Название: от 1 до 100 символов.";
 const TEXT = 0 as const;
 const VOICE = 2 as const;
 const CATEGORY = 4 as const;
@@ -72,9 +72,11 @@ const TypeOption = ({
     >
       <Icon aria-hidden className="size-6 shrink-0 text-fg-muted" strokeWidth={1.75} />
       <span className="flex-1">
-        <span className="block text-base font-medium">{type === TEXT ? "Текстовый" : "Голосовой"}</span>
+        <span className="block text-base font-medium">
+          {type === TEXT ? t("guild:createChannel.text") : t("guild:createChannel.voice")}
+        </span>
         <span className="block text-sm text-fg-muted">
-          {type === TEXT ? "Сообщения, ссылки, картинки" : "Голос, видео и демонстрация экрана"}
+          {type === TEXT ? t("guild:createChannel.textHint") : t("guild:createChannel.voiceHint")}
         </span>
       </span>
       <input
@@ -122,7 +124,7 @@ const CreateForm = ({
     // The list shows it with its CHANNEL_CREATE.
     onSuccess: onDone,
     onError: (e) => {
-      if (e instanceof ApiError && "name" in e.fields) setFieldError(NAME_RULE);
+      if (e instanceof ApiError && "name" in e.fields) setFieldError(t("guild:createChannel.nameRule"));
     },
   });
 
@@ -131,7 +133,7 @@ const CreateForm = ({
     const value = trimContent(name);
     const length = runeLength(value);
     if (length < 1 || length > 100) {
-      setFieldError(NAME_RULE);
+      setFieldError(t("guild:createChannel.nameRule"));
       return;
     }
     setFieldError(undefined);
@@ -141,16 +143,16 @@ const CreateForm = ({
   const failed = create.isError && !(create.error instanceof ApiError && "name" in create.error.fields);
   return (
     <DialogContent
-      title={kind === "category" ? "Создать категорию" : "Создать канал"}
-      {...(into ? { description: `В категории «${into.name}»` } : {})}
+      title={kind === "category" ? t("guild:createChannel.createCategory") : t("guild:createChannel.createChannel")}
+      {...(into ? { description: t("guild:createChannel.inCategory", { name: into.name }) } : {})}
       size="sm"
       footer={
         <>
           <DialogClose asChild>
-            <Button variant="ghost">Отмена</Button>
+            <Button variant="ghost">{t("common:cancel")}</Button>
           </DialogClose>
           <Button type="submit" form={FORM_ID} loading={create.isPending}>
-            Создать
+            {t("guild:createChannel.create")}
           </Button>
         </>
       }
@@ -159,14 +161,14 @@ const CreateForm = ({
       <form id={FORM_ID} noValidate onSubmit={submit} className="flex flex-col gap-4">
         {kind === "channel" && (
           <fieldset className="flex flex-col gap-2">
-            <legend className="mb-2 text-sm font-semibold text-fg-muted">Тип канала</legend>
+            <legend className="mb-2 text-sm font-semibold text-fg-muted">{t("guild:createChannel.type")}</legend>
             <TypeOption type={TEXT} current={type} onChange={setType} />
             <TypeOption type={VOICE} current={type} onChange={setType} />
           </fieldset>
         )}
         <Field
           htmlFor="new-channel-name"
-          label={kind === "category" ? "Название категории" : "Название канала"}
+          label={kind === "category" ? t("guild:createChannel.categoryName") : t("guild:createChannel.channelName")}
           error={fieldError}
         >
           <Input

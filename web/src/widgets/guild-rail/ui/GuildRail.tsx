@@ -15,6 +15,7 @@ import {
 } from "@/entities/guild";
 import { CreateGuildDialog } from "@/features/create-guild";
 import { JoinGuildDialog } from "@/features/join-guild";
+import { t } from "@/shared/i18n";
 import { Avatar, Badge, cn, formatCount, GuildIcon, Logo, Tooltip } from "@/shared/ui";
 
 /** The round tile of the rail's own buttons (create, join, a group): it squares off on hover and focus. */
@@ -79,8 +80,8 @@ const GuildItem = ({ guildId, active }: { guildId: string; active: boolean }) =>
   });
   if (!guild) return null;
   let name = guild.name;
-  if (mentions > 0) name += `, упоминаний: ${String(mentions)}`;
-  else if (unread) name += ", есть непрочитанные";
+  if (mentions > 0) name = t("shell:mentions", { name, count: mentions });
+  else if (unread) name = t("shell:unread", { name });
   const target =
     channelId === null
       ? ({ to: "/channels/$guildId", params: { guildId } } as const)
@@ -122,7 +123,7 @@ const PrivateItem = ({ entry }: { entry: PrivateEntry }) => {
       <Link
         to="/channels/@me/$channelId"
         params={{ channelId: channel.id }}
-        aria-label={`${name}, непрочитанных: ${String(count)}`}
+        aria-label={t("shell:unreadCount", { name, count })}
         className="group relative rounded-full"
       >
         {peer ? (
@@ -164,12 +165,12 @@ export const GuildRail = ({ activeGuildId }: { activeGuildId: string | null }) =
     if (!open) setDialog(null);
   };
   return (
-    <nav aria-label="Серверы" className="min-h-0 flex-1 overflow-y-auto py-3 [scrollbar-width:none]">
+    <nav aria-label={t("shell:servers")} className="min-h-0 flex-1 overflow-y-auto py-3 [scrollbar-width:none]">
       <ul className="flex flex-col items-center gap-2">
-        <RailItem label="Главная" active={home}>
+        <RailItem label={t("shell:home")} active={home}>
           <Link
             to="/channels/@me"
-            aria-label={requests > 0 ? `Главная, заявок в друзья: ${String(requests)}` : "Главная"}
+            aria-label={requests > 0 ? t("shell:homeRequests", { count: requests }) : t("shell:home")}
             aria-current={home ? "page" : undefined}
             className="group relative rounded-xl"
           >
@@ -206,14 +207,14 @@ export const GuildRail = ({ activeGuildId }: { activeGuildId: string | null }) =
           <GuildItem key={id} guildId={id} active={id === activeGuildId} />
         ))}
         <RailButton
-          label="Создать сервер"
+          label={t("shell:createServer")}
           icon={Plus}
           onClick={() => {
             setDialog("create");
           }}
         />
         <RailButton
-          label="Присоединиться к серверу"
+          label={t("shell:joinServer")}
           icon={Compass}
           onClick={() => {
             setDialog("join");

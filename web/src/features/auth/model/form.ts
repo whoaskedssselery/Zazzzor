@@ -1,16 +1,22 @@
 import { z } from "zod/mini";
 import { ApiError, errorCodeText, errorText, fieldErrorText, tooManyAttemptsText } from "@/shared/api";
+import { t } from "@/shared/i18n";
 import { runeLength, trimContent } from "@/shared/lib";
 
 /** The server's username rule, after the input is lower-cased. */
 const USERNAME = /^[a-z0-9_.]{2,32}$/;
 
-const username = z.string().check(z.minLength(1, "Введите логин."), z.regex(USERNAME, fieldErrorText("username")));
+const username = z
+  .string()
+  .check(
+    z.minLength(1, { error: () => t("auth:enterUsername") }),
+    z.regex(USERNAME, { error: () => fieldErrorText("username") }),
+  );
 
 /** 8 to 128 characters as the server counts them (code points, not UTF-16 units). */
 const password = z.string().check(
-  z.minLength(1, "Введите пароль."),
-  z.refine((s) => runeLength(s) >= 8 && runeLength(s) <= 128, fieldErrorText("password")),
+  z.minLength(1, { error: () => t("auth:enterPassword") }),
+  z.refine((s) => runeLength(s) >= 8 && runeLength(s) <= 128, { error: () => fieldErrorText("password") }),
 );
 
 /**

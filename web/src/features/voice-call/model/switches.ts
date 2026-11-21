@@ -1,9 +1,14 @@
 import { useCall } from "@/entities/call";
 import { myVoice, useGuilds } from "@/entities/guild";
+import { onLanguage, t } from "@/shared/i18n";
 import { setSelfDeaf, setSelfMute } from "./session";
 
-export const MODERATOR_MUTED = "Модератор выключил вам микрофон";
-export const MODERATOR_DEAFENED = "Модератор выключил вам звук";
+export let MODERATOR_MUTED = "";
+export let MODERATOR_DEAFENED = "";
+onLanguage(() => {
+  MODERATOR_MUTED = t("voice:switches.modMuted");
+  MODERATOR_DEAFENED = t("voice:switches.modDeafened");
+});
 
 /**
  * The user's microphone and sound switches as Discord has them, for the user
@@ -23,7 +28,7 @@ export const useSelfSwitches = () => {
     mic: {
       off: micOff,
       locked: modMute,
-      label: modMute ? MODERATOR_MUTED : micOff ? "Включить микрофон" : "Выключить микрофон",
+      label: modMute ? MODERATOR_MUTED : micOff ? t("voice:switches.micOn") : t("voice:switches.micOff"),
       toggle: () => {
         if (selfDeaf) {
           setSelfDeaf(false);
@@ -34,7 +39,7 @@ export const useSelfSwitches = () => {
     sound: {
       off: soundOff,
       locked: modDeaf,
-      label: modDeaf ? MODERATOR_DEAFENED : soundOff ? "Включить звук" : "Выключить звук",
+      label: modDeaf ? MODERATOR_DEAFENED : soundOff ? t("voice:switches.soundOn") : t("voice:switches.soundOff"),
       toggle: () => {
         setSelfDeaf(!selfDeaf);
       },

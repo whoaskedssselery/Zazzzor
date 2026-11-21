@@ -12,6 +12,7 @@ import {
 } from "@/entities/guild";
 import { MemberMenu } from "@/features/manage-member";
 import type { MentionSuggestion } from "@/features/send-message";
+import { t } from "@/shared/i18n";
 import type { MentionNames } from "@/shared/lib";
 import type { ChatScope } from "../model/scope";
 import { Chat } from "./Chat";
@@ -21,8 +22,8 @@ const Welcome = ({ name }: { name: string }) => (
     <span aria-hidden className="flex size-17 items-center justify-center rounded-full bg-control">
       <Hash className="size-10 text-fg" strokeWidth={1.75} />
     </span>
-    <h2 className="mt-3 text-xl font-bold break-words">{`Добро пожаловать в #${name}!`}</h2>
-    <p className="mt-1 text-base text-fg-muted">{`Это начало канала #${name}.`}</p>
+    <h2 className="mt-3 text-xl font-bold break-words">{t("chat:welcome", { name })}</h2>
+    <p className="mt-1 text-base text-fg-muted">{t("chat:channelStart", { name })}</p>
   </div>
 );
 
@@ -62,8 +63,8 @@ const mentionSuggestions = (
     .map((r): MentionSuggestion => ({ kind: "role", id: r.id, name: r.name, color: r.color }));
   const groups: MentionSuggestion[] = everyone
     ? [
-        { kind: "everyone", id: null, name: "everyone", detail: "Все, кто видит канал" },
-        { kind: "here", id: null, name: "here", detail: "Все, кто сейчас в сети" },
+        { kind: "everyone", id: null, name: "everyone", detail: t("chat:everyone") },
+        { kind: "here", id: null, name: "here", detail: t("chat:here") },
       ]
     : [];
   return [...users, ...roles, ...groups];
@@ -87,10 +88,10 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
   const where = `#${channel.name}`;
   const scope: ChatScope = {
     channelId: channel.id,
-    listLabel: `Сообщения в ${where}`,
-    composerLabel: `Сообщение в ${where}`,
-    composerPlaceholder: `Написать в ${where}`,
-    dropHint: `Файлы уйдут в ${where}`,
+    listLabel: t("chat:listIn", { where }),
+    composerLabel: t("chat:composerIn", { where }),
+    composerPlaceholder: t("chat:placeholderIn", { where }),
+    dropHint: t("chat:dropIn", { where }),
     welcome: <Welcome name={channel.name} />,
     can: {
       read,
@@ -102,7 +103,7 @@ export const ChatView = ({ guildId, channel }: { guildId: string; channel: Chann
     author: (user) => userDisplay(entry, user),
     typingName: (userId) => {
       const member = entry.members[userId];
-      return member ? userDisplay(entry, member.user).name : "Кто-то";
+      return member ? userDisplay(entry, member.user).name : t("common:someone");
     },
     mentions: mentionNames(entry),
     mentionables: () => mentionSuggestions(entry, channel.id, meId, has(perms, PERM.MENTION_EVERYONE)),

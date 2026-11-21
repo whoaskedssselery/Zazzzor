@@ -1,7 +1,11 @@
 import { has, PERMISSION_GROUPS } from "@/entities/guild";
+import { onLanguage, t } from "@/shared/i18n";
 import { Switch } from "@/shared/ui";
 
-export const NOT_YOURS = "У вас нет этого права";
+export let NOT_YOURS = "";
+onLanguage(() => {
+  NOT_YOURS = t("guild:roles.notYours");
+});
 
 /**
  * A role's permissions as switches, in PERMISSION_GROUPS order. A switch

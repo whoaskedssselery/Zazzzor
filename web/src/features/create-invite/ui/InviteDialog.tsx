@@ -1,26 +1,37 @@
 import { useMutation } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { api, errorText, unwrap } from "@/shared/api";
+import { onLanguage, t } from "@/shared/i18n";
 import { Button, CopyButton, Dialog, DialogContent, Field, FormAlert, Input, Select, useCopy } from "@/shared/ui";
+
+const option = (value: string, label: () => string) => ({
+  value,
+  get label() {
+    return label();
+  },
+});
 
 /** Lifetimes of an invite, in seconds (0: never expires), as Discord offers them. */
 const LIFETIMES = [
-  { value: "1800", label: "30 минут" },
-  { value: "3600", label: "1 час" },
-  { value: "21600", label: "6 часов" },
-  { value: "43200", label: "12 часов" },
-  { value: "86400", label: "1 день" },
-  { value: "604800", label: "7 дней" },
-  { value: "0", label: "Никогда" },
+  option("1800", () => t("guild:invite.30m")),
+  option("3600", () => t("guild:invite.1h")),
+  option("21600", () => t("guild:invite.6h")),
+  option("43200", () => t("guild:invite.12h")),
+  option("86400", () => t("guild:invite.1d")),
+  option("604800", () => t("guild:invite.7d")),
+  option("0", () => t("guild:invite.never")),
 ];
 
 /** How many joins an invite allows (0: no limit). */
 const USES = [
-  { value: "0", label: "Без ограничений" },
+  option("0", () => t("guild:invite.noLimit")),
   ...[1, 5, 10, 25, 50, 100].map((n) => ({ value: String(n), label: String(n) })),
 ];
 
-export const COPY_FAILED = "Не получилось скопировать: ссылка выделена, скопируйте её вручную.";
+export let COPY_FAILED = "";
+onLanguage(() => {
+  COPY_FAILED = t("guild:invite.copyFailed");
+});
 
 /** The link a friend opens: this site's own origin, so it works wherever Zazzzor is hosted. */
 const inviteLink = (code: string): string => `${window.location.origin}/invite/${code}`;
@@ -36,8 +47,10 @@ interface InviteDialogProps {
 /** When the link stops working, said under it: «через 7 дней», or that it never does. */
 export const lifetimeNote = (maxAge: string, maxUses: string): string => {
   const life = LIFETIMES.find((l) => l.value === maxAge)?.label ?? "";
-  const when = maxAge === "0" ? "Ссылка не истечёт" : `Ссылка перестанет действовать через ${life}`;
-  return maxUses === "0" ? `${when}.` : `${when} или после ${maxUses} ${maxUses === "1" ? "входа" : "входов"}.`;
+  const when = maxAge === "0" ? t("guild:invite.noExpiry") : t("guild:invite.expiresIn", { life });
+  return maxUses === "0"
+    ? t("guild:invite.end", { when })
+    : t("guild:invite.orAfter", { when, count: Number(maxUses) });
 };
 
 /**
@@ -103,21 +116,21 @@ const InviteForm = ({ channelId, channelName }: { channelId: string; channelName
 
   return (
     <DialogContent
-      title={`Пригласить друзей в #${channelName}`}
-      description={`Друзья попадут на сервер, сразу в #${channelName}.`}
+      title={t("guild:invite.title", { channel: channelName })}
+      description={t("guild:invite.text", { channel: channelName })}
       size="sm"
     >
       {create.isError && <FormAlert>{errorText(create.error)}</FormAlert>}
       <Field
         htmlFor="invite-link"
-        label="Отправьте другу ссылку-приглашение"
+        label={t("guild:invite.sendLink")}
         {...(copied === "failed" ? { hint: COPY_FAILED } : {})}
       >
         <div className="flex gap-2 rounded-md">
           <Input
             ref={field}
             value={link ?? ""}
-            placeholder={create.isPending ? "Создаём ссылку…" : ""}
+            placeholder={create.isPending ? t("guild:invite.creating") : ""}
             readOnly
             spellCheck={false}
             className="font-mono text-sm"
@@ -148,7 +161,7 @@ const InviteForm = ({ channelId, channelName }: { channelId: string; channelName
                 setEditing(true);
               }}
             >
-              Изменить ссылку-приглашение
+              {t("guild:invite.edit")}
             </button>
           )}
         </p>
@@ -156,10 +169,10 @@ const InviteForm = ({ channelId, channelName }: { channelId: string; channelName
       {editing && (
         <div className="mt-4 flex animate-rise-in flex-col gap-3 rounded-md bg-sidebar p-3">
           <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
-            <Field htmlFor="invite-max-age" label="Срок действия">
+            <Field htmlFor="invite-max-age" label={t("guild:invite.lifetime")}>
               <Select options={LIFETIMES} value={maxAge} onValueChange={setMaxAge} />
             </Field>
-            <Field htmlFor="invite-max-uses" label="Число использований">
+            <Field htmlFor="invite-max-uses" label={t("guild:invite.uses")}>
               <Select options={USES} value={maxUses} onValueChange={setMaxUses} />
             </Field>
           </div>
@@ -172,7 +185,7 @@ const InviteForm = ({ channelId, channelName }: { channelId: string; channelName
                 setEditing(false);
               }}
             >
-              Отмена
+              {t("common:cancel")}
             </Button>
             <Button
               loading={create.isPending}
@@ -180,7 +193,7 @@ const InviteForm = ({ channelId, channelName }: { channelId: string; channelName
                 if (!create.isPending) mutate({ maxAge, maxUses });
               }}
             >
-              Создать новую ссылку
+              {t("guild:invite.createNew")}
             </Button>
           </div>
         </div>
@@ -192,7 +205,7 @@ const InviteForm = ({ channelId, channelName }: { channelId: string; channelName
             mutate({ maxAge, maxUses });
           }}
         >
-          Попробовать ещё раз
+          {t("guild:invite.retry")}
         </Button>
       )}
     </DialogContent>

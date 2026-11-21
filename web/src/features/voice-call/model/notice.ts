@@ -1,9 +1,15 @@
 import type { Browser } from "@/entities/call";
+import { onLanguage, t } from "@/shared/i18n";
 import type { ScreenShareResult } from "@/shared/lib";
 
-export const FIREFOX_NO_AUDIO = "Firefox не передаёт звук демки — зрители увидят только картинку";
-export const WINDOW_NO_AUDIO = "Звук окна — в приложении для Windows или делитесь всем экраном";
-export const ECHO_RISK = "Зрители услышат и голосовой чат: наденьте наушники или делитесь вкладкой";
+export let FIREFOX_NO_AUDIO = "";
+export let WINDOW_NO_AUDIO = "";
+export let ECHO_RISK = "";
+onLanguage(() => {
+  FIREFOX_NO_AUDIO = t("voice:notice.firefoxNoAudio");
+  WINDOW_NO_AUDIO = t("voice:notice.windowNoAudio");
+  ECHO_RISK = t("voice:notice.echoRisk");
+});
 
 /**
  * What to tell the user about the sound of a share they just started, as

@@ -1,4 +1,5 @@
 import { byRank, type GuildEntry, memberColor, type PresenceStatus, rolesOf } from "@/entities/guild";
+import { t } from "@/shared/i18n";
 
 /** One row of the member list. */
 export interface MemberRow {
@@ -59,8 +60,10 @@ export function groupMembers(entry: GuildEntry, presences: Record<string, Presen
     const members = byRole.get(r.id) ?? [];
     return members.length > 0 ? [{ id: r.id, title: `${r.name} — ${members.length}`, members }] : [];
   });
-  if (online.length > 0) groups.push({ id: "online", title: `В сети — ${online.length}`, members: online });
-  if (offline.length > 0) groups.push({ id: "offline", title: `Не в сети — ${offline.length}`, members: offline });
+  if (online.length > 0)
+    groups.push({ id: "online", title: t("shell:online", { count: online.length }), members: online });
+  if (offline.length > 0)
+    groups.push({ id: "offline", title: t("shell:offline", { count: offline.length }), members: offline });
   for (const g of groups) g.members.sort(byName);
   return groups;
 }

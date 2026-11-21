@@ -1,5 +1,6 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { api, type components, unwrap } from "@/shared/api";
+import { t } from "@/shared/i18n";
 
 export type SearchResult = components["schemas"]["MessageSearchResult"];
 export type FoundMessage = SearchResult["messages"][number];
@@ -66,4 +67,4 @@ export const canSearch = (ask: SearchAsk): boolean => /[\p{L}\p{N}]/u.test(ask.c
 
 /** «Найдено: 3», «Найдено: 1000+». */
 export const foundText = (total: number): string =>
-  total === 0 ? "Ничего не найдено" : `Найдено: ${String(total)}${total >= 1000 ? "+" : ""}`;
+  total === 0 ? t("chat:search.none") : t("chat:search.found", { count: total, plus: total >= 1000 ? "+" : "" });

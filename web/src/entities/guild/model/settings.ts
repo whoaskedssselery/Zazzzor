@@ -1,3 +1,4 @@
+import { t, textTable } from "@/shared/i18n";
 import { computeBase, computeChannel, has, PERM } from "./permissions";
 import type { GuildEntry } from "./reducer";
 
@@ -5,15 +6,15 @@ import type { GuildEntry } from "./reducer";
 export const GUILD_SETTINGS_TABS = ["overview", "roles", "emoji", "members", "bans", "invites", "audit"] as const;
 export type GuildSettingsTab = (typeof GUILD_SETTINGS_TABS)[number];
 
-export const GUILD_SETTINGS_TITLES: Record<GuildSettingsTab, string> = {
-  overview: "Обзор",
-  roles: "Роли",
-  emoji: "Эмодзи",
-  members: "Участники",
-  bans: "Баны",
-  invites: "Приглашения",
-  audit: "Журнал действий",
-};
+export const GUILD_SETTINGS_TITLES = textTable<GuildSettingsTab>({
+  overview: () => t("guild:settingsTabs.overview"),
+  roles: () => t("guild:settingsTabs.roles"),
+  emoji: () => t("guild:settingsTabs.emoji"),
+  members: () => t("guild:settingsTabs.members"),
+  bans: () => t("guild:settingsTabs.bans"),
+  invites: () => t("guild:settingsTabs.invites"),
+  audit: () => t("guild:settingsTabs.audit"),
+});
 
 /** What each section needs: any one of the bits. */
 const NEEDS: Record<GuildSettingsTab, bigint[]> = {
@@ -43,10 +44,10 @@ export function guildSettingsTabs(entry: GuildEntry, userId: string): GuildSetti
 export const CHANNEL_SETTINGS_TABS = ["overview", "permissions"] as const;
 export type ChannelSettingsTab = (typeof CHANNEL_SETTINGS_TABS)[number];
 
-export const CHANNEL_SETTINGS_TITLES: Record<ChannelSettingsTab, string> = {
-  overview: "Обзор",
-  permissions: "Права доступа",
-};
+export const CHANNEL_SETTINGS_TITLES = textTable<ChannelSettingsTab>({
+  overview: () => t("guild:channelTabs.overview"),
+  permissions: () => t("guild:channelTabs.permissions"),
+});
 
 /**
  * The channel settings sections `userId` may open: the overview with

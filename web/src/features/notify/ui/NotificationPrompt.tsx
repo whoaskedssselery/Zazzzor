@@ -1,4 +1,5 @@
 import { Bell, X } from "lucide-react";
+import { t } from "@/shared/i18n";
 import { Button, IconButton } from "@/shared/ui";
 import { useNotificationPermission } from "../model/permission";
 import { setNotifyPrefs, useNotifyPrefs } from "../model/prefs";
@@ -17,11 +18,11 @@ export const NotificationPrompt = () => {
   };
   return (
     <section
-      aria-label="Уведомления на рабочем столе"
+      aria-label={t("notify:promptLabel")}
       className="flex shrink-0 items-center gap-3 border-b border-border bg-accent px-4 py-1.5 text-sm font-medium text-on-accent"
     >
       <Bell aria-hidden className="size-4 shrink-0 max-sm:hidden" />
-      <p className="min-w-0 flex-1">Включите уведомления, чтобы не пропускать упоминания, пока Zazzzor в фоне.</p>
+      <p className="min-w-0 flex-1">{t("notify:promptText")}</p>
       <Button
         size="sm"
         variant="secondary"
@@ -30,11 +31,11 @@ export const NotificationPrompt = () => {
           void request().then(dismiss);
         }}
       >
-        Включить
+        {t("notify:turnOn")}
       </Button>
       <IconButton
         size="sm"
-        label="Не сейчас"
+        label={t("notify:notNow")}
         icon={X}
         className="text-on-accent hover:bg-[color-mix(in_srgb,var(--on-accent)_12%,transparent)] hover:text-on-accent"
         onClick={dismiss}

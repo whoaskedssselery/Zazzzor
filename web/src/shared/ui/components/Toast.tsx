@@ -1,6 +1,7 @@
 import { CircleAlert, CircleCheck, Info, type LucideIcon, X } from "lucide-react";
 import { Toast as ToastPrimitive } from "radix-ui";
 import { createContext, type ReactNode, use, useCallback, useMemo, useRef, useState } from "react";
+import { t } from "@/shared/i18n";
 import { cn } from "../cn";
 
 export type ToastTone = "info" | "error" | "success";
@@ -52,27 +53,27 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <ToastContext value={api}>
-      <ToastPrimitive.Provider swipeDirection="down" label="Уведомление">
+      <ToastPrimitive.Provider swipeDirection="down" label={t("common:toast.label")}>
         {children}
-        {items.map((t) => {
-          const { icon: Icon, className } = tones[t.tone];
+        {items.map((toast) => {
+          const { icon: Icon, className } = tones[toast.tone];
           return (
             <ToastPrimitive.Root
-              key={t.id}
-              open={t.open}
-              duration={t.tone === "error" ? 8000 : 4000}
-              type={t.tone === "error" ? "foreground" : "background"}
+              key={toast.id}
+              open={toast.open}
+              duration={toast.tone === "error" ? 8000 : 4000}
+              type={toast.tone === "error" ? "foreground" : "background"}
               onOpenChange={(open) => {
-                if (!open) close(t.id);
+                if (!open) close(toast.id);
               }}
               className="flex w-full animate-rise-in items-center gap-3 rounded-lg bg-overlay py-2.5 pr-2 pl-3.5 text-fg shadow-float ring-1 ring-border data-[state=closed]:animate-[zz-fade-out_var(--duration-fast)_ease-in_forwards] data-[swipe=move]:translate-y-(--radix-toast-swipe-move-y)"
             >
               <Icon aria-hidden className={cn("size-5 shrink-0", className)} strokeWidth={2} />
               <ToastPrimitive.Description data-toast-text className="min-w-0 flex-1 text-sm font-medium">
-                {t.text}
+                {toast.text}
               </ToastPrimitive.Description>
               <ToastPrimitive.Close
-                aria-label="Скрыть уведомление"
+                aria-label={t("common:toast.dismiss")}
                 className="inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-hover hover:text-fg"
               >
                 <X aria-hidden className="size-4" />
@@ -81,7 +82,7 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
           );
         })}
         <ToastPrimitive.Viewport
-          label="Уведомления ({hotkey})"
+          label={t("common:toast.viewport")}
           className="fixed bottom-6 left-1/2 z-(--z-toast) flex w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 flex-col gap-2 outline-none"
         />
       </ToastPrimitive.Provider>

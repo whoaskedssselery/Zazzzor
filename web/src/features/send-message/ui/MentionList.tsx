@@ -1,4 +1,5 @@
 import { AtSign } from "lucide-react";
+import { t } from "@/shared/i18n";
 import { Avatar, cn, roleTextStyle } from "@/shared/ui";
 import type { MentionSuggestion } from "../model/mentions";
 
@@ -22,8 +23,8 @@ export const MentionList = ({
   onHover: (i: number) => void;
 }) => (
   <div className="absolute inset-x-0 bottom-full mb-2 animate-float overflow-hidden rounded-lg bg-overlay p-1.5 shadow-float ring-1 ring-border">
-    <p className="px-2 pt-1 pb-1.5 text-xs font-semibold text-fg-faint">Упомянуть</p>
-    <div id={MENTION_LIST_ID} role="listbox" aria-label="Кого упомянуть">
+    <p className="px-2 pt-1 pb-1.5 text-xs font-semibold text-fg-faint">{t("chat:send.mention")}</p>
+    <div id={MENTION_LIST_ID} role="listbox" aria-label={t("chat:send.whoToMention")}>
       {suggestions.map((s, i) => (
         // biome-ignore lint/a11y/useKeyWithClickEvents: the field drives the list through aria-activedescendant; the keys are handled there.
         <div

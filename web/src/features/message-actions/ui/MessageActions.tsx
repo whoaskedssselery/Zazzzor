@@ -2,6 +2,7 @@ import { Copy, Ellipsis, Hash, Pencil, Reply, SmilePlus, Trash2 } from "lucide-r
 import { type MouseEvent, type ReactNode, useRef, useState } from "react";
 import type { GuildEmoji } from "@/entities/guild";
 import type { Message } from "@/entities/message";
+import { t } from "@/shared/i18n";
 import { useMediaQuery } from "@/shared/lib";
 import {
   ContextMenu,
@@ -53,7 +54,7 @@ const useCopy = () => {
         toast.show({ text: done, tone: "success" });
       },
       () => {
-        toast.show({ text: "Не удалось скопировать", tone: "error" });
+        toast.show({ text: t("chat:copyFailed"), tone: "error" });
       },
     );
   };
@@ -79,30 +80,30 @@ const useItems = ({
 }: MessageActionHandlers): Item[] => {
   const copy = useCopy();
   const items: Item[] = [];
-  if (canReply) items.push({ key: "reply", label: "Ответить", icon: Reply, run: onReply });
-  if (canEdit) items.push({ key: "edit", label: "Изменить", icon: Pencil, run: onEdit });
+  if (canReply) items.push({ key: "reply", label: t("chat:reply"), icon: Reply, run: onReply });
+  if (canEdit) items.push({ key: "edit", label: t("chat:edit"), icon: Pencil, run: onEdit });
   items.push(
     {
       key: "copy-text",
-      label: "Копировать текст",
+      label: t("chat:copyText"),
       icon: Copy,
       run: () => {
-        copy(message.content, "Текст скопирован");
+        copy(message.content, t("chat:textCopied"));
       },
     },
     {
       key: "copy-id",
-      label: "Копировать ID",
+      label: t("chat:copyId"),
       icon: Hash,
       run: () => {
-        copy(message.id, "ID скопирован");
+        copy(message.id, t("chat:idCopied"));
       },
     },
   );
   if (canDelete) {
     items.push({
       key: "delete",
-      label: "Удалить",
+      label: t("chat:delete"),
       icon: Trash2,
       danger: true,
       run: (e) => {
@@ -124,7 +125,7 @@ export const MessageToolbar = (props: MessageActionHandlers) => {
     <div className="absolute -top-5 right-4 z-10 hidden items-center gap-0.5 rounded-md bg-overlay p-1 shadow-float group-focus-within:flex group-hover:flex has-[[data-state=open]]:flex">
       {props.onReact && (
         <EmojiPicker onPick={props.onReact} emojis={props.emojis}>
-          <IconButton label="Добавить реакцию" icon={SmilePlus} />
+          <IconButton label={t("chat:addReaction")} icon={SmilePlus} />
         </EmojiPicker>
       )}
       {quick.map((i) => (
@@ -140,7 +141,7 @@ export const MessageToolbar = (props: MessageActionHandlers) => {
       ))}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <IconButton label="Ещё" icon={Ellipsis} />
+          <IconButton label={t("chat:more")} icon={Ellipsis} />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {items.map((i) => (
@@ -214,7 +215,7 @@ const ActionSheet = ({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="bottom"
-        title="Действия с сообщением"
+        title={t("chat:messageActions")}
         className="flex-col bg-overlay"
         onCloseAutoFocus={onCloseAutoFocus}
       >
@@ -226,7 +227,7 @@ const ActionSheet = ({
                 <button
                   key={emoji}
                   type="button"
-                  aria-label={`Реакция ${emojiLabel(emoji, emojis)}`}
+                  aria-label={t("chat:reactionOf", { emoji: emojiLabel(emoji, emojis) })}
                   className="flex size-12 cursor-pointer items-center justify-center rounded-full bg-control text-2xl leading-none"
                   onClick={() => {
                     rememberEmoji(emoji);
@@ -239,7 +240,7 @@ const ActionSheet = ({
               ))}
               <button
                 type="button"
-                aria-label="Ещё реакции"
+                aria-label={t("chat:moreReactions")}
                 className="flex size-12 cursor-pointer items-center justify-center rounded-full bg-control text-fg-muted"
                 onClick={onMore}
               >
@@ -353,11 +354,11 @@ export const MessageContextMenu = ({ children, ...props }: MessageActionHandlers
         >
           {react && (
             <>
-              <ContextMenuGroup aria-label="Быстрые реакции" className="flex gap-0.5 pb-1">
+              <ContextMenuGroup aria-label={t("chat:quickReactions")} className="flex gap-0.5 pb-1">
                 {quickReactions(props.emojis).map((emoji) => (
                   <ContextMenuItem
                     key={emoji}
-                    aria-label={`Реакция ${emojiLabel(emoji, props.emojis)}`}
+                    aria-label={t("chat:reactionOf", { emoji: emojiLabel(emoji, props.emojis) })}
                     className="size-9 justify-center px-0 text-xl leading-none"
                     onSelect={() => {
                       pick(emoji);
@@ -372,7 +373,7 @@ export const MessageContextMenu = ({ children, ...props }: MessageActionHandlers
                   toPicker.current = true;
                 }}
               >
-                Ещё реакции
+                {t("chat:moreReactions")}
                 <SmilePlus aria-hidden />
               </ContextMenuItem>
               <ContextMenuSeparator />

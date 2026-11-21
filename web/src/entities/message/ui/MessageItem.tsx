@@ -1,5 +1,6 @@
 import { CornerUpLeft } from "lucide-react";
 import type { ReactNode } from "react";
+import { t } from "@/shared/i18n";
 import { formatMessageTime, Markdown, MarkdownLine, type MentionNames } from "@/shared/lib";
 import { Avatar, cn, roleTextStyle, Tooltip } from "@/shared/ui";
 import type { Attachment } from "../model/attachment";
@@ -15,8 +16,8 @@ export interface AuthorView {
   avatarUrl: string | null;
 }
 
-export const DELETED_USER = "Удалённый пользователь";
-export const REPLY_DELETED = "Исходное сообщение удалено";
+export const deletedUserText = (): string => t("chat:deletedUser");
+export const replyDeletedText = (): string => t("chat:replyDeleted");
 
 const pad = (n: number) => String(n).padStart(2, "0");
 /** «21:04», the time beside a message that continues a group. */
@@ -72,12 +73,12 @@ const ReplyPreview = ({
   const original = message.referenced_message;
   const body =
     original === null ? (
-      <span className="truncate italic">{REPLY_DELETED}</span>
+      <span className="truncate italic">{replyDeletedText()}</span>
     ) : (
       <>
-        <Avatar name={author?.name ?? DELETED_USER} src={author?.avatarUrl} size={20} />
+        <Avatar name={author?.name ?? deletedUserText()} src={author?.avatarUrl} size={20} />
         <bdi className="role-text shrink-0 font-semibold" style={roleTextStyle(author?.color ?? 0)}>
-          @{author?.name ?? DELETED_USER}
+          @{author?.name ?? deletedUserText()}
         </bdi>
         <span className="truncate">
           <MarkdownLine source={original.content} {...(mentions === undefined ? {} : { mentions })} />
@@ -93,7 +94,7 @@ const ReplyPreview = ({
       {original !== null && onJump ? (
         <button
           type="button"
-          aria-label="Перейти к исходному сообщению"
+          aria-label={t("chat:jumpToReply")}
           className="flex min-w-0 cursor-pointer items-center gap-1.5 hover:text-fg"
           onClick={onJump}
         >
@@ -135,7 +136,7 @@ export const MessageItem = ({
   renderName = (n) => n,
 }: MessageItemProps) => {
   const sent = new Date(message.created_at);
-  const name = author?.name ?? DELETED_USER;
+  const name = author?.name ?? deletedUserText();
   const reply = message.reply_to_id !== null;
   const edited = message.edited_at === null ? null : new Date(message.edited_at);
   const body = editor ?? (
@@ -147,7 +148,7 @@ export const MessageItem = ({
           edited && (
             <Tooltip content={formatMessageTime(edited, now)}>
               <button type="button" className="ml-1 cursor-default align-baseline text-xs text-fg-faint">
-                (изменено)
+                {t("chat:edited")}
               </button>
             </Tooltip>
           )

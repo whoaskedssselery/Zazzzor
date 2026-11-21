@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { safeNext, setSignedIn } from "@/entities/session";
 import { api, unwrap } from "@/shared/api";
+import { t } from "@/shared/i18n";
 import { Button, Field, FormAlert, Input } from "@/shared/ui";
 import { isFieldOf, type LoginValues, loginSchema, lowerCaseInput, showRequestError } from "../model/form";
 
@@ -48,7 +49,7 @@ export const LoginForm = ({ next }: { next?: string | undefined }) => {
     <>
       {alert && <FormAlert>{alert}</FormAlert>}
       <form noValidate onSubmit={(e) => void onSubmit(e)} className="flex flex-col gap-5">
-        <Field htmlFor="login-username" label="Логин" error={errors.username?.message}>
+        <Field htmlFor="login-username" label={t("auth:username")} error={errors.username?.message}>
           <Input
             {...username}
             onChange={(e) => {
@@ -62,17 +63,17 @@ export const LoginForm = ({ next }: { next?: string | undefined }) => {
             autoFocus
           />
         </Field>
-        <Field htmlFor="login-password" label="Пароль" error={errors.password?.message}>
+        <Field htmlFor="login-password" label={t("auth:password")} error={errors.password?.message}>
           <Input {...register("password")} type="password" autoComplete="current-password" />
         </Field>
         <Button type="submit" size="lg" loading={isSubmitting} className="mt-1 w-full">
-          Войти
+          {t("auth:signIn")}
         </Button>
       </form>
       <p className="mt-4 text-sm text-fg-muted">
-        Нет учётной записи?{" "}
+        {t("auth:noAccount")}{" "}
         <Link to="/register" search={{ next }} className={linkClass}>
-          Зарегистрироваться
+          {t("auth:register")}
         </Link>
       </p>
     </>

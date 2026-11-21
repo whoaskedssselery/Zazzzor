@@ -1,0 +1,337 @@
+{
+  "presence": {
+    "online": "Online",
+    "idle": "Idle",
+    "dnd": "Do not disturb",
+    "offline": "Offline"
+  },
+  "onlyYou": "Only you",
+  "noSuchUser": "There is no user with that name. Check the spelling.",
+  "settingsTabs": {
+    "overview": "Overview",
+    "roles": "Roles",
+    "emoji": "Emoji",
+    "members": "Members",
+    "bans": "Bans",
+    "invites": "Invites",
+    "audit": "Audit log"
+  },
+  "channelTabs": {
+    "overview": "Overview",
+    "permissions": "Permissions"
+  },
+  "permissionGroups": {
+    "general": "General",
+    "members": "Members",
+    "text": "Text channels",
+    "voice": "Voice channels",
+    "server": "Server"
+  },
+  "permissions": {
+    "VIEW_CHANNEL": {
+      "name": "View channels",
+      "description": "See channels and read their messages as they arrive."
+    },
+    "MANAGE_CHANNELS": {
+      "name": "Manage channels",
+      "description": "Create, rename, move and delete channels."
+    },
+    "MANAGE_ROLES": {
+      "name": "Manage roles",
+      "description": "Create roles below their own highest one and change channel permissions."
+    },
+    "MANAGE_EXPRESSIONS": {
+      "name": "Manage emoji",
+      "description": "Upload, rename and delete the server's emoji."
+    },
+    "VIEW_AUDIT_LOG": {
+      "name": "View audit log",
+      "description": "See who kicked and banned members and changed roles, channels, invites and emoji."
+    },
+    "CREATE_INVITE": {
+      "name": "Create invites",
+      "description": "Invite new members to the server."
+    },
+    "CHANGE_NICKNAME": {
+      "name": "Change own nickname",
+      "description": "Set their own nickname on this server."
+    },
+    "MANAGE_NICKNAMES": {
+      "name": "Manage nicknames",
+      "description": "Change other members' nicknames."
+    },
+    "KICK_MEMBERS": {
+      "name": "Kick members",
+      "description": "Remove members below their role from the server."
+    },
+    "BAN_MEMBERS": {
+      "name": "Ban members",
+      "description": "Remove members below their role with no way back."
+    },
+    "SEND_MESSAGES": {
+      "name": "Send messages",
+      "description": "Write in text channels."
+    },
+    "ATTACH_FILES": {
+      "name": "Attach files",
+      "description": "Send images and files."
+    },
+    "ADD_REACTIONS": {
+      "name": "Add reactions",
+      "description": "Add new reactions. Joining a reaction already there needs no permission."
+    },
+    "MENTION_EVERYONE": {
+      "name": "Mention @everyone",
+      "description": "Mention all members at once."
+    },
+    "MANAGE_MESSAGES": {
+      "name": "Manage messages",
+      "description": "Delete other members' messages."
+    },
+    "READ_MESSAGE_HISTORY": {
+      "name": "Read message history",
+      "description": "See messages sent before they joined the channel."
+    },
+    "CONNECT": {
+      "name": "Connect",
+      "description": "Join voice channels."
+    },
+    "SPEAK": {
+      "name": "Speak",
+      "description": "Turn on the microphone in voice channels."
+    },
+    "STREAM": {
+      "name": "Share screen",
+      "description": "Share a screen or a window in a voice channel."
+    },
+    "USE_VOICE_ACTIVITY": {
+      "name": "Voice activity",
+      "description": "Speak without holding a key."
+    },
+    "MUTE_MEMBERS": {
+      "name": "Mute members",
+      "description": "Mute others in voice channels."
+    },
+    "DEAFEN_MEMBERS": {
+      "name": "Deafen members",
+      "description": "Cut others' sound in voice channels."
+    },
+    "MOVE_MEMBERS": {
+      "name": "Move members",
+      "description": "Move others between voice channels and disconnect them."
+    },
+    "MANAGE_GUILD": {
+      "name": "Manage server",
+      "description": "Change the name and icon, see and delete invites."
+    },
+    "ADMINISTRATOR": {
+      "name": "Administrator",
+      "description": "Every permission and access to every channel. Dangerous: give it only to those you trust."
+    }
+  },
+  "createChannel": {
+    "nameRule": "Name: 1 to 100 characters.",
+    "text": "Text",
+    "voice": "Voice",
+    "textHint": "Messages, links, images",
+    "voiceHint": "Voice, video and screen sharing",
+    "createCategory": "Create category",
+    "createChannel": "Create channel",
+    "inCategory": "In the “{{name}}” category",
+    "create": "Create",
+    "type": "Channel type",
+    "categoryName": "Category name",
+    "channelName": "Channel name"
+  },
+  "createGuild": {
+    "nameRule": "Name: 2 to 100 characters.",
+    "createdLate": "The server “{{name}}” was created, but the connection dropped. It will show up in the server list once the connection is back.",
+    "title": "Create a server",
+    "text": "A place for you and your friends. You'll set up channels and roles later.",
+    "name": "Server name"
+  },
+  "invite": {
+    "30m": "30 minutes",
+    "1h": "1 hour",
+    "6h": "6 hours",
+    "12h": "12 hours",
+    "1d": "1 day",
+    "7d": "7 days",
+    "never": "Never",
+    "noLimit": "No limit",
+    "copyFailed": "Couldn't copy: the link is selected, copy it by hand.",
+    "noExpiry": "The link won't expire",
+    "expiresIn": "The link will stop working in {{life}}",
+    "end": "{{when}}.",
+    "orAfter_one": "{{when}} or after {{count}} use.",
+    "orAfter_other": "{{when}} or after {{count}} uses.",
+    "title": "Invite friends to #{{channel}}",
+    "text": "Friends will join the server, straight into #{{channel}}.",
+    "sendLink": "Send a friend an invite link",
+    "creating": "Creating a link…",
+    "edit": "Edit invite link",
+    "lifetime": "Expires after",
+    "uses": "Max uses",
+    "createNew": "Create a new link",
+    "retry": "Try again"
+  },
+  "deleteGuild": {
+    "button": "Delete server",
+    "deleted": "Server “{{name}}” deleted",
+    "title": "Delete “{{name}}”?",
+    "text": "All channels and messages will be gone forever, and members will lose access. This can't be undone.",
+    "typeName": "Type the server's name"
+  },
+  "join": {
+    "invalid": "The invite is invalid",
+    "banned": "You are banned from this server",
+    "late": "You joined the server, but the connection dropped. It will show up in the server list once the connection is back.",
+    "notAnInvite": "Paste a link like https://site/invite/AbCd1234 or a code of 8 letters and digits.",
+    "title": "Join a server",
+    "text": "Enter the invite you were sent.",
+    "join": "Join",
+    "label": "Invite link or code",
+    "hint": "For example: https://zazzzor.example/invite/AbCd1234 or AbCd1234"
+  },
+  "leave": {
+    "done": "You left the server “{{name}}”",
+    "title": "Leave “{{name}}”?",
+    "text": "You can come back only with a new invite.",
+    "confirm": "Leave server"
+  },
+  "bans": {
+    "lifted": "Ban lifted",
+    "none": "Nobody is banned.",
+    "list": "Banned",
+    "noReason": "No reason",
+    "since": "Banned {{date}}",
+    "unban": "Unban",
+    "title": "Bans",
+    "unbanTitle": "Unban {{name}}?",
+    "unbanText": "They will be able to come back to the server with an invite."
+  },
+  "emoji": {
+    "tooLarge": "The emoji file is larger than 256 KB.",
+    "nameRule": "Name: 2 to 32 Latin letters, digits or _.",
+    "nameOf": "Name of emoji :{{name}}:",
+    "deleteOf": "Delete :{{name}}:",
+    "count": "{{count}} of {{max}}",
+    "noneYet": "None yet.",
+    "added": "Emoji :{{name}}: added",
+    "title": "Emoji",
+    "introBefore": "The server's own emoji: members put them in messages as",
+    "introCode": ":name:",
+    "introAfter": "and in reactions. PNG, JPEG, GIF or WebP up to 256 KB. The image is shrunk to 128×128; an animated GIF must already be no larger.",
+    "upload": "Upload emoji",
+    "static": "Static",
+    "animated": "Animated",
+    "deleteTitle": "Delete :{{name}}:?",
+    "deleteText": "It will disappear from messages and the emoji picker. Reactions with it stay, shown as a name without a picture.",
+    "delete": "Delete"
+  },
+  "settingsNav": "Server settings",
+  "invites": {
+    "uses": "{{uses}} of {{max}}",
+    "never": "never",
+    "until": "until {{date}}",
+    "none": "No invites.",
+    "inviter": "Invited by",
+    "code": "Code",
+    "usesHeader": "Uses",
+    "expires": "Expires",
+    "delete": "Delete",
+    "deleteOf": "Delete invite {{code}}",
+    "title": "Invites",
+    "more": "Show more"
+  },
+  "members": {
+    "title": "Members",
+    "search": "Search members",
+    "searchPlaceholder": "Search by name",
+    "none": "Nobody found.",
+    "list": "Server members",
+    "owner": "owner",
+    "since": "On the server since {{date}}",
+    "roles": "Roles"
+  },
+  "overview": {
+    "nameRule": "Name: 2 to 100 characters.",
+    "saved": "Changes saved",
+    "title": "Server overview",
+    "changeIcon": "Change icon",
+    "iconRule": "A square of at least 128×128, up to 4 MB.",
+    "name": "Server name"
+  },
+  "roles": {
+    "notYours": "You don't have this permission",
+    "locked": "This role is not below your highest: you can't change it.",
+    "nameRule": "Role name: 1 to 100 characters.",
+    "color": "Role colour",
+    "noColor": "No colour",
+    "customColor": "Custom colour",
+    "colorOf": "Colour {{color}}",
+    "editTitle": "Edit role — {{name}}",
+    "settings": "Role settings",
+    "display": "Display",
+    "permissions": "Permissions",
+    "name": "Role name",
+    "hoist": "Show members with this role separately",
+    "mentionable": "Allow anyone to mention this role",
+    "delete": "Delete role",
+    "deleteTitle": "Delete the role “{{name}}”?",
+    "deleteText": "Members will lose it, and channel permissions for it will be gone.",
+    "newRole": "new role",
+    "lockedLabel": "Role not below your highest",
+    "title": "Roles",
+    "order": "Roles higher in the list outrank lower ones. Drag them, or move them with Alt+↑ and Alt+↓.",
+    "create": "Create role",
+    "list": "Server roles",
+    "pick": "Pick a role on the left.",
+    "unsavedText": "The role's unsaved changes will be lost."
+  },
+  "channel": {
+    "nameRule": "Name: 1 to 100 characters.",
+    "topicRule": "Topic: up to 1024 characters.",
+    "overview": "Overview",
+    "categoryName": "Category name",
+    "channelName": "Channel name",
+    "topic": "Channel topic",
+    "topicHint": "Shown in the channel's header.",
+    "deleteCategory": "Delete category",
+    "deleteChannel": "Delete channel",
+    "deleteCategoryTitle": "Delete the category “{{name}}”?",
+    "deleteChannelTitle": "Delete #{{name}}?",
+    "deleteCategoryText": "Its channels will stay and move to the top of the list.",
+    "deleteChannelText": "All of the channel's messages will be gone forever.",
+    "synced": "Synced with the category",
+    "notSynced": "Permissions differ from the category",
+    "deny": "Deny",
+    "inherit": "Inherit",
+    "allow": "Allow",
+    "permissions": "Permissions",
+    "sync": "Sync",
+    "addTarget": "Add a role or member",
+    "roles": "Roles",
+    "members": "Members",
+    "targets": "Roles and members with permissions",
+    "memberTag": "member",
+    "removeTarget": "Remove",
+    "roleLocked": "This role is not below your highest: you can't change its permissions.",
+    "notYours": "You don't have this permission"
+  },
+  "channelLost": "The channel is no longer available",
+  "guildLost": "The server is no longer available",
+  "searchServer": "Search the server",
+  "noTextChannels": "This server has no text channels available to you.",
+  "invitePage": {
+    "loading": "Loading the invite…",
+    "home": "Go home",
+    "invites": "invites you to the server",
+    "channel": "Channel",
+    "already": "You are already on this server",
+    "open": "Open",
+    "accept": "Accept invite",
+    "deadText": "It may have expired or run out of uses. Ask for a new one.",
+    "failed": "Couldn't open the invite"
+  }
+}

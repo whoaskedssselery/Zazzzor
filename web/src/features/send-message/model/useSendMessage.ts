@@ -14,13 +14,19 @@ import {
   upsertMessage,
 } from "@/entities/message";
 import { ApiError, api, errorText, unwrap } from "@/shared/api";
+import { onLanguage, t } from "@/shared/i18n";
 
 /** How long a send waits for the gateway to come back before it fails. */
 export const SEND_WAIT_MS = 10_000;
 
-export const TOO_FAST = "Слишком часто, подождите";
-export const OFFLINE = "Нет подключения к серверу";
-export const MAYBE_SENT = "сообщение могло уже дойти, проверьте чат выше";
+export let TOO_FAST = "";
+export let OFFLINE = "";
+export let MAYBE_SENT = "";
+onLanguage(() => {
+  TOO_FAST = t("chat:send.tooFast");
+  OFFLINE = t("chat:send.offline");
+  MAYBE_SENT = t("chat:send.maybeSent");
+});
 
 /**
  * How long a retry with the message's nonce cannot send it twice: the

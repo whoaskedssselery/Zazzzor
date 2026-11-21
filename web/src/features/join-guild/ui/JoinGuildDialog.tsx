@@ -1,8 +1,7 @@
 import { type SubmitEvent, useState } from "react";
+import { t } from "@/shared/i18n";
 import { Button, Dialog, DialogClose, DialogContent, Field, FormAlert, Input } from "@/shared/ui";
 import { inviteErrorText, JOINED_LATE, parseInviteCode, previewInvite, useJoinInvite } from "../model/invite";
-
-const NOT_AN_INVITE = "Вставьте ссылку вида https://сайт/invite/AbCd1234 или код из 8 букв и цифр.";
 
 interface JoinGuildDialogProps {
   open: boolean;
@@ -40,7 +39,7 @@ const JoinForm = ({ onDone }: { onDone: () => void }) => {
     setAlert(null);
     const code = parseInviteCode(input);
     if (code === null) {
-      setFieldError(NOT_AN_INVITE);
+      setFieldError(t("guild:join.notAnInvite"));
       return;
     }
     setFieldError(undefined);
@@ -57,28 +56,23 @@ const JoinForm = ({ onDone }: { onDone: () => void }) => {
 
   return (
     <DialogContent
-      title="Присоединиться к серверу"
-      description="Введите приглашение, которое вам прислали."
+      title={t("guild:join.title")}
+      description={t("guild:join.text")}
       size="sm"
       footer={
         <>
           <DialogClose asChild>
-            <Button variant="ghost">Отмена</Button>
+            <Button variant="ghost">{t("common:cancel")}</Button>
           </DialogClose>
           <Button type="submit" form={FORM_ID} loading={busy}>
-            Присоединиться
+            {t("guild:join.join")}
           </Button>
         </>
       }
     >
       {message !== null && <FormAlert>{message}</FormAlert>}
       <form id={FORM_ID} noValidate onSubmit={(e) => void submit(e)}>
-        <Field
-          htmlFor="join-guild-invite"
-          label="Ссылка-приглашение или код"
-          hint="Например: https://zazzzor.example/invite/AbCd1234 или AbCd1234"
-          error={fieldError}
-        >
+        <Field htmlFor="join-guild-invite" label={t("guild:join.label")} hint={t("guild:join.hint")} error={fieldError}>
           <Input
             value={input}
             onChange={(e) => {

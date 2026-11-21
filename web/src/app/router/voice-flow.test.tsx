@@ -321,7 +321,7 @@ describe("the voice channel screen", () => {
     act(() => {
       document.dispatchEvent(new Event("fullscreenchange"));
     });
-    await user.click(within(front).getByRole("button", { name: "Свернуть" }));
+    await user.click(within(front).getByRole("button", { name: "Выйти из полноэкранного режима" }));
     expect(exit).toHaveBeenCalledTimes(1);
     Object.defineProperty(document, "fullscreenElement", { configurable: true, get: () => null });
     act(() => {

@@ -13,6 +13,7 @@ import {
   useGuilds,
   useUpdateNotify,
 } from "@/entities/guild";
+import { currentLanguage, t } from "@/shared/i18n";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -31,31 +32,54 @@ import {
 
 const MINUTE = 60_000;
 
+const span = (label: () => string, ms: number | null) => ({
+  get label() {
+    return label();
+  },
+  ms,
+});
+
 /** How long a mute lasts, as Discord offers; null is until the user turns it off. */
 export const MUTE_SPANS: { label: string; ms: number | null }[] = [
-  { label: "На 15 минут", ms: 15 * MINUTE },
-  { label: "На 1 час", ms: 60 * MINUTE },
-  { label: "На 3 часа", ms: 3 * 60 * MINUTE },
-  { label: "На 8 часов", ms: 8 * 60 * MINUTE },
-  { label: "На 24 часа", ms: 24 * 60 * MINUTE },
-  { label: "Пока не включу", ms: null },
+  span(() => t("notify:span15m"), 15 * MINUTE),
+  span(() => t("notify:span1h"), 60 * MINUTE),
+  span(() => t("notify:span3h"), 3 * 60 * MINUTE),
+  span(() => t("notify:span8h"), 8 * 60 * MINUTE),
+  span(() => t("notify:span24h"), 24 * 60 * MINUTE),
+  span(() => t("notify:spanForever"), null),
 ];
 
 const LEVELS = [
-  { value: NOTIFY_LEVEL.ALL, label: "Все сообщения" },
-  { value: NOTIFY_LEVEL.MENTIONS, label: "Только @упоминания" },
-  { value: NOTIFY_LEVEL.NOTHING, label: "Ничего" },
+  {
+    value: NOTIFY_LEVEL.ALL,
+    get label() {
+      return t("notify:levelAll");
+    },
+  },
+  {
+    value: NOTIFY_LEVEL.MENTIONS,
+    get label() {
+      return t("notify:levelMentions");
+    },
+  },
+  {
+    value: NOTIFY_LEVEL.NOTHING,
+    get label() {
+      return t("notify:levelNothing");
+    },
+  },
 ] as const;
 
 const levelLabel = (level: number): string => LEVELS.find((l) => l.value === level)?.label ?? "";
 
 /** «до 18:30» today, «до 13 ноября, 18:30» later; «пока не включите» for a mute without an end. */
 export const muteEndText = (until: string | null, now = new Date()): string => {
-  if (until === null) return "пока не включите";
+  if (until === null) return t("notify:untilOn");
   const end = new Date(until);
   const sameDay = end.toDateString() === now.toDateString();
-  const time = end.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-  return sameDay ? `до ${time}` : `до ${end.toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}, ${time}`;
+  const time = end.toLocaleTimeString(currentLanguage(), { hour: "2-digit", minute: "2-digit" });
+  const day = end.toLocaleDateString(currentLanguage(), { day: "numeric", month: "long" });
+  return t("notify:until", { when: sameDay ? time : `${day}, ${time}` });
 };
 
 interface Where {
@@ -85,20 +109,25 @@ export const NotifyItems = ({ guildId, channelId }: Where) => {
   const scopeMuted = isScopeMuted(s, guildId);
   const own = channelId === undefined ? undefined : overrideOf(settings, channelId);
   const ownMuted = channelId !== undefined && isChannelOwnMuted(s, guildId, channelId);
-  const what = channelId === undefined ? "сервер" : guildId === null ? "беседу" : "канал";
+  const muteWhat =
+    channelId === undefined
+      ? t("notify:muteServer")
+      : guildId === null
+        ? t("notify:muteConversation")
+        : t("notify:muteChannel");
   const level = channelId === undefined ? settings.message_notifications : (own?.message_notifications ?? 3);
 
   let mute: ReactNode;
   if (scopeMuted && channelId !== undefined && guildId !== null) {
     mute = (
       <>
-        <DropdownMenuLabel>Сервер заглушён {muteEndText(settings.mute_until)}</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("notify:serverMuted", { until: muteEndText(settings.mute_until) })}</DropdownMenuLabel>
         <DropdownMenuItem
           onSelect={() => {
             send({ muted: false });
           }}
         >
-          Включить звук сервера
+          {t("notify:unmuteServer")}
         </DropdownMenuItem>
       </>
     );
@@ -106,13 +135,13 @@ export const NotifyItems = ({ guildId, channelId }: Where) => {
     const until = channelId === undefined ? settings.mute_until : (own?.mute_until ?? null);
     mute = (
       <>
-        <DropdownMenuLabel>Заглушено {muteEndText(until)}</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("notify:muted", { until: muteEndText(until) })}</DropdownMenuLabel>
         <DropdownMenuItem
           onSelect={() => {
             send(forChannel({ muted: false }));
           }}
         >
-          Включить звук
+          {t("notify:unmute")}
           <Bell aria-hidden />
         </DropdownMenuItem>
       </>
@@ -120,7 +149,7 @@ export const NotifyItems = ({ guildId, channelId }: Where) => {
   } else {
     mute = (
       <DropdownMenuSub>
-        <DropdownMenuSubTrigger>Заглушить {what}</DropdownMenuSubTrigger>
+        <DropdownMenuSubTrigger>{muteWhat}</DropdownMenuSubTrigger>
         <DropdownMenuSubContent>
           {MUTE_SPANS.map((span) => (
             <DropdownMenuItem
@@ -142,7 +171,7 @@ export const NotifyItems = ({ guildId, channelId }: Where) => {
     <>
       {mute}
       <DropdownMenuSeparator />
-      <DropdownMenuLabel>Уведомления</DropdownMenuLabel>
+      <DropdownMenuLabel>{t("notify:title")}</DropdownMenuLabel>
       <DropdownMenuRadioGroup
         value={String(level)}
         onValueChange={(v) => {
@@ -153,7 +182,7 @@ export const NotifyItems = ({ guildId, channelId }: Where) => {
       >
         {channelId !== undefined && (
           <DropdownMenuRadioItem value="3">
-            Как на сервере ({levelLabel(settings.message_notifications).toLowerCase()})
+            {t("notify:asServer", { level: levelLabel(settings.message_notifications).toLowerCase() })}
           </DropdownMenuRadioItem>
         )}
         {LEVELS.map((l) => (
@@ -171,7 +200,7 @@ export const NotifyItems = ({ guildId, channelId }: Where) => {
               send({ suppress_everyone: on });
             }}
           >
-            Скрывать @everyone и @here
+            {t("notify:suppressEveryone")}
           </DropdownMenuCheckboxItem>
         </>
       )}
@@ -188,7 +217,7 @@ export const NotifyButton = ({ guildId, channelId }: { guildId: string | null; c
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <IconButton
-          label={muted ? "Уведомления (заглушено)" : "Уведомления"}
+          label={muted ? t("notify:buttonMuted") : t("notify:title")}
           icon={quiet ? BellOff : Bell}
           tooltipSide="bottom"
         />

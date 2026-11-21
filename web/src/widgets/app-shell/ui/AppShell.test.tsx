@@ -13,7 +13,7 @@ const Shell = ({ channel = false }: { channel?: boolean }) => (
       </nav>
     }
     sidebar={
-      <nav aria-label="Каналы">
+      <nav data-channels aria-label="Каналы">
         {channel && (
           <a href="/channels/10/101" aria-current="page">
             общий

@@ -2,6 +2,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { type ReactNode, useMemo, useState } from "react";
 import type { GuildEntry } from "@/entities/guild";
 import { api, errorText, unwrap } from "@/shared/api";
+import { currentLanguage, t } from "@/shared/i18n";
 import { Avatar, Button, Select, type SelectOption, Skeleton } from "@/shared/ui";
 import {
   AUDIT_ACTIONS,
@@ -20,16 +21,27 @@ export const AUDIT_PAGE = 50;
 
 const ANY = "any";
 
-const timeFormat = new Intl.DateTimeFormat("ru-RU", {
-  day: "numeric",
-  month: "long",
-  hour: "2-digit",
-  minute: "2-digit",
-});
+const timeFormat = () =>
+  new Intl.DateTimeFormat(currentLanguage(), {
+    day: "numeric",
+    month: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
 const ACTION_OPTIONS: SelectOption[] = [
-  { value: ANY, label: "Все действия" },
-  ...AUDIT_ACTIONS.map(([n, title]) => ({ value: String(n), label: title })),
+  {
+    value: ANY,
+    get label() {
+      return t("audit:allActions");
+    },
+  },
+  ...AUDIT_ACTIONS.map((n) => ({
+    value: String(n),
+    get label() {
+      return actionTitle(n);
+    },
+  })),
 ];
 
 const useAuditLog = (guildId: string, actorId: string, action: string) =>
@@ -81,10 +93,12 @@ const Entry = ({ e, names, avatar }: { e: AuditEntry; names: AuditNames; avatar:
             ))}
           </ul>
         )}
-        {e.reason !== null && <p className="mt-0.5 text-sm break-words text-fg-muted">{`Причина: ${e.reason}`}</p>}
+        {e.reason !== null && (
+          <p className="mt-0.5 text-sm break-words text-fg-muted">{t("audit:reason", { reason: e.reason })}</p>
+        )}
         <p className="mt-0.5 text-xs text-fg-faint">
           <bdi>{who}</bdi>
-          {` · ${timeFormat.format(new Date(e.created_at))}`}
+          {` · ${timeFormat().format(new Date(e.created_at))}`}
         </p>
       </div>
     </li>
@@ -111,7 +125,7 @@ export const AuditTab = ({ entry }: { entry: GuildEntry }) => {
     const people = Object.values(entry.members)
       .map((m) => ({ value: m.user.id, label: m.nick ?? m.user.display_name }))
       .sort((a, b) => a.label.localeCompare(b.label, "ru"));
-    return [{ value: ANY, label: "Все участники" }, ...people];
+    return [{ value: ANY, label: t("audit:allMembers") }, ...people];
   }, [entry.members]);
 
   const entries = log.data?.pages.flatMap((p) => p.audit_log_entries) ?? [];
@@ -123,13 +137,13 @@ export const AuditTab = ({ entry }: { entry: GuildEntry }) => {
   } else if (entries.length === 0) {
     body = (
       <p className="text-base text-fg-muted">
-        {actorId === ANY && action === ANY ? "Пока ничего не происходило." : "Ничего не нашлось."}
+        {actorId === ANY && action === ANY ? t("audit:empty") : t("audit:none")}
       </p>
     );
   } else {
     body = (
       <>
-        <ul aria-label="Записи журнала" className="flex flex-col divide-y divide-border">
+        <ul aria-label={t("audit:entries")} className="flex flex-col divide-y divide-border">
           {entries.map((e) => {
             const id = e.user_id;
             const avatar =
@@ -146,7 +160,7 @@ export const AuditTab = ({ entry }: { entry: GuildEntry }) => {
               void log.fetchNextPage();
             }}
           >
-            Показать ещё
+            {t("audit:more")}
           </Button>
         )}
       </>
@@ -156,19 +170,19 @@ export const AuditTab = ({ entry }: { entry: GuildEntry }) => {
   return (
     <section aria-labelledby="audit-title">
       <h2 id="audit-title" className="mb-2 text-xl font-semibold">
-        Журнал действий
+        {t("audit:title")}
       </h2>
-      <p className="mb-5 text-sm text-fg-muted">Записи хранятся 90 дней.</p>
+      <p className="mb-5 text-sm text-fg-muted">{t("audit:kept")}</p>
       <div className="mb-4 flex flex-wrap gap-2">
         <Select
-          aria-label="Кто"
+          aria-label={t("audit:who")}
           className="min-w-48 flex-1"
           options={actors}
           value={actorId}
           onValueChange={setActorId}
         />
         <Select
-          aria-label="Действие"
+          aria-label={t("audit:actionFilter")}
           className="min-w-48 flex-1"
           options={ACTION_OPTIONS}
           value={action}

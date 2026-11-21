@@ -1,10 +1,11 @@
 import { Check, Copy } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { t } from "@/shared/i18n";
 import { Button } from "./Button";
 
 export type CopyState = "idle" | "copied" | "failed";
 
-export const COPIED = "Скопировано";
+export const copiedText = (): string => t("common:copied");
 /** How long the button says it copied before it reads «Копировать» again. */
 const SHOWN_MS = 2000;
 
@@ -72,10 +73,10 @@ export const CopyButton = ({
         onClick={onClick}
       >
         <Icon aria-hidden className="size-4" />
-        {copied ? COPIED : "Копировать"}
+        {copied ? copiedText() : t("common:copy")}
       </Button>
       <span role="status" className="sr-only">
-        {copied ? COPIED : ""}
+        {copied ? copiedText() : ""}
       </span>
     </>
   );

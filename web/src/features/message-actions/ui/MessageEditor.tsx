@@ -1,5 +1,6 @@
 import { type KeyboardEvent, useLayoutEffect, useRef, useState } from "react";
 import type { Message } from "@/entities/message";
+import { t } from "@/shared/i18n";
 import { runeLength, trimContent, useAutoHeight } from "@/shared/lib";
 import { cn } from "@/shared/ui";
 import { useEditMessage } from "../model/mutations";
@@ -53,7 +54,7 @@ export const MessageEditor = ({ message, onDone }: { message: Message; onDone: (
         ref={field}
         rows={1}
         value={text}
-        aria-label="Изменить сообщение"
+        aria-label={t("chat:editMessage")}
         aria-invalid={invalid || undefined}
         className={cn(
           "max-h-80 w-full resize-none rounded-lg bg-input px-4 py-2.5 text-base text-fg outline-none",
@@ -67,7 +68,7 @@ export const MessageEditor = ({ message, onDone }: { message: Message; onDone: (
       <p className="mt-1 text-xs text-fg-muted">
         Esc —{" "}
         <button type="button" className="cursor-pointer text-link hover:underline" onClick={onDone}>
-          отмена
+          {t("chat:editCancel")}
         </button>
         {" • "}Enter —{" "}
         <button
@@ -76,7 +77,7 @@ export const MessageEditor = ({ message, onDone }: { message: Message; onDone: (
           disabled={invalid}
           onClick={save}
         >
-          сохранить
+          {t("chat:editSave")}
         </button>
       </p>
     </div>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { parseChatEvent, useGatewayEvent } from "@/shared/api";
+import { t } from "@/shared/i18n";
 
 /** A typing notice shows this long unless renewed. */
 export const TYPING_SHOWN_MS = 10_000;
@@ -8,9 +9,9 @@ export const TYPING_SHOWN_MS = 10_000;
 export const typingText = (names: string[]): string | null => {
   const [a, b] = names;
   if (a === undefined) return null;
-  if (b === undefined) return `${a} печатает…`;
-  if (names.length === 2) return `${a} и ${b} печатают…`;
-  return "Несколько человек печатают…";
+  if (b === undefined) return t("chat:typingOne", { name: a });
+  if (names.length === 2) return t("chat:typingTwo", { a, b });
+  return t("chat:typingMany");
 };
 
 /**

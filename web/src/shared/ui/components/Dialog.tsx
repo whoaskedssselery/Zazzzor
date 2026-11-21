@@ -1,6 +1,7 @@
 import { X } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import type { ComponentProps, ReactNode } from "react";
+import { t } from "@/shared/i18n";
 import { cn } from "../cn";
 
 export const Dialog = DialogPrimitive.Root;
@@ -53,7 +54,7 @@ export const DialogContent = ({
           )}
         </div>
         <DialogPrimitive.Close
-          aria-label="Закрыть"
+          aria-label={t("common:close")}
           className="-mt-1 -mr-1 inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-hover hover:text-fg"
         >
           <X aria-hidden className="size-5" strokeWidth={1.75} />

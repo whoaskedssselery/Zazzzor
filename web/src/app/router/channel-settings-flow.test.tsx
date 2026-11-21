@@ -16,7 +16,6 @@ import {
   readyGateway,
   server,
 } from "@/shared/test";
-import { UNSAVED } from "@/shared/ui";
 import { NOT_SYNCED, SYNCED } from "@/widgets/channel-settings";
 
 const other = makeUser("1");
@@ -67,7 +66,7 @@ describe("channel settings", () => {
     await user.clear(name);
     await user.type(name, "болталка");
     await user.type(screen.getByRole("textbox", { name: "Тема канала" }), "  обо всём  ");
-    expect(screen.getByRole("region", { name: UNSAVED })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Есть несохранённые изменения" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Сохранить изменения" }));
     await waitFor(() => {
       expect(bodies).toEqual([{ name: "болталка", topic: "обо всём" }]);

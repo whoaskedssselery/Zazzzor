@@ -5,6 +5,7 @@ import { PRESENCE_LABEL, useConnectionStatus } from "@/entities/guild";
 import { useSession } from "@/entities/session";
 import { StatusMenu } from "@/features/edit-profile";
 import { useSelfSwitches } from "@/features/voice-call";
+import { t } from "@/shared/i18n";
 import { Avatar, cn, IconButton } from "@/shared/ui";
 
 export { MODERATOR_DEAFENED, MODERATOR_MUTED } from "@/features/voice-call";
@@ -24,17 +25,17 @@ export const UserPanel = () => {
   const { mic, sound } = useSelfSwitches();
   if (!user) return null;
   const shown = !connected || user.status === "invisible" ? "offline" : user.status;
-  const statusText = connected && user.status === "invisible" ? "Невидимка" : PRESENCE_LABEL[shown];
+  const statusText = connected && user.status === "invisible" ? t("shell:invisible") : PRESENCE_LABEL[shown];
   return (
     <section
-      aria-label="Ваш профиль"
+      aria-label={t("shell:yourProfile")}
       className="flex h-(--user-panel-height) shrink-0 items-center gap-1 bg-panel px-2"
       style={{ "--avatar-cutout": "var(--bg-panel)" } as CSSProperties}
     >
       <StatusMenu user={user}>
         <button
           type="button"
-          aria-label={`Статус: ${statusText}`}
+          aria-label={t("shell:statusOf", { status: statusText })}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md py-1 pr-1 pl-0.5 text-left transition-colors duration-(--duration-fast) hover:bg-hover data-[state=open]:bg-selected"
         >
           <Avatar name={user.display_name} src={user.avatar_url} size={32} status={shown} />
@@ -69,7 +70,7 @@ export const UserPanel = () => {
         onClick={sound.toggle}
       />
       <IconButton
-        label="Настройки пользователя"
+        label={t("shell:userSettings")}
         icon={Settings}
         onClick={() => {
           void navigate({ href: "/settings/profile" });

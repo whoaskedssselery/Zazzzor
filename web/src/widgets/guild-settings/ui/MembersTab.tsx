@@ -2,9 +2,11 @@ import { Search } from "lucide-react";
 import { useState } from "react";
 import { type GuildEntry, rolesOf, userDisplay } from "@/entities/guild";
 import { MemberMenu } from "@/features/manage-member";
+import { currentLanguage, t } from "@/shared/i18n";
 import { Avatar, Input, RoleColorDot, roleTextStyle } from "@/shared/ui";
 
-const joinedFormat = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+const joinedFormat = () =>
+  new Intl.DateTimeFormat(currentLanguage(), { day: "numeric", month: "long", year: "numeric" });
 
 /**
  * The members of a server with what the user may do to each (the «…»
@@ -28,7 +30,7 @@ export const MembersTab = ({ entry }: { entry: GuildEntry }) => {
   return (
     <section aria-labelledby="members-title">
       <h2 id="members-title" className="mb-5 text-xl font-semibold">
-        Участники
+        {t("guild:members.title")}
       </h2>
       <div className="relative mb-4">
         <Search
@@ -37,8 +39,8 @@ export const MembersTab = ({ entry }: { entry: GuildEntry }) => {
         />
         <Input
           type="search"
-          aria-label="Поиск участников"
-          placeholder="Поиск по имени"
+          aria-label={t("guild:members.search")}
+          placeholder={t("guild:members.searchPlaceholder")}
           className="pl-9"
           value={query}
           onChange={(e) => {
@@ -47,9 +49,9 @@ export const MembersTab = ({ entry }: { entry: GuildEntry }) => {
         />
       </div>
       {members.length === 0 ? (
-        <p className="text-base text-fg-muted">Никого не нашлось.</p>
+        <p className="text-base text-fg-muted">{t("guild:members.none")}</p>
       ) : (
-        <ul aria-label="Участники сервера" className="flex flex-col divide-y divide-border">
+        <ul aria-label={t("guild:members.list")} className="flex flex-col divide-y divide-border">
           {members.map(({ member, display }) => {
             const roles = rolesOf(entry, member);
             return (
@@ -62,12 +64,14 @@ export const MembersTab = ({ entry }: { entry: GuildEntry }) => {
                     </bdi>
                     <span className="truncate text-sm text-fg-muted">@{member.user.username}</span>
                     {member.user.id === entry.guild.owner_id && (
-                      <span className="shrink-0 text-xs text-fg-warning">владелец</span>
+                      <span className="shrink-0 text-xs text-fg-warning">{t("guild:members.owner")}</span>
                     )}
                   </p>
-                  <p className="text-xs text-fg-faint">{`На сервере с ${joinedFormat.format(new Date(member.joined_at))}`}</p>
+                  <p className="text-xs text-fg-faint">
+                    {t("guild:members.since", { date: joinedFormat().format(new Date(member.joined_at)) })}
+                  </p>
                   {roles.length > 0 && (
-                    <ul aria-label="Роли" className="mt-1 flex flex-wrap gap-1">
+                    <ul aria-label={t("guild:members.roles")} className="mt-1 flex flex-wrap gap-1">
                       {roles.map((r) => (
                         <li
                           key={r.id}

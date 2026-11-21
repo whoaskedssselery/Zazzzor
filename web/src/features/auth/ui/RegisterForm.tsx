@@ -5,6 +5,7 @@ import { type ReactNode, useState } from "react";
 import { useForm } from "react-hook-form";
 import { safeNext, setSignedIn } from "@/entities/session";
 import { ApiError, api, unwrap } from "@/shared/api";
+import { t } from "@/shared/i18n";
 import { trimContent } from "@/shared/lib";
 import { Button, Field, FormAlert, Input } from "@/shared/ui";
 import { isFieldOf, lowerCaseInput, type RegisterValues, registerSchema, showRequestError } from "../model/form";
@@ -54,9 +55,9 @@ export const RegisterForm = ({ next }: { next?: string | undefined }) => {
       setAlert(
         closed ? (
           <>
-            {text} Уже есть учётная запись?{" "}
+            {text} {t("auth:haveAccount")}{" "}
             <Link to="/login" search={{ next }} className={linkClass}>
-              Войти
+              {t("auth:signIn")}
             </Link>
           </>
         ) : (
@@ -74,16 +75,16 @@ export const RegisterForm = ({ next }: { next?: string | undefined }) => {
       <form noValidate onSubmit={(e) => void onSubmit(e)} className="flex flex-col gap-5">
         <Field
           htmlFor="register-display-name"
-          label="Отображаемое имя"
-          hint="Так вас увидят друзья. Можно оставить пустым."
+          label={t("auth:displayName")}
+          hint={t("auth:displayNameHint")}
           error={errors.display_name?.message}
         >
           <Input {...register("display_name")} autoComplete="nickname" autoFocus />
         </Field>
         <Field
           htmlFor="register-username"
-          label="Логин"
-          hint="От 2 до 32 символов: латиница, цифры, «_» и «.»."
+          label={t("auth:username")}
+          hint={t("auth:usernameHint")}
           error={errors.username?.message}
         >
           <Input
@@ -98,17 +99,22 @@ export const RegisterForm = ({ next }: { next?: string | undefined }) => {
             spellCheck={false}
           />
         </Field>
-        <Field htmlFor="register-password" label="Пароль" hint="От 8 до 128 символов." error={errors.password?.message}>
+        <Field
+          htmlFor="register-password"
+          label={t("auth:password")}
+          hint={t("auth:passwordHint")}
+          error={errors.password?.message}
+        >
           <Input {...register("password")} type="password" autoComplete="new-password" />
         </Field>
         <Button type="submit" size="lg" loading={isSubmitting} className="mt-1 w-full">
-          Зарегистрироваться
+          {t("auth:register")}
         </Button>
       </form>
       <p className="mt-4 text-sm text-fg-muted">
-        Уже есть учётная запись?{" "}
+        {t("auth:haveAccount")}{" "}
         <Link to="/login" search={{ next }} className={linkClass}>
-          Войти
+          {t("auth:signIn")}
         </Link>
       </p>
     </>

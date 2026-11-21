@@ -9,6 +9,7 @@ import {
   useRequestFriend,
   useSetRelationship,
 } from "@/entities/guild";
+import { t } from "@/shared/i18n";
 import { ConfirmDialog, ContextMenuItem, DropdownMenuItem, useToast } from "@/shared/ui";
 
 /** The question before blocking someone; mounted only while it is asked. */
@@ -20,9 +21,9 @@ export const BlockDialog = ({ userId, name, onClose }: { userId: string; name: s
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      title={`Заблокировать ${name}?`}
-      description="Дружба и заявки между вами закончатся, новые заявки от этого человека перестанут приходить. Он об этом не узнает."
-      confirmLabel="Заблокировать"
+      title={t("member:blockTitle", { name })}
+      description={t("member:blockText")}
+      confirmLabel={t("member:block")}
       tone="danger"
       pending={block.isPending}
       onConfirm={() => {
@@ -66,7 +67,7 @@ export const FriendItems = ({
           onSelect={() => {
             request.mutate(username, {
               onSuccess: () => {
-                toast.show({ text: "Заявка в друзья отправлена", tone: "success" });
+                toast.show({ text: t("member:requestSent"), tone: "success" });
               },
               onError: (e) => {
                 toast.show({ text: requestErrorText(e), tone: "error" });
@@ -74,7 +75,7 @@ export const FriendItems = ({
             });
           }}
         >
-          Добавить в друзья
+          {t("member:addFriend")}
           <UserPlus aria-hidden />
         </Row>
       );
@@ -86,7 +87,7 @@ export const FriendItems = ({
             set.mutate({ id: userId, type: 1 });
           }}
         >
-          Принять заявку в друзья
+          {t("member:acceptRequest")}
           <UserCheck aria-hidden />
         </Row>
       );
@@ -98,7 +99,7 @@ export const FriendItems = ({
             remove.mutate(userId);
           }}
         >
-          Отменить заявку в друзья
+          {t("member:cancelRequest")}
           <UserX aria-hidden />
         </Row>
       );
@@ -110,7 +111,7 @@ export const FriendItems = ({
             remove.mutate(userId);
           }}
         >
-          Разблокировать
+          {t("member:unblock")}
           <Ban aria-hidden />
         </Row>
       );
@@ -128,12 +129,12 @@ export const FriendItems = ({
           });
         }}
       >
-        Написать сообщение
+        {t("member:message")}
         <MessageCircle aria-hidden />
       </Row>
       {item}
       <Row variant="danger" onSelect={onBlock}>
-        Заблокировать
+        {t("member:block")}
         <Ban aria-hidden />
       </Row>
     </>

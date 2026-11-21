@@ -2,6 +2,7 @@ import { AppWindow, Maximize, Minimize, Monitor } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { VolumeSlider } from "@/entities/call";
 import { attachOwnStream, attachStream, stopScreenShare, useNativeShare, watchStream } from "@/features/voice-call";
+import { t } from "@/shared/i18n";
 import { Badge, Button, cn } from "@/shared/ui";
 
 /**
@@ -69,7 +70,7 @@ const FullscreenButton = ({ target }: { target: RefObject<HTMLElement | null> })
       }}
     >
       <Icon aria-hidden className="size-4" />
-      {full ? "Свернуть" : "Во весь экран"}
+      {full ? t("voice:stage.exitFullscreen") : t("voice:stage.fullscreen")}
     </Button>
   );
 };
@@ -86,18 +87,18 @@ const NativeOwnStream = ({ compact }: { compact: boolean }) => {
   const figures = stats
     ? [
         `${String(stats.width)}×${String(stats.height)}`,
-        `${String(Math.round(stats.sentFps))} к/с`,
-        `${stats.mbitS.toFixed(1)} Мбит/с`,
-        stats.sound ? "со звуком" : "без звука",
+        t("voice:share.fps", { fps: Math.round(stats.sentFps) }),
+        t("voice:stage.mbits", { value: stats.mbitS.toFixed(1) }),
+        stats.sound ? t("voice:stage.withSound") : t("voice:stage.withoutSound"),
       ].join(" · ")
-    : "Подключение…";
+    : t("common:connecting");
   return (
     <article
-      aria-label="Ваша демонстрация экрана"
+      aria-label={t("voice:stage.yourShare")}
       className="relative flex size-full min-w-0 flex-col items-center justify-center gap-3 rounded-lg bg-panel p-4 text-center"
     >
       <Badge variant="live" className="absolute top-2 left-2">
-        В ЭФИРЕ
+        {t("shell:live")}
       </Badge>
       <Icon aria-hidden className="size-10 text-fg-muted" strokeWidth={1.5} />
       <div className="min-w-0 max-w-full">
@@ -112,7 +113,7 @@ const NativeOwnStream = ({ compact }: { compact: boolean }) => {
             void stopScreenShare();
           }}
         >
-          Остановить
+          {t("voice:stage.stop")}
         </Button>
       )}
     </article>
@@ -136,12 +137,12 @@ const BrowserOwnStream = ({ compact }: { compact: boolean }) => {
   return (
     <article
       ref={tile}
-      aria-label="Ваша демонстрация экрана"
+      aria-label={t("voice:stage.yourShare")}
       className="group relative flex size-full min-w-0 [&:fullscreen]:pointer-events-auto"
     >
       <VideoFrame video={video}>
         <Badge variant="live" className="absolute top-2 left-2">
-          В ЭФИРЕ
+          {t("shell:live")}
         </Badge>
         <div
           data-controls
@@ -158,7 +159,7 @@ const BrowserOwnStream = ({ compact }: { compact: boolean }) => {
               void stopScreenShare();
             }}
           >
-            Остановить
+            {t("voice:stage.stop")}
           </Button>
         </div>
       </VideoFrame>
@@ -195,7 +196,7 @@ export const StreamTile = ({
     return attachStream(userId, el);
   }, [userId, watching]);
 
-  const title = `${name} — демонстрация экрана`;
+  const title = t("voice:stage.shareOf", { name });
   return (
     <article
       ref={tile}
@@ -214,7 +215,7 @@ export const StreamTile = ({
               compact && "hidden",
             )}
           >
-            <VolumeSlider inline kind="stream" userId={userId} label="Громкость трансляции" />
+            <VolumeSlider inline kind="stream" userId={userId} label={t("member:streamVolume")} />
             <FullscreenButton target={tile} />
             <Button
               size="sm"
@@ -223,7 +224,7 @@ export const StreamTile = ({
                 watchStream(userId, false);
               }}
             >
-              Перестать смотреть
+              {t("voice:stage.stopWatching")}
             </Button>
           </div>
         </VideoFrame>
@@ -239,7 +240,7 @@ export const StreamTile = ({
                 onWatch?.();
               }}
             >
-              Смотреть
+              {t("voice:stage.watch")}
             </Button>
           )}
         </>

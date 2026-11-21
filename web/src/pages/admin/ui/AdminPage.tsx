@@ -5,15 +5,16 @@ import { adminSettingsQuery, type InstanceSettings as Settings } from "@/entitie
 import { UserLookup } from "@/features/admin-users";
 import { InstanceSettings } from "@/features/instance-settings";
 import { errorText } from "@/shared/api";
+import { t, textTable } from "@/shared/i18n";
 import { FormAlert, SettingsFrame, Skeleton, settingsNavItemClass } from "@/shared/ui";
 
 const TABS = ["instance", "users"] as const;
 type AdminTab = (typeof TABS)[number];
 
-const TITLES: Record<AdminTab, string> = {
-  instance: "Сервер Zazzzor",
-  users: "Пользователи",
-};
+const TITLES = textTable<AdminTab>({
+  instance: () => t("admin:tab.instance"),
+  users: () => t("admin:tab.users"),
+});
 
 const isTab = (tab: string): tab is AdminTab => (TABS as readonly string[]).includes(tab);
 
@@ -56,8 +57,8 @@ export const AdminPage = ({ tab }: { tab: string }) => {
 
   return (
     <SettingsFrame
-      navLabel="Администрирование"
-      title="Администрирование"
+      navLabel={t("admin:title")}
+      title={t("admin:title")}
       onClose={close}
       nav={TABS.map((t) => (
         <Link

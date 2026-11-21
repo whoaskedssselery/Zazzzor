@@ -1,3 +1,4 @@
+import { t } from "@/shared/i18n";
 import { cn } from "../cn";
 import { Logo } from "./Logo";
 
@@ -31,7 +32,7 @@ export const SplashScreen = ({ leaving = false }: SplashScreenProps) => (
     <div className="relative">
       <Logo size={96} animated />
       <p className="splash-caption absolute top-full left-1/2 mt-6 -translate-x-1/2 text-sm whitespace-nowrap text-fg-muted">
-        Подключение…
+        {t("common:connecting")}
       </p>
     </div>
   </div>

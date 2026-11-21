@@ -35,13 +35,17 @@ import {
   useSendMessage,
 } from "@/features/send-message";
 import { errorText } from "@/shared/api";
+import { onLanguage, t } from "@/shared/i18n";
 import { Button, Skeleton } from "@/shared/ui";
 import { buildRows, type ChatRow } from "../model/rows";
 import type { ChatScope } from "../model/scope";
 import { MessageList } from "./MessageList";
 import { TypingIndicator } from "./TypingIndicator";
 
-export const NO_HISTORY = "У вас нет доступа к истории этого канала";
+export let NO_HISTORY = "";
+onLanguage(() => {
+  NO_HISTORY = t("chat:noHistory");
+});
 /** How long a message stays marked after a jump to it. */
 const HIGHLIGHT_MS = 2_000;
 
@@ -78,13 +82,13 @@ const Loading = ({ label }: { label: string }) => (
 /** Where the unread messages start, as Discord marks it: a red line with «Новые» at its end. */
 const NewDivider = () => (
   <div className="mx-4 mt-6 mb-1 flex items-center">
-    <span className="sr-only">Новые сообщения</span>
+    <span className="sr-only">{t("chat:newMessages")}</span>
     <span aria-hidden className="h-px flex-1 bg-danger" />
     <span
       aria-hidden
       className="rounded-sm bg-danger px-1 text-[10px] leading-4 font-bold tracking-wide text-on-danger uppercase"
     >
-      Новые
+      {t("chat:new")}
     </span>
   </div>
 );
@@ -117,17 +121,17 @@ const FailedFooter = ({
   const stale = pending.error === MAYBE_SENT || !canRetrySafely(pending);
   return (
     <p className="mt-0.5 text-xs text-fg-danger">
-      {`Не отправлено: ${stale ? MAYBE_SENT : (pending.error ?? "ошибка")}. `}
+      {t("chat:notSent", { reason: stale ? MAYBE_SENT : (pending.error ?? t("chat:error")) })}
       <button
         type="button"
         className="cursor-pointer font-semibold text-link hover:underline"
         onClick={stale ? onResend : onRetry}
       >
-        {stale ? "Отправить как новое" : "Повторить"}
+        {stale ? t("chat:sendAsNew") : t("chat:retry")}
       </button>
       {" · "}
       <button type="button" className="cursor-pointer font-semibold text-link hover:underline" onClick={onDiscard}>
-        Удалить
+        {t("chat:delete")}
       </button>
     </p>
   );
@@ -136,9 +140,9 @@ const FailedFooter = ({
 /** A message of someone the user blocked, folded as Discord folds it, with a way to read it anyway. */
 const BlockedMessage = ({ onShow }: { onShow: () => void }) => (
   <p className="mx-4 my-1 py-1 pl-14 text-sm text-fg-faint">
-    Сообщение от заблокированного пользователя.{" "}
+    {t("chat:blockedMessage")}{" "}
     <button type="button" className="cursor-pointer font-medium text-link hover:underline" onClick={onShow}>
-      Показать
+      {t("chat:show")}
     </button>
   </p>
 );
@@ -191,7 +195,7 @@ const DropHint = ({ text }: { text: string }) => (
     className="pointer-events-none absolute inset-2 z-(--z-sticky) flex animate-fade-in flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-accent bg-[color-mix(in_srgb,var(--bg-chat)_88%,transparent)] text-center"
   >
     <Upload className="size-10 text-accent" strokeWidth={1.5} />
-    <p className="text-lg font-semibold">Отпустите, чтобы прикрепить</p>
+    <p className="text-lg font-semibold">{t("chat:dropToAttach")}</p>
     <p className="text-sm text-fg-muted">{text}</p>
   </div>
 );
@@ -280,7 +284,7 @@ export const Chat = ({ scope }: { scope: ChatScope }) => {
   }, [focus, historyReady, loaded, hasOlder, isFetchingNextPage, fetchNextPage, channelId]);
 
   const authorOf = (user: Message["author"]) => (user === null ? null : scope.author(user));
-  const name = (u: Message["author"]) => authorOf(u)?.name ?? "Удалённый пользователь";
+  const name = (u: Message["author"]) => authorOf(u)?.name ?? t("chat:deletedUser");
 
   const onEditLast = (): boolean => {
     const last = [...messages].reverse().find((m) => m.author?.id === meId);
@@ -387,7 +391,7 @@ export const Chat = ({ scope }: { scope: ChatScope }) => {
       case "start":
         return scope.welcome;
       case "older":
-        return <Loading label="Загружаем более ранние сообщения…" />;
+        return <Loading label={t("chat:loadingEarlier")} />;
       case "day":
         return <DaySeparator label={row.label} />;
       case "new":
@@ -452,7 +456,7 @@ export const Chat = ({ scope }: { scope: ChatScope }) => {
   } else if (history.isPending) {
     body = (
       <div className="flex min-h-0 flex-1 flex-col justify-end">
-        <Loading label="Загружаем сообщения…" />
+        <Loading label={t("chat:loading")} />
       </div>
     );
   } else if (history.isError) {
@@ -465,7 +469,7 @@ export const Chat = ({ scope }: { scope: ChatScope }) => {
             void history.refetch();
           }}
         >
-          Повторить
+          {t("chat:retry")}
         </Button>
       </div>
     );

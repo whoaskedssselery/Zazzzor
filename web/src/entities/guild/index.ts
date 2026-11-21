@@ -11,7 +11,7 @@ export {
 } from "./api/privates";
 export { profileKey, type UserProfile, useProfile } from "./api/profile";
 export {
-  NO_SUCH_USER,
+  noSuchUserText,
   requestErrorText,
   useRemoveRelationship,
   useRequestFriend,

@@ -3,6 +3,7 @@ import { Lock } from "lucide-react";
 import { useEffect, useState } from "react";
 import { canGrant, canManageRole, formatMask, type GuildEntry, parseMask, type Role } from "@/entities/guild";
 import { api, errorText, unwrap } from "@/shared/api";
+import { onLanguage, t } from "@/shared/i18n";
 import { runeLength, trimContent } from "@/shared/lib";
 import {
   Button,
@@ -21,8 +22,10 @@ import {
 } from "@/shared/ui";
 import { PermissionList } from "./PermissionList";
 
-export const ROLE_LOCKED = "Эта роль не ниже вашей высшей: изменить её нельзя.";
-const NAME_RULE = "Название роли: от 1 до 100 символов.";
+export let ROLE_LOCKED = "";
+onLanguage(() => {
+  ROLE_LOCKED = t("guild:roles.locked");
+});
 
 /** Discord's role palette: two rows, the brighter ones first. */
 // biome-ignore format: two rows of ten, as the palette shows them.
@@ -89,11 +92,11 @@ const ColorPicker = ({
   );
   return (
     <fieldset>
-      <legend className="mb-2 text-sm font-semibold">Цвет роли</legend>
+      <legend className="mb-2 text-sm font-semibold">{t("guild:roles.color")}</legend>
       <div className="flex flex-wrap items-center gap-2">
-        {swatch(0, "Без цвета")}
+        {swatch(0, t("guild:roles.noColor"))}
         <label className="relative size-8 cursor-pointer overflow-hidden rounded-md border-2 border-border-strong">
-          <span className="sr-only">Свой цвет</span>
+          <span className="sr-only">{t("guild:roles.customColor")}</span>
           <input
             type="color"
             disabled={disabled}
@@ -106,7 +109,7 @@ const ColorPicker = ({
         </label>
         <span aria-hidden className="mx-1 h-8 w-px bg-border" />
         <div className="grid grid-cols-10 gap-2">
-          {ROLE_COLORS.map((c) => swatch(c, `Цвет ${roleColorCss(c) ?? ""}`))}
+          {ROLE_COLORS.map((c) => swatch(c, t("guild:roles.colorOf", { color: roleColorCss(c) ?? "" })))}
         </div>
       </div>
     </fieldset>
@@ -195,7 +198,7 @@ export const RoleEditor = ({
   const submit = () => {
     const length = runeLength(trimContent(draft.name));
     if (length < 1 || length > 100) {
-      setNameError(NAME_RULE);
+      setNameError(t("guild:roles.nameRule"));
       return;
     }
     setNameError(undefined);
@@ -209,19 +212,19 @@ export const RoleEditor = ({
   return (
     <section aria-labelledby="role-editor-title" className="min-w-0 flex-1">
       <h3 id="role-editor-title" className="mb-4 flex items-center gap-2 text-lg font-semibold">
-        <span className="truncate">{`Изменить роль — ${role.name}`}</span>
+        <span className="truncate">{t("guild:roles.editTitle", { name: role.name })}</span>
         {locked && <Lock aria-hidden className="size-4 shrink-0 text-fg-faint" />}
       </h3>
       {locked && <p className="mb-4 rounded-md bg-panel px-3 py-2 text-sm text-fg-muted">{ROLE_LOCKED}</p>}
       {error && <FormAlert>{errorText(error)}</FormAlert>}
       <Tabs defaultValue={everyone ? "permissions" : "display"}>
-        <TabsList aria-label="Настройки роли">
-          {!everyone && <TabsTrigger value="display">Отображение</TabsTrigger>}
-          <TabsTrigger value="permissions">Права</TabsTrigger>
+        <TabsList aria-label={t("guild:roles.settings")}>
+          {!everyone && <TabsTrigger value="display">{t("guild:roles.display")}</TabsTrigger>}
+          <TabsTrigger value="permissions">{t("guild:roles.permissions")}</TabsTrigger>
         </TabsList>
         {!everyone && (
           <TabsContent value="display" className="flex flex-col gap-6 pt-6">
-            <Field htmlFor="role-name" label="Название роли" error={nameError}>
+            <Field htmlFor="role-name" label={t("guild:roles.name")} error={nameError}>
               <Input
                 value={draft.name}
                 disabled={locked}
@@ -242,7 +245,7 @@ export const RoleEditor = ({
             <div className="flex flex-col gap-3">
               <CheckRow
                 id="role-hoist"
-                label="Показывать участников с этой ролью отдельно"
+                label={t("guild:roles.hoist")}
                 checked={draft.hoist}
                 disabled={locked}
                 onChange={(hoist) => {
@@ -251,7 +254,7 @@ export const RoleEditor = ({
               />
               <CheckRow
                 id="role-mentionable"
-                label="Разрешить упоминать эту роль"
+                label={t("guild:roles.mentionable")}
                 checked={draft.mentionable}
                 disabled={locked}
                 onChange={(mentionable) => {
@@ -267,7 +270,7 @@ export const RoleEditor = ({
                     setDeleting(true);
                   }}
                 >
-                  Удалить роль
+                  {t("guild:roles.delete")}
                 </Button>
               </div>
             )}
@@ -298,9 +301,9 @@ export const RoleEditor = ({
       <ConfirmDialog
         open={deleting}
         onOpenChange={setDeleting}
-        title={`Удалить роль «${role.name}»?`}
-        description="Участники потеряют её, а права каналов для неё пропадут."
-        confirmLabel="Удалить роль"
+        title={t("guild:roles.deleteTitle", { name: role.name })}
+        description={t("guild:roles.deleteText")}
+        confirmLabel={t("guild:roles.delete")}
         tone="danger"
         onConfirm={() => {
           remove.mutate();

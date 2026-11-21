@@ -1,3 +1,4 @@
+import { t } from "@/shared/i18n";
 import { Button, Switch } from "@/shared/ui";
 import { useNotificationPermission } from "../model/permission";
 import { setNotifyPrefs, useNotifyPrefs } from "../model/prefs";
@@ -38,25 +39,20 @@ const PermissionNote = () => {
     case "granted":
       return null;
     case "unsupported":
-      return <p className="mt-2 text-sm text-fg-muted">Этот браузер не умеет показывать уведомления.</p>;
+      return <p className="mt-2 text-sm text-fg-muted">{t("notify:unsupported")}</p>;
     case "denied":
-      return (
-        <p className="mt-2 text-sm text-fg-danger">
-          Браузер запретил уведомления для этого сайта. Разрешите их в настройках сайта (значок слева от адреса) и
-          вернитесь сюда.
-        </p>
-      );
+      return <p className="mt-2 text-sm text-fg-danger">{t("notify:denied")}</p>;
     case "default":
       return (
         <div className="mt-2 flex flex-wrap items-center gap-3">
-          <p className="text-sm text-fg-muted">Браузер ещё не разрешил уведомления.</p>
+          <p className="text-sm text-fg-muted">{t("notify:notGranted")}</p>
           <Button
             size="sm"
             onClick={() => {
               void request();
             }}
           >
-            Разрешить
+            {t("notify:allow")}
           </Button>
         </div>
       );
@@ -72,17 +68,15 @@ export const NotificationsTab = () => {
   return (
     <section aria-labelledby="notify-title">
       <h2 id="notify-title" className="mb-2 text-xl font-semibold">
-        Уведомления
+        {t("notify:title")}
       </h2>
-      <p className="mb-3 text-sm text-fg-muted">
-        О сообщениях, где упомянули вас, вашу роль, @everyone или @here. Пока вы смотрите этот канал, они не беспокоят.
-      </p>
+      <p className="mb-3 text-sm text-fg-muted">{t("notify:intro")}</p>
       <div className="max-w-140 divide-y divide-border">
         <div>
           <Row
             id="notify-desktop"
-            label="Уведомления на рабочем столе"
-            hint="Когда окно Zazzzor свёрнуто или в фоне. Клик открывает канал."
+            label={t("notify:desktop")}
+            hint={t("notify:desktopHint")}
             checked={prefs.desktop}
             onChange={(desktop) => {
               setNotifyPrefs({ desktop });
@@ -96,8 +90,8 @@ export const NotificationsTab = () => {
         </div>
         <Row
           id="notify-sound"
-          label="Звук"
-          hint="Короткий сигнал, даже когда открыт другой канал."
+          label={t("notify:sound")}
+          hint={t("notify:soundHint")}
           checked={prefs.sound}
           onChange={(sound) => {
             setNotifyPrefs({ sound });

@@ -1,16 +1,43 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type User, updateSignedIn } from "@/entities/session";
 import { api, unwrap } from "@/shared/api";
+import { t } from "@/shared/i18n";
 import { useToast } from "@/shared/ui";
 
 export type ChosenStatus = User["status"];
 
 /** The statuses to choose from, in menu order, with what each means. */
 export const CHOSEN_STATUSES: readonly { value: ChosenStatus; label: string; hint?: string }[] = [
-  { value: "online", label: "В сети" },
-  { value: "idle", label: "Нет на месте" },
-  { value: "dnd", label: "Не беспокоить", hint: "Без звука и уведомлений" },
-  { value: "invisible", label: "Невидимка", hint: "Для других вы не в сети" },
+  {
+    value: "online",
+    get label() {
+      return t("settings:status.online");
+    },
+  },
+  {
+    value: "idle",
+    get label() {
+      return t("settings:status.idle");
+    },
+  },
+  {
+    value: "dnd",
+    get label() {
+      return t("settings:status.dnd");
+    },
+    get hint() {
+      return t("settings:status.dndHint");
+    },
+  },
+  {
+    value: "invisible",
+    get label() {
+      return t("settings:status.invisible");
+    },
+    get hint() {
+      return t("settings:status.invisibleHint");
+    },
+  },
 ];
 
 /** Status lines are at most this many characters. */
@@ -31,7 +58,7 @@ export const useSetStatus = () => {
       updateSignedIn(queryClient, user);
     },
     onError: () => {
-      toast.show({ text: "Не удалось сменить статус", tone: "error" });
+      toast.show({ text: t("settings:status.failed"), tone: "error" });
     },
   });
 };

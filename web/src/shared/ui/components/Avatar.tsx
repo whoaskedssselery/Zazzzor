@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { t, textTable } from "@/shared/i18n";
 import { cn } from "../cn";
 
 export type Presence = "online" | "idle" | "dnd" | "offline";
@@ -26,12 +27,12 @@ export const avatarTone = (name: string): string => {
   return `var(--avatar-${String((h % 6) + 1)})`;
 };
 
-const presenceText: Record<Presence, string> = {
-  online: "в сети",
-  idle: "нет на месте",
-  dnd: "не беспокоить",
-  offline: "не в сети",
-};
+const presenceText = textTable<Presence>({
+  online: () => t("common:presence.online"),
+  idle: () => t("common:presence.idle"),
+  dnd: () => t("common:presence.dnd"),
+  offline: () => t("common:presence.offline"),
+});
 
 const dotFill: Record<Presence, string> = {
   online: "bg-online",

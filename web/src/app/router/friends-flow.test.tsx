@@ -3,7 +3,7 @@ import type { WebSocketHandlerConnection } from "msw";
 import { HttpResponse } from "msw";
 import { renderApp, sessionHandler, testUser } from "@/app/test";
 import { resetChannelUi } from "@/entities/channel";
-import { NO_SUCH_USER, resetGuilds } from "@/entities/guild";
+import { resetGuilds } from "@/entities/guild";
 import {
   apiHandler,
   dispatchFrame,
@@ -97,7 +97,7 @@ describe("friends", () => {
     await user.click(await screen.findByRole("tab", { name: "Добавить в друзья" }));
     const field = screen.getByRole("textbox", { name: "Имя пользователя" });
     await user.type(field, "nobody{Enter}");
-    expect(await screen.findByText(NO_SUCH_USER)).toBeTruthy();
+    expect(await screen.findByText("Пользователя с таким именем нет. Проверьте написание.")).toBeTruthy();
     await user.clear(field);
     await user.type(field, `@${vera.username}{Enter}`);
     expect(await screen.findByText("Заявка для vera отправлена.")).toBeTruthy();

@@ -1,3 +1,4 @@
+import { t } from "@/shared/i18n";
 import { cn } from "@/shared/ui";
 import type { ComposerEmoji } from "../model/emoji";
 import { MENTION_LIST_ID, optionId } from "./MentionList";
@@ -20,8 +21,10 @@ export const EmojiList = ({
   onHover: (i: number) => void;
 }) => (
   <div className="absolute inset-x-0 bottom-full mb-2 animate-float overflow-hidden rounded-lg bg-overlay p-1.5 shadow-float ring-1 ring-border">
-    <p className="truncate px-2 pt-1 pb-1.5 text-xs font-semibold text-fg-faint">{`Эмодзи по запросу :${query}`}</p>
-    <div id={MENTION_LIST_ID} role="listbox" aria-label="Эмодзи">
+    <p className="truncate px-2 pt-1 pb-1.5 text-xs font-semibold text-fg-faint">
+      {t("chat:send.emojiFor", { query })}
+    </p>
+    <div id={MENTION_LIST_ID} role="listbox" aria-label={t("chat:send.emoji")}>
       {suggestions.map((e, i) => (
         // biome-ignore lint/a11y/useKeyWithClickEvents: the field drives the list through aria-activedescendant; the keys are handled there.
         <div

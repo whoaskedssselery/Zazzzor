@@ -52,6 +52,7 @@ import { NotifyItems } from "@/features/notify";
 import { readGuild } from "@/features/read-channel";
 import { joinVoice, NO_CONNECT } from "@/features/voice-call";
 import { api, errorText, unwrap } from "@/shared/api";
+import { t } from "@/shared/i18n";
 import {
   Avatar,
   Badge,
@@ -119,7 +120,11 @@ const SettingsLink = ({ channel, tab, visible }: { channel: Channel; tab: string
   <Link
     to="/guilds/$guildId/channels/$channelId/settings/$tab"
     params={{ guildId: channel.guild_id, channelId: channel.id, tab }}
-    aria-label={`Настройки ${channel.type === CHANNEL_TYPE.CATEGORY ? "категории" : "канала"} ${channel.name}`}
+    aria-label={
+      channel.type === CHANNEL_TYPE.CATEGORY
+        ? t("shell:categorySettings", { name: channel.name })
+        : t("shell:channelSettings", { name: channel.name })
+    }
     className={cn(
       "absolute top-1 right-3 flex size-6 items-center justify-center rounded-sm text-fg-muted hover:text-fg focus-visible:opacity-100 group-hover:opacity-100",
       visible ? "opacity-100" : "opacity-0",
@@ -187,9 +192,9 @@ const ChannelRow = ({ channel, siblings, selected }: { channel: Channel; sibling
   );
   // What the pill and the badge show, said in the name.
   let name = channel.name;
-  if (mentions > 0) name += `, упоминаний: ${String(mentions)}`;
-  else if (unread) name += ", есть непрочитанные";
-  if (muted) name += ", заглушён";
+  if (mentions > 0) name = t("shell:mentions", { name, count: mentions });
+  else if (unread) name = t("shell:unread", { name });
+  if (muted) name = t("shell:mutedMasculine", { name });
   const label = (
     <>
       <Icon aria-hidden className="size-5 shrink-0 text-fg-faint" strokeWidth={1.75} />
@@ -212,7 +217,7 @@ const ChannelRow = ({ channel, siblings, selected }: { channel: Channel; sibling
         <button
           type="button"
           // The icon is decorative, so the name says what kind of channel this is.
-          aria-label={`Голосовой канал ${channel.name}`}
+          aria-label={t("shell:voiceChannel", { name: channel.name })}
           className={cn(look, "cursor-pointer")}
           onClick={() => {
             if (!list.canConnect(channel.id)) {
@@ -259,7 +264,7 @@ const VoiceFlag = ({
 }) => (
   <Icon
     role="img"
-    aria-label={byModerator ? `${label} модератором` : label}
+    aria-label={byModerator ? t("shell:byModerator", { label }) : label}
     className={cn("size-4 shrink-0", byModerator ? "text-fg-danger" : "text-fg-faint")}
     strokeWidth={2}
   />
@@ -267,7 +272,7 @@ const VoiceFlag = ({
 
 const VoiceMember = ({ entry, state, speaking }: { entry: GuildEntry; state: VoiceState; speaking: boolean }) => {
   const user = entry.members[state.user_id]?.user;
-  const view = user ? userDisplay(entry, user) : { name: "Участник", avatarUrl: null };
+  const view = user ? userDisplay(entry, user) : { name: t("common:member"), avatarUrl: null };
   return (
     <MemberMenu guildId={entry.guild.id} userId={state.user_id}>
       <li className="flex min-w-0 animate-fade-in items-center gap-2 rounded-md px-2 py-1 text-sm text-fg-muted transition-colors duration-(--duration-fast) hover:bg-hover">
@@ -282,14 +287,14 @@ const VoiceMember = ({ entry, state, speaking }: { entry: GuildEntry; state: Voi
         </span>
         <span className={cn("min-w-0 flex-1 truncate", speaking && "text-fg")}>{view.name}</span>
         {state.self_video && (
-          <Video role="img" aria-label="Камера включена" className="size-4 shrink-0 text-fg-muted" />
+          <Video role="img" aria-label={t("shell:cameraOn")} className="size-4 shrink-0 text-fg-muted" />
         )}
-        {state.self_stream && <Badge variant="live">В ЭФИРЕ</Badge>}
+        {state.self_stream && <Badge variant="live">{t("shell:live")}</Badge>}
         {(state.mute || state.self_mute) && (
-          <VoiceFlag icon={MicOff} label="Микрофон выключен" byModerator={state.mute} />
+          <VoiceFlag icon={MicOff} label={t("shell:micOff")} byModerator={state.mute} />
         )}
         {(state.deaf || state.self_deaf) && (
-          <VoiceFlag icon={HeadphoneOff} label="Звук выключен" byModerator={state.deaf} />
+          <VoiceFlag icon={HeadphoneOff} label={t("shell:soundOff")} byModerator={state.deaf} />
         )}
       </li>
     </MemberMenu>
@@ -302,7 +307,7 @@ const VoiceMembers = ({ entry, channel }: { entry: GuildEntry; channel: Channel 
   const members = voiceMembers(entry, channel.id);
   if (members.length === 0) return null;
   return (
-    <ul aria-label={`В канале ${channel.name}`} className="mt-1 mb-1 ml-6 flex flex-col gap-0.5">
+    <ul aria-label={t("shell:inChannel", { name: channel.name })} className="mt-1 mb-1 ml-6 flex flex-col gap-0.5">
       {members.map((v) => (
         <VoiceMember key={v.user_id} entry={entry} state={v} speaking={speaking.includes(v.user_id)} />
       ))}
@@ -365,7 +370,7 @@ const Group = ({ group, openId }: { group: ChannelGroup; openId: string | null }
           {list.canArrange && (
             <IconButton
               size="sm"
-              label={`Создать канал в ${category.name}`}
+              label={t("shell:createIn", { name: category.name })}
               icon={Plus}
               onClick={() => {
                 list.createIn(category);
@@ -376,7 +381,7 @@ const Group = ({ group, openId }: { group: ChannelGroup; openId: string | null }
             <Link
               to="/guilds/$guildId/channels/$channelId/settings/$tab"
               params={{ guildId: list.guildId, channelId: category.id, tab }}
-              aria-label={`Настройки категории ${category.name}`}
+              aria-label={t("shell:categorySettings", { name: category.name })}
               className="flex size-7 items-center justify-center rounded-md text-fg-muted hover:text-fg"
             >
               <Settings aria-hidden className="size-4" />
@@ -461,7 +466,7 @@ export const ChannelSidebar = ({ guildId, channelId }: { guildId: string; channe
     <ListContext value={actions}>
       <DropdownMenu>
         <DropdownMenuTrigger
-          aria-label={`Меню сервера ${guild.name}`}
+          aria-label={t("shell:serverMenu", { name: guild.name })}
           className="group flex h-(--header-height) shrink-0 cursor-pointer items-center justify-between gap-2 px-4 text-base font-semibold shadow-[0_1px_0_var(--border)] transition-colors hover:bg-hover data-[state=open]:bg-hover"
         >
           <span className="truncate">{guild.name}</span>
@@ -472,33 +477,33 @@ export const ChannelSidebar = ({ guildId, channelId }: { guildId: string; channe
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-(--radix-dropdown-menu-trigger-width) min-w-52">
           {isGuildUnread(entry, { notify }) &&
-            menuItem("Отметить как прочитанное", <CheckCheck aria-hidden />, () => {
+            menuItem(t("shell:markRead"), <CheckCheck aria-hidden />, () => {
               void readGuild(guildId).catch((e: unknown) => {
                 toast.show({ text: errorText(e), tone: "error" });
               });
             })}
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger>Уведомления</DropdownMenuSubTrigger>
+            <DropdownMenuSubTrigger>{t("shell:notifications")}</DropdownMenuSubTrigger>
             <DropdownMenuSubContent className="min-w-60">
               <NotifyItems guildId={guildId} />
             </DropdownMenuSubContent>
           </DropdownMenuSub>
           {settingsTab &&
-            menuItem("Настройки сервера", <Settings aria-hidden />, () => {
+            menuItem(t("shell:serverSettings"), <Settings aria-hidden />, () => {
               void navigate({ to: "/guilds/$guildId/settings/$tab", params: { guildId, tab: settingsTab } });
             })}
           {canArrange && (
             <>
-              {menuItem("Создать канал", <PlusCircle aria-hidden />, () => {
+              {menuItem(t("shell:createChannel"), <PlusCircle aria-hidden />, () => {
                 create("channel", null);
               })}
-              {menuItem("Создать категорию", <FolderPlus aria-hidden />, () => {
+              {menuItem(t("shell:createCategory"), <FolderPlus aria-hidden />, () => {
                 create("category", null);
               })}
             </>
           )}
           {invite &&
-            menuItem("Пригласить людей", <UserPlus aria-hidden />, () => {
+            menuItem(t("shell:invitePeople"), <UserPlus aria-hidden />, () => {
               setDialog("invite");
             })}
           {!isOwner && (
@@ -510,15 +515,15 @@ export const ChannelSidebar = ({ guildId, channelId }: { guildId: string; channe
                   setDialog("leave");
                 }}
               >
-                Покинуть сервер
+                {t("shell:leaveServer")}
                 <LogOut aria-hidden />
               </DropdownMenuItem>
             </>
           )}
-          {!invite && isOwner && <DropdownMenuItem disabled>Нет каналов для приглашения</DropdownMenuItem>}
+          {!invite && isOwner && <DropdownMenuItem disabled>{t("shell:noInviteChannels")}</DropdownMenuItem>}
         </DropdownMenuContent>
       </DropdownMenu>
-      <nav aria-label="Каналы" className="min-h-0 flex-1 overflow-y-auto pt-2 pb-3">
+      <nav data-channels aria-label={t("shell:channels")} className="min-h-0 flex-1 overflow-y-auto pt-2 pb-3">
         {categories.map((g) => (
           <Group key={g.category?.id ?? "top"} group={g} openId={channelId} />
         ))}

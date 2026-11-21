@@ -3,6 +3,7 @@ import { CHANNEL_TYPE } from "@/entities/channel";
 import { type Channel, useGuilds } from "@/entities/guild";
 import { NotifyButton } from "@/features/notify";
 import { SearchButton } from "@/features/search-messages";
+import { t } from "@/shared/i18n";
 import { Skeleton } from "@/shared/ui";
 import { MembersButton, NavButton, ShellHeader } from "@/widgets/app-shell";
 import { ChannelSidebar } from "@/widgets/channel-sidebar";
@@ -51,7 +52,7 @@ const ChannelView = ({ guildId, channel }: { guildId: string; channel: Channel }
       <div className="ml-auto flex shrink-0 items-center">
         <NotifyButton guildId={guildId} channelId={channel.id} />
         <MembersButton />
-        <SearchButton scope={{ kind: "guild", guildId }} placeholder="Искать на сервере" />
+        <SearchButton scope={{ kind: "guild", guildId }} placeholder={t("guild:searchServer")} />
       </div>
     </ShellHeader>
     <ChatView key={channel.id} guildId={guildId} channel={channel} />
@@ -99,7 +100,5 @@ export const ChannelPage = ({ guildId, channelId = null }: { guildId: string; ch
       <ChannelView guildId={guildId} channel={channel} />
     );
   }
-  return (
-    <EmptyView text={known && channelId === null ? "На этом сервере нет текстовых каналов, доступных вам." : null} />
-  );
+  return <EmptyView text={known && channelId === null ? t("guild:noTextChannels") : null} />;
 };

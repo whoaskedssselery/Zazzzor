@@ -1,5 +1,6 @@
 import { type GuildEntry, PERMISSION_GROUPS, parseMask } from "@/entities/guild";
 import type { components } from "@/shared/api";
+import { t, textTable } from "@/shared/i18n";
 
 export type AuditLog = components["schemas"]["AuditLog"];
 export type AuditEntry = AuditLog["audit_log_entries"][number];
@@ -7,36 +8,17 @@ type AuditChange = AuditEntry["changes"][number];
 type AuditValue = AuditChange["old_value"];
 type User = AuditLog["users"][number];
 
-/** What each action is called, in the order the filter lists them. */
-export const AUDIT_ACTIONS: ReadonlyArray<readonly [number, string]> = [
-  [20, "Участник выгнан"],
-  [22, "Участник забанен"],
-  [23, "Бан снят"],
-  [24, "Ник изменён"],
-  [25, "Роли участника изменены"],
-  [72, "Сообщение удалено"],
-  [30, "Роль создана"],
-  [31, "Роль изменена"],
-  [32, "Роль удалена"],
-  [10, "Канал создан"],
-  [11, "Канал изменён"],
-  [12, "Канал удалён"],
-  [13, "Права канала добавлены"],
-  [14, "Права канала изменены"],
-  [15, "Права канала убраны"],
-  [40, "Приглашение создано"],
-  [42, "Приглашение удалено"],
-  [60, "Эмодзи добавлено"],
-  [61, "Эмодзи переименовано"],
-  [62, "Эмодзи удалено"],
-  [1, "Сервер изменён"],
-  [26, "Участник перемещён"],
-  [27, "Участник отключён"],
-];
+/** The actions the log names, in the order the filter lists them. */
+export const AUDIT_ACTIONS = [
+  20, 22, 23, 24, 25, 72, 30, 31, 32, 10, 11, 12, 13, 14, 15, 40, 42, 60, 61, 62, 1, 26, 27,
+] as const;
 
-const ACTION_TITLE = new Map(AUDIT_ACTIONS);
+const isNamed = (action: number): action is (typeof AUDIT_ACTIONS)[number] =>
+  (AUDIT_ACTIONS as readonly number[]).includes(action);
 
-export const actionTitle = (action: number): string => ACTION_TITLE.get(action) ?? "Действие";
+/** What an action is called. */
+export const actionTitle = (action: number): string =>
+  isNamed(action) ? t(`audit:action.${action}`) : t("audit:action.other");
 
 const USER_ACTIONS = new Set([20, 22, 23, 24, 25, 26, 27, 72]);
 const CHANNEL_ACTIONS = new Set([10, 11, 12, 13, 14, 15]);
@@ -53,9 +35,9 @@ export interface AuditNames {
 /** Names from the page's users, then the server's members, roles and channels. */
 export const auditNames = (entry: GuildEntry, users: ReadonlyMap<string, User>): AuditNames => ({
   user: (id) => {
-    if (id === null) return "Удалённый аккаунт";
+    if (id === null) return t("audit:deletedAccount");
     const member = entry.members[id];
-    return member?.nick ?? users.get(id)?.display_name ?? member?.user.display_name ?? "Удалённый аккаунт";
+    return member?.nick ?? users.get(id)?.display_name ?? member?.user.display_name ?? t("audit:deletedAccount");
   },
   role: (id) => entry.roles[id]?.name ?? null,
   channel: (id) => {
@@ -80,12 +62,12 @@ export function auditTarget(e: AuditEntry, names: AuditNames): string | null {
     const known = id === null ? null : names.channel(id);
     if (known !== null) return known;
     const name = nameIn(e);
-    return name === null ? "удалённый канал" : `#${name}`;
+    return name === null ? t("audit:deletedChannel") : `#${name}`;
   }
-  if (ROLE_ACTIONS.has(action)) return (id === null ? null : names.role(id)) ?? nameIn(e) ?? "удалённая роль";
+  if (ROLE_ACTIONS.has(action)) return (id === null ? null : names.role(id)) ?? nameIn(e) ?? t("audit:deletedRole");
   if (EMOJI_ACTIONS.has(action)) {
     const name = nameIn(e);
-    return name === null ? "эмодзи" : `:${name}:`;
+    return name === null ? t("audit:emoji") : `:${name}:`;
   }
   if (action === 40 || action === 42) return e.options.code ?? null;
   return null;
@@ -95,54 +77,50 @@ export function auditTarget(e: AuditEntry, names: AuditNames): string | null {
 export function auditDetail(e: AuditEntry, names: AuditNames): string | null {
   const { channel_id: channelId, id, type } = e.options;
   if ((e.action_type === 72 || e.action_type === 40 || e.action_type === 42) && channelId !== undefined) {
-    return `в канале ${names.channel(channelId) ?? "удалённый канал"}`;
+    return t("audit:inChannel", { channel: names.channel(channelId) ?? t("audit:deletedChannel") });
   }
   if (CHANNEL_ACTIONS.has(e.action_type) && id !== undefined) {
-    return type === "1" ? `для участника ${names.user(id)}` : `для роли ${names.role(id) ?? "удалённая роль"}`;
+    return type === "1"
+      ? t("audit:forMember", { name: names.user(id) })
+      : t("audit:forRole", { name: names.role(id) ?? t("audit:deletedRole") });
   }
   return null;
 }
 
-const KEY_TITLE: Record<string, string> = {
-  name: "Название",
-  topic: "Тема",
-  nick: "Ник",
-  color: "Цвет",
-  hoist: "Отдельно в списке",
-  mentionable: "Можно упоминать",
-  parent_id: "Категория",
-  permission_synced: "Как в категории",
-  type: "Тип",
-  max_uses: "Использований",
-  max_age: "Срок",
-  icon_hash: "Значок",
-  permissions: "Права",
-  allow: "Разрешено",
-  deny: "Запрещено",
-  $add: "Выданы роли",
-  $remove: "Сняты роли",
-};
-
-const plural = new Intl.PluralRules("ru-RU");
-const DAY_WORDS: Record<string, string> = { one: "день", few: "дня", many: "дней", other: "дня" };
-const HOUR_WORDS: Record<string, string> = { one: "час", few: "часа", many: "часов", other: "часа" };
+const KEY_TITLE: Readonly<Record<string, string>> = textTable({
+  name: () => t("audit:key.name"),
+  topic: () => t("audit:key.topic"),
+  nick: () => t("audit:key.nick"),
+  color: () => t("audit:key.color"),
+  hoist: () => t("audit:key.hoist"),
+  mentionable: () => t("audit:key.mentionable"),
+  parent_id: () => t("audit:key.parent_id"),
+  permission_synced: () => t("audit:key.permission_synced"),
+  type: () => t("audit:key.type"),
+  max_uses: () => t("audit:key.max_uses"),
+  max_age: () => t("audit:key.max_age"),
+  icon_hash: () => t("audit:key.icon_hash"),
+  permissions: () => t("audit:key.permissions"),
+  allow: () => t("audit:key.allow"),
+  deny: () => t("audit:key.deny"),
+  $add: () => t("audit:key.$add"),
+  $remove: () => t("audit:key.$remove"),
+});
 
 /** An invite lifetime in words: «7 дней», «12 часов», «30 минут». */
 export const durationText = (seconds: number): string => {
   if (seconds % 86400 === 0) {
-    const n = seconds / 86400;
-    return `${String(n)} ${DAY_WORDS[plural.select(n)] ?? "дн."}`;
+    return t("audit:days", { count: seconds / 86400 });
   }
   if (seconds % 3600 === 0) {
-    const n = seconds / 3600;
-    return `${String(n)} ${HOUR_WORDS[plural.select(n)] ?? "ч"}`;
+    return t("audit:hours", { count: seconds / 3600 });
   }
-  return `${String(Math.round(seconds / 60))} мин`;
+  return t("audit:minutes", { count: Math.round(seconds / 60) });
 };
 
 const MASK_KEYS = new Set(["permissions", "allow", "deny"]);
 
-const PERMISSION_NAMES = new Map(PERMISSION_GROUPS.flatMap((g) => g.items.map((i) => [i.bit, i.name] as const)));
+const PERMISSION_ITEMS = PERMISSION_GROUPS.flatMap((g) => g.items);
 
 const maskOf = (v: AuditValue): bigint => (typeof v === "string" ? (parseMask(v) ?? 0n) : 0n);
 
@@ -151,25 +129,27 @@ const maskDiff = (before: AuditValue, after: AuditValue): string => {
   const was = maskOf(before);
   const now = maskOf(after);
   const parts: string[] = [];
-  for (const [bit, name] of PERMISSION_NAMES) {
+  for (const { bit, name } of PERMISSION_ITEMS) {
     const had = (was & bit) !== 0n;
     const has = (now & bit) !== 0n;
     if (has && !had) parts.push(`+ ${name}`);
     if (had && !has) parts.push(`− ${name}`);
   }
-  return parts.length === 0 ? "ничего" : parts.join(", ");
+  return parts.length === 0 ? t("audit:nothing") : parts.join(", ");
 };
 
 const formatValue = (key: string, v: AuditValue, names: AuditNames): string => {
   if (v === null || v === undefined || v === "") return "—";
-  if (typeof v === "boolean") return v ? "да" : "нет";
-  if (Array.isArray(v)) return v.map((id) => names.role(id) ?? "удалённая роль").join(", ");
-  if (key === "parent_id" && typeof v === "string") return names.channel(v) ?? "удалённая категория";
-  if (key === "color" && typeof v === "number") return v === 0 ? "без цвета" : `#${v.toString(16).padStart(6, "0")}`;
-  if (key === "max_uses" && v === 0) return "без ограничений";
-  if (key === "max_age" && typeof v === "number") return v === 0 ? "бессрочно" : durationText(v);
-  if (key === "icon_hash") return "картинка";
-  if (key === "type" && typeof v === "number") return v === 2 ? "голосовой" : v === 4 ? "категория" : "текстовый";
+  if (typeof v === "boolean") return v ? t("audit:yes") : t("audit:no");
+  if (Array.isArray(v)) return v.map((id) => names.role(id) ?? t("audit:deletedRole")).join(", ");
+  if (key === "parent_id" && typeof v === "string") return names.channel(v) ?? t("audit:deletedCategory");
+  if (key === "color" && typeof v === "number")
+    return v === 0 ? t("audit:noColor") : `#${v.toString(16).padStart(6, "0")}`;
+  if (key === "max_uses" && v === 0) return t("audit:noLimit");
+  if (key === "max_age" && typeof v === "number") return v === 0 ? t("audit:never") : durationText(v);
+  if (key === "icon_hash") return t("audit:image");
+  if (key === "type" && typeof v === "number")
+    return v === 2 ? t("audit:voice") : v === 4 ? t("audit:category") : t("audit:text");
   return String(v);
 };
 

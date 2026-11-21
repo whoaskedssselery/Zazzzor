@@ -1,6 +1,7 @@
 import { AppWindow, Monitor } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { nativeShare, type ShareChoice, type ShareSource, type Thumbnail } from "@/entities/call";
+import { t } from "@/shared/i18n";
 import {
   Button,
   cn,
@@ -20,8 +21,18 @@ import { shareNatively } from "../model/session";
 
 /** The frame rates a share may run at: 60 for games and video, 30 for a weak link. */
 const FPS_OPTIONS = [
-  { value: "60", label: "60 к/с" },
-  { value: "30", label: "30 к/с" },
+  {
+    value: "60",
+    get label() {
+      return t("voice:share.fps", { fps: 60 });
+    },
+  },
+  {
+    value: "30",
+    get label() {
+      return t("voice:share.fps", { fps: 30 });
+    },
+  },
 ];
 
 /** Thumbnails taken at once: each holds a capture of its own for a moment. */
@@ -158,7 +169,7 @@ const Picker = () => {
     if (list.length === 0) {
       return (
         <p className="py-10 text-center text-sm text-fg-muted">
-          {kind === "window" ? "Нет открытых окон" : "Нет экранов"}
+          {kind === "window" ? t("voice:share.noWindows") : t("voice:share.noScreens")}
         </p>
       );
     }
@@ -184,16 +195,16 @@ const Picker = () => {
 
   return (
     <DialogContent
-      title="Демонстрация экрана"
+      title={t("voice:share.title")}
       size="lg"
       footer={
         <>
           <label htmlFor={soundId} className="mr-auto flex cursor-pointer items-center gap-3 text-sm">
             <Switch id={soundId} checked={sound} onCheckedChange={setSound} />
-            {chosen?.kind === "screen" ? "Звук системы (без звонка)" : "Звук приложения"}
+            {chosen?.kind === "screen" ? t("voice:share.systemSound") : t("voice:share.appSound")}
           </label>
           <Select
-            aria-label="Частота кадров"
+            aria-label={t("voice:share.frameRate")}
             className="w-32"
             value={String(fps)}
             onValueChange={(v) => {
@@ -202,7 +213,7 @@ const Picker = () => {
             options={FPS_OPTIONS}
           />
           <DialogClose asChild>
-            <Button variant="ghost">Отмена</Button>
+            <Button variant="ghost">{t("common:cancel")}</Button>
           </DialogClose>
           <Button
             disabled={chosen === null}
@@ -210,15 +221,15 @@ const Picker = () => {
               start(chosen);
             }}
           >
-            Начать демонстрацию
+            {t("voice:share.start")}
           </Button>
         </>
       }
     >
-      {failed && <p className="py-10 text-center text-sm text-fg-danger">Не удалось получить список окон</p>}
+      {failed && <p className="py-10 text-center text-sm text-fg-danger">{t("voice:share.listFailed")}</p>}
       {!failed && sources === null && (
         <div className="flex justify-center py-10">
-          <Spinner label="Загрузка" size={24} className="text-fg-muted" />
+          <Spinner label={t("voice:share.loading")} size={24} className="text-fg-muted" />
         </div>
       )}
       {!failed && sources !== null && (
@@ -229,8 +240,8 @@ const Picker = () => {
           }}
         >
           <TabsList className="mb-3">
-            <TabsTrigger value="window">Приложения</TabsTrigger>
-            <TabsTrigger value="screen">Экраны</TabsTrigger>
+            <TabsTrigger value="window">{t("voice:share.apps")}</TabsTrigger>
+            <TabsTrigger value="screen">{t("voice:share.screens")}</TabsTrigger>
           </TabsList>
           <TabsContent value="window">{grid("window")}</TabsContent>
           <TabsContent value="screen">{grid("screen")}</TabsContent>

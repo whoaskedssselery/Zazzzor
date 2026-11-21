@@ -1,6 +1,7 @@
 import { Search } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import type { GuildEmoji } from "@/entities/guild";
+import { t } from "@/shared/i18n";
 import { cn, Popover, PopoverContent, PopoverTrigger, Spinner } from "@/shared/ui";
 import {
   customPickerEmoji,
@@ -157,7 +158,7 @@ export const EmojiPicker = ({
       : null;
 
   let body: ReactNode;
-  if (failed) body = <p className="p-6 text-center text-sm text-fg-muted">Не удалось загрузить эмодзи.</p>;
+  if (failed) body = <p className="p-6 text-center text-sm text-fg-muted">{t("chat:emojiFailed")}</p>;
   else if (groups === null)
     body = (
       <div className="flex h-full items-center justify-center">
@@ -167,15 +168,15 @@ export const EmojiPicker = ({
   else if (found !== null)
     body =
       found.length === 0 ? (
-        <p className="p-6 text-center text-sm text-fg-muted">Ничего не нашлось.</p>
+        <p className="p-6 text-center text-sm text-fg-muted">{t("chat:emojiNone")}</p>
       ) : (
-        <Section title="Найдено" emoji={found} onPick={pick} onHover={setHover} />
+        <Section title={t("chat:emojiFound")} emoji={found} onPick={pick} onHover={setHover} />
       );
   else
     body = (
       <>
-        <Section title="Недавние" emoji={recentOf(groups, custom)} onPick={pick} onHover={setHover} />
-        {custom.length > 0 && <Section title="Этого сервера" emoji={custom} onPick={pick} onHover={setHover} />}
+        <Section title={t("chat:emojiRecent")} emoji={recentOf(groups, custom)} onPick={pick} onHover={setHover} />
+        {custom.length > 0 && <Section title={t("chat:emojiServer")} emoji={custom} onPick={pick} onHover={setHover} />}
         {groups.map((g) => (
           <Section key={g.name} title={g.name} emoji={g.emoji} onPick={pick} onHover={setHover} />
         ))}
@@ -193,7 +194,7 @@ export const EmojiPicker = ({
       <PopoverTrigger asChild>{children}</PopoverTrigger>
       <PopoverContent
         align="end"
-        aria-label="Выбор реакции"
+        aria-label={t("chat:emojiPicker")}
         className="flex h-110 w-[calc(8*2.5rem+1.5rem)] max-w-[calc(100vw-16px)] flex-col"
       >
         <div className="relative z-2 m-2 mb-1">
@@ -205,8 +206,8 @@ export const EmojiPicker = ({
             // biome-ignore lint/a11y/noAutofocus: the picker opens to search, as Discord's does.
             autoFocus
             type="search"
-            aria-label="Найти эмодзи"
-            placeholder="Найти эмодзи"
+            aria-label={t("chat:emojiSearch")}
+            placeholder={t("chat:emojiSearch")}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -235,7 +236,7 @@ export const EmojiPicker = ({
               <span className="truncate">{hover.label}</span>
             </>
           ) : (
-            "Выберите реакцию"
+            t("chat:emojiChoose")
           )}
         </div>
       </PopoverContent>

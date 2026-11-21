@@ -1,11 +1,18 @@
 import { create } from "zustand";
 import { type Attachment, formatSize, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS } from "@/entities/message";
 import { ApiError, errorText, unwrap } from "@/shared/api";
+import { onLanguage, t } from "@/shared/i18n";
 
-export const TOO_MANY_FILES = `Не больше ${String(MAX_ATTACHMENTS)} файлов в одном сообщении`;
-export const FILE_TOO_BIG = `Файл больше ${formatSize(MAX_ATTACHMENT_BYTES)}`;
-export const EMPTY_FILE = "Пустой файл";
-export const NO_ATTACH_PERMISSION = "У вас нет прав прикреплять файлы в этом канале";
+export let TOO_MANY_FILES = "";
+export let FILE_TOO_BIG = "";
+export let EMPTY_FILE = "";
+export let NO_ATTACH_PERMISSION = "";
+onLanguage(() => {
+  TOO_MANY_FILES = t("chat:send.tooManyFiles", { max: MAX_ATTACHMENTS });
+  FILE_TOO_BIG = t("chat:send.fileTooBig", { size: formatSize(MAX_ATTACHMENT_BYTES) });
+  EMPTY_FILE = t("chat:send.emptyFile");
+  NO_ATTACH_PERMISSION = t("chat:send.noAttach");
+});
 
 /**
  * A file in the composer. It uploads the moment it is added, so it is

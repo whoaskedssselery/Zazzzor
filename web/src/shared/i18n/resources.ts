@@ -1,11 +1,5 @@
-import enAuth from "./locales/en/auth.json";
-import enCommon from "./locales/en/common.json";
-import enErrors from "./locales/en/errors.json";
-import enSettings from "./locales/en/settings.json";
-import ruAuth from "./locales/ru/auth.json";
-import ruCommon from "./locales/ru/common.json";
-import ruErrors from "./locales/ru/errors.json";
-import ruSettings from "./locales/ru/settings.json";
+import { locales } from "./locales";
+import names from "./locales/names.json";
 
 /**
  * The languages of the interface. English is the source: every text is
@@ -28,17 +22,14 @@ export const TRANSLATED: boolean = false;
 export const SOURCE_LANGUAGE: Language = "en";
 
 /** Each language's own name, as the picker shows it whatever the current language. */
-export const LANGUAGE_NAMES: Record<Language, string> = { en: "English", ru: "Русский" };
+export const LANGUAGE_NAMES: Record<Language, string> = names;
 
 /**
  * Every text of the interface, by language and namespace. The keys and their
  * types come from English, and locales.test.ts holds every translation to the
  * same keys, placeholders and plural forms.
  */
-export const resources = {
-  en: { common: enCommon, errors: enErrors, settings: enSettings, auth: enAuth },
-  ru: { common: ruCommon, errors: ruErrors, settings: ruSettings, auth: ruAuth },
-} as const satisfies Record<Language, Record<string, unknown>>;
+export const resources = locales satisfies Record<Language, Record<string, unknown>>;
 
 /** The texts of the source language: the shape every language has. */
 export type Texts = (typeof resources)["en"];

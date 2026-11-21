@@ -22,6 +22,7 @@ import {
 } from "@/entities/guild";
 import { MemberMenu } from "@/features/manage-member";
 import { joinVoice, NO_CONNECT, watchStream } from "@/features/voice-call";
+import { t } from "@/shared/i18n";
 import { Avatar, Badge, Button, cn } from "@/shared/ui";
 import { CallControls } from "./CallControls";
 import { CameraView } from "./CameraView";
@@ -35,17 +36,17 @@ export interface StagePerson {
 
 const nameOf = (entry: GuildEntry, userId: string): StagePerson => {
   const user = entry.members[userId]?.user;
-  return user ? userDisplay(entry, user) : { name: "Участник", avatarUrl: null };
+  return user ? userDisplay(entry, user) : { name: t("common:member"), avatarUrl: null };
 };
 
 /** What a person switched off, as icons after their name. */
 const Switches = ({ state }: { state: VoiceState }) => (
   <>
     {(state.mute || state.self_mute) && (
-      <MicOff role="img" aria-label="Микрофон выключен" className="size-4 shrink-0 text-fg-danger" />
+      <MicOff role="img" aria-label={t("shell:micOff")} className="size-4 shrink-0 text-fg-danger" />
     )}
     {(state.deaf || state.self_deaf) && (
-      <HeadphoneOff role="img" aria-label="Звук выключен" className="size-4 shrink-0 text-fg-danger" />
+      <HeadphoneOff role="img" aria-label={t("shell:soundOff")} className="size-4 shrink-0 text-fg-danger" />
     )}
   </>
 );
@@ -90,7 +91,7 @@ const PersonTile = ({
           )}
         >
           <span className="truncate">{name}</span>
-          {state.self_stream && !compact && <Badge variant="live">В ЭФИРЕ</Badge>}
+          {state.self_stream && !compact && <Badge variant="live">{t("shell:live")}</Badge>}
           <Switches state={state} />
         </span>
       </div>
@@ -116,7 +117,7 @@ const PersonTile = ({
       </span>
       <span className={cn("flex max-w-full items-center gap-1.5 font-medium", compact ? "text-xs" : "text-sm")}>
         <span className="truncate">{name}</span>
-        {state.self_stream && !compact && <Badge variant="live">В ЭФИРЕ</Badge>}
+        {state.self_stream && !compact && <Badge variant="live">{t("shell:live")}</Badge>}
         <Switches state={state} />
       </span>
     </div>
@@ -171,7 +172,9 @@ const TileSlot = ({
     >
       <button
         type="button"
-        aria-label={focused ? `Вернуть в сетку: ${tile.name}` : `Развернуть: ${tile.name}`}
+        aria-label={
+          focused ? t("voice:stage.backToGrid", { name: tile.name }) : t("voice:stage.expand", { name: tile.name })
+        }
         aria-pressed={focused}
         className="peer absolute inset-0 cursor-pointer rounded-lg focus-visible:outline-none"
         onClick={onToggle}
@@ -288,7 +291,7 @@ const CallStage = ({ tiles }: { tiles: Tile[] }) => {
             />
           </ul>
           {rest.length > 0 && (
-            <ul aria-label="Остальные в звонке" className="flex shrink-0 justify-center gap-2 overflow-x-auto">
+            <ul aria-label={t("voice:stage.others")} className="flex shrink-0 justify-center gap-2 overflow-x-auto">
               {rest.map((t) => (
                 <TileSlot
                   key={t.key}
@@ -376,7 +379,7 @@ const useCallTiles = (
       ? [
           {
             key: "own",
-            name: "Ваша демонстрация экрана",
+            name: t("voice:stage.yourShare"),
             render: (compact: boolean) => <OwnStreamTile compact={compact} />,
           },
         ]
@@ -385,7 +388,7 @@ const useCallTiles = (
       const { name } = person(id);
       return {
         key: `stream:${id}`,
-        name: `${name} — демонстрация экрана`,
+        name: t("voice:stage.shareOf", { name }),
         render: (compact, front) => (
           <StreamTile userId={id} name={name} watching={watching.includes(id)} compact={compact} onWatch={front} />
         ),
@@ -426,7 +429,7 @@ export const VoiceStage = ({ guildId, channel }: { guildId: string; channel: Cha
 
   return (
     <section
-      aria-label={`Голосовой канал ${channel.name}`}
+      aria-label={t("shell:voiceChannel", { name: channel.name })}
       className={cn("flex min-h-0 flex-1 flex-col", !inCall && "overflow-y-auto p-4")}
     >
       {inCall ? (
@@ -441,7 +444,9 @@ export const VoiceStage = ({ guildId, channel }: { guildId: string; channel: Cha
         />
       ) : (
         <div className="m-auto flex max-w-md flex-col items-center gap-4 text-center">
-          <p className="text-base text-fg-muted">{members.length === 0 ? "Здесь пока никого нет." : "Сейчас здесь:"}</p>
+          <p className="text-base text-fg-muted">
+            {members.length === 0 ? t("voice:stage.nobody") : t("voice:stage.here")}
+          </p>
           {members.length > 0 && (
             <ul className="flex flex-wrap justify-center gap-3">
               {members.map((v) => {
@@ -462,7 +467,7 @@ export const VoiceStage = ({ guildId, channel }: { guildId: string; channel: Cha
               void joinVoice(guildId, channel.id);
             }}
           >
-            Присоединиться
+            {t("voice:stage.join")}
           </Button>
           {!canConnect && <p className="text-sm text-fg-muted">{NO_CONNECT}</p>}
         </div>

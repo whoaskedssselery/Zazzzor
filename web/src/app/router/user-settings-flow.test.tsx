@@ -7,9 +7,8 @@ import { PASSWORD_CHANGED, PASSWORDS_DIFFER } from "@/features/change-password";
 import { NAME_RULE } from "@/features/edit-profile";
 import { PTT_FOCUS_HINT } from "@/features/voice-call";
 import { LANGUAGE_STORAGE_KEY, TRANSLATED } from "@/shared/i18n";
-import { WRONG_IMAGE } from "@/shared/lib";
 import { apiHandler, dispatchFrame, makeReady, problem, readyGateway, server } from "@/shared/test";
-import { THEME_STORAGE_KEY, UNSAVED } from "@/shared/ui";
+import { THEME_STORAGE_KEY } from "@/shared/ui";
 
 const AVATAR = "/api/v1/files/avatars/1234567890123456789/0123456789abcdef.png";
 
@@ -59,7 +58,7 @@ describe("user settings", () => {
     await user.type(name, "  Василий  ");
     await user.click(screen.getByRole("button", { name: "Сохранить изменения" }));
     await waitFor(() => {
-      expect(screen.queryByRole("region", { name: UNSAVED })).toBeNull();
+      expect(screen.queryByRole("region", { name: "Есть несохранённые изменения" })).toBeNull();
     });
     expect(bodies).toEqual([{ display_name: "Василий" }]);
     await user.keyboard("{Escape}");
@@ -84,7 +83,7 @@ describe("user settings", () => {
     await user.type(bio, "  Люблю кино{Enter}и чай  ");
     await user.click(screen.getByRole("button", { name: "Сохранить изменения" }));
     await waitFor(() => {
-      expect(screen.queryByRole("region", { name: UNSAVED })).toBeNull();
+      expect(screen.queryByRole("region", { name: "Есть несохранённые изменения" })).toBeNull();
     });
     expect(bodies).toEqual([{ bio: "Люблю кино\nи чай" }]);
   });
@@ -136,10 +135,10 @@ describe("user settings", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Сохранить изменения" })).toHaveProperty("disabled", false);
     });
-    expect(screen.getByRole("region", { name: UNSAVED })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Есть несохранённые изменения" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Сохранить изменения" }));
     await waitFor(() => {
-      expect(screen.queryByRole("region", { name: UNSAVED })).toBeNull();
+      expect(screen.queryByRole("region", { name: "Есть несохранённые изменения" })).toBeNull();
     });
     expect(sizes).toEqual([8, 16]);
   });
@@ -156,14 +155,14 @@ describe("user settings", () => {
     const { user } = renderApp("/settings/profile");
     await screen.findByRole("textbox", { name: "Отображаемое имя" });
     fireEvent.change(picker(), { target: { files: [png()] } });
-    expect(await screen.findByRole("region", { name: UNSAVED })).toBeTruthy();
+    expect(await screen.findByRole("region", { name: "Есть несохранённые изменения" })).toBeTruthy();
     expect(uploaded).toBe(false);
     await user.click(screen.getByRole("button", { name: "Сохранить изменения" }));
     await waitFor(() => {
       expect(uploaded).toBe(true);
     });
     await waitFor(() => {
-      expect(screen.queryByRole("region", { name: UNSAVED })).toBeNull();
+      expect(screen.queryByRole("region", { name: "Есть несохранённые изменения" })).toBeNull();
     });
   });
 
@@ -172,8 +171,8 @@ describe("user settings", () => {
     renderApp("/settings/profile");
     await screen.findByRole("textbox", { name: "Отображаемое имя" });
     fireEvent.change(picker(), { target: { files: [new File(["x"], "a.txt", { type: "text/plain" })] } });
-    expect((await screen.findByRole("alert")).textContent).toBe(WRONG_IMAGE);
-    expect(screen.queryByRole("region", { name: UNSAVED })).toBeNull();
+    expect((await screen.findByRole("alert")).textContent).toBe("Нужна картинка PNG, JPEG, GIF или WebP.");
+    expect(screen.queryByRole("region", { name: "Есть несохранённые изменения" })).toBeNull();
   });
 
   it("removes the avatar on save", async () => {
@@ -213,7 +212,7 @@ describe("user settings", () => {
     await waitFor(() => {
       expect(name).toHaveProperty("value", "Васёк");
     });
-    expect(screen.queryByRole("region", { name: UNSAVED })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Есть несохранённые изменения" })).toBeNull();
   });
 
   it("asks before closing with unsaved changes", async () => {

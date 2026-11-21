@@ -1,6 +1,7 @@
 import { Video, VideoOff } from "lucide-react";
 import { canUseCamera, useCall } from "@/entities/call";
 import { computeChannel, has, PERM, useGuilds } from "@/entities/guild";
+import { t } from "@/shared/i18n";
 import { cn, IconButton } from "@/shared/ui";
 import { NO_VIDEO, startCamera, stopCamera } from "../model/session";
 
@@ -25,7 +26,7 @@ export const CameraButton = ({ className }: { className?: string }) => {
   if (!allowed && !on) return <IconButton label={NO_VIDEO} icon={VideoOff} className={className} disabled />;
   return (
     <IconButton
-      label={on ? "Выключить камеру" : "Включить камеру"}
+      label={on ? t("voice:camera.off") : t("voice:camera.on")}
       icon={on ? Video : VideoOff}
       aria-pressed={on}
       className={cn(className, on && "text-fg-success")}

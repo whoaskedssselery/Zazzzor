@@ -1,3 +1,4 @@
+import { t } from "@/shared/i18n";
 import { isChannelMuted } from "./notify";
 import { type DMChannel, type GuildsState, newer, PRIVATE_TYPE, type PrivateEntry } from "./reducer";
 
@@ -8,7 +9,7 @@ import { type DMChannel, type GuildsState, newer, PRIVATE_TYPE, type PrivateEntr
  */
 export const privateName = (c: Pick<DMChannel, "name" | "recipients">): string => {
   if (c.name !== null) return c.name;
-  if (c.recipients.length === 0) return "Только вы";
+  if (c.recipients.length === 0) return t("guild:onlyYou");
   return c.recipients.map((r) => r.display_name).join(", ");
 };
 

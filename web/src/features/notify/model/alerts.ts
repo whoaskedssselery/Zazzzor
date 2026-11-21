@@ -16,6 +16,7 @@ import {
 } from "@/entities/guild";
 import type { Message } from "@/entities/message";
 import { getGateway, parseChatEvent } from "@/shared/api";
+import { t } from "@/shared/i18n";
 import { type MentionNames, markdownText } from "@/shared/lib";
 import { getNotifyPrefs } from "./prefs";
 import { playMentionSound } from "./sound";
@@ -78,7 +79,7 @@ const names = (e: GuildEntry): MentionNames => ({
 /** A notification's text: the message as plain text, a clip for a file alone, cut short. */
 const bodyOf = (m: Message, mentionNames: MentionNames): string => {
   const body = markdownText(m.content, mentionNames);
-  const text = body === "" && m.attachments.length > 0 ? "📎 Вложение" : body;
+  const text = body === "" && m.attachments.length > 0 ? t("notify:attachment") : body;
   return text.length > MAX_BODY ? `${text.slice(0, MAX_BODY - 1)}…` : text;
 };
 
@@ -94,9 +95,9 @@ interface Notice {
 /** The notification of message `m` in server `e`: «Аня (#общий, Вечерний сеанс)» and its text. */
 export const notificationOf = (e: GuildEntry, m: Message): Notice => {
   const author = m.author ? userDisplay(e, m.author) : null;
-  const channel = e.channels[m.channel_id]?.name ?? "канал";
+  const channel = e.channels[m.channel_id]?.name ?? t("notify:channel");
   return {
-    title: `${author?.name ?? "Кто-то"} (#${channel}, ${e.guild.name})`,
+    title: `${author?.name ?? t("notify:someone")} (#${channel}, ${e.guild.name})`,
     body: bodyOf(m, names(e)),
     icon: iconOf(author?.avatarUrl),
   };
@@ -104,7 +105,7 @@ export const notificationOf = (e: GuildEntry, m: Message): Notice => {
 
 /** The notification of message `m` in a DM («Аня») or a group («Аня (Пятница)»). */
 export const privateNotificationOf = (p: PrivateEntry, m: Message): Notice => {
-  const author = m.author?.display_name ?? "Кто-то";
+  const author = m.author?.display_name ?? t("notify:someone");
   const people = new Map(p.channel.recipients.map((r) => [r.id, r.display_name]));
   const mentionNames: MentionNames = {
     user: (id) => {

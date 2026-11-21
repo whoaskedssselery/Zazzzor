@@ -13,6 +13,7 @@ import {
 } from "@/entities/guild";
 import { useNotifyPrefs } from "@/features/notify";
 import { declineCall, joinVoice, startRingtone } from "@/features/voice-call";
+import { t } from "@/shared/i18n";
 import { Avatar, Button } from "@/shared/ui";
 
 /**
@@ -42,7 +43,7 @@ const IncomingCall = ({ entry }: { entry: PrivateEntry }) => {
   return (
     <section
       role="alertdialog"
-      aria-label={`Входящий звонок: ${name}`}
+      aria-label={t("shell:incomingCallFrom", { name })}
       className="pointer-events-auto flex w-80 max-w-[calc(100vw-2rem)] animate-float flex-col items-center gap-3 rounded-lg bg-overlay p-5 text-center shadow-float ring-1 ring-border"
     >
       {peer ? (
@@ -54,7 +55,7 @@ const IncomingCall = ({ entry }: { entry: PrivateEntry }) => {
       )}
       <div className="min-w-0">
         <p className="truncate text-lg font-semibold">{name}</p>
-        <p className="text-sm text-fg-muted">{peer ? "Входящий звонок…" : "Звонок в группе…"}</p>
+        <p className="text-sm text-fg-muted">{peer ? t("shell:incomingCall") : t("shell:groupCall")}</p>
       </div>
       <div className="flex gap-3">
         <Button
@@ -64,7 +65,7 @@ const IncomingCall = ({ entry }: { entry: PrivateEntry }) => {
           }}
         >
           <PhoneOff aria-hidden className="size-4" />
-          Отклонить
+          {t("shell:decline")}
         </Button>
         <Button
           variant="primary"
@@ -75,7 +76,7 @@ const IncomingCall = ({ entry }: { entry: PrivateEntry }) => {
           }}
         >
           <Phone aria-hidden className="size-4" />
-          Принять
+          {t("shell:accept")}
         </Button>
       </div>
     </section>
@@ -110,7 +111,7 @@ export const IncomingCalls = () => {
     if (!("Notification" in window) || Notification.permission !== "granted") return;
     const shown = ringing.map((p) => {
       const n = new Notification(privateName(p.channel), {
-        body: "Входящий звонок",
+        body: t("shell:incomingCallBody"),
         tag: `call-${p.channel.id}`,
         icon: new URL(dmPeer(p.channel)?.avatar_url ?? "/favicon.svg", window.location.origin).href,
       });

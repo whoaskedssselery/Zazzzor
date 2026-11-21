@@ -20,25 +20,41 @@ import {
 } from "@/entities/call";
 import { computeChannel, getGuildsState, has, myVoice, PERM } from "@/entities/guild";
 import { api, errorText, unwrap } from "@/shared/api";
+import { onLanguage, t } from "@/shared/i18n";
 import { playSound } from "@/shared/lib";
 import { getNativeShare, resetNativeShareState, setNativeShare } from "./native-share";
 import { shareNotice } from "./notice";
 import { startPushToTalk } from "./push-to-talk";
 import { startSwitchKeys } from "./switch-keys";
 
-export const CALL_REPLACED = "Вы подключились к голосу в другом месте";
-export const CALL_REMOVED = "Вас отключили от голосового канала";
-export const CALL_FAILED = "Не удалось подключиться к голосу";
-export const MIC_DENIED = "Нет доступа к микрофону";
-export const NO_CONNECT = "Нет права подключаться к этому каналу";
-export const NO_STREAM = "Нет права на демонстрацию экрана";
-export const SHARE_FAILED = "Не удалось начать демонстрацию";
-export const SHARE_SOURCE_CLOSED = "Окно демонстрации закрыто";
-export const DEVICE_FAILED = "Не удалось переключить устройство";
-export const NO_VIDEO = "Нет права на видео";
-export const CAMERA_DENIED = "Нет доступа к камере: разрешите её в настройках сайта";
-export const CAMERA_MISSING = "Камера не найдена";
-export const CAMERA_FAILED = "Не удалось включить камеру";
+export let CALL_REPLACED = "";
+export let CALL_REMOVED = "";
+export let CALL_FAILED = "";
+export let MIC_DENIED = "";
+export let NO_CONNECT = "";
+export let NO_STREAM = "";
+export let SHARE_FAILED = "";
+export let SHARE_SOURCE_CLOSED = "";
+export let DEVICE_FAILED = "";
+export let NO_VIDEO = "";
+export let CAMERA_DENIED = "";
+export let CAMERA_MISSING = "";
+export let CAMERA_FAILED = "";
+onLanguage(() => {
+  CALL_REPLACED = t("voice:session.replaced");
+  CALL_REMOVED = t("voice:session.removed");
+  CALL_FAILED = t("voice:session.failed");
+  MIC_DENIED = t("voice:session.micDenied");
+  NO_CONNECT = t("voice:session.noConnect");
+  NO_STREAM = t("voice:session.noStream");
+  SHARE_FAILED = t("voice:session.shareFailed");
+  SHARE_SOURCE_CLOSED = t("voice:session.shareSourceClosed");
+  DEVICE_FAILED = t("voice:session.deviceFailed");
+  NO_VIDEO = t("voice:session.noVideo");
+  CAMERA_DENIED = t("voice:session.cameraDenied");
+  CAMERA_MISSING = t("voice:session.cameraMissing");
+  CAMERA_FAILED = t("voice:session.cameraFailed");
+});
 
 /** How long a removal waits for the server to say whether the user left voice (a moderator) or not (a newer join). */
 const REMOVAL_SETTLE_MS = 2000;

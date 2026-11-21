@@ -4,7 +4,6 @@ import { HttpResponse } from "msw";
 import { renderApp, sessionHandler, testUser } from "@/app/test";
 import { resetChannelUi } from "@/entities/channel";
 import { DEFAULT_EVERYONE, formatMask, PERM, resetGuilds } from "@/entities/guild";
-import { IMAGE_TOO_LARGE } from "@/shared/lib";
 import {
   apiHandler,
   dispatchFrame,
@@ -19,7 +18,6 @@ import {
   readyGateway,
   server,
 } from "@/shared/test";
-import { UNSAVED } from "@/shared/ui";
 
 type Client = WebSocketHandlerConnection["client"];
 
@@ -102,10 +100,10 @@ describe("server settings", () => {
     const name = await screen.findByRole("textbox", { name: "Название сервера" });
     await user.clear(name);
     await user.type(name, "Киноклуб");
-    expect(screen.getByRole("region", { name: UNSAVED })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Есть несохранённые изменения" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Сохранить изменения" }));
     await waitFor(() => {
-      expect(screen.queryByRole("region", { name: UNSAVED })).toBeNull();
+      expect(screen.queryByRole("region", { name: "Есть несохранённые изменения" })).toBeNull();
     });
     expect(bodies).toEqual([{ name: "Киноклуб" }]);
     expect(within(await nav()).getByText("Киноклуб")).toBeTruthy();
@@ -166,10 +164,10 @@ describe("server settings", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Сохранить изменения" })).toHaveProperty("disabled", false);
     });
-    expect(screen.getByRole("region", { name: UNSAVED })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Есть несохранённые изменения" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Сохранить изменения" }));
     await waitFor(() => {
-      expect(screen.queryByRole("region", { name: UNSAVED })).toBeNull();
+      expect(screen.queryByRole("region", { name: "Есть несохранённые изменения" })).toBeNull();
     });
     expect(sizes).toEqual([8, 16]);
   });
@@ -182,8 +180,8 @@ describe("server settings", () => {
     if (!input) throw new Error("no file input");
     const big = new File([new Uint8Array(4 * 1024 * 1024 + 1)], "big.png", { type: "image/png" });
     fireEvent.change(input, { target: { files: [big] } });
-    expect((await screen.findByRole("alert")).textContent).toBe(IMAGE_TOO_LARGE);
-    expect(screen.queryByRole("region", { name: UNSAVED })).toBeNull();
+    expect((await screen.findByRole("alert")).textContent).toBe("Файл больше 4 МБ.");
+    expect(screen.queryByRole("region", { name: "Есть несохранённые изменения" })).toBeNull();
   });
 
   it("deletes the server for its owner once its name is typed", async () => {

@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { CHANNEL_SETTINGS_TITLES, channelSettingsTabs, useConnectionStatus, useGuilds } from "@/entities/guild";
+import { t } from "@/shared/i18n";
 import { SettingsFrame, settingsNavItemClass, useLeaveGuard } from "@/shared/ui";
 import { ChannelOverview } from "./ChannelOverview";
 import { ChannelPermissions } from "./ChannelPermissions";
@@ -51,7 +52,7 @@ export const ChannelSettings = ({ guildId, channelId, tab }: { guildId: string; 
   return (
     <>
       <SettingsFrame
-        navLabel="Настройки канала"
+        navLabel={t("shell:channelSettingsNav")}
         title={title}
         onClose={() => {
           guard(close);

@@ -1,7 +1,7 @@
 import { screen, within } from "@testing-library/react";
 import { SPOILER_TEXT } from "@/shared/lib";
 import { makeMessage, makeUser, renderUi } from "@/shared/test";
-import { type AuthorView, DELETED_USER, MessageItem, REPLY_DELETED } from "./MessageItem";
+import { type AuthorView, MessageItem } from "./MessageItem";
 
 const anna = makeUser("1", { display_name: "Аня" });
 const view: AuthorView = { name: "Аня", color: 0xd9944a, avatarUrl: null };
@@ -34,7 +34,7 @@ describe("MessageItem", () => {
         now={now}
       />,
     );
-    expect(screen.getByText(DELETED_USER)).toBeTruthy();
+    expect(screen.getByText("Удалённый пользователь")).toBeTruthy();
   });
 
   it("marks an edited message and tells when it was edited", async () => {
@@ -73,7 +73,7 @@ describe("MessageItem", () => {
   it("says the answered message is gone when it was deleted", () => {
     const m = makeMessage("6", "101", anna, { reply_to_id: "5", referenced_message: null });
     renderUi(<MessageItem message={m} author={view} replyAuthor={null} grouped={false} now={now} />);
-    expect(screen.getByText(REPLY_DELETED)).toBeTruthy();
+    expect(screen.getByText("Исходное сообщение удалено")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Перейти к исходному сообщению" })).toBeNull();
   });
 

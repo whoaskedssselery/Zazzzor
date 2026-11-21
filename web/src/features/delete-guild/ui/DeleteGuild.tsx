@@ -2,6 +2,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { type SubmitEvent, useState } from "react";
 import { api, errorText, unwrap } from "@/shared/api";
+import { t } from "@/shared/i18n";
 import { Button, Dialog, DialogClose, DialogContent, Field, FormAlert, Input, useToast } from "@/shared/ui";
 
 const FORM_ID = "delete-guild-form";
@@ -22,7 +23,7 @@ export const DeleteGuild = ({ guildId, guildName }: { guildId: string; guildName
           setOpen(true);
         }}
       >
-        Удалить сервер
+        {t("guild:deleteGuild.button")}
       </Button>
       {open && <DeleteForm guildId={guildId} guildName={guildName} />}
     </Dialog>
@@ -38,7 +39,7 @@ const DeleteForm = ({ guildId, guildName }: { guildId: string; guildName: string
       unwrap(await api.DELETE("/guilds/{guild_id}", { params: { path: { guild_id: guildId } } }));
     },
     onSuccess: () => {
-      toast.show({ text: `Сервер «${guildName}» удалён` });
+      toast.show({ text: t("guild:deleteGuild.deleted", { name: guildName }) });
       void navigate({ to: "/channels/@me" });
     },
   });
@@ -49,22 +50,22 @@ const DeleteForm = ({ guildId, guildName }: { guildId: string; guildName: string
   };
   return (
     <DialogContent
-      title={`Удалить «${guildName}»?`}
-      description="Все каналы и сообщения пропадут навсегда, а участники потеряют доступ. Это нельзя отменить."
+      title={t("guild:deleteGuild.title", { name: guildName })}
+      description={t("guild:deleteGuild.text")}
       footer={
         <>
           <DialogClose asChild>
-            <Button variant="ghost">Отмена</Button>
+            <Button variant="ghost">{t("common:cancel")}</Button>
           </DialogClose>
           <Button type="submit" form={FORM_ID} variant="danger" disabled={!matches} loading={remove.isPending}>
-            Удалить сервер
+            {t("guild:deleteGuild.button")}
           </Button>
         </>
       }
     >
       <form id={FORM_ID} onSubmit={submit} noValidate>
         {remove.isError && <FormAlert>{errorText(remove.error)}</FormAlert>}
-        <Field htmlFor="delete-guild-name" label="Введите название сервера">
+        <Field htmlFor="delete-guild-name" label={t("guild:deleteGuild.typeName")}>
           <Input
             autoComplete="off"
             autoFocus

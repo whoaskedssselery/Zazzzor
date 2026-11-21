@@ -1,5 +1,6 @@
 import { type SubmitEvent, useState } from "react";
 import type { GuildEntry, Member } from "@/entities/guild";
+import { t } from "@/shared/i18n";
 import { runeLength, trimContent } from "@/shared/lib";
 import {
   Button,
@@ -17,7 +18,6 @@ import { assignableRoles, useMemberMutations } from "../model/actions";
 
 export type MemberDialog = "nick" | "roles" | "kick" | "ban";
 
-const NICK_RULE = "Ник: до 32 символов.";
 const REASON_MAX = 512;
 
 const nameOf = (member: Member) => member.nick ?? member.user.display_name;
@@ -30,29 +30,29 @@ const NickForm = ({ guildId, member, onDone }: { guildId: string; member: Member
     e.preventDefault();
     const value = trimContent(nick);
     if (runeLength(value) > 32) {
-      setError(NICK_RULE);
+      setError(t("member:nickRule"));
       return;
     }
     update.mutate({ userId: member.user.id, body: { nick: value === "" ? null : value } }, { onSuccess: onDone });
   };
   return (
     <DialogContent
-      title="Изменить ник"
-      description={`Ник на этом сервере вместо «${member.user.display_name}». Пустой — без ника.`}
+      title={t("member:nickTitle")}
+      description={t("member:nickText", { name: member.user.display_name })}
       size="sm"
       footer={
         <>
           <DialogClose asChild>
-            <Button variant="ghost">Отмена</Button>
+            <Button variant="ghost">{t("common:cancel")}</Button>
           </DialogClose>
           <Button type="submit" form="member-nick-form" loading={update.isPending}>
-            Сохранить
+            {t("member:save")}
           </Button>
         </>
       }
     >
       <form id="member-nick-form" noValidate onSubmit={submit}>
-        <Field htmlFor="member-nick" label="Ник" error={error}>
+        <Field htmlFor="member-nick" label={t("member:nick")} error={error}>
           <Input
             value={nick}
             maxLength={64}
@@ -88,16 +88,16 @@ const RolesForm = ({
   };
   return (
     <DialogContent
-      title={`Роли — ${nameOf(member)}`}
-      description="Можно выдать и снять только роли ниже вашей высшей."
+      title={t("member:rolesTitle", { name: nameOf(member) })}
+      description={t("member:rolesText")}
       size="sm"
       footer={
         <>
           <DialogClose asChild>
-            <Button variant="ghost">Отмена</Button>
+            <Button variant="ghost">{t("common:cancel")}</Button>
           </DialogClose>
           <Button type="submit" form="member-roles-form" loading={update.isPending}>
-            Сохранить
+            {t("member:save")}
           </Button>
         </>
       }
@@ -142,16 +142,16 @@ const BanForm = ({ guildId, member, onDone }: { guildId: string; member: Member;
   };
   return (
     <DialogContent
-      title={`Забанить ${nameOf(member)}?`}
-      description="Участник покинет сервер и не сможет вернуться, пока его не разбанят."
+      title={t("member:banTitle", { name: nameOf(member) })}
+      description={t("member:banText")}
       size="sm"
       footer={
         <>
           <DialogClose asChild>
-            <Button variant="ghost">Отмена</Button>
+            <Button variant="ghost">{t("common:cancel")}</Button>
           </DialogClose>
           <Button type="submit" form="member-ban-form" variant="danger" disabled={tooLong} loading={ban.isPending}>
-            Забанить
+            {t("member:ban")}
           </Button>
         </>
       }
@@ -159,9 +159,9 @@ const BanForm = ({ guildId, member, onDone }: { guildId: string; member: Member;
       <form id="member-ban-form" noValidate onSubmit={submit}>
         <Field
           htmlFor="member-ban-reason"
-          label="Причина"
-          hint={`Необязательно, до ${String(REASON_MAX)} символов.`}
-          error={tooLong ? `Причина: до ${String(REASON_MAX)} символов.` : undefined}
+          label={t("member:reason")}
+          hint={t("member:reasonHint", { max: REASON_MAX })}
+          error={tooLong ? t("member:reasonTooLong", { max: REASON_MAX }) : undefined}
         >
           <Textarea
             value={reason}
@@ -207,9 +207,9 @@ export const MemberDialogs = ({
       <ConfirmDialog
         open={open === "kick"}
         onOpenChange={onOpenChange}
-        title={`Выгнать ${nameOf(member)}?`}
-        description="Участник покинет сервер, но сможет вернуться по приглашению."
-        confirmLabel="Выгнать"
+        title={t("member:kickTitle", { name: nameOf(member) })}
+        description={t("member:kickText")}
+        confirmLabel={t("member:kick")}
         tone="danger"
         onConfirm={() => {
           kick.mutate(member.user.id);

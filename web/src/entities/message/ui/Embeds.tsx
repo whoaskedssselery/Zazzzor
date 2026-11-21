@@ -1,6 +1,7 @@
 import { Play } from "lucide-react";
 import { type CSSProperties, type ReactNode, useState } from "react";
 import type { components } from "@/shared/api";
+import { t } from "@/shared/i18n";
 
 export type Embed = components["schemas"]["Embed"];
 type Media = components["schemas"]["EmbedMedia"];
@@ -37,7 +38,7 @@ const ImageEmbed = ({ embed, image }: { embed: Embed; image: Media }) => (
   <External href={embed.url} className="block w-fit max-w-full overflow-hidden rounded-lg">
     <img
       src={image.url}
-      alt={embed.title ?? "Картинка по ссылке"}
+      alt={embed.title ?? t("chat:embed.image")}
       loading="lazy"
       className="block h-auto max-w-full bg-control object-contain"
       style={box(image, 520, 350)}
@@ -56,7 +57,7 @@ const VideoPlayer = ({ embed, video }: { embed: Embed; video: Media }) => {
     return (
       <iframe
         src={`${video.url}?autoplay=1`}
-        title={embed.title ?? "Видео YouTube"}
+        title={embed.title ?? t("chat:embed.youtube")}
         allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
         allowFullScreen
         sandbox="allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox"
@@ -69,7 +70,7 @@ const VideoPlayer = ({ embed, video }: { embed: Embed; video: Media }) => {
   return (
     <button
       type="button"
-      aria-label={`Смотреть: ${embed.title ?? "видео"}`}
+      aria-label={t("chat:embed.watch", { title: embed.title ?? t("chat:embed.video") })}
       className="group/play relative mt-3 block cursor-pointer overflow-hidden rounded-md bg-[#000]"
       style={style}
       onClick={() => {
@@ -137,7 +138,7 @@ const LinkCard = ({ embed }: { embed: Embed }) => {
 export const Embeds = ({ embeds }: { embeds: readonly Embed[] }) => {
   if (embeds.length === 0) return null;
   return (
-    <ul aria-label="Превью ссылок" className="mt-1 flex flex-col gap-2">
+    <ul aria-label={t("chat:embed.list")} className="mt-1 flex flex-col gap-2">
       {embeds.map((e, i) => (
         // The same URL never comes twice, but its order is the key that survives an edit's refetch.
         <li key={`${String(i)}:${e.url}`}>

@@ -3,10 +3,9 @@ import { GripVertical, Lock, Plus } from "lucide-react";
 import { type DragEvent, type KeyboardEvent, useState } from "react";
 import { byRank, canManageRole, type GuildEntry, highestPosition, type Role } from "@/entities/guild";
 import { api, errorText, unwrap } from "@/shared/api";
+import { t } from "@/shared/i18n";
 import { Button, ConfirmDialog, cn, RoleColorDot, useToast } from "@/shared/ui";
 import { RoleEditor } from "./RoleEditor";
-
-const NEW_ROLE = "новая роль";
 
 /**
  * Where the role at list index `index` lands: the list runs from the
@@ -62,7 +61,7 @@ export const RolesTab = ({
       unwrap(
         await api.POST("/guilds/{guild_id}/roles", {
           params: { path: { guild_id: entry.guild.id } },
-          body: { name: NEW_ROLE },
+          body: { name: t("guild:roles.newRole") },
         }),
       ),
     onSuccess: (role) => {
@@ -159,7 +158,7 @@ export const RolesTab = ({
           <RoleColorDot color={r.color} />
           <span className="min-w-0 flex-1 truncate">{r.id === entry.guild.id ? "@everyone" : r.name}</span>
           {index !== null && !movable(r) && (
-            <Lock aria-label="Роль не ниже вашей высшей" className="size-4 shrink-0 text-fg-faint" />
+            <Lock aria-label={t("guild:roles.lockedLabel")} className="size-4 shrink-0 text-fg-faint" />
           )}
         </button>
       </li>
@@ -169,11 +168,9 @@ export const RolesTab = ({
   return (
     <section aria-labelledby="roles-title">
       <h2 id="roles-title" className="mb-1 text-xl font-semibold">
-        Роли
+        {t("guild:roles.title")}
       </h2>
-      <p className="mb-5 text-sm text-fg-muted">
-        Роли выше в списке главнее. Перетаскивайте их или двигайте клавишами Alt+↑ и Alt+↓.
-      </p>
+      <p className="mb-5 text-sm text-fg-muted">{t("guild:roles.order")}</p>
       <div className="flex gap-6 max-lg:flex-col">
         <div className="flex w-56 shrink-0 flex-col gap-2 max-lg:w-full">
           <Button
@@ -185,9 +182,9 @@ export const RolesTab = ({
             }}
           >
             <Plus aria-hidden className="size-4" />
-            Создать роль
+            {t("guild:roles.create")}
           </Button>
-          <ul aria-label="Роли сервера" className="flex flex-col gap-0.5">
+          <ul aria-label={t("guild:roles.list")} className="flex flex-col gap-0.5">
             {roles.map((r, i) => row(r, i))}
             {everyone && row(everyone, null)}
           </ul>
@@ -195,7 +192,7 @@ export const RolesTab = ({
         {selected ? (
           <RoleEditor key={selected.id} entry={entry} meId={meId} role={selected} onDirtyChange={markDirty} />
         ) : (
-          <p className="text-base text-fg-muted">Выберите роль слева.</p>
+          <p className="text-base text-fg-muted">{t("guild:roles.pick")}</p>
         )}
       </div>
       <ConfirmDialog
@@ -203,9 +200,9 @@ export const RolesTab = ({
         onOpenChange={(open) => {
           if (!open) setPendingSelect(null);
         }}
-        title="Уйти без сохранения?"
-        description="Несохранённые изменения роли пропадут."
-        confirmLabel="Уйти"
+        title={t("common:unsaved.title")}
+        description={t("guild:roles.unsavedText")}
+        confirmLabel={t("common:unsaved.confirm")}
         tone="danger"
         onConfirm={() => {
           if (pendingSelect !== null) setSelectedId(pendingSelect);

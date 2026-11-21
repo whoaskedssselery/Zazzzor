@@ -1,11 +1,12 @@
 import { FileText, RotateCw, X } from "lucide-react";
 import { formatSize } from "@/entities/message";
+import { t } from "@/shared/i18n";
 import { cn, IconButton } from "@/shared/ui";
 import { removeUpload, retryUpload, type Upload } from "../model/uploads";
 
 /** One file in the composer: a preview (or an icon), its name and size, the upload's progress or why it failed. */
 const UploadTile = ({ channelId, upload: u }: { channelId: string; upload: Upload }) => {
-  const name = u.file.name || "файл";
+  const name = u.file.name || t("chat:send.file");
   return (
     <li
       aria-label={name}
@@ -31,7 +32,7 @@ const UploadTile = ({ channelId, upload: u }: { channelId: string; upload: Uploa
           </span>
           <IconButton
             size="sm"
-            label="Загрузить ещё раз"
+            label={t("chat:send.retryUpload")}
             icon={RotateCw}
             onClick={() => {
               retryUpload(channelId, u.key);
@@ -43,7 +44,7 @@ const UploadTile = ({ channelId, upload: u }: { channelId: string; upload: Uploa
           <span className="shrink-0">{formatSize(u.file.size)}</span>
           {u.status === "uploading" && (
             <progress
-              aria-label={`Загрузка ${name}`}
+              aria-label={t("chat:send.uploadOf", { name })}
               value={u.progress}
               max={1}
               className="h-1 min-w-0 flex-1 appearance-none overflow-hidden rounded-full bg-control [&::-moz-progress-bar]:bg-accent [&::-webkit-progress-bar]:bg-control [&::-webkit-progress-value]:bg-accent [&::-webkit-progress-value]:transition-[width]"
@@ -53,7 +54,7 @@ const UploadTile = ({ channelId, upload: u }: { channelId: string; upload: Uploa
       )}
       <IconButton
         size="sm"
-        label={`Убрать ${name}`}
+        label={t("chat:send.remove", { name })}
         icon={X}
         className="absolute top-1 right-1 rounded-full bg-overlay shadow-float"
         onClick={() => {
@@ -67,7 +68,7 @@ const UploadTile = ({ channelId, upload: u }: { channelId: string; upload: Uploa
 /** The files waiting in the composer, above the text field. */
 export const UploadTray = ({ channelId, uploads }: { channelId: string; uploads: readonly Upload[] }) =>
   uploads.length === 0 ? null : (
-    <ul aria-label="Прикреплённые файлы" className="flex gap-2 overflow-x-auto px-3 pt-3 pb-1">
+    <ul aria-label={t("chat:send.attached")} className="flex gap-2 overflow-x-auto px-3 pt-3 pb-1">
       {uploads.map((u) => (
         <UploadTile key={u.key} channelId={channelId} upload={u} />
       ))}

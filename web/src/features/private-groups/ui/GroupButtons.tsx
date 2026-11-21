@@ -10,6 +10,7 @@ import {
   useAddRecipients,
   useRenameGroup,
 } from "@/entities/guild";
+import { t } from "@/shared/i18n";
 import { Button, Dialog, DialogClose, DialogContent, Field, IconButton, Input } from "@/shared/ui";
 import { PickFriendsDialog } from "./PickFriendsDialog";
 
@@ -27,7 +28,7 @@ export const NewPrivateButton = () => {
   return (
     <>
       <IconButton
-        label="Создать личное сообщение"
+        label={t("friends:newMessage")}
         icon={Plus}
         className="size-6 [&>svg]:size-4"
         onClick={() => {
@@ -37,10 +38,10 @@ export const NewPrivateButton = () => {
       <PickFriendsDialog
         open={open}
         onOpenChange={setOpen}
-        title="Выберите друзей"
-        description="Один друг — личная переписка, двое и больше — группа до 10 человек."
+        title={t("friends:pickTitle")}
+        description={t("friends:pickText")}
         max={GROUP_LIMIT - 1}
-        confirmLabel={(n) => (n > 1 ? "Создать группу" : "Написать")}
+        confirmLabel={(n) => (n > 1 ? t("friends:createGroup") : t("friends:write"))}
         onConfirm={async (ids) => {
           const [only] = ids;
           const channel = ids.length === 1 && only !== undefined ? await openDirect(only) : await createGroup(ids);
@@ -66,7 +67,7 @@ export const AddPeopleButton = ({ channel }: { channel: DMChannel }) => {
   return (
     <>
       <IconButton
-        label={peer ? "Создать группу" : "Добавить друзей"}
+        label={peer ? t("friends:createGroup") : t("friends:addFriends")}
         icon={UserPlus}
         tooltipSide="bottom"
         disabled={!peer && room <= 0}
@@ -77,15 +78,17 @@ export const AddPeopleButton = ({ channel }: { channel: DMChannel }) => {
       <PickFriendsDialog
         open={open}
         onOpenChange={setOpen}
-        title={peer ? `Новая группа с @${peer.display_name}` : `Позвать в «${privateName(channel)}»`}
-        description={
+        title={
           peer
-            ? "Выберите, кого ещё позвать. Эта переписка останется как есть, группа будет новой."
-            : "Новые участники увидят всю историю группы."
+            ? t("friends:newGroupWith", { name: peer.display_name })
+            : t("friends:inviteTo", { name: privateName(channel) })
         }
+        description={peer ? t("friends:newGroupText") : t("friends:inviteText")}
         exclude={there}
         max={room}
-        confirmLabel={(n) => (peer ? "Создать группу" : n > 1 ? "Добавить друзей" : "Добавить друга")}
+        confirmLabel={(n) =>
+          peer ? t("friends:createGroup") : n > 1 ? t("friends:addFriends") : t("friends:addFriend")
+        }
         onConfirm={async (ids) => {
           if (!peer) {
             await add.mutateAsync({ id: channel.id, userIds: ids });
@@ -133,22 +136,22 @@ const RenameForm = ({ channel, onDone }: { channel: DMChannel; onDone: () => voi
   };
   return (
     <DialogContent
-      title="Название группы"
-      description="Его видят все участники. Оставьте пустым, чтобы показывать имена участников."
+      title={t("friends:groupName")}
+      description={t("friends:groupNameText")}
       size="sm"
       footer={
         <>
           <DialogClose asChild>
-            <Button variant="ghost">Отмена</Button>
+            <Button variant="ghost">{t("common:cancel")}</Button>
           </DialogClose>
           <Button type="submit" form={RENAME_FORM} loading={rename.isPending}>
-            Сохранить
+            {t("friends:save")}
           </Button>
         </>
       }
     >
       <form id={RENAME_FORM} noValidate onSubmit={submit}>
-        <Field htmlFor="group-name" label="Название">
+        <Field htmlFor="group-name" label={t("friends:name")}>
           <Input
             value={name}
             placeholder={privateName({ name: null, recipients: channel.recipients })}
