@@ -23,9 +23,9 @@ export const uniqueLogin = (prefix: string): string =>
  */
 const madeUpAddress = (): string => `10.${randomInt(256)}.${randomInt(256)}.${randomInt(1, 255)}`;
 
-/** A browser context of its own, coming from its own address. */
-export const newVisitor = (browser: Browser): Promise<BrowserContext> =>
-  browser.newContext({ extraHTTPHeaders: { "X-Forwarded-For": madeUpAddress() } });
+/** A browser context of its own, coming from its own address; `locale` overrides the config's ru-RU. */
+export const newVisitor = (browser: Browser, locale?: string): Promise<BrowserContext> =>
+  browser.newContext({ extraHTTPHeaders: { "X-Forwarded-For": madeUpAddress() }, ...(locale ? { locale } : {}) });
 
 /**
  * Calls the API as `who` (their cookie and address), with the Origin every
@@ -48,8 +48,13 @@ export const call = async <T = unknown>(
 };
 
 /** Registers a new account in a fresh context and opens a page there, signed in. */
-export const signUp = async (browser: Browser, displayName: string, username = uniqueLogin("u")): Promise<Person> => {
-  const context = await newVisitor(browser);
+export const signUp = async (
+  browser: Browser,
+  displayName: string,
+  username = uniqueLogin("u"),
+  locale?: string,
+): Promise<Person> => {
+  const context = await newVisitor(browser, locale);
   const password = randomUUID();
   const user = await call<{ id: string }>(context, "POST", "/auth/register", {
     username,
