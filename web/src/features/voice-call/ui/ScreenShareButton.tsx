@@ -1,14 +1,15 @@
-import { Monitor, MonitorOff } from "lucide-react";
+import { ArrowLeftRight, Monitor, MonitorOff } from "lucide-react";
 import { canShareScreen, useCall } from "@/entities/call";
 import { computeChannel, has, PERM, useGuilds } from "@/entities/guild";
 import { t } from "@/shared/i18n";
-import { cn, IconButton } from "@/shared/ui";
-import { NO_STREAM, startScreenShare, stopScreenShare } from "../model/session";
+import { cn, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, IconButton } from "@/shared/ui";
+import { NO_STREAM, startScreenShare, stopScreenShare, switchScreenShare } from "../model/session";
 
 /**
  * «Демонстрация экрана» in the call panel; locked without STREAM in the
  * call's channel, absent where the browser cannot share (a phone), but a
- * share in progress can always be stopped.
+ * share in progress can always be stopped. During a share it opens a menu,
+ * as Discord's: share something else, or stop.
  */
 export const ScreenShareButton = ({ className }: { className?: string }) => {
   const sharing = useCall((s) => s.sharing);
@@ -23,15 +24,51 @@ export const ScreenShareButton = ({ className }: { className?: string }) => {
   });
   if (!sharing && !canShareScreen()) return null;
   if (!allowed && !sharing) return <IconButton label={NO_STREAM} icon={Monitor} className={className} disabled />;
+  if (!sharing) {
+    return (
+      <IconButton
+        label={t("voice:share.title")}
+        icon={Monitor}
+        className={className}
+        onClick={() => {
+          void startScreenShare();
+        }}
+      />
+    );
+  }
   return (
-    <IconButton
-      label={sharing ? t("voice:share.stop") : t("voice:share.title")}
-      icon={sharing ? MonitorOff : Monitor}
-      aria-pressed={sharing}
-      className={cn(className, sharing && "text-fg-success")}
-      onClick={() => {
-        void (sharing ? stopScreenShare() : startScreenShare());
-      }}
-    />
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <IconButton
+          label={t("voice:share.title")}
+          icon={Monitor}
+          tooltip={false}
+          aria-pressed
+          className={cn(className, "text-fg-success")}
+        />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="start">
+        {/* Only from a pick that can be granted: STREAM taken away mid-share still allows stopping. */}
+        {allowed && (
+          <DropdownMenuItem
+            onSelect={() => {
+              void switchScreenShare();
+            }}
+          >
+            {t("voice:share.switch")}
+            <ArrowLeftRight aria-hidden />
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem
+          variant="danger"
+          onSelect={() => {
+            void stopScreenShare();
+          }}
+        >
+          {t("voice:share.stop")}
+          <MonitorOff aria-hidden />
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 };

@@ -1,7 +1,14 @@
-import { AppWindow, Maximize, Minimize, Monitor, X } from "lucide-react";
+import { AppWindow, ArrowLeftRight, Maximize, Minimize, Monitor, X } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { VolumeSlider } from "@/entities/call";
-import { attachOwnStream, attachStream, stopScreenShare, useNativeShare, watchStream } from "@/features/voice-call";
+import {
+  attachOwnStream,
+  attachStream,
+  stopScreenShare,
+  switchScreenShare,
+  useNativeShare,
+  watchStream,
+} from "@/features/voice-call";
 import { t } from "@/shared/i18n";
 import { Badge, Button, cn, IconButton } from "@/shared/ui";
 
@@ -121,15 +128,27 @@ const NativeOwnStream = ({ compact }: { compact: boolean }) => {
         {!compact && <p className="mt-1 text-sm text-fg-muted tabular-nums">{figures}</p>}
       </div>
       {!compact && (
-        <Button
-          size="sm"
-          variant="danger"
-          onClick={() => {
-            void stopScreenShare();
-          }}
-        >
-          {t("voice:stage.stop")}
-        </Button>
+        <div className="flex flex-wrap justify-center gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              void switchScreenShare();
+            }}
+          >
+            <ArrowLeftRight aria-hidden className="size-4" />
+            {t("voice:share.switch")}
+          </Button>
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={() => {
+              void stopScreenShare();
+            }}
+          >
+            {t("voice:stage.stop")}
+          </Button>
+        </div>
       )}
     </article>
   );
@@ -160,6 +179,15 @@ const BrowserOwnStream = ({ compact }: { compact: boolean }) => {
           {t("shell:live")}
         </Badge>
         <div data-controls className={cn(CORNER, compact && "hidden")}>
+          <IconButton
+            icon={ArrowLeftRight}
+            label={t("voice:share.switch")}
+            tooltipSide="bottom"
+            className={ON_PICTURE}
+            onClick={() => {
+              void switchScreenShare();
+            }}
+          />
           <FullscreenButton target={tile} />
         </div>
         <div data-controls className={cn(BOTTOM, compact && "hidden")}>

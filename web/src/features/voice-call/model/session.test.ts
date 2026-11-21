@@ -44,6 +44,7 @@ import {
   reconcileVoiceFlags,
   SHARE_FAILED,
   SHARE_SOURCE_CLOSED,
+  STREAM_GRACE_MS,
   setSelfDeaf,
   setSelfMute,
   setTransportFactory,
@@ -53,6 +54,7 @@ import {
   stopCamera,
   stopScreenShare,
   switchAudioDevice,
+  switchScreenShare,
   watchStream,
 } from "./session";
 
@@ -500,12 +502,59 @@ describe("the second review's cases", () => {
   });
 
   it("8: a stream that ends stops being watched in the transport too", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
     await joinVoice(G, LOUNGE);
     fake.emit("streams", ["200"]);
     watchStream("200", true);
+    played.length = 0;
     fake.emit("streams", []);
+    // Held a moment, in case it comes straight back.
+    expect(getCall().watching).toEqual(["200"]);
+    await vi.advanceTimersByTimeAsync(STREAM_GRACE_MS);
     expect(getCall().watching).toEqual([]);
+    expect(getCall().streams).toEqual([]);
     expect(fake.argsOf("watch").at(-1)).toEqual(["200", false]);
+    expect(played).toEqual(["streamStop"]);
+  });
+
+  it("keeps watching a stream that comes back at once, without a sound", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    await joinVoice(G, LOUNGE);
+    fake.emit("streams", ["200"]);
+    watchStream("200", true);
+    played.length = 0;
+    // A new source in the desktop app: the share leaves the room and comes back.
+    fake.emit("streams", []);
+    fake.emit("streams", ["200"]);
+    await vi.advanceTimersByTimeAsync(STREAM_GRACE_MS);
+    expect(getCall().watching).toEqual(["200"]);
+    expect(getCall().streams).toEqual(["200"]);
+    expect(fake.argsOf("watch").at(-1)).toEqual(["200", true]);
+    expect(played).toEqual([]);
+  });
+
+  it("an unwatched stream that ends goes at once", async () => {
+    await joinVoice(G, LOUNGE);
+    fake.emit("streams", ["200"]);
+    fake.emit("streams", []);
+    expect(getCall().streams).toEqual([]);
+  });
+
+  it("sounds as the user comes into a stream and leaves it, once each", async () => {
+    await joinVoice(G, LOUNGE);
+    fake.emit("streams", ["200"]);
+    played.length = 0;
+    watchStream("200", true);
+    // Bringing a watched stream to the front again is no new start.
+    watchStream("200", true);
+    watchStream("200", false);
+    expect(played).toEqual(["watchStart", "watchStop"]);
   });
 
   it("11: joining again soon after a removal does not say the call moved elsewhere", async () => {
@@ -636,6 +685,29 @@ describe("the desktop app's screen share", () => {
     await startScreenShare();
     expect(getNativeShare().picking).toBe(true);
     expect(fake.argsOf("startScreenShare")).toHaveLength(0);
+  });
+
+  it("switches what is shared without stopping the share", async () => {
+    commands = false;
+    await joinVoice(G, LOUNGE);
+    await startScreenShare();
+    played.length = 0;
+    await switchScreenShare();
+    expect(fake.argsOf("switchScreenShare")).toHaveLength(1);
+    expect(getCall().sharing).toBe(true);
+    expect(played).toEqual([]);
+    // A closed picker leaves the share as it was.
+    fake.screenResult = { ok: false, reason: "cancelled" };
+    await switchScreenShare();
+    expect(getCall().sharing).toBe(true);
+  });
+
+  it("switches in the app's own picker during a native share", async () => {
+    await joinVoice(G, LOUNGE);
+    await shareNatively(WINDOW, { sound: true, fps: 60 });
+    await switchScreenShare();
+    expect(getNativeShare().picking).toBe(true);
+    expect(fake.argsOf("switchScreenShare")).toHaveLength(0);
   });
 
   it("uses the browser's picker in an app without the share's commands", async () => {

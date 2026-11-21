@@ -44,7 +44,8 @@
     "loading": "Loading",
     "apps": "Applications",
     "screens": "Screens",
-    "stop": "Stop sharing"
+    "stop": "Stop sharing",
+    "switch": "Change source"
   },
   "tab": {
     "pttFocus": "Push-to-talk works while the Zazzzor window is active; in the background, in the Windows app.",

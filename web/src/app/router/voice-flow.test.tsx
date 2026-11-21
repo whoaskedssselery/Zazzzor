@@ -11,6 +11,7 @@ import {
   NO_CONNECT,
   NO_STREAM,
   NO_VIDEO,
+  STREAM_GRACE_MS,
   setTransportFactory,
   WINDOW_NO_AUDIO,
 } from "@/features/voice-call";
@@ -408,6 +409,10 @@ describe("the voice channel screen", () => {
   });
 
   it("drops a stream tile when the stream ends", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
     const { user } = renderApp(`/channels/${G}/${LOUNGE}`);
     const view = await stage();
     await act(() => joinVoice(G, LOUNGE));
@@ -419,6 +424,8 @@ describe("the voice channel screen", () => {
     act(() => {
       fake.emit("streams", []);
     });
+    // A watched stream is held a moment for its return.
+    await act(() => vi.advanceTimersByTimeAsync(STREAM_GRACE_MS));
     await waitFor(() => {
       expect(within(view).queryByRole("article", { name: /демонстрация экрана/ })).toBeNull();
     });
@@ -479,7 +486,7 @@ describe("screen sharing", () => {
     expect(within(p).getByRole("button", { name: "Отключиться" })).toBeTruthy();
   });
 
-  it("shares a screen and stops it", async () => {
+  it("shares a screen, switches it and stops it", async () => {
     withEveryone(DEFAULT_EVERYONE);
     const { user } = renderApp(`/channels/${G}/${TEXT}`);
     await screen.findByRole("textbox", { name: "Сообщение в #общий" });
@@ -487,7 +494,13 @@ describe("screen sharing", () => {
     await user.click(within(await panel()).getByRole("button", { name: "Демонстрация экрана" }));
     expect(fake.argsOf("startScreenShare")).toHaveLength(1);
     expect(getCall().sharing).toBe(true);
-    await user.click(within(await panel()).getByRole("button", { name: "Остановить демонстрацию" }));
+    // During a share the button opens a menu, as Discord's.
+    await user.click(within(await panel()).getByRole("button", { name: "Демонстрация экрана" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Сменить источник" }));
+    expect(fake.argsOf("switchScreenShare")).toHaveLength(1);
+    expect(getCall().sharing).toBe(true);
+    await user.click(within(await panel()).getByRole("button", { name: "Демонстрация экрана" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Остановить демонстрацию" }));
     expect(fake.argsOf("stopScreenShare")).toHaveLength(1);
     expect(getCall().sharing).toBe(false);
   });
@@ -528,14 +541,16 @@ describe("screen sharing", () => {
 
   it("can still be stopped after STREAM is taken away", async () => {
     withEveryone(DEFAULT_EVERYONE & ~PERM.STREAM);
-    renderApp(`/channels/${G}/${TEXT}`);
+    const { user } = renderApp(`/channels/${G}/${TEXT}`);
     await screen.findByRole("textbox", { name: "Сообщение в #общий" });
     await act(() => joinVoice(G, LOUNGE));
     act(() => {
       setCall({ sharing: true });
     });
-    const stop = within(await panel()).getByRole("button", { name: "Остановить демонстрацию" });
-    expect(stop).toHaveProperty("disabled", false);
+    await user.click(within(await panel()).getByRole("button", { name: "Демонстрация экрана" }));
+    expect(await screen.findByRole("menuitem", { name: "Остановить демонстрацию" })).toBeTruthy();
+    // Something else may not be picked without STREAM.
+    expect(screen.queryByRole("menuitem", { name: "Сменить источник" })).toBeNull();
   });
 
   it("is not offered without STREAM", async () => {

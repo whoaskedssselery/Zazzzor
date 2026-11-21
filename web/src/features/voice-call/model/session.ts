@@ -196,6 +196,13 @@ const ended = (cause: EndCause) => {
   }
 };
 
+/** How long a watched share that went is held for its return. */
+export const STREAM_GRACE_MS = 5000;
+/** The watched shares that went, each with the timer that lets it go. */
+const vanishing = new Map<string, ReturnType<typeof setTimeout>>();
+/** The shares the transport reports now, without the held ones. */
+let reportedStreams: string[] = [];
+
 /** The transport, made once and wired to the call store. */
 const ensureTransport = (): Promise<CallTransport> => {
   transportPromise ??= Promise.resolve(factory()).then(wire);
@@ -213,12 +220,37 @@ const wire = (t: CallTransport): CallTransport => {
     setCall({ speaking });
   });
   t.on("streams", (streams) => {
+    reportedStreams = streams;
     const { watching, streams: before } = getCall();
-    if (streams.some((id) => !before.includes(id))) playSound("streamStart");
-    else if (before.some((id) => !streams.includes(id))) playSound("streamStop");
-    setCall({ streams, watching: watching.filter((id) => streams.includes(id)) });
+    for (const id of streams) {
+      clearTimeout(vanishing.get(id));
+      vanishing.delete(id);
+    }
+    // A watched share that goes may be coming straight back (a new source
+    // in the desktop app, a reconnect): it is held for a moment, watched.
+    for (const id of before) {
+      if (!streams.includes(id) && watching.includes(id) && !vanishing.has(id)) {
+        const mine = generation;
+        vanishing.set(
+          id,
+          setTimeout(() => {
+            vanishing.delete(id);
+            if (mine !== generation || reportedStreams.includes(id)) return;
+            const now = getCall();
+            if (!now.streams.includes(id)) return;
+            playSound("streamStop");
+            setCall({ streams: now.streams.filter((x) => x !== id), watching: now.watching.filter((x) => x !== id) });
+            t.watch(id, false);
+          }, STREAM_GRACE_MS),
+        );
+      }
+    }
+    const shown = [...streams, ...[...vanishing.keys()].filter((id) => !streams.includes(id))];
+    if (shown.some((id) => !before.includes(id))) playSound("streamStart");
+    else if (before.some((id) => !shown.includes(id))) playSound("streamStop");
+    setCall({ streams: shown, watching: watching.filter((id) => shown.includes(id)) });
     // A share that ends is not received again when it comes back, until «Смотреть».
-    for (const id of watching) if (!streams.includes(id)) t.watch(id, false);
+    for (const id of watching) if (!shown.includes(id)) t.watch(id, false);
   });
   t.on("micDenied", () => {
     if (getCall().micDenied) return;
@@ -460,6 +492,8 @@ const sendFlags = async (): Promise<void> => {
 /** Starts or stops receiving `userId`'s screen share (only watched streams cost bandwidth). */
 export const watchStream = (userId: string, on: boolean): void => {
   const { watching } = getCall();
+  // As in Discord, coming into a stream and leaving it each have their sound.
+  if (watching.includes(userId) !== on) playSound(on ? "watchStart" : "watchStop");
   setCall({ watching: on ? [...new Set([...watching, userId])] : watching.filter((id) => id !== userId) });
   transport?.watch(userId, on);
 };
@@ -509,6 +543,33 @@ export const startScreenShare = async (): Promise<void> => {
   }
   setCall({ sharing: true });
   playSound("streamStart");
+  const notice = shareNotice(result, currentBrowser(), canRestrictOwnAudio());
+  if (notice !== null) notify(notice);
+};
+
+/**
+ * Shares something else without stopping, as Discord's «Change windows»:
+ * the app's picker in the desktop app, the browser's otherwise. The
+ * viewers keep watching; a closed picker leaves the share as it was.
+ */
+export const switchScreenShare = async (): Promise<void> => {
+  if (!transport || picking || !getCall().sharing) return;
+  if (getNativeShare().source !== null) {
+    setNativeShare({ picking: true });
+    return;
+  }
+  const t = transport;
+  picking = true;
+  let result: ScreenShareResult;
+  try {
+    result = await t.switchScreenShare();
+  } finally {
+    picking = false;
+  }
+  if (!result.ok) {
+    if (result.reason === "failed") notify(SHARE_FAILED);
+    return;
+  }
   const notice = shareNotice(result, currentBrowser(), canRestrictOwnAudio());
   if (notice !== null) notify(notice);
 };

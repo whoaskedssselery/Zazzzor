@@ -1,6 +1,6 @@
 import { AppWindow, Monitor } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { nativeShare, type ShareChoice, type ShareSource, type Thumbnail } from "@/entities/call";
+import { getCall, nativeShare, type ShareChoice, type ShareSource, type Thumbnail } from "@/entities/call";
 import { t } from "@/shared/i18n";
 import {
   Button,
@@ -162,7 +162,8 @@ const Picker = () => {
 
   const chosen = sources?.find((s) => s.id === selected) ?? null;
   const start = (source: ShareSource | null) => {
-    if (source) void shareNatively(source, { sound, fps });
+    // Picked during a share: the share goes on with the new source.
+    if (source) void shareNatively(source, { sound, fps }, getCall().sharing);
   };
   const grid = (kind: ShareSource["kind"]) => {
     const list = sources?.filter((s) => s.kind === kind) ?? [];

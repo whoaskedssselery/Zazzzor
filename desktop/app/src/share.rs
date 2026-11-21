@@ -173,7 +173,7 @@ pub async fn share_start(
     let scope = match (sound, target) {
         (false, _) => None,
         (true, Target::Window(hwnd)) => capture::window_process(hwnd).ok().map(Scope::Only),
-        (true, Target::Monitor(_)) => Some(Scope::AllBut(std::process::id())),
+        (true, Target::Monitor(_)) => Some(Scope::AllBut(call_process(&window).await)),
     };
     let mut current = sharing.session.lock().await;
     if let Some(old) = current.take() {
@@ -184,6 +184,28 @@ pub async fn share_start(
     *current = Some(session);
     crate::sharing_shown(window.app_handle(), true);
     Ok(())
+}
+
+/// The process whose tree plays the call: WebView2's browser process. A
+/// whole screen's sound leaves it out, or the others would hear themselves
+/// back. WebView2 runs outside the app's own process tree, so leaving out
+/// the app alone is not enough; the app's id is the fallback.
+async fn call_process(window: &WebviewWindow) -> u32 {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let asked = window.with_webview(move |webview| {
+        let mut pid = 0u32;
+        // SAFETY: a plain query on the live controller, on the thread that owns it.
+        let ok = unsafe { webview.controller().CoreWebView2().and_then(|core| core.BrowserProcessId(&mut pid)) };
+        let _ = tx.send(ok.ok().map(|()| pid).filter(|&p| p != 0));
+    });
+    let answer = match asked {
+        Ok(()) => tauri::async_runtime::spawn_blocking(move || rx.recv_timeout(Duration::from_secs(2)).ok().flatten())
+            .await
+            .ok()
+            .flatten(),
+        Err(_) => None,
+    };
+    answer.unwrap_or_else(std::process::id)
 }
 
 /// Stops the share in progress, if any.

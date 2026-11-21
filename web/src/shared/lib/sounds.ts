@@ -20,6 +20,10 @@ export type SoundName =
   /** A screen share started in the call (the user's or someone else's). */
   | "streamStart"
   | "streamStop"
+  /** The user started watching someone's screen share. */
+  | "watchStart"
+  /** The user stopped watching it. */
+  | "watchStop"
   /** A message that alerts the user. */
   | "mention";
 
@@ -46,6 +50,20 @@ const SOUNDS: Record<SoundName, { notes: Note[]; gain: number }> = {
   undeafen: { notes: notes(293.66, 392), gain: 0.09 },
   streamStart: { notes: notes(659.25, 830.61, 987.77), gain: 0.08 },
   streamStop: { notes: notes(987.77, 830.61, 659.25), gain: 0.08 },
+  watchStart: {
+    notes: [
+      { hz: 698.46, to: 1046.5, at: 0, len: 0.14 },
+      { hz: 1046.5, at: 0.1, len: 0.12 },
+    ],
+    gain: 0.07,
+  },
+  watchStop: {
+    notes: [
+      { hz: 1046.5, to: 698.46, at: 0, len: 0.14 },
+      { hz: 698.46, at: 0.1, len: 0.12 },
+    ],
+    gain: 0.07,
+  },
   mention: {
     notes: [
       { hz: 880, at: 0, len: 0.22 },
