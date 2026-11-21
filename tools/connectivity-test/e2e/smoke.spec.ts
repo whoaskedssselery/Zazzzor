@@ -51,10 +51,8 @@ async function report(page: Page): Promise<Report> {
   return JSON.parse(text) as Report;
 }
 
-test("a 1080p screen share reaches a viewer over UDP", async ({ browser }) => {
+test("switching languages preserves the invite", async ({ browser }) => {
   const a = await open(browser, "alice");
-  const b = await open(browser, "bob");
-
   await expect(a.page.locator("html")).toHaveAttribute("lang", "en");
   const invite = new URL(a.page.url()).hash;
   await a.page.getByRole("link", { name: "Русский" }).click();
@@ -62,6 +60,13 @@ test("a 1080p screen share reaches a viewer over UDP", async ({ browser }) => {
   await expect(a.page.getByRole("button", { name: "Подключиться" })).toBeVisible();
   expect(new URL(a.page.url()).hash === invite).toBe(true);
   await a.page.getByRole("link", { name: "English" }).click();
+  await expect(a.page.getByRole("button", { name: "Connect" })).toBeVisible();
+  expect(a.problems).toEqual([]);
+});
+
+test("a 1080p screen share reaches a viewer over UDP", async ({ browser }) => {
+  const a = await open(browser, "alice");
+  const b = await open(browser, "bob");
 
   await connect(a.page, "alice");
   await a.page.getByRole("button", { name: "Start sharing" }).click();
