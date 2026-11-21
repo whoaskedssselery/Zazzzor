@@ -96,6 +96,7 @@ pub struct Texts {
     pub wrong_scheme: &'static str,
     pub no_host: &'static str,
     pub has_credentials: &'static str,
+    pub needs_https: &'static str,
     /// Followed by the error.
     pub save_failed: &'static str,
     pub no_instance: &'static str,
@@ -141,6 +142,7 @@ const EN: Texts = Texts {
     wrong_scheme: "The address must start with https:// or http://.",
     no_host: "The address has no server name.",
     has_credentials: "The address must not contain a username or password.",
+    needs_https: "The address must start with https://. Plain http:// is only for a server on this computer (localhost).",
     save_failed: "Couldn't save the address",
     no_instance: "No server chosen yet.",
     share_ask_window: "{host} wants to show your window “{name}” in the call. Share it?",
@@ -166,6 +168,7 @@ const RU: Texts = Texts {
     wrong_scheme: "Адрес должен начинаться с https:// или http://.",
     no_host: "В адресе нет имени сервера.",
     has_credentials: "Адрес не должен содержать логин или пароль.",
+    needs_https: "Адрес должен начинаться с https://. Простой http:// — только для сервера на этом компьютере (localhost).",
     save_failed: "Не удалось сохранить адрес",
     no_instance: "Сервер ещё не выбран.",
     share_ask_window: "{host} хочет показать в звонке ваше окно «{name}». Показать?",
