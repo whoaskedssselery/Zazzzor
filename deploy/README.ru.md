@@ -1266,6 +1266,82 @@ Edge Caddy и DuckDNS не запускаются: TLS и порт 443 оста�
    конфигурации. Не удаляйте тома; оставшаяся неиспользуемая сеть `_voice`
    не требует ручной очистки. Этот инкремент не добавляет миграций БД.
 
+## Версии сервера
+
+Релизы сервера нумеруются по [семантическому версионированию](https://semver.org/lang/ru/).
+Релиз `vX.Y.Z` публикует образы `zazzzor-api`, `zazzzor-caddy` и
+`zazzzor-backup` с тегами `X.Y.Z` и `X.Y` (раздел 16) и релиз на GitHub с
+заметками. `latest` и `main` следуют за веткой `main`: в них попадает каждое
+влитое изменение, в том числе между релизами. До 1.0.0 минорная версия
+(`0.2.0` после `0.1.x`) может потребовать действий от владельца сервера.
+
+### Журнал изменений
+
+В [`CHANGELOG.ru.md`](../CHANGELOG.ru.md) ([английский](../CHANGELOG.md))
+перечислены изменения каждой версии, новые сверху; **Unreleased** — то, что
+уже есть в `latest`. Те же заметки лежат на
+[странице релизов](https://github.com/whoaskedssselery/Zazzzor/releases)
+(релизы сервера — `vX.Y.Z`, `desktop-vX.Y.Z` — приложение для Windows).
+
+Какая версия запущена:
+
+```bash
+# Стеки Swarm
+docker exec "$(docker ps -q -f name=zazzzor_api.1)" /zazzzor --version
+# Compose
+docker compose -f deploy/docker-compose.yml exec api /zazzzor --version
+```
+
+### Закрепить версию
+
+Укажите версию вместо `latest`, одну и ту же для всех трёх образов.
+
+- **Стеки Swarm через `stack.sh`** (разделы 15 и 17): задайте теги перед
+  `deploy`; образ копий берёт тег API.
+
+  ```bash
+  export ZAZZZOR_API_TAG=0.1.0
+  export ZAZZZOR_CADDY_TAG=0.1.0
+  bash deploy/scripts/stack.sh deploy
+  ```
+
+- **Файл стека в Portainer** или другом инструменте: задайте
+  `ZAZZZOR_API_TAG`, `ZAZZZOR_CADDY_TAG` и `ZAZZZOR_BACKUP_TAG` равными
+  `0.1.0` в переменных окружения стека, а если тег вписан в файл, исправьте
+  строки `image:`:
+
+  ```yaml
+  image: ghcr.io/whoaskedssselery/zazzzor-api:0.1.0
+  image: ghcr.io/whoaskedssselery/zazzzor-caddy:0.1.0
+  image: ghcr.io/whoaskedssselery/zazzzor-backup:0.1.0
+  ```
+
+- **Compose** собирает из исходников, поэтому переключитесь на тег релиза:
+
+  ```bash
+  git fetch --tags
+  git checkout v0.1.0
+  ZAZZZOR_VERSION=v0.1.0 docker compose -f deploy/docker-compose.yml up -d --build
+  ```
+
+`X.Y` (например, `0.1`) следует за последним патчем этой версии: в него
+приходят исправления, но не новая минорная версия. Полный `X.Y.Z` не
+меняется никогда.
+
+### Обновиться до новой версии
+
+1. Прочитайте все записи журнала между вашей версией и новой, особенно
+   **Changed**, **Removed** и шаги обновления.
+2. Убедитесь, что есть свежая резервная копия (раздел 12). API применяет
+   миграции базы при старте, и они идут только вперёд: чтобы вернуться на
+   старую версию, может понадобиться восстановить эту копию.
+3. Сравните `deploy/.env.example` новой версии со своим `deploy/.env` и
+   перенесите новые переменные.
+4. Задайте новую версию, как в разделе [Закрепить версию](#закрепить-версию),
+   и разверните заново: `stack.sh deploy`, «Update the stack» в Portainer или
+   `git checkout` нового тега и `up -d --build` для Compose.
+5. Проверьте версию и логи, затем откройте веб-клиент.
+
 ## Проверка связи (этап 1.1)
 
 Страница `https://<домен>/connectivity-test/` проверяет, как у друзей

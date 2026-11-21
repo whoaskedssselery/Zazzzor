@@ -52,6 +52,9 @@ back to search and file reads for what the graph does not cover.
   least two weeks old.
 - After a change to `api/openapi.yaml`, run `pnpm gen:api` and commit
   `web/src/shared/api/schema.gen.ts`.
+- A change the server owner or users notice adds a line under
+  **Unreleased** in `CHANGELOG.md` and `CHANGELOG.ru.md`; cutting a
+  release is in [`tools/agents/README.md`](tools/agents/README.md#releasing-the-server).
 
 ## Checks
 

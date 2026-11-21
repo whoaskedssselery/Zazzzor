@@ -46,3 +46,29 @@ It installs the skill and records it in `skills-lock.json`; commit that
 file. A skill from the claude-workspace catalog goes through
 `npx claude-workspace add <name>` instead, which records it in
 `.claude/workspace.yaml`.
+
+## Releasing the server
+
+Server releases are tags `vX.Y.Z` on `main` ([semver](https://semver.org/);
+the desktop app has its own `desktop-vX.Y.Z`, see
+[`desktop/app/README.md`](../../desktop/app/README.md)). Changes land in
+[`CHANGELOG.md`](../../CHANGELOG.md) and
+[`CHANGELOG.ru.md`](../../CHANGELOG.ru.md) under **Unreleased** with the
+pull request that makes them, in user-facing words.
+
+1. In a pull request, rename **Unreleased** to `## [X.Y.Z] - YYYY-MM-DD`
+   in both changelogs, start an empty **Unreleased** above it and update
+   the links at the bottom. Check the notes with
+   `bash tools/release/changelog-section.sh X.Y.Z`.
+2. After the merge, wait for green CI on that `main` commit, then tag it
+   (only the owner does this):
+
+   ```bash
+   git fetch origin && git tag -a vX.Y.Z origin/main -m "Zazzzor X.Y.Z" && git push origin vX.Y.Z
+   ```
+
+3. The Images workflow publishes the images as `X.Y.Z` and `X.Y` (never
+   `latest`) and drafts a GitHub release from the changelog section.
+4. Read the draft and publish it with **Set as the latest release**
+   unticked: the desktop updater reads `latest.json` from the latest
+   release, which must stay a desktop one.

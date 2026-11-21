@@ -38,3 +38,28 @@ npx --yes skills@1.9.0 add <owner/repo> -s <skill> -a claude-code -a codex --cop
 ```
 
 Команда устанавливает навык и записывает его в `skills-lock.json`. Закоммитьте этот файл. Для навыка из каталога claude-workspace используйте `npx claude-workspace add <name>`. Эта команда записывает навык в `.claude/workspace.yaml`.
+
+## Релиз сервера
+
+Релизы сервера — теги `vX.Y.Z` на `main` ([semver](https://semver.org/lang/ru/));
+у приложения для Windows свои теги `desktop-vX.Y.Z`, см.
+[`desktop/app/README.ru.md`](../../desktop/app/README.ru.md). Изменения
+попадают в [`CHANGELOG.md`](../../CHANGELOG.md) и
+[`CHANGELOG.ru.md`](../../CHANGELOG.ru.md) в раздел **Unreleased** тем же
+pull request, который их вносит, понятными пользователю словами.
+
+1. В pull request переименуйте **Unreleased** в `## [X.Y.Z] - YYYY-MM-DD` в
+   обоих журналах, добавьте над ним пустой **Unreleased** и обновите ссылки
+   внизу. Проверьте заметки: `bash tools/release/changelog-section.sh X.Y.Z`.
+2. После слияния дождитесь зелёного CI на этом коммите `main` и поставьте
+   тег (это делает только владелец):
+
+   ```bash
+   git fetch origin && git tag -a vX.Y.Z origin/main -m "Zazzzor X.Y.Z" && git push origin vX.Y.Z
+   ```
+
+3. Workflow Images публикует образы с тегами `X.Y.Z` и `X.Y` (никогда не
+   `latest`) и создаёт черновик релиза на GitHub из раздела журнала.
+4. Прочитайте черновик и опубликуйте его, сняв галочку **Set as the latest
+   release**: программа обновления приложения для Windows берёт `latest.json`
+   из последнего релиза, и он должен оставаться релизом приложения.

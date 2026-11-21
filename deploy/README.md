@@ -1229,6 +1229,81 @@ and the [Swarm command adjustments](#swarm-backups-and-database-password).
    Retain all volumes. An unused `_voice` network can stay in place.
    The voice networking update adds no database migrations.
 
+## Server versions
+
+Server releases use [semantic versions](https://semver.org/). A release
+`vX.Y.Z` publishes the `zazzzor-api`, `zazzzor-caddy` and `zazzzor-backup`
+images with the tags `X.Y.Z` and `X.Y` (section 16) and a GitHub release
+with its notes. `latest` and `main` follow the `main` branch: they get
+every merged change, between releases too. Until 1.0.0, a minor version
+(`0.2.0` after `0.1.x`) may need steps from the server owner.
+
+### Read the changelog
+
+[`CHANGELOG.md`](../CHANGELOG.md) ([Russian](../CHANGELOG.ru.md)) lists the
+changes in each version, newest first; **Unreleased** is what `latest`
+already has. The same notes are on the
+[releases page](https://github.com/whoaskedssselery/Zazzzor/releases)
+(server releases are `vX.Y.Z`; `desktop-vX.Y.Z` are the Windows app).
+
+To see the version that runs:
+
+```bash
+# Swarm stacks
+docker exec "$(docker ps -q -f name=zazzzor_api.1)" /zazzzor --version
+# Compose
+docker compose -f deploy/docker-compose.yml exec api /zazzzor --version
+```
+
+### Pin a version
+
+Name the version instead of `latest`, the same for all three images.
+
+- **Swarm stacks with `stack.sh`** (sections 15 and 17): set the tags
+  before `deploy`; the backup image takes the API tag.
+
+  ```bash
+  export ZAZZZOR_API_TAG=0.1.0
+  export ZAZZZOR_CADDY_TAG=0.1.0
+  bash deploy/scripts/stack.sh deploy
+  ```
+
+- **A stack file in Portainer** or another tool: set `ZAZZZOR_API_TAG`,
+  `ZAZZZOR_CADDY_TAG` and `ZAZZZOR_BACKUP_TAG` to `0.1.0` in the stack's
+  environment variables, or, where the tag is written into the file,
+  change the `image:` lines:
+
+  ```yaml
+  image: ghcr.io/whoaskedssselery/zazzzor-api:0.1.0
+  image: ghcr.io/whoaskedssselery/zazzzor-caddy:0.1.0
+  image: ghcr.io/whoaskedssselery/zazzzor-backup:0.1.0
+  ```
+
+- **Compose** builds from the source, so check out the release tag:
+
+  ```bash
+  git fetch --tags
+  git checkout v0.1.0
+  ZAZZZOR_VERSION=v0.1.0 docker compose -f deploy/docker-compose.yml up -d --build
+  ```
+
+`X.Y` (for example `0.1`) follows the newest patch of that version: it gets
+fixes but not a new minor version. A full `X.Y.Z` never moves.
+
+### Upgrade to a new version
+
+1. Read every changelog entry between your version and the new one,
+   especially **Changed**, **Removed** and any upgrade steps.
+2. Make sure a recent backup exists (section 12). The API applies database
+   migrations at startup and they only move forward: going back to an
+   older version may mean restoring that backup.
+3. Compare `deploy/.env.example` of the new version with your `deploy/.env`
+   and copy new variables.
+4. Set the new version as in [Pin a version](#pin-a-version) and redeploy:
+   `stack.sh deploy`, "Update the stack" in Portainer, or `git checkout`
+   of the new tag and `up -d --build` for Compose.
+5. Check the version and the logs, then open the web client.
+
 ## Connectivity test (phase 1.1)
 
 Use `https://<domain>/connectivity-test/` to test voice and screen sharing
