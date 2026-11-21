@@ -1,0 +1,14 @@
+{
+  "cancel": "Cancel",
+  "closeSettings": "Close settings",
+  "unsaved": {
+    "title": "Leave without saving?",
+    "description": "Unsaved changes will be lost.",
+    "confirm": "Leave"
+  },
+  "language": {
+    "title": "Language",
+    "label": "Interface language",
+    "hint": "The choice is kept in this browser."
+  }
+}

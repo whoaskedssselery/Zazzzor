@@ -1,7 +1,8 @@
 import { HttpResponse, http } from "msw";
+import { setLanguage } from "@/shared/i18n";
 import { apiHandler, problem, server } from "@/shared/test";
 import { ApiError, api, errorText, unwrap } from "./client";
-import { tooManyAttemptsText } from "./errors";
+import { fieldErrorText, tooManyAttemptsText } from "./errors";
 import type { components } from "./schema.gen";
 
 type User = components["schemas"]["CurrentUser"];
@@ -173,6 +174,21 @@ describe("tooManyAttemptsText", () => {
 
   it("falls back to the rate_limited text without Retry-After", () => {
     expect(tooManyAttemptsText(undefined)).toBe("Слишком много запросов. Подождите немного.");
+  });
+});
+
+describe("the error texts in English", () => {
+  beforeEach(() => {
+    setLanguage("en");
+  });
+
+  it("follow the interface's language", () => {
+    expect(errorText(new ApiError(403, "missing_permission", {}))).toBe("You don't have permission to do this.");
+    expect(errorText(new ApiError(500, "internal", {}))).toBe("Something went wrong. Please try again.");
+    expect(errorText(new TypeError("fetch failed"))).toBe("Can't reach the server. Check your connection.");
+    expect(tooManyAttemptsText(90)).toBe("Too many attempts, wait 2 min.");
+    expect(fieldErrorText("password")).toBe("Password: 8 to 128 characters.");
+    expect(fieldErrorText("nonsense")).toBe("Check this field.");
   });
 });
 

@@ -1,0 +1,13 @@
+{
+  "title": "Settings",
+  "nav": "User settings",
+  "admin": "Administration",
+  "tabs": {
+    "profile": "Profile",
+    "account": "Account",
+    "appearance": "Appearance",
+    "language": "Language",
+    "notifications": "Notifications",
+    "voice": "Voice & video"
+  }
+}

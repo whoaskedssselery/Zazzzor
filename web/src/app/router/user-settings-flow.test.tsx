@@ -3,13 +3,13 @@ import { HttpResponse } from "msw";
 import { renderApp, sessionHandler, testUser } from "@/app/test";
 import { readVoicePrefs, resetCall, setCall } from "@/entities/call";
 import { resetGuilds } from "@/entities/guild";
-import { LOGOUT_CONFIRM } from "@/features/auth";
 import { PASSWORD_CHANGED, PASSWORDS_DIFFER } from "@/features/change-password";
 import { NAME_RULE } from "@/features/edit-profile";
 import { PTT_FOCUS_HINT } from "@/features/voice-call";
+import { LANGUAGE_STORAGE_KEY, TRANSLATED } from "@/shared/i18n";
 import { WRONG_IMAGE } from "@/shared/lib";
 import { apiHandler, dispatchFrame, makeReady, problem, readyGateway, server } from "@/shared/test";
-import { LEAVE_UNSAVED, THEME_STORAGE_KEY, UNSAVED } from "@/shared/ui";
+import { THEME_STORAGE_KEY, UNSAVED } from "@/shared/ui";
 
 const AVATAR = "/api/v1/files/avatars/1234567890123456789/0123456789abcdef.png";
 
@@ -221,7 +221,7 @@ describe("user settings", () => {
     const { user, router } = renderApp("/settings/profile");
     await user.type(await screen.findByRole("textbox", { name: "Отображаемое имя" }), "!");
     await user.click(screen.getByRole("button", { name: "Закрыть настройки" }));
-    const dialog = await screen.findByRole("alertdialog", { name: LEAVE_UNSAVED });
+    const dialog = await screen.findByRole("alertdialog", { name: "Уйти без сохранения?" });
     expect(router.state.location.pathname).toBe("/settings/profile");
     await user.click(within(dialog).getByRole("button", { name: "Уйти" }));
     // Opened directly, so there is nothing to go back to: home.
@@ -314,7 +314,7 @@ describe("sign-out", () => {
     );
     const { user, router } = renderApp("/settings/profile");
     await user.click(await screen.findByRole("button", { name: "Выйти" }));
-    const dialog = await screen.findByRole("alertdialog", { name: LOGOUT_CONFIRM });
+    const dialog = await screen.findByRole("alertdialog", { name: "Выйти из аккаунта?" });
     expect(out).toBe(false);
     await user.click(within(dialog).getByRole("button", { name: "Выйти" }));
     await waitFor(() => {
@@ -499,5 +499,23 @@ describe("voice output in Firefox", () => {
       expect(readVoicePrefs().outputId).toBe("out-9");
     });
     expect(screen.getByRole("combobox", { name: "Устройство вывода" }).textContent).toContain("Колонки");
+  });
+});
+
+describe("the interface language", () => {
+  it("switches at once and is kept, and is listed only once everything is translated", async () => {
+    signedIn();
+    const { user } = renderApp("/settings/language");
+    await user.click(await screen.findByRole("radio", { name: "English" }));
+    expect(await screen.findByRole("heading", { name: "Language" })).toBeTruthy();
+    // The frame around it switches too: the sections, the way out, the close button.
+    expect(screen.getByRole("link", { name: "Profile" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Log out" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Close settings" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Language" }) !== null).toBe(TRANSLATED);
+    expect(document.documentElement.lang).toBe("en");
+    expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe("en");
+    await user.click(screen.getByRole("radio", { name: "Русский" }));
+    expect(await screen.findByRole("heading", { name: "Язык" })).toBeTruthy();
   });
 });

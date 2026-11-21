@@ -1,8 +1,15 @@
 import { AlertDialog } from "radix-ui";
 import type { ReactNode } from "react";
+import { useTranslation } from "@/shared/i18n";
 import { cn } from "../cn";
 import { Button } from "./Button";
 import { dialogPanelClass, overlayClass } from "./Dialog";
+
+/** «Cancel» in the interface's language, kept current when it changes. */
+const CancelText = () => {
+  const { t } = useTranslation();
+  return t("cancel");
+};
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -31,7 +38,7 @@ export const ConfirmDialog = ({
   title,
   description,
   confirmLabel,
-  cancelLabel = "Отмена",
+  cancelLabel,
   tone = "primary",
   onConfirm,
   pending = false,
@@ -62,7 +69,7 @@ export const ConfirmDialog = ({
         <div className="flex justify-end gap-2 bg-panel px-4 py-3">
           <AlertDialog.Cancel asChild>
             <Button variant="ghost" disabled={pending}>
-              {cancelLabel}
+              {cancelLabel ?? <CancelText />}
             </Button>
           </AlertDialog.Cancel>
           {/* Not AlertDialog.Action: that closes the dialog before the action has run. */}

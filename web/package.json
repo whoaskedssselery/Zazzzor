@@ -23,6 +23,7 @@
     "@tanstack/react-virtual": "3.14.21",
     "@workadventure/noise-suppression": "0.2.0",
     "emojibase-data": "16.0.3",
+    "i18next": "26.7.2",
     "livekit-client": "2.23.0",
     "lucide-react": "1.55.0",
     "openapi-fetch": "0.17.0",
@@ -30,6 +31,7 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-hook-form": "7.89.0",
+    "react-i18next": "17.1.13",
     "tailwind-merge": "3.7.0",
     "zod": "4.6.6",
     "zustand": "5.0.15"

@@ -3,9 +3,8 @@ import { LogOut } from "lucide-react";
 import { useState } from "react";
 import { logout } from "@/entities/session";
 import { errorText } from "@/shared/api";
+import { useTranslation } from "@/shared/i18n";
 import { Button, ConfirmDialog, cn, useToast } from "@/shared/ui";
-
-export const LOGOUT_CONFIRM = "Выйти из аккаунта?";
 
 /** Signs out; a failed request shows a toast and keeps the session. */
 const useLogout = () => {
@@ -22,24 +21,26 @@ interface LogoutButtonProps {
   className?: string;
 }
 
-/** «Выйти»: signs out and goes to sign-in; a failed request shows a toast and keeps the session. */
+/** «Log out»: signs out and goes to sign-in; a failed request shows a toast and keeps the session. */
 export const LogoutButton = ({ className }: LogoutButtonProps) => {
+  const { t } = useTranslation("auth");
   const signOut = useLogout();
   const run = () => {
     if (!signOut.isPending) signOut.mutate();
   };
   return (
     <Button variant="secondary" className={className} loading={signOut.isPending} onClick={run}>
-      Выйти
+      {t("logout.action")}
     </Button>
   );
 };
 
 /**
- * «Выйти» as an item of the user settings, as in Discord: it asks first,
+ * «Log out» as an item of the user settings, as in Discord: it asks first,
  * since it sits among sections a stray click should not cost the session.
  */
 export const LogoutItem = ({ className }: { className?: string }) => {
+  const { t } = useTranslation("auth");
   const [open, setOpen] = useState(false);
   const signOut = useLogout();
   return (
@@ -51,15 +52,15 @@ export const LogoutItem = ({ className }: { className?: string }) => {
           setOpen(true);
         }}
       >
-        Выйти
+        {t("logout.action")}
         <LogOut aria-hidden className="size-4" />
       </button>
       <ConfirmDialog
         open={open}
         onOpenChange={setOpen}
-        title={LOGOUT_CONFIRM}
-        description="Чтобы вернуться, понадобится снова ввести логин и пароль."
-        confirmLabel="Выйти"
+        title={t("logout.confirm")}
+        description={t("logout.description")}
+        confirmLabel={t("logout.action")}
         tone="danger"
         pending={signOut.isPending}
         onConfirm={() => {

@@ -3,7 +3,7 @@ import { GripVertical, Lock, Plus } from "lucide-react";
 import { type DragEvent, type KeyboardEvent, useState } from "react";
 import { byRank, canManageRole, type GuildEntry, highestPosition, type Role } from "@/entities/guild";
 import { api, errorText, unwrap } from "@/shared/api";
-import { Button, ConfirmDialog, cn, LEAVE_UNSAVED, RoleColorDot, useToast } from "@/shared/ui";
+import { Button, ConfirmDialog, cn, RoleColorDot, useToast } from "@/shared/ui";
 import { RoleEditor } from "./RoleEditor";
 
 const NEW_ROLE = "новая роль";
@@ -203,7 +203,7 @@ export const RolesTab = ({
         onOpenChange={(open) => {
           if (!open) setPendingSelect(null);
         }}
-        title={LEAVE_UNSAVED}
+        title="Уйти без сохранения?"
         description="Несохранённые изменения роли пропадут."
         confirmLabel="Уйти"
         tone="danger"

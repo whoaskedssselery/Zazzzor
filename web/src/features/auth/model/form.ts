@@ -1,5 +1,5 @@
 import { z } from "zod/mini";
-import { ApiError, ERROR_TEXTS, errorText, fieldErrorText, tooManyAttemptsText } from "@/shared/api";
+import { ApiError, errorCodeText, errorText, fieldErrorText, tooManyAttemptsText } from "@/shared/api";
 import { runeLength, trimContent } from "@/shared/lib";
 
 /** The server's username rule, after the input is lower-cased. */
@@ -51,7 +51,7 @@ export function isFieldOf<S extends z.ZodMiniObject>(
 
 /**
  * Shows an error of a sign-in or registration request. Field errors of the
- * server go under the form's fields through `placeField` (Russian text by
+ * server go under the form's fields through `placeField` (the text by
  * field name; it answers false for a field the form does not have), and the
  * rest comes back as the text for the form's alert, or null when every part
  * of the error landed under a field.
@@ -59,7 +59,8 @@ export function isFieldOf<S extends z.ZodMiniObject>(
 export function showRequestError(e: unknown, placeField: (field: string, message: string) => boolean): string | null {
   if (!(e instanceof ApiError)) return errorText(e);
   if (e.code === "rate_limited") return tooManyAttemptsText(e.retryAfter);
-  if (e.code === "username_taken" && placeField("username", ERROR_TEXTS.username_taken ?? errorText(e))) return null;
+  if (e.code === "username_taken" && placeField("username", errorCodeText("username_taken") ?? errorText(e)))
+    return null;
   let placed = false;
   for (const field of Object.keys(e.fields)) {
     if (placeField(field, fieldErrorText(field))) placed = true;

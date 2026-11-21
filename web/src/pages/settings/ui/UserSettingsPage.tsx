@@ -3,22 +3,18 @@ import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { type User, useIsAdmin, useSession } from "@/entities/session";
 import { LogoutItem } from "@/features/auth";
 import { PasswordTab } from "@/features/change-password";
+import { LanguageTab } from "@/features/choose-language";
 import { AppearanceTab } from "@/features/choose-theme";
 import { ProfileTab } from "@/features/edit-profile";
 import { NotificationsTab } from "@/features/notify";
 import { VoiceTab } from "@/features/voice-call";
+import { TRANSLATED, useTranslation } from "@/shared/i18n";
 import { cn, SettingsFrame, settingsNavItemClass, useLeaveGuard } from "@/shared/ui";
 
-const TABS = ["profile", "account", "appearance", "notifications", "voice"] as const;
+const TABS = ["profile", "account", "appearance", "language", "notifications", "voice"] as const;
 type UserSettingsTab = (typeof TABS)[number];
-
-export const USER_SETTINGS_TITLES: Record<UserSettingsTab, string> = {
-  profile: "Профиль",
-  account: "Учётная запись",
-  appearance: "Внешний вид",
-  notifications: "Уведомления",
-  voice: "Голос и видео",
-};
+/** The sections in the list: the language one only once the interface is translated (its page opens by address before). */
+const LISTED = TABS.filter((t) => t !== "language" || TRANSLATED);
 
 const isTab = (tab: string): tab is UserSettingsTab => (TABS as readonly string[]).includes(tab);
 
@@ -38,6 +34,8 @@ const TabContent = ({
       return <PasswordTab />;
     case "appearance":
       return <AppearanceTab />;
+    case "language":
+      return <LanguageTab />;
     case "notifications":
       return <NotificationsTab />;
     case "voice":
@@ -58,6 +56,7 @@ export const UserSettingsPage = ({ tab }: { tab: string }) => {
   const router = useRouter();
   const canGoBack = useCanGoBack();
   const isAdmin = useIsAdmin();
+  const { t: tr } = useTranslation("settings");
   const current = isTab(tab) ? tab : undefined;
   const [dirty, setDirty] = useState(false);
   const { guard, dialog } = useLeaveGuard(dirty, () => {
@@ -80,14 +79,14 @@ export const UserSettingsPage = ({ tab }: { tab: string }) => {
   return (
     <>
       <SettingsFrame
-        navLabel="Настройки пользователя"
-        title="Настройки"
+        navLabel={tr("nav")}
+        title={tr("title")}
         onClose={() => {
           guard(close);
         }}
         nav={
           <>
-            {TABS.map((t) => (
+            {LISTED.map((t) => (
               <Link
                 key={t}
                 to="/settings/$"
@@ -103,7 +102,7 @@ export const UserSettingsPage = ({ tab }: { tab: string }) => {
                   });
                 }}
               >
-                {USER_SETTINGS_TITLES[t]}
+                {tr(`tabs.${t}`)}
               </Link>
             ))}
             <span aria-hidden className="mx-2.5 my-2 h-px bg-border max-md:hidden" />
@@ -121,7 +120,7 @@ export const UserSettingsPage = ({ tab }: { tab: string }) => {
                   });
                 }}
               >
-                Администрирование
+                {tr("admin")}
               </Link>
             )}
             <LogoutItem

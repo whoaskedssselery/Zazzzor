@@ -19,7 +19,7 @@ import {
   readyGateway,
   server,
 } from "@/shared/test";
-import { LEAVE_UNSAVED, UNSAVED } from "@/shared/ui";
+import { UNSAVED } from "@/shared/ui";
 
 type Client = WebSocketHandlerConnection["client"];
 
@@ -120,7 +120,7 @@ describe("server settings", () => {
     const { user, router } = renderApp(`/guilds/${G}/settings/overview`);
     await user.type(await screen.findByRole("textbox", { name: "Название сервера" }), "!");
     await user.click(within(await nav()).getByRole("link", { name: "Приглашения" }));
-    const dialog = await screen.findByRole("alertdialog", { name: LEAVE_UNSAVED });
+    const dialog = await screen.findByRole("alertdialog", { name: "Уйти без сохранения?" });
     expect(router.state.location.pathname).toBe(`/guilds/${G}/settings/overview`);
     await user.click(within(dialog).getByRole("button", { name: "Уйти" }));
     await waitFor(() => {
