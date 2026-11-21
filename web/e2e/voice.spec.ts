@@ -102,6 +102,15 @@ test("a screen share is watched on demand", async ({ browser, browserName, peopl
   await expect
     .poll(() => tile.locator("video").evaluate((v: HTMLVideoElement) => v.videoWidth), { timeout: 20_000 })
     .toBeGreaterThan(0);
+
+  // The tile's own buttons take the click, not the tile behind them that zooms.
+  await petr.page.getByRole("listitem").filter({ has: tile }).hover();
+  await tile.getByRole("button", { name: "Перестать смотреть" }).click();
+  await expect(tile.getByRole("button", { name: "Смотреть" })).toBeVisible();
+  const own = anna.page.getByRole("article", { name: "Ваша демонстрация экрана" });
+  await anna.page.getByRole("listitem").filter({ has: own }).hover();
+  await own.getByRole("button", { name: "Остановить" }).click();
+  await expect(row(petr.page, voice.name, "Аня").getByText("В ЭФИРЕ")).toHaveCount(0, { timeout: 20_000 });
 });
 
 test("joining from a second tab takes the call over", async ({ browser, people }) => {
