@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+[Русский](CLAUDE.ru.md)
+
 The rules shared by every agent and person working here: @AGENTS.md
 
 <!-- claude-workspace:start -->
