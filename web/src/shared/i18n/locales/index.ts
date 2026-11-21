@@ -1,6 +1,7 @@
 // Generated from the JSON files beside it: every namespace, in every language.
 
 import enAdmin from "./en/admin.json";
+import enAudit from "./en/audit.json";
 import enAuth from "./en/auth.json";
 import enChat from "./en/chat.json";
 import enCommon from "./en/common.json";
@@ -12,6 +13,7 @@ import enNotify from "./en/notify.json";
 import enSettings from "./en/settings.json";
 import enVoice from "./en/voice.json";
 import ruAdmin from "./ru/admin.json";
+import ruAudit from "./ru/audit.json";
 import ruAuth from "./ru/auth.json";
 import ruChat from "./ru/chat.json";
 import ruCommon from "./ru/common.json";
@@ -26,6 +28,7 @@ import ruVoice from "./ru/voice.json";
 export const locales = {
   en: {
     admin: enAdmin,
+    audit: enAudit,
     auth: enAuth,
     chat: enChat,
     common: enCommon,
@@ -39,6 +42,7 @@ export const locales = {
   },
   ru: {
     admin: ruAdmin,
+    audit: ruAudit,
     auth: ruAuth,
     chat: ruChat,
     common: ruCommon,
