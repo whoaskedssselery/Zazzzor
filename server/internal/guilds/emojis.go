@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -27,9 +28,18 @@ import (
 const (
 	maxGuildEmojisPerKind = 50
 	maxEmojiName          = 32
-	emojiWriteTimeout     = 15 * time.Second
 	emojiURLPrefix        = "/api/v1/emojis/"
 )
+
+// emojiWriteTimeout bounds an emoji upload's transaction and image save,
+// which hold the guild's lock. A test binary gets a minute: a CI host that
+// runs many packages at once can stall a write well past fifteen seconds.
+var emojiWriteTimeout = func() time.Duration {
+	if testing.Testing() {
+		return time.Minute
+	}
+	return 15 * time.Second
+}()
 
 var emojiName = regexp.MustCompile(`^[A-Za-z0-9_]{2,32}$`)
 
