@@ -16,7 +16,7 @@ export type Language = (typeof LANGUAGES)[number];
  * ties this to the code: it may be true only with no Russian left outside
  * the texts, and must be once none is.
  */
-export const TRANSLATED: boolean = false;
+export const TRANSLATED: boolean = true;
 
 /** The source language, and the one shown for a text another language lacks. */
 export const SOURCE_LANGUAGE: Language = "en";

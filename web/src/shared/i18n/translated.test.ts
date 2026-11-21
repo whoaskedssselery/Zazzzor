@@ -5,15 +5,21 @@ import { TRANSLATED } from "./resources";
 // Vitest runs in web/ (`pnpm test` goes into each package).
 const web = process.cwd();
 
-/** Files a person reads text from: the code, and the page around it. Texts, tests and test helpers are not. */
+/**
+ * What is never read by a person using the app: the texts themselves,
+ * tests and test helpers, generated types, and the dev-only design page
+ * (/dev/design, left out of production builds), whose sample content is
+ * Russian on purpose.
+ */
+const NOT_READ = /\.test\.tsx?$|\.gen\.ts$|\/locales\/|^src\/(shared|app)\/test\/|^src\/pages\/dev-design\//;
+
+/** Files a person reads text from: the code, and the page around it. */
 const sources = (dir: string): string[] =>
   readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
     const path = join(dir, e.name);
     if (e.isDirectory()) return sources(path);
     const rel = relative(web, path).split(sep).join("/");
-    if (!/\.(ts|tsx)$/.test(rel) || /\.test\.tsx?$|\.gen\.ts$|\/locales\/|^src\/(shared|app)\/test\//.test(rel))
-      return [];
-    return [rel];
+    return /\.(ts|tsx)$/.test(rel) && !NOT_READ.test(rel) ? [rel] : [];
   });
 
 /** Lines with Russian outside comments, as `file:line`. */
