@@ -7,6 +7,7 @@ import { LOGOUT_CONFIRM } from "@/features/auth";
 import { PASSWORD_CHANGED, PASSWORDS_DIFFER } from "@/features/change-password";
 import { NAME_RULE } from "@/features/edit-profile";
 import { PTT_FOCUS_HINT } from "@/features/voice-call";
+import { LANGUAGE_STORAGE_KEY } from "@/shared/i18n";
 import { WRONG_IMAGE } from "@/shared/lib";
 import { apiHandler, dispatchFrame, makeReady, problem, readyGateway, server } from "@/shared/test";
 import { LEAVE_UNSAVED, THEME_STORAGE_KEY, UNSAVED } from "@/shared/ui";
@@ -499,5 +500,21 @@ describe("voice output in Firefox", () => {
       expect(readVoicePrefs().outputId).toBe("out-9");
     });
     expect(screen.getByRole("combobox", { name: "Устройство вывода" }).textContent).toContain("Колонки");
+  });
+});
+
+describe("the interface language", () => {
+  it("switches at once, says what is not translated yet, and is kept", async () => {
+    signedIn();
+    const { user } = renderApp("/settings/language");
+    await user.click(await screen.findByRole("radio", { name: "English" }));
+    expect(await screen.findByRole("heading", { name: "Language" })).toBeTruthy();
+    expect(screen.getByText(/some screens are still in Russian/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Language" }).getAttribute("aria-current")).toBe("page");
+    expect(document.documentElement.lang).toBe("en");
+    expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe("en");
+    await user.click(screen.getByRole("radio", { name: "Русский" }));
+    expect(await screen.findByRole("heading", { name: "Язык" })).toBeTruthy();
+    expect(screen.queryByText(/some screens are still in Russian/)).toBeNull();
   });
 });
