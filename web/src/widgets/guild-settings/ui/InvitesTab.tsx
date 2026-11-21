@@ -2,16 +2,18 @@ import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-q
 import { Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { api, type components, errorText, unwrap } from "@/shared/api";
+import { currentLanguage, t } from "@/shared/i18n";
 import { Avatar, Button, IconButton, Skeleton, useToast } from "@/shared/ui";
 
 type Invite = components["schemas"]["Invite"];
 
-const dateFormat = new Intl.DateTimeFormat("ru-RU", {
-  day: "numeric",
-  month: "long",
-  hour: "2-digit",
-  minute: "2-digit",
-});
+const dateFormat = () =>
+  new Intl.DateTimeFormat(currentLanguage(), {
+    day: "numeric",
+    month: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 export const invitesKey = (guildId: string) => ["invites", guildId] as const;
 
 /** Invites per page; a full page means there may be more. */
@@ -19,11 +21,13 @@ export const INVITES_PAGE = 100;
 
 /** «3 из 10», or «3» for an invite without a limit. */
 export const usesText = (invite: Pick<Invite, "uses" | "max_uses">): string =>
-  invite.max_uses === 0 ? String(invite.uses) : `${String(invite.uses)} из ${String(invite.max_uses)}`;
+  invite.max_uses === 0 ? String(invite.uses) : t("guild:invites.uses", { uses: invite.uses, max: invite.max_uses });
 
 /** «до 24 октября в 21:04», or «бессрочно». */
 export const expiresText = (expiresAt: string | null): string =>
-  expiresAt === null ? "бессрочно" : `до ${dateFormat.format(new Date(expiresAt))}`;
+  expiresAt === null
+    ? t("guild:invites.never")
+    : t("guild:invites.until", { date: dateFormat().format(new Date(expiresAt)) });
 
 /**
  * The invites of a server: code, channel, who made it, how many used it
@@ -67,26 +71,26 @@ export const InvitesTab = ({ guildId }: { guildId: string }) => {
   } else if (invites.isError) {
     body = <p className="text-base text-fg-danger">{errorText(invites.error)}</p>;
   } else if (invites.data === undefined || invites.data.length === 0) {
-    body = <p className="text-base text-fg-muted">Приглашений нет.</p>;
+    body = <p className="text-base text-fg-muted">{t("guild:invites.none")}</p>;
   } else {
     body = (
       <table className="w-full text-left text-sm">
         <thead className="text-xs text-fg-faint uppercase">
           <tr>
             <th scope="col" className="py-2 font-semibold">
-              Пригласил
+              {t("guild:invites.inviter")}
             </th>
             <th scope="col" className="py-2 font-semibold">
-              Код
+              {t("guild:invites.code")}
             </th>
             <th scope="col" className="py-2 font-semibold">
-              Использований
+              {t("guild:invites.usesHeader")}
             </th>
             <th scope="col" className="py-2 font-semibold">
-              Действует
+              {t("guild:invites.expires")}
             </th>
             <th scope="col" className="w-10 py-2">
-              <span className="sr-only">Удалить</span>
+              <span className="sr-only">{t("guild:invites.delete")}</span>
             </th>
           </tr>
         </thead>
@@ -109,7 +113,7 @@ export const InvitesTab = ({ guildId }: { guildId: string }) => {
                 <IconButton
                   size="sm"
                   variant="danger"
-                  label={`Удалить приглашение ${invite.code}`}
+                  label={t("guild:invites.deleteOf", { code: invite.code })}
                   icon={Trash2}
                   disabled={remove.isPending}
                   onClick={() => {
@@ -127,7 +131,7 @@ export const InvitesTab = ({ guildId }: { guildId: string }) => {
   return (
     <section aria-labelledby="invites-title">
       <h2 id="invites-title" className="mb-5 text-xl font-semibold">
-        Приглашения
+        {t("guild:invites.title")}
       </h2>
       {body}
       {pages.hasNextPage && (
@@ -139,7 +143,7 @@ export const InvitesTab = ({ guildId }: { guildId: string }) => {
             void pages.fetchNextPage();
           }}
         >
-          Показать ещё
+          {t("guild:invites.more")}
         </Button>
       )}
     </section>

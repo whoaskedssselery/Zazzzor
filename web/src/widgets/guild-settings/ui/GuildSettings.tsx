@@ -9,6 +9,7 @@ import {
   useGuilds,
 } from "@/entities/guild";
 import { DeleteGuild } from "@/features/delete-guild";
+import { t } from "@/shared/i18n";
 import { SettingsFrame, settingsNavItemClass, useLeaveGuard } from "@/shared/ui";
 import { AuditTab } from "./AuditTab";
 import { BansTab } from "./BansTab";
@@ -87,7 +88,7 @@ export const GuildSettings = ({ guildId, tab }: { guildId: string; tab: string }
   return (
     <>
       <SettingsFrame
-        navLabel="Настройки сервера"
+        navLabel={t("guild:settingsNav")}
         title={entry?.guild.name ?? null}
         onClose={() => {
           guard(close);

@@ -2,10 +2,9 @@ import { useMutation } from "@tanstack/react-query";
 import { type ChangeEvent, useEffect, useRef, useState } from "react";
 import type { Guild } from "@/entities/guild";
 import { ApiError, api, errorText, unwrap } from "@/shared/api";
+import { t } from "@/shared/i18n";
 import { fileForm, IMAGE_ACCEPT, imageProblem, runeLength, trimContent, useObjectUrl } from "@/shared/lib";
 import { Button, Field, FormAlert, GuildIcon, Input, SaveBar, useToast } from "@/shared/ui";
-
-const NAME_RULE = "Название: от 2 до 100 символов.";
 
 /** PUT /guilds/{id}/icon with the file as multipart `file`. */
 const uploadIcon = async (guildId: string, file: File) =>
@@ -57,10 +56,10 @@ export const OverviewTab = ({ guild, onDirtyChange }: { guild: Guild; onDirtyCha
     },
     onSuccess: (_, sent) => {
       setIcon((current) => (current === sent ? null : current));
-      toast.show({ text: "Изменения сохранены", tone: "success" });
+      toast.show({ text: t("guild:overview.saved"), tone: "success" });
     },
     onError: (e) => {
-      if (e instanceof ApiError && "name" in e.fields) setNameError(NAME_RULE);
+      if (e instanceof ApiError && "name" in e.fields) setNameError(t("guild:overview.nameRule"));
     },
   });
 
@@ -76,7 +75,7 @@ export const OverviewTab = ({ guild, onDirtyChange }: { guild: Guild; onDirtyCha
   const submit = () => {
     const length = runeLength(trimContent(name));
     if (length < 2 || length > 100) {
-      setNameError(NAME_RULE);
+      setNameError(t("guild:overview.nameRule"));
       return;
     }
     setNameError(undefined);
@@ -95,7 +94,7 @@ export const OverviewTab = ({ guild, onDirtyChange }: { guild: Guild; onDirtyCha
   return (
     <section aria-labelledby="overview-title">
       <h2 id="overview-title" className="mb-5 text-xl font-semibold">
-        Обзор сервера
+        {t("guild:overview.title")}
       </h2>
       {failed && <FormAlert>{errorText(save.error)}</FormAlert>}
       <div className="flex gap-8 max-sm:flex-col">
@@ -117,9 +116,9 @@ export const OverviewTab = ({ guild, onDirtyChange }: { guild: Guild; onDirtyCha
               picker.current?.click();
             }}
           >
-            Сменить иконку
+            {t("guild:overview.changeIcon")}
           </Button>
-          <p className="max-w-40 text-center text-xs text-fg-muted">Квадрат не меньше 128×128, до 4 МБ.</p>
+          <p className="max-w-40 text-center text-xs text-fg-muted">{t("guild:overview.iconRule")}</p>
           {iconError && (
             <p role="alert" className="max-w-40 text-center text-xs text-fg-danger">
               {iconError}
@@ -134,7 +133,7 @@ export const OverviewTab = ({ guild, onDirtyChange }: { guild: Guild; onDirtyCha
             submit();
           }}
         >
-          <Field htmlFor="guild-name" label="Название сервера" error={nameError}>
+          <Field htmlFor="guild-name" label={t("guild:overview.name")} error={nameError}>
             <Input
               value={name}
               maxLength={200}

@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { api, type components, errorText, unwrap, useGatewayEvent } from "@/shared/api";
+import { currentLanguage, t } from "@/shared/i18n";
 import { Avatar, Button, ConfirmDialog, Skeleton, useToast } from "@/shared/ui";
 
 type Ban = components["schemas"]["Ban"];
 
-const dateFormat = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+const dateFormat = () => new Intl.DateTimeFormat(currentLanguage(), { day: "numeric", month: "long", year: "numeric" });
 export const bansKey = (guildId: string) => ["bans", guildId] as const;
 
 /** The guild a GUILD_BAN_ADD or _REMOVE is about, without trusting the rest of it. */
@@ -40,7 +41,7 @@ export const BansTab = ({ guildId }: { guildId: string }) => {
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: bansKey(guildId) });
-      toast.show({ text: "Бан снят" });
+      toast.show({ text: t("guild:bans.lifted") });
     },
     onError: (e) => {
       toast.show({ text: errorText(e), tone: "error" });
@@ -53,10 +54,10 @@ export const BansTab = ({ guildId }: { guildId: string }) => {
   } else if (bans.isError) {
     body = <p className="text-base text-fg-danger">{errorText(bans.error)}</p>;
   } else if (bans.data.length === 0) {
-    body = <p className="text-base text-fg-muted">Никто не забанен.</p>;
+    body = <p className="text-base text-fg-muted">{t("guild:bans.none")}</p>;
   } else {
     body = (
-      <ul aria-label="Забаненные" className="flex flex-col divide-y divide-border">
+      <ul aria-label={t("guild:bans.list")} className="flex flex-col divide-y divide-border">
         {bans.data.map((ban) => {
           const user = ban.user;
           if (user === null) return null;
@@ -68,8 +69,10 @@ export const BansTab = ({ guildId }: { guildId: string }) => {
                   <bdi className="truncate text-base font-semibold">{user.display_name}</bdi>
                   <span className="truncate text-sm text-fg-muted">@{user.username}</span>
                 </p>
-                <p className="text-sm break-words text-fg-muted">{ban.reason ?? "Без причины"}</p>
-                <p className="text-xs text-fg-faint">{`Забанен ${dateFormat.format(new Date(ban.created_at))}`}</p>
+                <p className="text-sm break-words text-fg-muted">{ban.reason ?? t("guild:bans.noReason")}</p>
+                <p className="text-xs text-fg-faint">
+                  {t("guild:bans.since", { date: dateFormat().format(new Date(ban.created_at)) })}
+                </p>
               </div>
               <Button
                 variant="secondary"
@@ -78,7 +81,7 @@ export const BansTab = ({ guildId }: { guildId: string }) => {
                   setLifting(ban);
                 }}
               >
-                Разбанить
+                {t("guild:bans.unban")}
               </Button>
             </li>
           );
@@ -90,7 +93,7 @@ export const BansTab = ({ guildId }: { guildId: string }) => {
   return (
     <section aria-labelledby="bans-title">
       <h2 id="bans-title" className="mb-5 text-xl font-semibold">
-        Баны
+        {t("guild:bans.title")}
       </h2>
       {body}
       <ConfirmDialog
@@ -98,9 +101,9 @@ export const BansTab = ({ guildId }: { guildId: string }) => {
         onOpenChange={(open) => {
           if (!open) setLifting(null);
         }}
-        title={`Разбанить ${lifting?.user?.display_name ?? ""}?`}
-        description="Он сможет вернуться на сервер по приглашению."
-        confirmLabel="Разбанить"
+        title={t("guild:bans.unbanTitle", { name: lifting?.user?.display_name ?? "" })}
+        description={t("guild:bans.unbanText")}
+        confirmLabel={t("guild:bans.unban")}
         onConfirm={() => {
           const id = lifting?.user?.id;
           if (id !== undefined) unban.mutate(id);
