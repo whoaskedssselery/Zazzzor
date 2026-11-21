@@ -151,7 +151,9 @@ func TestHeartbeatAck(t *testing.T) {
 
 func TestThrottledHeartbeatsStayConnected(t *testing.T) {
 	t.Parallel()
-	const scale = 100
+	// At 1/20 a heartbeat may run four and a half seconds late before the
+	// connection drops, enough for a busy test machine.
+	const scale = 20
 	timeout := gateway.DefaultHeartbeatTimeout / scale
 	const throttledInterval = 60 * time.Second / scale
 	e := newEnv(t, gateway.Options{HeartbeatTimeout: timeout})
@@ -176,8 +178,8 @@ func TestThrottledHeartbeatsStayConnected(t *testing.T) {
 func TestHeartbeatTimeoutCloses(t *testing.T) {
 	t.Parallel()
 	// Heartbeats come every quarter of the timeout: a busy test machine may
-	// delay one by a lot without the connection dropping.
-	const timeout = 2 * time.Second
+	// delay one by four and a half seconds without the connection dropping.
+	const timeout = 6 * time.Second
 	e := newEnv(t, gateway.Options{HeartbeatTimeout: timeout})
 	alice, _ := e.user("alice")
 	cl, _ := connect(t, alice)

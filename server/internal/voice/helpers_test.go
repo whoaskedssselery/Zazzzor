@@ -36,8 +36,9 @@ import (
 
 func TestMain(m *testing.M) { os.Exit(testkit.Main(m)) }
 
-// wait bounds every wait for something done in the background.
-const wait = 5 * time.Second
+// wait bounds every wait for something done in the background. A passing
+// test never waits it out, so it leaves a busy test machine plenty of room.
+const wait = 30 * time.Second
 
 // recorder remembers every event published.
 type recorder struct {

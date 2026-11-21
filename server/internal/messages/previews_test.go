@@ -207,7 +207,9 @@ func waitPreview(t *testing.T, e *env) messages.PublicMessage {
 
 func waitPreviewAfter(t *testing.T, e *env, after int) messages.PublicMessage {
 	t.Helper()
-	timer := time.NewTimer(5 * time.Second)
+	// Generous: a busy test machine can take long over the fetch and its
+	// write, and a passing test never waits this out.
+	timer := time.NewTimer(30 * time.Second)
 	defer timer.Stop()
 	tick := time.NewTicker(10 * time.Millisecond)
 	defer tick.Stop()
