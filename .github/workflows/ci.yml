@@ -23,10 +23,18 @@ env:
   GITLEAKS_VERSION: 8.30.1
   GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
 
+# Which runner a job gets: a pull request from a fork always runs on
+# GitHub's runners, because the self-hosted ones keep their files, caches and
+# Docker between jobs and the next job would inherit whatever a stranger's
+# code left there. Branches of this repository, main and manual runs use the
+# self-hosted runners when CI_RUNNER / CI_WINDOWS_RUNNER are set. Steps that
+# differ between the two check runner.environment, the runner the job really
+# got, never the variables. Release and publish jobs never run on these
+# runners (tools/ci/runner/README.md).
 jobs:
   go:
     name: Go (vet, lint, test)
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 20
     defaults:
       run:
@@ -40,7 +48,7 @@ jobs:
           go-version-file: server/go.mod
           # Self-hosted runners keep the module and build caches between
           # jobs; downloading GitHub's copy over a home link cost 1-2 minutes.
-          cache: ${{ vars.CI_RUNNER == '' }}
+          cache: ${{ runner.environment == 'github-hosted' }}
           cache-dependency-path: server/go.sum
       - name: Verify go.mod and go.sum are tidy
         run: |
@@ -63,7 +71,7 @@ jobs:
 
   govulncheck:
     name: Go vulnerabilities (govulncheck)
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -74,7 +82,7 @@ jobs:
           go-version-file: server/go.mod
           # Self-hosted runners keep the module and build caches between
           # jobs; downloading GitHub's copy over a home link cost 1-2 minutes.
-          cache: ${{ vars.CI_RUNNER == '' }}
+          cache: ${{ runner.environment == 'github-hosted' }}
           cache-dependency-path: server/go.sum
       - name: Scan reachable vulnerabilities
         working-directory: server
@@ -82,7 +90,7 @@ jobs:
 
   image:
     name: Server image (docker build)
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     # Also builds the web client and xcaddy on a cold runner (no cache).
     timeout-minutes: 25
     steps:
@@ -121,7 +129,7 @@ jobs:
 
   restore:
     name: Backups and restore (deploy/scripts)
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -149,7 +157,7 @@ jobs:
 
   web:
     name: Web packages (lint, test, build)
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -161,7 +169,7 @@ jobs:
         with:
           node-version: 22
           # Self-hosted runners keep the pnpm store between jobs.
-          cache: ${{ vars.CI_RUNNER == '' && 'pnpm' || '' }}
+          cache: ${{ runner.environment == 'github-hosted' && 'pnpm' || '' }}
       - run: pnpm install --frozen-lockfile
       # New advisories show up here even when no dependency changed.
       - name: Known vulnerabilities in dependencies (pnpm audit)
@@ -185,7 +193,7 @@ jobs:
 
   e2e:
     name: Browser tests (Chromium, Firefox)
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -196,13 +204,13 @@ jobs:
         with:
           node-version: 22
           # Self-hosted runners keep the pnpm store between jobs.
-          cache: ${{ vars.CI_RUNNER == '' && 'pnpm' || '' }}
+          cache: ${{ runner.environment == 'github-hosted' && 'pnpm' || '' }}
       - run: pnpm install --frozen-lockfile
       - name: Playwright's Chromium and Firefox (GitHub-hosted)
-        if: vars.CI_RUNNER == ''
+        if: runner.environment == 'github-hosted'
         run: pnpm --filter @zazzzor/web exec playwright install --with-deps chromium firefox
       - name: Playwright's Chromium and Firefox (self-hosted cache)
-        if: vars.CI_RUNNER != ''
+        if: runner.environment == 'self-hosted'
         # A runner image built for another Playwright (or before this step
         # existed) still works: it installs the system packages with apt, as
         # the hosted runners do, and says the image needs a rebuild.
@@ -239,7 +247,7 @@ jobs:
 
   openapi:
     name: OpenAPI lint
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -252,7 +260,7 @@ jobs:
 
   secrets:
     name: Secret scan (gitleaks)
-    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -274,9 +282,11 @@ jobs:
     # The native capture and encoding are Windows-only. The self-hosted
     # Windows runner keeps the build and the prebuilt libwebrtc between jobs
     # (CARGO_TARGET_DIR and LK_CUSTOM_WEBRTC in its own .env); GitHub's
-    # runner downloads them each time.
-    runs-on: ${{ vars.CI_WINDOWS_RUNNER || 'windows-latest' }}
-    timeout-minutes: 40
+    # runner downloads them each time, which a fork's pull request always
+    # gets (see the note above jobs).
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'windows-latest' || vars.CI_WINDOWS_RUNNER || 'windows-latest' }}
+    # A cold build on GitHub's runner takes longer than the warm one at home.
+    timeout-minutes: 60
     defaults:
       run:
         shell: powershell
