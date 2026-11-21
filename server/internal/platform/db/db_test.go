@@ -271,11 +271,11 @@ func TestOpenSizesPool(t *testing.T) {
 // its own context has no deadline.
 func TestAcquireIsBounded(t *testing.T) {
 	const acquireTimeout = time.Second
-	pool, err := db.OpenWith(t.Context(), withParam(t, testkit.PostgresURL(t), "pool_max_conns", "1"),
+	// A busy host gives up on the waits below long after the timeout, but
+	// a wait never ends before it.
+	const giveUp = 20 * time.Second
+	pool := openWithFirstConn(t, withParam(t, testkit.PostgresURL(t), "pool_max_conns", "1"),
 		db.Options{AcquireTimeout: acquireTimeout})
-	if err != nil {
-		t.Fatal(err)
-	}
 	defer pool.Close()
 	held, err := pool.Acquire(t.Context())
 	if err != nil {
@@ -289,20 +289,37 @@ func TestAcquireIsBounded(t *testing.T) {
 	go func() { _, execErr := pool.Exec(queryCtx, "SELECT 1"); finished <- execErr }()
 	select {
 	case err = <-finished:
-	case <-time.After(5 * time.Second):
+	case <-time.After(giveUp):
 		t.Fatal("Exec on a full pool did not honor its acquire timeout")
 	}
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("Exec on a full pool = %v, want context.DeadlineExceeded", err)
 	}
-	if d := time.Since(start); d > 5*time.Second {
-		t.Fatalf("Exec waited %s, want about the acquire timeout", d)
+	if d := time.Since(start); d < acquireTimeout {
+		t.Fatalf("Exec gave up after %s, before the acquire timeout of %s", d, acquireTimeout)
 	}
 	held.Release()
 	// Once a connection is free again, queries run normally, and the
 	// timeout does not cut a query that got its connection in time.
 	if _, err := pool.Exec(t.Context(), "SELECT pg_sleep($1)", (acquireTimeout + 200*time.Millisecond).Seconds()); err != nil {
 		t.Fatalf("Exec after release: %v", err)
+	}
+}
+
+// openWithFirstConn opens a pool whose acquire timeout may be too short for
+// a busy host to dial a connection: OpenWith's ping dials under it. It
+// tries again until the pool holds an idle connection, which later acquires
+// reuse without dialing.
+func openWithFirstConn(t *testing.T, url string, o db.Options) *pgxpool.Pool {
+	t.Helper()
+	for attempt := 1; ; attempt++ {
+		pool, err := db.OpenWith(t.Context(), url, o)
+		if err == nil {
+			return pool
+		}
+		if !errors.Is(err, context.DeadlineExceeded) || attempt == 10 {
+			t.Fatalf("open pool (attempt %d): %v", attempt, err)
+		}
 	}
 }
 

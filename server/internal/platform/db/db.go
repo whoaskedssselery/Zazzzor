@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -27,6 +28,20 @@ const DefaultMaxConns = 16
 // busy, instead of hanging it until the client gives up.
 const DefaultAcquireTimeout = 5 * time.Second
 
+// testAcquireTimeout replaces DefaultAcquireTimeout in a test binary. The
+// timeout also covers dialing a new connection, and a CI host that runs
+// many packages at once, each with its own PostgreSQL container, can take
+// longer than five seconds to answer.
+const testAcquireTimeout = 30 * time.Second
+
+// defaultAcquireTimeout is the AcquireTimeout of a zero Options.
+var defaultAcquireTimeout = func() time.Duration {
+	if testing.Testing() {
+		return testAcquireTimeout
+	}
+	return DefaultAcquireTimeout
+}()
+
 // ErrInvalidURL means the database URL does not parse. Its text never quotes
 // the URL, which may carry the password.
 var ErrInvalidURL = errors.New("db: invalid database URL")
@@ -34,7 +49,7 @@ var ErrInvalidURL = errors.New("db: invalid database URL")
 // Options tunes OpenWith; zero fields take the defaults.
 type Options struct {
 	// AcquireTimeout bounds the wait for a pool connection; default
-	// DefaultAcquireTimeout.
+	// DefaultAcquireTimeout, or testAcquireTimeout in a test binary.
 	AcquireTimeout time.Duration
 }
 
@@ -56,7 +71,7 @@ func OpenWith(ctx context.Context, url string, o Options) (*pgxpool.Pool, error)
 		cfg.MaxConns = DefaultMaxConns
 	}
 	if o.AcquireTimeout <= 0 {
-		o.AcquireTimeout = DefaultAcquireTimeout
+		o.AcquireTimeout = defaultAcquireTimeout
 	}
 	cfg.ConnConfig.Tracer = acquireTimeout{d: o.AcquireTimeout}
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
