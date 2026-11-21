@@ -16,7 +16,6 @@ export function h<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-
 const resolution = (w: number, hgt: number): string => (w > 0 ? `${w}×${hgt}` : "—");
 
 function row(label: string, value: string, warn = false): HTMLElement {
@@ -32,7 +31,11 @@ export interface LiveContext {
 }
 
 /** Builds the live measurements table. */
-export function renderLiveStats(summary: ConnectivitySummary | null, language: Language, ctx: LiveContext): HTMLElement {
+export function renderLiveStats(
+  summary: ConnectivitySummary | null,
+  language: Language,
+  ctx: LiveContext,
+): HTMLElement {
   const text = translations[language];
   const fmt = (n: number | null, digits: number, unit: string): string =>
     n === null ? text.noData : `${n.toFixed(digits)}${unit}`;

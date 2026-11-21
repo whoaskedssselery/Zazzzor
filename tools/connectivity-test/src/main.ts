@@ -37,7 +37,10 @@ document.title = `Zazzzor — ${text.title}`;
 
 const languages = h("nav");
 languages.setAttribute("aria-label", text.language);
-for (const [locale, label] of [["en", "English"], ["ru", "Русский"]] as const) {
+for (const [locale, label] of [
+  ["en", "English"],
+  ["ru", "Русский"],
+] as const) {
   if (locale === language) {
     const active = h("span", { textContent: label });
     active.lang = locale;
@@ -130,7 +133,12 @@ function start(root: HTMLElement, accessToken: string): void {
 
   const renderLive = (summary: ConnectivitySummary | null): void => {
     live.replaceChildren(
-      renderLiveStats(summary, language, { prevInbound, agg: samples.length ? aggregateSamples(samples) : null, events, labels }),
+      renderLiveStats(summary, language, {
+        prevInbound,
+        agg: samples.length ? aggregateSamples(samples) : null,
+        events,
+        labels,
+      }),
     );
   };
 
