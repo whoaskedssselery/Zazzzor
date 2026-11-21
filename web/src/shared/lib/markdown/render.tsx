@@ -1,4 +1,5 @@
 import { type CSSProperties, createContext, type ReactNode, use, useState } from "react";
+import { t } from "@/shared/i18n";
 import { type MdNode, type MentionKind, parseMarkdown } from "./parse";
 
 /** Who or what a mention names, as this server shows them. */
@@ -22,9 +23,6 @@ export interface MentionNames {
 const NO_NAMES: MentionNames = { user: () => null, role: () => null };
 const MentionContext = createContext<MentionNames>(NO_NAMES);
 
-export const UNKNOWN_USER = "неизвестный";
-export const DELETED_ROLE = "удалённая роль";
-
 /** The text of a mention: `@name`, `@everyone`, `@here`. */
 export const mentionText = (names: MentionNames, kind: MentionKind, id: string | null): string => {
   switch (kind) {
@@ -32,9 +30,9 @@ export const mentionText = (names: MentionNames, kind: MentionKind, id: string |
     case "here":
       return `@${kind}`;
     case "user":
-      return `@${(id !== null && names.user(id)?.name) || UNKNOWN_USER}`;
+      return `@${(id !== null && names.user(id)?.name) || t("chat:unknownUser")}`;
     case "role":
-      return `@${(id !== null && names.role(id)?.name) || DELETED_ROLE}`;
+      return `@${(id !== null && names.role(id)?.name) || t("chat:deletedRole")}`;
   }
 };
 
@@ -73,7 +71,7 @@ const Spoiler = ({ children }: { children: ReactNode }) => {
   return (
     <button
       type="button"
-      aria-label="Спойлер, нажмите, чтобы показать"
+      aria-label={t("chat:spoiler")}
       className="inline cursor-pointer rounded-xs bg-spoiler px-0.5 text-left text-transparent select-none [&_*]:invisible"
       onClick={() => {
         setShown(true);

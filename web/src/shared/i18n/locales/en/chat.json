@@ -1,0 +1,24 @@
+{
+  "unknownUser": "unknown",
+  "deletedRole": "deleted role",
+  "spoiler": "Spoiler, click to reveal",
+  "deletedUser": "Deleted user",
+  "replyDeleted": "The original message was deleted",
+  "jumpToReply": "Go to the original message",
+  "edited": "(edited)",
+  "attachment": {
+    "download": "Download {{name}}",
+    "open": "Open {{name}}",
+    "openOriginal": "Open original",
+    "downloadShort": "Download",
+    "previous": "Previous image",
+    "next": "Next image"
+  },
+  "embed": {
+    "image": "Linked image",
+    "youtube": "YouTube video",
+    "watch": "Watch: {{title}}",
+    "video": "video",
+    "list": "Link previews"
+  }
+}

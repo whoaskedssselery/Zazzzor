@@ -1,6 +1,7 @@
 import { Check, ChevronDown } from "lucide-react";
 import { Select as SelectPrimitive } from "radix-ui";
 import type { Ref } from "react";
+import { t } from "@/shared/i18n";
 import { cn } from "../cn";
 import { fieldClass, useFieldControl } from "./Input";
 
@@ -35,7 +36,7 @@ interface SelectProps {
  */
 export const Select = ({
   options,
-  placeholder = "Выберите…",
+  placeholder,
   className,
   ref,
   value,
@@ -74,7 +75,7 @@ export const Select = ({
       >
         {/* A long device name stays on one line and ends in an ellipsis. */}
         <span className="min-w-0 flex-1 truncate">
-          <SelectPrimitive.Value placeholder={placeholder} />
+          <SelectPrimitive.Value placeholder={placeholder ?? t("common:choose")} />
         </span>
         <SelectPrimitive.Icon className="shrink-0">
           <ChevronDown

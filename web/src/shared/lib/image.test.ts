@@ -1,4 +1,4 @@
-import { IMAGE_TOO_LARGE, imageProblem, WRONG_IMAGE } from "./image";
+import { imageProblem } from "./image";
 
 const file = (type: string, size: number) => new File([new Uint8Array(size)], "f", { type });
 
@@ -10,7 +10,7 @@ describe("imageProblem", () => {
   });
 
   it("refuses other types and larger files", () => {
-    expect(imageProblem(file("image/svg+xml", 10))).toBe(WRONG_IMAGE);
-    expect(imageProblem(file("image/png", 4 * 1024 * 1024 + 1))).toBe(IMAGE_TOO_LARGE);
+    expect(imageProblem(file("image/svg+xml", 10))).toBe("Нужна картинка PNG, JPEG, GIF или WebP.");
+    expect(imageProblem(file("image/png", 4 * 1024 * 1024 + 1))).toBe("Файл больше 4 МБ.");
   });
 });

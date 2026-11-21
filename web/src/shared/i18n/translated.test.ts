@@ -11,7 +11,7 @@ const sources = (dir: string): string[] =>
     const path = join(dir, e.name);
     if (e.isDirectory()) return sources(path);
     const rel = relative(web, path).split(sep).join("/");
-    if (!/\.(ts|tsx)$/.test(rel) || /\.test\.tsx?$|\.gen\.ts$|\/locales\/|^src\/shared\/test\//.test(rel)) return [];
+    if (!/\.(ts|tsx)$/.test(rel) || /\.test\.tsx?$|\.gen\.ts$|\/locales\/|^src\/(shared|app)\/test\//.test(rel)) return [];
     return [rel];
   });
 

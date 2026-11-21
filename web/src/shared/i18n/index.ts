@@ -6,6 +6,7 @@ export {
   readLanguage,
   setLanguage,
   t,
+  textTable,
   useLanguage,
   useTranslation,
 } from "./i18n";

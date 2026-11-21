@@ -80,3 +80,14 @@ export const useLanguage = (): { language: Language; setLanguage: (lng: Language
 };
 
 export { useTranslation };
+
+/**
+ * A constant table of texts whose values are read when used, in the language
+ * of that moment: `PRESENCE_LABEL[status]` stays as it was, but each value
+ * is `read()` again on every access.
+ */
+export const textTable = <K extends string>(read: Record<K, () => string>): Readonly<Record<K, string>> => {
+  const table = {} as Record<K, string>;
+  for (const key of Object.keys(read) as K[]) Object.defineProperty(table, key, { get: read[key], enumerable: true });
+  return table;
+};

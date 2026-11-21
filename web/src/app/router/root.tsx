@@ -1,5 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, Outlet } from "@tanstack/react-router";
+import { t } from "@/shared/i18n";
 import { Button } from "@/shared/ui";
 import { useBootSplashHandOver } from "./splash";
 
@@ -20,15 +21,15 @@ const RootLayout = () => {
 const RootError = () => (
   <main role="alert" className="grid min-h-dvh place-items-center p-6 text-center">
     <div>
-      <h1 className="text-xl font-semibold">Что-то сломалось</h1>
-      <p className="mt-2 text-fg-muted">Перезагрузите страницу. Если не поможет, попробуйте позже.</p>
+      <h1 className="text-xl font-semibold">{t("common:crash.title")}</h1>
+      <p className="mt-2 text-fg-muted">{t("common:crash.text")}</p>
       <Button
         className="mt-4"
         onClick={() => {
           window.location.reload();
         }}
       >
-        Перезагрузить
+        {t("common:crash.reload")}
       </Button>
     </div>
   </main>
@@ -37,8 +38,8 @@ const RootError = () => (
 const NotFound = () => (
   <main className="grid min-h-dvh place-items-center p-6 text-center">
     <div>
-      <h1 className="text-xl font-semibold">Страница не найдена</h1>
-      <p className="mt-2 text-fg-muted">Такого адреса в Zazzzor нет.</p>
+      <h1 className="text-xl font-semibold">{t("common:notFound.title")}</h1>
+      <p className="mt-2 text-fg-muted">{t("common:notFound.text")}</p>
     </div>
   </main>
 );
