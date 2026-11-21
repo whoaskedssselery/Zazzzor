@@ -43,7 +43,7 @@ func TestSmallPoolDoesNotWedge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, err := e.svc.CreateGuild(t.Context(), owner, "Small pool")
+	g, err := e.svc.CreateGuild(t.Context(), owner, "Small pool", "")
 	if err != nil {
 		t.Fatal(err)
 	}

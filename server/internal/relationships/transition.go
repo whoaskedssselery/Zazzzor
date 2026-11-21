@@ -36,7 +36,7 @@ func transition(op operation, before pair) (pair, error) {
 	case requestFriend:
 		switch {
 		case before.own == Blocked:
-			return before, httpx.BadRequest("blocked_by_you", "Сначала разблокируйте этого пользователя")
+			return before, httpx.BadRequest("blocked_by_you", "unblock this user first")
 		case before.other == Blocked:
 			return before, nil
 		case before.own == Incoming:

@@ -29,7 +29,7 @@ import (
 // api container, like smoke; the data is left in place, so it is meant for
 // a throwaway stack. The JSON holds the test user's password.
 
-const restoreCheckUsage = "использование: zazzzor restore-check seed <base_url> > state.json; " +
+const restoreCheckUsage = "usage: zazzzor restore-check seed <base_url> > state.json; " +
 	"zazzzor restore-check verify <base_url> < state.json"
 
 // restoreState is what seed created and verify expects.
@@ -59,13 +59,13 @@ func restoreCheckCommand(args []string, env func(string) string, stdin io.Reader
 	base := strings.TrimRight(args[1], "/")
 	u, err := url.Parse(base)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		_, _ = fmt.Fprintf(stderr, "адрес должен начинаться с http:// или https://\n%s\n", restoreCheckUsage)
+		_, _ = fmt.Fprintf(stderr, "the address must start with http:// or https://\n%s\n", restoreCheckUsage)
 		return 2
 	}
 	origin, _, _ := strings.Cut(env("ZAZZZOR_ALLOWED_ORIGINS"), ",")
 	origin = strings.TrimSpace(origin)
 	if origin == "" {
-		_, _ = fmt.Fprintln(stderr, "не задан ZAZZZOR_ALLOWED_ORIGINS: из него берётся заголовок Origin для проверки")
+		_, _ = fmt.Fprintln(stderr, "ZAZZZOR_ALLOWED_ORIGINS is not set: the check takes its Origin header from it")
 		return 2
 	}
 	return runRestoreCheck(context.Background(), args[0], base, origin, stdin, stdout, stderr)
@@ -89,7 +89,7 @@ func runRestoreCheck(ctx context.Context, mode, base, origin string, stdin io.Re
 			err = json.NewEncoder(stdout).Encode(st) //nolint:gosec // G117: the state must carry the throwaway test user's password to sign in after the restore.
 		}
 		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "ОШИБКА: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "ERROR: %v\n", err)
 			return 1
 		}
 		return 0
@@ -97,11 +97,11 @@ func runRestoreCheck(ctx context.Context, mode, base, origin string, stdin io.Re
 	var st restoreState
 	if err := json.NewDecoder(stdin).Decode(&st); err != nil || st.Username == "" ||
 		(st.AttachmentURL == "") != (st.AttachmentSHA == "") || (st.EmojiURL == "") != (st.EmojiSHA == "") {
-		_, _ = fmt.Fprintf(stderr, "не читается состояние от restore-check seed на stdin: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "cannot read the state from restore-check seed on stdin: %v\n", err)
 		return 2
 	}
 	if err := s.verify(ctx, st); err != nil {
-		_, _ = fmt.Fprintf(stderr, "ОШИБКА: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "ERROR: %v\n", err)
 		return 1
 	}
 	_, _ = fmt.Fprintln(stdout, "OK")
@@ -111,13 +111,13 @@ func runRestoreCheck(ctx context.Context, mode, base, origin string, stdin io.Re
 // seed creates the data that verify checks after a restore.
 func (s *smokeSession) seed(ctx context.Context) (restoreState, error) {
 	st := restoreState{Username: "restore_" + randomHex(4), Password: randomHex(16)}
-	if err := s.step("регистрация", s.register(ctx, st.Username, st.Password)); err != nil {
+	if err := s.step("sign-up", s.register(ctx, st.Username, st.Password)); err != nil {
 		return st, err
 	}
 	var user struct {
 		AvatarURL string `json:"avatar_url"`
 	}
-	if err := s.step("аватар", s.upload(ctx, "/api/v1/users/@me/avatar", solidPNG(80), &user)); err != nil {
+	if err := s.step("avatar", s.upload(ctx, "/api/v1/users/@me/avatar", solidPNG(80), &user)); err != nil {
 		return st, err
 	}
 	st.AvatarURL = user.AvatarURL
@@ -125,56 +125,56 @@ func (s *smokeSession) seed(ctx context.Context) (restoreState, error) {
 		ID      string
 		IconURL string `json:"icon_url"`
 	}
-	if err := s.step("создание сервера", s.do(ctx, http.MethodPost, "/api/v1/guilds",
+	if err := s.step("create server", s.do(ctx, http.MethodPost, "/api/v1/guilds",
 		map[string]string{"name": "restore"}, http.StatusCreated, &guild)); err != nil {
 		return st, err
 	}
 	st.GuildID = guild.ID
-	if err := s.step("иконка", s.upload(ctx, "/api/v1/guilds/"+guild.ID+"/icon", solidPNG(80), &guild)); err != nil {
+	if err := s.step("icon", s.upload(ctx, "/api/v1/guilds/"+guild.ID+"/icon", solidPNG(80), &guild)); err != nil {
 		return st, err
 	}
 	iconURL, err := s.replaceIcon(ctx, guild.ID, guild.IconURL)
-	if err = s.step("замена иконки", err); err != nil {
+	if err = s.step("replace icon", err); err != nil {
 		return st, err
 	}
 	st.IconURL = iconURL
 	channelID, err := s.textChannel(ctx, guild.ID)
-	if err = s.step("список каналов", err); err != nil {
+	if err = s.step("channel list", err); err != nil {
 		return st, err
 	}
 	st.ChannelID = channelID
 	var attachment struct{ ID, URL string }
-	if err = s.step("вложение", s.uploadFile(ctx, http.MethodPost, "/api/v1/channels/"+channelID+"/attachments",
+	if err = s.step("attachment", s.uploadFile(ctx, http.MethodPost, "/api/v1/channels/"+channelID+"/attachments",
 		"restore.txt", []byte("restore attachment\n"), nil, http.StatusCreated, &attachment)); err != nil {
 		return st, err
 	}
 	st.AttachmentURL = attachment.URL
 	var msg struct{ ID string }
-	if err = s.step("отправка сообщения", s.do(ctx, http.MethodPost, "/api/v1/channels/"+channelID+"/messages",
+	if err = s.step("send message", s.do(ctx, http.MethodPost, "/api/v1/channels/"+channelID+"/messages",
 		map[string]any{"content": "restore", "attachment_ids": []string{attachment.ID}}, http.StatusCreated, &msg)); err != nil {
 		return st, err
 	}
 	st.MessageID = msg.ID
 	var emoji struct{ URL string }
-	if err = s.step("эмодзи", s.uploadFile(ctx, http.MethodPost, "/api/v1/guilds/"+guild.ID+"/emojis",
+	if err = s.step("emoji", s.uploadFile(ctx, http.MethodPost, "/api/v1/guilds/"+guild.ID+"/emojis",
 		"emoji.png", solidPNG(110), map[string]string{"name": "restore"}, http.StatusCreated, &emoji)); err != nil {
 		return st, err
 	}
 	st.EmojiURL = emoji.URL
 	st.AttachmentSHA, err = s.digest(ctx, st.AttachmentURL)
-	if err = s.step("загрузка вложения", err); err != nil {
+	if err = s.step("download attachment", err); err != nil {
 		return st, err
 	}
 	st.EmojiSHA, err = s.digest(ctx, st.EmojiURL)
-	if err = s.step("загрузка эмодзи", err); err != nil {
+	if err = s.step("download emoji", err); err != nil {
 		return st, err
 	}
 	st.AvatarSHA, err = s.digest(ctx, st.AvatarURL)
-	if err = s.step("загрузка аватара", err); err != nil {
+	if err = s.step("download avatar", err); err != nil {
 		return st, err
 	}
 	st.IconSHA, err = s.digest(ctx, st.IconURL)
-	if err = s.step("загрузка иконки", err); err != nil {
+	if err = s.step("download icon", err); err != nil {
 		return st, err
 	}
 	return st, nil
@@ -191,10 +191,10 @@ func (s *smokeSession) replaceIcon(ctx context.Context, guildID, old string) (st
 		return "", err
 	}
 	if guild.IconURL == old {
-		return "", errors.New("адрес иконки не изменился")
+		return "", errors.New("the icon address did not change")
 	}
 	if _, err := s.fetch(ctx, old); err == nil {
-		return "", errors.New("прежняя иконка всё ещё отдаётся")
+		return "", errors.New("the previous icon is still served")
 	}
 	return guild.IconURL, nil
 }
@@ -204,35 +204,35 @@ func (s *smokeSession) verify(ctx context.Context, st restoreState) error {
 	var user struct {
 		AvatarURL string `json:"avatar_url"`
 	}
-	if err := s.step("вход", s.signIn(ctx, "/api/v1/auth/login", st.Username, st.Password, http.StatusOK, &user)); err != nil {
+	if err := s.step("sign-in", s.signIn(ctx, "/api/v1/auth/login", st.Username, st.Password, http.StatusOK, &user)); err != nil {
 		return err
 	}
 	defer func() { _ = s.do(ctx, http.MethodPost, "/api/v1/auth/logout", nil, http.StatusNoContent, nil) }()
 	if user.AvatarURL != st.AvatarURL {
-		return s.step("аватар", fmt.Errorf("адрес аватара %q, ожидался %q", user.AvatarURL, st.AvatarURL))
+		return s.step("avatar", fmt.Errorf("avatar address %q, expected %q", user.AvatarURL, st.AvatarURL))
 	}
 	var guild struct {
 		IconURL string `json:"icon_url"`
 	}
 	err := s.do(ctx, http.MethodGet, "/api/v1/guilds/"+st.GuildID, nil, http.StatusOK, &guild)
 	if err == nil && guild.IconURL != st.IconURL {
-		err = fmt.Errorf("адрес иконки %q, ожидался %q", guild.IconURL, st.IconURL)
+		err = fmt.Errorf("icon address %q, expected %q", guild.IconURL, st.IconURL)
 	}
-	if err = s.step("сервер", err); err != nil {
+	if err = s.step("server", err); err != nil {
 		return err
 	}
-	if err = s.step("сообщение", s.findMessage(ctx, st.ChannelID, st.MessageID, st.AttachmentURL)); err != nil {
+	if err = s.step("message", s.findMessage(ctx, st.ChannelID, st.MessageID, st.AttachmentURL)); err != nil {
 		return err
 	}
-	if err = s.step("аватар", s.sameBytes(ctx, st.AvatarURL, st.AvatarSHA)); err != nil {
+	if err = s.step("avatar", s.sameBytes(ctx, st.AvatarURL, st.AvatarSHA)); err != nil {
 		return err
 	}
-	if err = s.step("иконка", s.sameBytes(ctx, st.IconURL, st.IconSHA)); err != nil {
+	if err = s.step("icon", s.sameBytes(ctx, st.IconURL, st.IconSHA)); err != nil {
 		return err
 	}
 	for _, file := range []struct{ label, url, sha string }{
-		{"вложение", st.AttachmentURL, st.AttachmentSHA},
-		{"эмодзи", st.EmojiURL, st.EmojiSHA},
+		{"attachment", st.AttachmentURL, st.AttachmentSHA},
+		{"emoji", st.EmojiURL, st.EmojiSHA},
 	} {
 		// Older seed states predate these files.
 		if file.url != "" {
@@ -261,7 +261,7 @@ func (s *smokeSession) sameBytes(ctx context.Context, path, want string) error {
 		return err
 	}
 	if got != want {
-		return fmt.Errorf("%s отдаёт другие байты, чем до копии", path)
+		return fmt.Errorf("%s serves other bytes than before the backup", path)
 	}
 	return nil
 }

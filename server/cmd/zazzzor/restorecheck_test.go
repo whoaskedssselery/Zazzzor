@@ -69,15 +69,15 @@ func TestRestoreCheckDetectsChangedImage(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("verify exit = %d, want 1", code)
 	}
-	if !strings.Contains(errOut.String(), "иконка") {
+	if !strings.Contains(errOut.String(), "icon") {
 		t.Errorf("stderr %q does not name the icon", errOut.String())
 	}
 }
 
 func TestRestoreCheckDetectsChangedAttachmentAndEmoji(t *testing.T) {
 	for _, tc := range []struct{ name, path, label string }{
-		{"attachment", "/api/v1/attachments/", "вложение"},
-		{"emoji", "/api/v1/emojis/", "эмодзи"},
+		{"attachment", "/api/v1/attachments/", "attachment"},
+		{"emoji", "/api/v1/emojis/", "emoji"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			api, _ := newAuthRouter(t)
@@ -108,7 +108,7 @@ func TestRestoreCheckRejectsBrokenState(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("exit = %d, want 2", code)
 	}
-	if !strings.Contains(errOut.String(), "состояние") {
+	if !strings.Contains(errOut.String(), "state") {
 		t.Errorf("stderr %q does not explain the state", errOut.String())
 	}
 }

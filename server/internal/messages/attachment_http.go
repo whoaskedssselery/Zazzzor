@@ -118,7 +118,7 @@ func (s *Service) handleUploadAttachment(w http.ResponseWriter, r *http.Request)
 		if errors.Is(err, errAttachmentQuota) {
 			s.removeUncommitted(ref)
 			return &httpx.Problem{Status: http.StatusRequestEntityTooLarge, Code: "attachment_quota_exceeded",
-				Detail: "Достигнут лимит хранилища для ваших файлов. Удалите старые вложения или попросите администратора."}
+				Detail: "You have reached the storage limit for your files. Delete old attachments or ask an administrator."}
 		}
 		if !insertAttempted {
 			s.removeUncommitted(ref)

@@ -95,7 +95,7 @@ func TestFilesReconcileRestoresReferencedImages(t *testing.T) {
 	if u, err = m.Users.SetAvatar(t.Context(), u.ID, testPNG(t)); err != nil {
 		t.Fatalf("SetAvatar: %v", err)
 	}
-	g, err := m.Guilds.CreateGuild(t.Context(), u, "restore")
+	g, err := m.Guilds.CreateGuild(t.Context(), u, "restore", "")
 	if err != nil {
 		t.Fatalf("CreateGuild: %v", err)
 	}

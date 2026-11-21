@@ -4095,6 +4095,13 @@ components:
           type: string
           minLength: 2
           maxLength: 100
+        locale:
+          description: |
+            The interface language of the creator, which names the default
+            channels: «Text channels» and #general in English, «Текстовые
+            каналы» and #общий in Russian. English when absent.
+          type: string
+          enum: [en, ru]
     UpdateGuildRequest:
       type: object
       additionalProperties: false

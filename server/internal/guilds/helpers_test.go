@@ -76,7 +76,7 @@ type channelsHook struct {
 	inTx bool
 }
 
-func (h *channelsHook) CreateDefaultChannels(ctx context.Context, tx pgx.Tx, guildID snowflake.ID) error {
+func (h *channelsHook) CreateDefaultChannels(ctx context.Context, tx pgx.Tx, guildID snowflake.ID, _ string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.calls = append(h.calls, guildID)

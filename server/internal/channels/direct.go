@@ -19,7 +19,7 @@ import (
 // cannotMessage deliberately uses one problem for every eligibility failure.
 func cannotMessage() error {
 	return &httpx.Problem{Status: http.StatusForbidden, Code: "cannot_message_user",
-		Detail: "Не получилось отправить: у вас нет общего сервера, вы не друзья или этот человек ограничил личные сообщения."}
+		Detail: "Could not send: you share no server, you are not friends, or this person limits direct messages."}
 }
 
 // directAllowed locks the same account rows as relationship mutations.

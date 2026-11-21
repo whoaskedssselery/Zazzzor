@@ -2068,6 +2068,13 @@ export interface components {
         };
         CreateGuildRequest: {
             name: string;
+            /**
+             * @description The interface language of the creator, which names the default
+             *     channels: «Text channels» and #general in English, «Текстовые
+             *     каналы» and #общий in Russian. English when absent.
+             * @enum {string}
+             */
+            locale?: "en" | "ru";
         };
         UpdateGuildRequest: {
             name?: string;

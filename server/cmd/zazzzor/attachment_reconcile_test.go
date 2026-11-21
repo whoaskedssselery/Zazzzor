@@ -20,7 +20,7 @@ func TestFilesReconcileRestoresReferencedAttachment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
-	g, err := m.Guilds.CreateGuild(ctx, u, "restore")
+	g, err := m.Guilds.CreateGuild(ctx, u, "restore", "")
 	if err != nil {
 		t.Fatalf("CreateGuild: %v", err)
 	}

@@ -252,24 +252,36 @@ func NewBootstrapper(ids *snowflake.Generator, now func() time.Time) *Bootstrapp
 	return &Bootstrapper{ids: ids, now: now, q: store.New()}
 }
 
-// Names of the default channels.
+// Names of the default channels of a guild created without a locale (English).
 const (
-	DefaultTextCategory  = "Текстовые каналы"
-	DefaultTextChannel   = "общий"
-	DefaultVoiceCategory = "Голосовые каналы"
-	DefaultVoiceChannel  = "Общий"
+	DefaultTextCategory  = "Text channels"
+	DefaultTextChannel   = "general"
+	DefaultVoiceCategory = "Voice channels"
+	DefaultVoiceChannel  = "General"
 )
 
+// defaultNames are the default channels' names by interface language: the
+// text category and channel, then the voice category and channel. Any
+// language missing here gets the English ones.
+var defaultNames = map[string][4]string{
+	"en": {DefaultTextCategory, DefaultTextChannel, DefaultVoiceCategory, DefaultVoiceChannel},
+	"ru": {"Текстовые каналы", "общий", "Голосовые каналы", "Общий"},
+}
+
 // CreateDefaultChannels creates, inside tx, a text category with a text
-// channel and a voice category with a voice channel.
-func (b *Bootstrapper) CreateDefaultChannels(ctx context.Context, tx pgx.Tx, guildID snowflake.ID) error {
+// channel and a voice category with a voice channel, named in locale.
+func (b *Bootstrapper) CreateDefaultChannels(ctx context.Context, tx pgx.Tx, guildID snowflake.ID, locale string) error {
 	now := b.now()
+	names, ok := defaultNames[locale]
+	if !ok {
+		names = defaultNames["en"]
+	}
 	for i, d := range []struct {
 		category, channel string
 		typ               Type
 	}{
-		{DefaultTextCategory, DefaultTextChannel, TypeText},
-		{DefaultVoiceCategory, DefaultVoiceChannel, TypeVoice},
+		{names[0], names[1], TypeText},
+		{names[2], names[3], TypeVoice},
 	} {
 		cat, err := b.q.CreateChannel(ctx, tx, store.CreateChannelParams{ID: b.ids.Next(), GuildID: int64(guildID),
 			Type: int16(TypeCategory), Name: d.category, Position: int32(i), CreatedAt: now}) //nolint:gosec // G115: 0 or 1

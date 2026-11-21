@@ -19,7 +19,7 @@ import (
 // createAdminCommand reads one password line and provisions a configured administrator.
 func createAdminCommand(args []string, env func(string) string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) != 1 {
-		_, _ = fmt.Fprintln(stderr, "использование: zazzzor create-admin <username>")
+		_, _ = fmt.Fprintln(stderr, "usage: zazzzor create-admin <username>")
 		return 2
 	}
 	cfg, err := config.Load(env)
@@ -48,18 +48,18 @@ func createAdminCommand(args []string, env func(string) string, stdin io.Reader,
 		_, _ = fmt.Fprintf(stderr, "create-admin: %v\n", err)
 		return 1
 	}
-	_, _ = fmt.Fprintf(stdout, "Администратор %s создан.\n", user.Username)
+	_, _ = fmt.Fprintf(stdout, "Administrator %s created.\n", user.Username)
 	return 0
 }
 
 // readAdminPassword accepts a line from a pipe or reads an interactive line without echo.
 func readAdminPassword(stdin io.Reader, stderr io.Writer) (string, error) {
 	if file, ok := stdin.(*os.File); ok && term.IsTerminal(int(file.Fd())) {
-		_, _ = fmt.Fprint(stderr, "Пароль администратора: ")
+		_, _ = fmt.Fprint(stderr, "Administrator password: ")
 		password, err := term.ReadPassword(int(file.Fd()))
 		_, _ = fmt.Fprintln(stderr)
 		if err != nil {
-			return "", fmt.Errorf("чтение пароля из терминала: %w", err)
+			return "", fmt.Errorf("read the password from the terminal: %w", err)
 		}
 		return string(password), nil
 	}
@@ -72,5 +72,5 @@ func readAdminPassword(stdin io.Reader, stderr io.Writer) (string, error) {
 	if err == nil {
 		err = io.EOF
 	}
-	return "", fmt.Errorf("чтение строки с паролем из stdin: %w", err)
+	return "", fmt.Errorf("read the password line from stdin: %w", err)
 }

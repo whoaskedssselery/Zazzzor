@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"sync"
 
 	"github.com/jackc/pgx/v5"
@@ -68,13 +70,19 @@ func (s *Service) checkGuildLimit(ctx context.Context, tx pgx.Tx, userID snowfla
 // and the @everyone role (ID = guild ID, position 0, DefaultEveryone). The
 // channels bootstrapper runs in the same transaction. Each call counts
 // against the per-user creation limit.
-func (s *Service) CreateGuild(ctx context.Context, owner auth.User, name string) (GuildSnapshot, error) {
+func (s *Service) CreateGuild(ctx context.Context, owner auth.User, name, locale string) (GuildSnapshot, error) {
 	if ok, retry := s.createLimiter.Allow(owner.ID.String()); !ok {
 		return GuildSnapshot{}, &auth.RateLimitedError{RetryAfter: retry}
 	}
 	name, nameErr := normalizeName("name", name, 2, 100)
 	if nameErr != nil {
 		return GuildSnapshot{}, nameErr
+	}
+	if locale == "" {
+		locale = DefaultLocale
+	}
+	if !slices.Contains(Locales, locale) {
+		return GuildSnapshot{}, invalid("locale", "must be one of "+strings.Join(Locales, ", "))
 	}
 	id := s.ids.Next()
 	now := s.now()
@@ -95,7 +103,7 @@ func (s *Service) CreateGuild(ctx context.Context, owner auth.User, name string)
 		if _, err = s.q.AddMember(ctx, tx, store.AddMemberParams{GuildID: id, UserID: owner.ID, JoinedAt: now}); err != nil {
 			return fmt.Errorf("guilds: add owner: %w", err)
 		}
-		if err = s.channels.CreateDefaultChannels(ctx, tx, id); err != nil {
+		if err = s.channels.CreateDefaultChannels(ctx, tx, id, locale); err != nil {
 			return fmt.Errorf("guilds: create default channels: %w", err)
 		}
 		snap = GuildSnapshot{Guild: toGuild(g), Roles: []Role{toRole(everyone)},

@@ -233,7 +233,7 @@ func TestSmokeExplainsRegistrationLimit(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1", code)
 	}
-	for _, want := range []string{"регистрация", "429", "3 в час"} {
+	for _, want := range []string{"sign-up", "429", "3 sign-ups an hour"} {
 		if !strings.Contains(errOut, want) {
 			t.Errorf("stderr %q does not mention %q", errOut, want)
 		}
@@ -274,7 +274,7 @@ func TestSmokeCommandReportsUnreachableAPI(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1", code)
 	}
-	if !strings.Contains(errOut.String(), "регистрация") {
+	if !strings.Contains(errOut.String(), "sign-up") {
 		t.Errorf("stderr %q does not name the failed step", errOut.String())
 	}
 }
