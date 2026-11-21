@@ -314,6 +314,20 @@ describe("the voice channel screen", () => {
     expect(video.tagName).toBe("VIDEO");
     await user.click(within(front).getByRole("button", { name: "Во весь экран" }));
     expect(full).toHaveBeenCalledTimes(1);
+    // Full screen has its own way out on the picture, not only Esc.
+    const exit = vi.fn(() => Promise.resolve());
+    document.exitFullscreen = exit;
+    Object.defineProperty(document, "fullscreenElement", { configurable: true, get: () => front });
+    act(() => {
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+    await user.click(within(front).getByRole("button", { name: "Свернуть" }));
+    expect(exit).toHaveBeenCalledTimes(1);
+    Object.defineProperty(document, "fullscreenElement", { configurable: true, get: () => null });
+    act(() => {
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+    expect(within(front).getByRole("button", { name: "Во весь экран" })).toBeTruthy();
     await user.click(within(front).getByRole("button", { name: "Перестать смотреть" }));
     expect(fake.argsOf("watch").at(-1)).toEqual([masha.id, false]);
     expect(fake.argsOf("detachScreen")).toHaveLength(1);

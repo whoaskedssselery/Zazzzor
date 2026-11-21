@@ -1,4 +1,4 @@
-import { AppWindow, Maximize, Monitor } from "lucide-react";
+import { AppWindow, Maximize, Minimize, Monitor } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { VolumeSlider } from "@/entities/call";
 import { attachOwnStream, attachStream, stopScreenShare, useNativeShare, watchStream } from "@/features/voice-call";
@@ -38,6 +38,39 @@ const VideoFrame = ({ video, children }: { video: RefObject<HTMLVideoElement | n
         {children}
       </div>
     </div>
+  );
+};
+
+/**
+ * Puts `target` on the whole screen, and in full screen takes it back: a way
+ * out on the picture itself, not only Esc. Full screen takes the tile out of
+ * the stage, whose button under it no longer catches the pointer, so the
+ * tile catches it itself there (`[&:fullscreen]:pointer-events-auto`).
+ */
+const FullscreenButton = ({ target }: { target: RefObject<HTMLElement | null> }) => {
+  const [full, setFull] = useState(false);
+  useEffect(() => {
+    const sync = () => {
+      setFull(document.fullscreenElement != null && document.fullscreenElement === target.current);
+    };
+    document.addEventListener("fullscreenchange", sync);
+    return () => {
+      document.removeEventListener("fullscreenchange", sync);
+    };
+  }, [target]);
+  const Icon = full ? Minimize : Maximize;
+  return (
+    <Button
+      size="sm"
+      variant="secondary"
+      onClick={() => {
+        if (full) void document.exitFullscreen();
+        else void target.current?.requestFullscreen();
+      }}
+    >
+      <Icon aria-hidden className="size-4" />
+      {full ? "Свернуть" : "Во весь экран"}
+    </Button>
   );
 };
 
@@ -117,16 +150,7 @@ const BrowserOwnStream = ({ compact }: { compact: boolean }) => {
             compact && "hidden",
           )}
         >
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => {
-              void tile.current?.requestFullscreen();
-            }}
-          >
-            <Maximize aria-hidden className="size-4" />
-            Во весь экран
-          </Button>
+          <FullscreenButton target={tile} />
           <Button
             size="sm"
             variant="danger"
@@ -145,7 +169,7 @@ const BrowserOwnStream = ({ compact }: { compact: boolean }) => {
 /**
  * Someone's screen share. Nothing is received until «Смотреть», as in
  * Discord: a stream costs the server 6–8 Mbit/s per viewer. While watched,
- * the video plays here and can go full screen (Esc leaves it).
+ * the video plays here and can go full screen.
  */
 export const StreamTile = ({
   userId,
@@ -191,16 +215,7 @@ export const StreamTile = ({
             )}
           >
             <VolumeSlider inline kind="stream" userId={userId} label="Громкость трансляции" />
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => {
-                void tile.current?.requestFullscreen();
-              }}
-            >
-              <Maximize aria-hidden className="size-4" />
-              Во весь экран
-            </Button>
+            <FullscreenButton target={tile} />
             <Button
               size="sm"
               variant="secondary"
