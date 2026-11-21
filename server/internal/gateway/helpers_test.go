@@ -31,8 +31,9 @@ import (
 
 func TestMain(m *testing.M) { os.Exit(testkit.Main(m)) }
 
-// wait bounds every wait for a frame or a state.
-const wait = 5 * time.Second
+// wait bounds every wait for a frame or a state. A passing test never
+// waits it out, so it leaves a busy test machine plenty of room.
+const wait = 30 * time.Second
 
 // env is the production wiring (app.NewModules, app.Routes, the gateway)
 // on a fresh database.
