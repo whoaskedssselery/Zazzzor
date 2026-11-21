@@ -24,6 +24,13 @@ release notes on its GitHub releases.
   Nothing to do: the header comes with the new `zazzzor-caddy` image (for
   Traefik, redeploy the stack).
 
+### Fixed
+
+- **`ZAZZZOR_ADMIN_USERNAMES` in `deploy/.env.example`.** The comment said
+  these logins get administrator rights when they register. In fact
+  ordinary sign-up under them is refused: they are reserved for
+  `zazzzor create-admin` (section 10 of the deploy guide).
+
 ## [0.1.0] - 2026-11-21
 
 The first versioned release: everything a group of friends needs to chat
