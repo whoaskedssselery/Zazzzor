@@ -1,0 +1,58 @@
+name: Bug report
+description: Something in the server, the web client, the desktop client or the deploy configs doesn't work.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Russian is welcome too: можно писать по-русски.
+
+        A security problem? Don't file it here; report it privately as [SECURITY.md](https://github.com/whoaskedssselery/Zazzzor/blob/main/SECURITY.md) describes.
+  - type: dropdown
+    id: part
+    attributes:
+      label: Where
+      options:
+        - Server or API
+        - Web client
+        - Windows desktop client
+        - Voice or screen sharing
+        - Deployment (Docker, Caddy, backups)
+        - Docs
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a voice channel
+        2. Start a screen share
+        3. …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The server image tag or commit, and the desktop client's version if you use it.
+      placeholder: "sha-1a2b3c4, desktop 0.2.2"
+  - type: input
+    id: environment
+    attributes:
+      label: Browser and OS
+      placeholder: "Chrome 142 on Windows 11"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Browser console, `docker compose logs api`, screenshots. Remove secrets, tokens and other people's data first.
+      render: text

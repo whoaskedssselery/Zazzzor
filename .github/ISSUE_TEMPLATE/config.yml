@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a vulnerability
+    url: https://github.com/whoaskedssselery/Zazzzor/security/advisories/new
+    about: Report security problems privately, never in a public issue. See SECURITY.md.
+  - name: Running a server
+    url: https://github.com/whoaskedssselery/Zazzzor/blob/main/deploy/README.md
+    about: The server owner's guide, from a clean Linux server to backups.
