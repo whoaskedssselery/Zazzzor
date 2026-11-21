@@ -12,6 +12,7 @@ mod autostart;
 mod bridge;
 mod hotkeys;
 mod instance;
+mod lang;
 #[cfg(windows)]
 mod permissions;
 mod share;
@@ -44,11 +45,13 @@ struct App {
     settings: PathBuf,
     /// The instance the window belongs to; shared with the navigation filter.
     instance: Arc<Mutex<Option<Url>>>,
-    /// Set by "Выйти" so that closing the window really closes it.
+    /// Set by the tray's Quit so that closing the window really closes it.
     quitting: AtomicBool,
     /// Set just before the app itself opens the setup page: the instance's
     /// pages cannot navigate to it, since it is the one page with commands.
     setup_requested: Arc<AtomicBool>,
+    /// Where the language of the app's own texts is kept (lang.rs).
+    language: PathBuf,
 }
 
 /// Whether `url` is one of the app's own bundled pages.
@@ -76,7 +79,7 @@ fn current_instance(window: WebviewWindow, app: State<'_, App>) -> Result<Option
 fn set_instance(url: String, window: WebviewWindow, app: State<'_, App>) -> Result<(), String> {
     from_setup(&window)?;
     let url = instance::parse(&url)?;
-    instance::save(&app.settings, &url).map_err(|e| format!("Не удалось сохранить адрес: {e}"))?;
+    instance::save(&app.settings, &url).map_err(|e| format!("{}: {e}", lang::texts().save_failed))?;
     *app.instance.lock().unwrap() = Some(url.clone());
     bridge::allow_instance(window.app_handle(), &url).map_err(|e| e.to_string())?;
     app.setup_requested.store(false, Ordering::Relaxed);
@@ -88,7 +91,7 @@ fn set_instance(url: String, window: WebviewWindow, app: State<'_, App>) -> Resu
 fn open_instance(window: WebviewWindow, app: State<'_, App>) -> Result<(), String> {
     from_setup(&window)?;
     let Some(url) = app.instance.lock().unwrap().clone() else {
-        return Err("Сервер ещё не выбран.".into());
+        return Err(lang::texts().no_instance.into());
     };
     app.setup_requested.store(false, Ordering::Relaxed);
     window.navigate(url).map_err(|e| e.to_string())
@@ -118,40 +121,61 @@ fn quit(app: &AppHandle) {
     app.exit(0);
 }
 
-/// The tray's "Остановить демонстрацию", enabled while the app shares a screen.
-struct StopShare(MenuItem<tauri::Wry>);
+/// The tray's items, to name them again when the language changes; «stop
+/// sharing» is enabled while the app shares a screen.
+struct TrayItems {
+    open: MenuItem<tauri::Wry>,
+    stop_share: MenuItem<tauri::Wry>,
+    change: MenuItem<tauri::Wry>,
+    startup: CheckMenuItem<tauri::Wry>,
+    updates: MenuItem<tauri::Wry>,
+    exit: MenuItem<tauri::Wry>,
+    sharing: AtomicBool,
+}
 
 /// Shows in the tray whether the app shares a screen now: the tooltip says
 /// so and the menu can stop it, so a share is never out of sight.
 pub fn sharing_shown(app: &AppHandle, on: bool) {
-    if let Some(item) = app.try_state::<StopShare>() {
-        let _ = item.0.set_enabled(on);
+    if let Some(items) = app.try_state::<TrayItems>() {
+        items.sharing.store(on, Ordering::Relaxed);
+        let _ = items.stop_share.set_enabled(on);
     }
     if let Some(tray) = app.tray_by_id(MAIN) {
-        let _ = tray.set_tooltip(Some(if on {
-            "Zazzzor — идёт демонстрация экрана"
-        } else {
-            "Zazzzor"
-        }));
+        let _ = tray.set_tooltip(Some(if on { lang::texts().sharing_tooltip } else { "Zazzzor" }));
     }
 }
 
+/// Names the tray's items and tooltip again in the current language.
+pub fn tray_relabel(app: &AppHandle) {
+    let Some(items) = app.try_state::<TrayItems>() else { return };
+    let t = lang::texts();
+    let _ = items.open.set_text(t.open);
+    let _ = items.stop_share.set_text(t.stop_share);
+    let _ = items.change.set_text(t.change_server);
+    let _ = items.startup.set_text(t.autostart);
+    let _ = items.updates.set_text(t.check_updates);
+    let _ = items.exit.set_text(t.quit);
+    sharing_shown(app, items.sharing.load(Ordering::Relaxed));
+}
+
 fn tray(app: &AppHandle) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, "open", "Открыть Zazzzor", true, None::<&str>)?;
-    let stop_share = MenuItem::with_id(app, "stop-share", "Остановить демонстрацию", false, None::<&str>)?;
-    app.manage(StopShare(stop_share.clone()));
-    let change = MenuItem::with_id(app, "change", "Сменить сервер…", true, None::<&str>)?;
-    let startup = CheckMenuItem::with_id(
-        app,
-        "autostart",
-        "Запускать вместе с Windows",
-        true,
-        autostart::enabled(),
-        None::<&str>,
-    )?;
-    let updates = MenuItem::with_id(app, "check-update", "Проверить обновления", true, None::<&str>)?;
+    let t = lang::texts();
+    let open = MenuItem::with_id(app, "open", t.open, true, None::<&str>)?;
+    let stop_share = MenuItem::with_id(app, "stop-share", t.stop_share, false, None::<&str>)?;
+    let change = MenuItem::with_id(app, "change", t.change_server, true, None::<&str>)?;
+    let startup = CheckMenuItem::with_id(app, "autostart", t.autostart, true, autostart::enabled(), None::<&str>)?;
+    let updates = MenuItem::with_id(app, "check-update", t.check_updates, true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
-    let exit = MenuItem::with_id(app, "quit", "Выйти", true, None::<&str>)?;
+    let exit = MenuItem::with_id(app, "quit", t.quit, true, None::<&str>)?;
+    app.manage(TrayItems {
+        open: open.clone(),
+        stop_share: stop_share.clone(),
+        change: change.clone(),
+        startup: startup.clone(),
+        updates: updates.clone(),
+        exit: exit.clone(),
+        sharing: AtomicBool::new(false),
+    });
     let menu = Menu::with_items(app, &[&open, &stop_share, &change, &startup, &updates, &separator, &exit])?;
     let mut builder = TrayIconBuilder::with_id(MAIN)
         .tooltip("Zazzzor")
@@ -231,7 +255,7 @@ fn window(
             if app.quitting.load(Ordering::Relaxed) {
                 return;
             }
-            // Closing hides to the tray; "Выйти" in the tray menu quits.
+            // Closing hides to the tray; Quit in the tray menu quits.
             api.prevent_close();
             let _ = handle.save_window_state(state_flags());
             if let Some(window) = handle.get_webview_window(MAIN) {
@@ -269,10 +293,14 @@ fn main() {
             share::share_stop,
             share::share_status,
             hotkeys::hotkeys_ptt,
-            hotkeys::hotkeys_toggles
+            hotkeys::hotkeys_toggles,
+            lang::set_language,
+            lang::current_language
         ])
         .setup(|app| {
             let settings = instance::settings_path(&app.path().app_config_dir()?);
+            let language = lang::path(&app.path().app_config_dir()?);
+            lang::init(&language);
             let saved = instance::load(&settings);
             let shared = Arc::new(Mutex::new(saved.clone()));
             // Without a saved instance the window starts on the setup page.
@@ -282,6 +310,7 @@ fn main() {
                 instance: shared.clone(),
                 quitting: AtomicBool::new(false),
                 setup_requested: setup_requested.clone(),
+                language,
             });
             if let Some(url) = &saved {
                 bridge::allow_instance(app.handle(), url)?;
