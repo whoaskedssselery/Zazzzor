@@ -1,7 +1,12 @@
 import { useConnectionStatus } from "@/entities/guild";
+import { t, textTable } from "@/shared/i18n";
 import { cn, Spinner } from "@/shared/ui";
 
-const TEXT = { connecting: "Подключение…", reconnecting: "Переподключение…", ready: "" } as const;
+const TEXT = textTable({
+  connecting: () => t("common:connecting"),
+  reconnecting: () => t("common:reconnecting"),
+  ready: () => "",
+});
 
 /**
  * A thin bar at the top of the app while the gateway is not ready. It takes

@@ -3,6 +3,7 @@ import { type ReactElement, useMemo } from "react";
 import { useCall, VolumeSlider } from "@/entities/call";
 import { callMembers, type DMChannel, useGuilds } from "@/entities/guild";
 import { joinVoice } from "@/features/voice-call";
+import { t } from "@/shared/i18n";
 import {
   Avatar,
   Button,
@@ -39,8 +40,8 @@ const PrivateTileMenu = ({
       {!self && (
         <>
           <ContextMenuSeparator />
-          <VolumeSlider kind="voice" userId={userId} label="Громкость пользователя" />
-          {streaming && <VolumeSlider kind="stream" userId={userId} label="Громкость трансляции" />}
+          <VolumeSlider kind="voice" userId={userId} label={t("member:userVolume")} />
+          {streaming && <VolumeSlider kind="stream" userId={userId} label={t("member:streamVolume")} />}
         </>
       )}
     </ContextMenuContent>
@@ -58,7 +59,7 @@ export const CallButton = ({ channel }: { channel: DMChannel }) => {
   if (inCall) return null;
   return (
     <IconButton
-      label={going ? "Присоединиться к звонку" : "Начать звонок"}
+      label={going ? t("voice:stage.joinCall") : t("voice:stage.startCall")}
       icon={Phone}
       tooltipSide="bottom"
       onClick={() => {
@@ -84,11 +85,16 @@ export const PrivateCallStage = ({ channel }: { channel: DMChannel }) => {
   const person = (userId: string): StagePerson => {
     if (me?.id === userId) return { name: me.display_name, avatarUrl: me.avatar_url };
     const user = channel.recipients.find((r) => r.id === userId);
-    return user ? { name: user.display_name, avatarUrl: user.avatar_url } : { name: "Участник", avatarUrl: null };
+    return user
+      ? { name: user.display_name, avatarUrl: user.avatar_url }
+      : { name: t("common:member"), avatarUrl: null };
   };
   if (inCall) {
     return (
-      <section aria-label="Звонок" className="flex h-[min(28rem,50dvh)] shrink-0 flex-col border-b border-border">
+      <section
+        aria-label={t("voice:stage.call")}
+        className="flex h-[min(28rem,50dvh)] shrink-0 flex-col border-b border-border"
+      >
         <CallTiles
           members={members}
           person={person}
@@ -108,7 +114,7 @@ export const PrivateCallStage = ({ channel }: { channel: DMChannel }) => {
   if (members.length === 0) return null;
   return (
     <section
-      aria-label="Идёт звонок"
+      aria-label={t("voice:stage.callInProgress")}
       className="flex shrink-0 items-center gap-3 border-b border-border bg-sidebar px-4 py-2.5"
     >
       <ul className="flex -space-x-2">
@@ -122,7 +128,7 @@ export const PrivateCallStage = ({ channel }: { channel: DMChannel }) => {
         })}
       </ul>
       <p className="min-w-0 flex-1 truncate text-sm font-medium">
-        Идёт звонок
+        {t("voice:stage.callInProgress")}
         <span className="text-fg-muted"> · {members.map((v) => person(v.user_id).name).join(", ")}</span>
       </p>
       <Button
@@ -132,7 +138,7 @@ export const PrivateCallStage = ({ channel }: { channel: DMChannel }) => {
         }}
       >
         <Phone aria-hidden className="size-4" />
-        Присоединиться
+        {t("voice:stage.join")}
       </Button>
     </section>
   );

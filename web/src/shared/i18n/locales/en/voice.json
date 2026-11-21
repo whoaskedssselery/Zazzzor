@@ -86,5 +86,29 @@
     "resetOf": "Reset: {{label}}",
     "noise": "Noise suppression",
     "noiseHint": "Enhanced is a neural network on your computer, about 23 MB on first load; standard is the browser's."
+  },
+  "stage": {
+    "callControls": "Call controls",
+    "exitFullscreen": "Exit full screen",
+    "fullscreen": "Full screen",
+    "joinCall": "Join the call",
+    "startCall": "Start a call",
+    "call": "Call",
+    "callInProgress": "Call in progress",
+    "join": "Join",
+    "withSound": "with sound",
+    "withoutSound": "without sound",
+    "mbits": "{{value}} Mbit/s",
+    "yourShare": "Your screen share",
+    "stop": "Stop",
+    "shareOf": "{{name}} — screen share",
+    "collapse": "Collapse",
+    "stopWatching": "Stop watching",
+    "watch": "Watch",
+    "backToGrid": "Back to the grid: {{name}}",
+    "expand": "Expand: {{name}}",
+    "others": "Others in the call",
+    "nobody": "Nobody is here yet.",
+    "here": "Here now:"
   }
 }

@@ -15,6 +15,7 @@ import {
   useRemoveRecipient,
 } from "@/entities/guild";
 import { NewPrivateButton } from "@/features/private-groups";
+import { t } from "@/shared/i18n";
 import { Avatar, Badge, ConfirmDialog, cn, formatCount, IconButton } from "@/shared/ui";
 
 /** A group's picture: the same round tile for every group, as Discord's default. */
@@ -45,10 +46,10 @@ const Row = ({ entry, active, onLeave }: { entry: PrivateEntry; active: boolean;
   const unread = !muted && isPrivateUnread(entry);
   const count = useGuilds((s) => privateBadgeCount(s, entry));
   let label = name;
-  if (count > 0) label += `, непрочитанных: ${String(count)}`;
-  if (muted) label += ", заглушено";
+  if (count > 0) label = t("shell:unreadCount", { name: label, count });
+  if (muted) label = t("shell:mutedNeuter", { name: label });
   const calling = Object.keys(entry.voice).length > 0;
-  if (calling) label += ", идёт звонок";
+  if (calling) label = t("shell:inCall", { name: label });
   return (
     <li className="group/row relative">
       <Link
@@ -71,7 +72,9 @@ const Row = ({ entry, active, onLeave }: { entry: PrivateEntry; active: boolean;
         <span className="min-w-0 flex-1">
           <span className={cn("block truncate text-base", unread ? "font-semibold" : "font-medium")}>{name}</span>
           {!peer && (
-            <span className="block truncate text-xs text-fg-faint">{`Участников: ${String(channel.recipients.length + 1)}`}</span>
+            <span className="block truncate text-xs text-fg-faint">
+              {t("shell:groupMembersCount", { count: channel.recipients.length + 1 })}
+            </span>
           )}
         </span>
         {calling && <Phone aria-hidden className="size-4 shrink-0 text-fg-success" strokeWidth={2} />}
@@ -82,7 +85,7 @@ const Row = ({ entry, active, onLeave }: { entry: PrivateEntry; active: boolean;
         )}
       </Link>
       <IconButton
-        label={peer ? `Закрыть переписку с ${name}` : `Покинуть группу ${name}`}
+        label={peer ? t("shell:closeDm", { name }) : t("shell:leaveGroupOf", { name })}
         icon={X}
         className={cn(
           "absolute top-1/2 right-1 size-7 -translate-y-1/2 opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 [&>svg]:size-4",
@@ -119,14 +122,12 @@ export const PrivateList = () => {
     <section aria-labelledby="private-list-title" className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center justify-between px-4 pt-3 pb-1">
         <h2 id="private-list-title" className="text-xs font-semibold text-fg-faint uppercase">
-          Личные сообщения
+          {t("shell:directMessages")}
         </h2>
         <NewPrivateButton />
       </div>
       {list.length === 0 ? (
-        <p className="px-4 pt-1 text-sm text-fg-faint">
-          Здесь появятся переписки. Напишите другу со страницы «Друзья» или нажмите плюс.
-        </p>
+        <p className="px-4 pt-1 text-sm text-fg-faint">{t("shell:dmEmpty")}</p>
       ) : (
         <ul className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-2">
           {list.map((p) => (
@@ -146,9 +147,9 @@ export const PrivateList = () => {
         onOpenChange={(open) => {
           if (!open) setLeave(null);
         }}
-        title={`Покинуть группу «${leave ? privateName(leave.channel) : ""}»?`}
-        description="Вы перестанете получать её сообщения. Вернуться можно, только если вас снова позовут."
-        confirmLabel="Покинуть группу"
+        title={t("shell:leaveGroupTitle", { name: leave ? privateName(leave.channel) : "" })}
+        description={t("shell:leaveGroupText")}
+        confirmLabel={t("shell:leaveGroup")}
         tone="danger"
         pending={remove.isPending}
         onConfirm={() => {
@@ -185,8 +186,10 @@ export const PrivateMembers = ({ channelId }: { channelId: string }) => {
   const people = [me, ...channel.recipients];
   const mineToManage = channel.owner_id === me.id;
   return (
-    <section aria-label="Участники группы" className="flex min-h-0 flex-col overflow-y-auto px-2 py-4">
-      <h2 className="px-2 pb-2 text-xs font-semibold text-fg-faint uppercase">{`Участники — ${String(people.length)}`}</h2>
+    <section aria-label={t("shell:groupMembers")} className="flex min-h-0 flex-col overflow-y-auto px-2 py-4">
+      <h2 className="px-2 pb-2 text-xs font-semibold text-fg-faint uppercase">
+        {t("shell:groupMembersTitle", { count: people.length })}
+      </h2>
       <ul className="flex flex-col gap-0.5">
         {people.map((u) => {
           const owner = channel.owner_id === u.id;
@@ -198,10 +201,12 @@ export const PrivateMembers = ({ channelId }: { channelId: string }) => {
               <span className={cn("min-w-0 flex-1 truncate text-base font-medium", !online && "text-fg-muted")}>
                 {u.display_name}
               </span>
-              {owner && <Crown role="img" aria-label="Создатель группы" className="size-4 shrink-0 text-fg-warning" />}
+              {owner && (
+                <Crown role="img" aria-label={t("shell:groupOwner")} className="size-4 shrink-0 text-fg-warning" />
+              )}
               {mineToManage && u.id !== me.id && (
                 <IconButton
-                  label={`Исключить ${u.display_name} из группы`}
+                  label={t("shell:removeFromGroup", { name: u.display_name })}
                   icon={X}
                   className="size-7 opacity-0 group-hover/member:opacity-100 focus-visible:opacity-100 [&>svg]:size-4"
                   onClick={() => {
@@ -218,9 +223,9 @@ export const PrivateMembers = ({ channelId }: { channelId: string }) => {
         onOpenChange={(open) => {
           if (!open) setKick(null);
         }}
-        title={`Исключить ${kick?.name ?? ""} из группы?`}
-        description="Человек перестанет видеть группу и её сообщения."
-        confirmLabel="Исключить"
+        title={t("shell:removeTitle", { name: kick?.name ?? "" })}
+        description={t("shell:removeText")}
+        confirmLabel={t("shell:remove")}
         tone="danger"
         pending={remove.isPending}
         onConfirm={() => {

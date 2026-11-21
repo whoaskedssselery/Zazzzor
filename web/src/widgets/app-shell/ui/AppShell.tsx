@@ -1,6 +1,7 @@
 import { useRouterState } from "@tanstack/react-router";
 import { Menu, Users } from "lucide-react";
 import { type CSSProperties, createContext, type ReactNode, use, useState } from "react";
+import { t } from "@/shared/i18n";
 import { useMediaQuery } from "@/shared/lib";
 import { cn, IconButton, Sheet, SheetContent } from "@/shared/ui";
 
@@ -43,7 +44,7 @@ interface AppShellProps {
  * its tooltip on focus, which would cover the channel list.
  */
 const openPlace = (panel: HTMLElement): HTMLElement | null =>
-  panel.querySelector<HTMLElement>('nav[aria-label="Каналы"] [aria-current="page"]') ??
+  panel.querySelector<HTMLElement>('nav[data-channels] [aria-current="page"]') ??
   panel.querySelector<HTMLElement>('[aria-current="page"]');
 
 const navColumns = (rail: ReactNode, sidebar: ReactNode, userPanel: ReactNode) => (
@@ -124,14 +125,18 @@ export const AppShell = ({ rail, sidebar, userPanel, members, children }: AppShe
             setNavOpenAt(open ? pathname : null);
           }}
         >
-          <SheetContent side="left" title="Серверы и каналы" initialFocus={openPlace}>
+          <SheetContent side="left" title={t("shell:navSheet")} initialFocus={openPlace}>
             {navColumns(rail, sidebar, userPanel)}
           </SheetContent>
         </Sheet>
       )}
       {hasMembers && !wide && (
         <Sheet open={membersOver} onOpenChange={setMembersOver}>
-          <SheetContent side="right" title="Участники" className="w-(--members-width) flex-col bg-sidebar">
+          <SheetContent
+            side="right"
+            title={t("shell:membersSheet")}
+            className="w-(--members-width) flex-col bg-sidebar"
+          >
             <div
               className="flex min-h-0 flex-1 flex-col"
               style={{ "--avatar-cutout": "var(--bg-sidebar)" } as CSSProperties}
@@ -161,7 +166,7 @@ export const ShellHeader = ({ children, className }: { children: ReactNode; clas
 export const NavButton = () => {
   const { openNav } = useShell();
   return (
-    <IconButton label="Серверы и каналы" icon={Menu} onClick={openNav} tooltipSide="bottom" className="md:hidden" />
+    <IconButton label={t("shell:navSheet")} icon={Menu} onClick={openNav} tooltipSide="bottom" className="md:hidden" />
   );
 };
 
@@ -170,7 +175,7 @@ export const MembersButton = () => {
   const { membersShown, toggleMembers } = useShell();
   return (
     <IconButton
-      label={membersShown ? "Скрыть участников" : "Показать участников"}
+      label={membersShown ? t("shell:hideMembers") : t("shell:showMembers")}
       icon={Users}
       pressed={membersShown}
       onClick={toggleMembers}

@@ -11,6 +11,7 @@ import enGuild from "./en/guild.json";
 import enMember from "./en/member.json";
 import enNotify from "./en/notify.json";
 import enSettings from "./en/settings.json";
+import enShell from "./en/shell.json";
 import enVoice from "./en/voice.json";
 import ruAdmin from "./ru/admin.json";
 import ruAudit from "./ru/audit.json";
@@ -23,6 +24,7 @@ import ruGuild from "./ru/guild.json";
 import ruMember from "./ru/member.json";
 import ruNotify from "./ru/notify.json";
 import ruSettings from "./ru/settings.json";
+import ruShell from "./ru/shell.json";
 import ruVoice from "./ru/voice.json";
 
 export const locales = {
@@ -38,6 +40,7 @@ export const locales = {
     member: enMember,
     notify: enNotify,
     settings: enSettings,
+    shell: enShell,
     voice: enVoice,
   },
   ru: {
@@ -52,6 +55,7 @@ export const locales = {
     member: ruMember,
     notify: ruNotify,
     settings: ruSettings,
+    shell: ruShell,
     voice: ruVoice,
   },
 } as const;

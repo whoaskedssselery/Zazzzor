@@ -3,13 +3,14 @@ import { PhoneOff } from "lucide-react";
 import { useCall } from "@/entities/call";
 import { privateName, useGuilds } from "@/entities/guild";
 import { CameraButton, leaveVoice, ScreenShareButton } from "@/features/voice-call";
+import { t, textTable } from "@/shared/i18n";
 import { cn, IconButton } from "@/shared/ui";
 
-const STATUS = {
-  connecting: "Подключение…",
-  connected: "Голос подключён",
-  reconnecting: "Переподключение…",
-} as const;
+const STATUS = textTable({
+  connecting: () => t("common:connecting"),
+  connected: () => t("shell:voiceConnected"),
+  reconnecting: () => t("common:reconnecting"),
+});
 
 /**
  * The call above the user panel, as in Discord: how the link is, which
@@ -27,7 +28,7 @@ export const VoicePanel = () => {
   if (status === "idle" || channelId === null) return null;
   return (
     <section
-      aria-label="Голосовая связь"
+      aria-label={t("shell:voiceConnection")}
       className="flex shrink-0 items-center gap-1 border-b border-border bg-panel px-2 py-1.5"
     >
       <div className="min-w-0 flex-1 pl-1">
@@ -40,7 +41,7 @@ export const VoicePanel = () => {
             params={{ channelId }}
             className="block truncate text-xs text-fg-muted hover:text-fg hover:underline"
           >
-            {dm ? `Звонок: ${privateName(dm)}` : "Звонок"}
+            {dm ? t("shell:callWith", { name: privateName(dm) }) : t("shell:call")}
           </Link>
         ) : (
           <Link
@@ -48,14 +49,14 @@ export const VoicePanel = () => {
             params={{ guildId, channelId }}
             className="block truncate text-xs text-fg-muted hover:text-fg hover:underline"
           >
-            {channel?.name ?? "Голосовой канал"} / {guild?.name ?? "Сервер"}
+            {channel?.name ?? t("shell:voiceChannelFallback")} / {guild?.name ?? t("shell:serverFallback")}
           </Link>
         )}
       </div>
       <CameraButton />
       <ScreenShareButton />
       <IconButton
-        label="Отключиться"
+        label={t("shell:disconnect")}
         icon={PhoneOff}
         onClick={() => {
           void leaveVoice();
