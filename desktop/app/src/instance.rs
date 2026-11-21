@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use url::Url;
+use url::{Host, Url};
 
 use crate::lang::texts;
 
@@ -36,8 +36,23 @@ pub fn parse(input: &str) -> Result<Url, String> {
     if !url.username().is_empty() || url.password().is_some() {
         return Err(texts().has_credentials.into());
     }
+    if url.scheme() == "http" && !is_loopback(&url) {
+        return Err(texts().needs_https.into());
+    }
     let origin = url.origin().ascii_serialization();
     Url::parse(&format!("{origin}/")).map_err(|_| texts().not_an_address.to_owned())
+}
+
+/// Whether `url` is on this computer: the one place plain http is allowed,
+/// since on a network anyone on the way could put script into the page,
+/// and the page may call the app's commands.
+fn is_loopback(url: &Url) -> bool {
+    match url.host() {
+        Some(Host::Domain(name)) => name == "localhost",
+        Some(Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(Host::Ipv6(ip)) => ip.is_loopback(),
+        None => false,
+    }
 }
 
 /// Whether `url` belongs to the instance at `origin` (same scheme, host and port).
@@ -77,6 +92,19 @@ mod tests {
             "https://zazzzor.example.org/"
         );
         assert_eq!(parse("http://localhost:4173").unwrap().as_str(), "http://localhost:4173/");
+    }
+
+    #[test]
+    fn plain_http_only_on_this_computer() {
+        for local in ["http://localhost:4173", "http://LOCALHOST", "http://127.0.0.1:8080", "http://[::1]:4173"] {
+            assert!(parse(local).is_ok(), "{local}");
+        }
+        for remote in ["http://zazzzor.example.org", "http://192.168.1.10:8080", "http://localhost.evil.org"] {
+            // In either language: another test switches it meanwhile.
+            let error = parse(remote).unwrap_err();
+            assert!(error.contains("https://") && error.contains("(localhost)"), "{remote}: {error}");
+        }
+        assert!(parse("https://192.168.1.10:8443").is_ok());
     }
 
     #[test]
