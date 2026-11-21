@@ -34,8 +34,8 @@
 
   ```go
   const (
-  	DefaultHTTPAddr = ":8080"
-  	DefaultDataDir  = "/data"
+    DefaultHTTPAddr = ":8080"
+    DefaultDataDir  = "/data"
   )
   ```
 
