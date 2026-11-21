@@ -33,10 +33,14 @@ const PostgresImage = "postgres:18.6-alpine"
 const Label = "zazzzor.test"
 
 const (
-	templateDB     = "zz_template"
-	startTimeout   = 3 * time.Minute
-	stopTimeout    = time.Minute
-	createDBTimout = 30 * time.Second
+	templateDB   = "zz_template"
+	startTimeout = 3 * time.Minute
+	stopTimeout  = time.Minute
+	// dbTimeout bounds creating, connecting to and dropping one test
+	// database. A CI host that runs several packages at once, each with its
+	// own container, can spend tens of seconds on one CREATE DATABASE, and
+	// creates also queue behind each other on createMu.
+	dbTimeout = 2 * time.Minute
 )
 
 var (
@@ -88,11 +92,11 @@ func Main(m *testing.M) int {
 func Postgres(t testing.TB) *pgxpool.Pool {
 	t.Helper()
 	u := PostgresURL(t)
-	ctx, cancel := context.WithTimeout(context.Background(), createDBTimout)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 	// The server's own five seconds for a connection are short for a CI host
 	// busy creating and dropping databases for parallel tests.
-	pool, err := db.OpenWith(ctx, u, db.Options{AcquireTimeout: createDBTimout})
+	pool, err := db.OpenWith(ctx, u, db.Options{AcquireTimeout: dbTimeout})
 	if err != nil {
 		t.Fatalf("testkit: connect to test database: %v", err)
 	}
@@ -130,13 +134,13 @@ func newDatabase(t testing.TB, template string) string {
 	}
 
 	name := fmt.Sprintf("zz_test_%d", dbSeq.Add(1))
-	ctx, cancel := context.WithTimeout(context.Background(), createDBTimout)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 	if err := pg.createDatabase(ctx, name, template); err != nil {
 		t.Fatalf("testkit: create database: %v", err)
 	}
 	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), createDBTimout)
+		ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 		defer cancel()
 		if _, err := pg.admin.Exec(ctx, "DROP DATABASE "+quote(name)+" WITH (FORCE)"); err != nil {
 			t.Errorf("testkit: drop database %s: %v", name, err)
@@ -185,7 +189,7 @@ func (s *sharedPostgres) init(ctx context.Context) error {
 	if s.url, err = url.Parse(raw); err != nil {
 		return fmt.Errorf("parse connection string: %w", err)
 	}
-	if s.admin, err = db.Open(ctx, raw); err != nil {
+	if s.admin, err = db.OpenWith(ctx, raw, db.Options{AcquireTimeout: dbTimeout}); err != nil {
 		return err
 	}
 
@@ -194,7 +198,7 @@ func (s *sharedPostgres) init(ctx context.Context) error {
 	if _, err = s.admin.Exec(ctx, "CREATE DATABASE "+templateDB); err != nil {
 		return fmt.Errorf("create template: %w", err)
 	}
-	tpl, err := db.Open(ctx, s.urlFor(templateDB))
+	tpl, err := db.OpenWith(ctx, s.urlFor(templateDB), db.Options{AcquireTimeout: dbTimeout})
 	if err != nil {
 		return err
 	}
