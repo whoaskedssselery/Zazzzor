@@ -508,6 +508,17 @@ describe("the second review's cases", () => {
     expect(fake.argsOf("watch").at(-1)).toEqual(["200", false]);
   });
 
+  it("sounds as the user comes into a stream and leaves it, once each", async () => {
+    await joinVoice(G, LOUNGE);
+    fake.emit("streams", ["200"]);
+    played.length = 0;
+    watchStream("200", true);
+    // Bringing a watched stream to the front again is no new start.
+    watchStream("200", true);
+    watchStream("200", false);
+    expect(played).toEqual(["watchStart", "watchStop"]);
+  });
+
   it("11: joining again soon after a removal does not say the call moved elsewhere", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     onTestFinished(() => {

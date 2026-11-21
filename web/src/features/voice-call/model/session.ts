@@ -460,6 +460,8 @@ const sendFlags = async (): Promise<void> => {
 /** Starts or stops receiving `userId`'s screen share (only watched streams cost bandwidth). */
 export const watchStream = (userId: string, on: boolean): void => {
   const { watching } = getCall();
+  // As in Discord, coming into a stream and leaving it each have their sound.
+  if (watching.includes(userId) !== on) playSound(on ? "watchStart" : "watchStop");
   setCall({ watching: on ? [...new Set([...watching, userId])] : watching.filter((id) => id !== userId) });
   transport?.watch(userId, on);
 };
