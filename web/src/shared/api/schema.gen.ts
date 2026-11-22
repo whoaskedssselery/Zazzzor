@@ -1677,6 +1677,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/channels/{channel_id}/voice/watching": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Tell a screen sharer that the caller started or stopped watching
+         * @description The caller and `user_id` must both be in this voice channel, and
+         *     `user_id` must be sharing a screen there (`self_stream`). The
+         *     sharer alone receives `STREAM_WATCH`, so their client can sound it
+         *     and count the viewers, as Discord does. Nothing is stored: the
+         *     sharer's client forgets a viewer who leaves the call. Shares the
+         *     per-user voice write limit (2/second, burst 10).
+         */
+        put: operations["setStreamWatching"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/channels/{channel_id}/call/decline": {
         parameters: {
             query?: never;
@@ -2462,7 +2487,7 @@ export interface components {
             t?: string;
             s?: number;
             /** @description The payload; null for HEARTBEAT_ACK. */
-            d: null | components["schemas"]["GatewayHello"] | components["schemas"]["GatewayReady"] | components["schemas"]["GuildState"] | components["schemas"]["GuildEmojisUpdate"] | components["schemas"]["Relationship"] | components["schemas"]["RelationshipRemove"] | components["schemas"]["DMChannel"] | components["schemas"]["DMChannelDeleteEvent"] | components["schemas"]["Call"] | components["schemas"]["CallDeleteEvent"] | components["schemas"]["UserGuildSettings"] | components["schemas"]["Guild"] | components["schemas"]["GuildDeleteEvent"] | components["schemas"]["MemberEvent"] | components["schemas"]["MemberRemoveEvent"] | components["schemas"]["RoleEvent"] | components["schemas"]["RoleDeleteEvent"] | components["schemas"]["Channel"] | components["schemas"]["Message"] | components["schemas"]["MessageDeleteEvent"] | components["schemas"]["MessageReactionEvent"] | components["schemas"]["ReadState"] | components["schemas"]["TypingStartEvent"] | components["schemas"]["Presence"] | components["schemas"]["User"] | components["schemas"]["UserUpdateEvent"] | components["schemas"]["VoiceState"] | components["schemas"]["VoiceMove"];
+            d: null | components["schemas"]["GatewayHello"] | components["schemas"]["GatewayReady"] | components["schemas"]["GuildState"] | components["schemas"]["GuildEmojisUpdate"] | components["schemas"]["Relationship"] | components["schemas"]["RelationshipRemove"] | components["schemas"]["DMChannel"] | components["schemas"]["DMChannelDeleteEvent"] | components["schemas"]["Call"] | components["schemas"]["CallDeleteEvent"] | components["schemas"]["UserGuildSettings"] | components["schemas"]["Guild"] | components["schemas"]["GuildDeleteEvent"] | components["schemas"]["MemberEvent"] | components["schemas"]["MemberRemoveEvent"] | components["schemas"]["RoleEvent"] | components["schemas"]["RoleDeleteEvent"] | components["schemas"]["Channel"] | components["schemas"]["Message"] | components["schemas"]["MessageDeleteEvent"] | components["schemas"]["MessageReactionEvent"] | components["schemas"]["ReadState"] | components["schemas"]["TypingStartEvent"] | components["schemas"]["Presence"] | components["schemas"]["User"] | components["schemas"]["UserUpdateEvent"] | components["schemas"]["VoiceState"] | components["schemas"]["VoiceMove"] | components["schemas"]["StreamWatchEvent"];
         };
         GatewayHello: {
             /** @description Send HEARTBEAT this often (30000); 150 s without one closes the connection with 4009, allowing for throttled timers in hidden browser tabs. */
@@ -2538,6 +2563,16 @@ export interface components {
         };
         VoiceMove: {
             channel_id: components["schemas"]["Snowflake"];
+        };
+        StreamWatchRequest: {
+            user_id: components["schemas"]["Snowflake"];
+            watching: boolean;
+        };
+        StreamWatchEvent: {
+            channel_id: components["schemas"]["Snowflake"];
+            /** @description Who started or stopped watching. */
+            user_id: components["schemas"]["Snowflake"];
+            watching: boolean;
         };
         VoiceJoin: {
             /** @description LiveKit access token (JWT), valid for 10 minutes. */
@@ -5617,6 +5652,42 @@ export interface operations {
             /** @description `origin_not_allowed` or `missing_permission`: channel access or STREAM lost. */
             403: components["responses"]["Problem"];
             /** @description `not_in_voice`: no active primary session in this channel. */
+            409: components["responses"]["Problem"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["Problem"];
+            /** @description `voice_unavailable`: voice is not configured. */
+            503: components["responses"]["Problem"];
+        };
+    };
+    setStreamWatching: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamWatchRequest"];
+            };
+        };
+        responses: {
+            /** @description The sharer was told. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `validation_failed`: `watching` missing, or `user_id` is the caller. */
+            400: components["responses"]["Problem"];
+            /** @description `unauthenticated`. */
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            /** @description `not_in_voice`: the caller is not in this channel; `not_streaming`: `user_id` shares no screen in it. */
             409: components["responses"]["Problem"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["Problem"];
