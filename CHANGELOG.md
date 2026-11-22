@@ -15,6 +15,18 @@ release notes on its GitHub releases.
 
 ## [Unreleased]
 
+### Added
+
+- **Switching calls asks first.** Joining another voice channel while in a
+  call asks before leaving the current one, as in Discord.
+- **Connection chart.** The connection details draw the last two minutes
+  of ping and packet loss.
+
+### Fixed
+
+- Closing or reloading the page leaves the call at once, so nobody stays
+  behind as a silent copy with a black screen share.
+
 ## [0.2.0] - 2026-11-22
 
 ### Added
