@@ -549,6 +549,19 @@ describe("the second review's cases", () => {
     expect(getCall().streams).toEqual([]);
   });
 
+  it("leaves the call when the page goes away or the desktop app quits", async () => {
+    for (const event of ["pagehide", "zazzzor:quit"]) {
+      await joinVoice(G, LOUNGE);
+      const before = left;
+      window.dispatchEvent(new Event(event));
+      expect(getCall().status).toBe("idle");
+      await vi.waitFor(() => {
+        expect(left).toBe(before + 1);
+      });
+      expect(fake.argsOf("disconnect").length).toBeGreaterThan(0);
+    }
+  });
+
   it("sounds as the user comes into a stream and leaves it, once each", async () => {
     await joinVoice(G, LOUNGE);
     fake.emit("streams", ["200"]);
