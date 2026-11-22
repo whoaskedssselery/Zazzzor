@@ -15,8 +15,22 @@ release notes on its GitHub releases.
 
 ## [Unreleased]
 
+### Added
+
+- **Who is in voice, from the server list.** A server with people in its
+  voice channels shows a green speaker on its icon, as in Discord.
+- **Connection details.** A click on "Voice connected" shows the call's
+  ping, jitter, packet loss each way, bitrates and whether the link goes
+  direct or through the TURN relay.
+- **Change source.** During a screen share the share button opens a menu
+  to share something else without stopping; viewers keep watching.
+- **Watch sounds.** A sound when you start and stop watching a stream.
+
 ### Changed
 
+- Stream tiles: full screen and stop watching are icons at the top right,
+  the volume is grey at the bottom right, and the hover frame hugs the
+  picture instead of the black bars around it.
 - The web client takes a "Cancel" in the desktop app's new share
   confirmation (desktop 0.2.4) as a cancelled share and shows no error.
 

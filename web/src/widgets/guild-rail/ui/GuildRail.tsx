@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Compass, type LucideIcon, Plus, Users } from "lucide-react";
+import { Compass, type LucideIcon, Plus, Users, Volume2 } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { useChannelToOpen } from "@/entities/channel";
 import {
@@ -78,10 +78,12 @@ const GuildItem = ({ guildId, active }: { guildId: string; active: boolean }) =>
     const e = s.guilds[guildId];
     return e === undefined ? 0 : guildMentionCount(e);
   });
+  const inVoice = useGuilds((s) => Object.keys(s.guilds[guildId]?.voice ?? {}).length);
   if (!guild) return null;
   let name = guild.name;
   if (mentions > 0) name = t("shell:mentions", { name, count: mentions });
   else if (unread) name = t("shell:unread", { name });
+  if (inVoice > 0) name = t("shell:inVoice", { name, count: inVoice });
   const target =
     channelId === null
       ? ({ to: "/channels/$guildId", params: { guildId } } as const)
@@ -103,6 +105,19 @@ const GuildItem = ({ guildId, active }: { guildId: string; active: boolean }) =>
           >
             {formatCount(mentions)}
           </Badge>
+        )}
+        {inVoice > 0 && (
+          // Someone is in a voice channel here, as Discord's speaker; left of a mention count when there is one.
+          <span
+            data-voice
+            aria-hidden
+            className={cn(
+              "absolute -bottom-1 flex size-5 items-center justify-center rounded-full bg-online text-[#fff] ring-4 ring-(--bg-rail)",
+              mentions > 0 ? "-left-1" : "-right-1",
+            )}
+          >
+            <Volume2 className="size-3" strokeWidth={2.5} />
+          </span>
         )}
       </Link>
     </RailItem>
