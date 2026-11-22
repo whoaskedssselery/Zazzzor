@@ -267,6 +267,8 @@ describe("voice in the sidebar and the panels", () => {
     expect(within(details).getByText("Через ретранслятор (TURN)")).toBeTruthy();
     // A figure not read yet says so instead of showing zero.
     expect(within(details).getByText("—")).toBeTruthy();
+    // The readings draw a chart.
+    expect(within(details).getByRole("img", { name: "Пинг за последние замеры: 212–212 мс" })).toBeTruthy();
   });
 
   it("switches the microphone and sound; undeafening brings the microphone back as it was", async () => {
