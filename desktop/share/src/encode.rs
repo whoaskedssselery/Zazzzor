@@ -39,7 +39,7 @@ pub fn encode_hardware(
     let Some(candidate) = mf::hardware_encoders()?.into_iter().find(|c| c.name == name) else {
         bail!("the encoder {name} is gone");
     };
-    let candidate = &candidate;
+    let hw = Hardware { candidate: &candidate, frames: &frames, source, counters, fps, max_bitrate };
     log::info!("encoding with {}", candidate.name);
     let mut bitrate = max_bitrate;
     let mut encoder: Option<mf::Encoder> = None;
@@ -47,6 +47,10 @@ pub fn encode_hardware(
     // so a viewer who joins or loses a packet still gets a keyframe.
     let mut last: Option<Nv12Frame> = None;
     let mut waiting: Option<Nv12Frame> = None;
+    // Errors in a row. One is met with a fresh encoder: a window that changes
+    // size several times at once (a video going full screen) can fail a
+    // reopen. Many in a row mean the encoder cannot go on.
+    let mut failures = 0u32;
     loop {
         let frame = match waiting.take() {
             Some(f) => f,
@@ -60,31 +64,80 @@ pub fn encode_hardware(
                 Err(RecvTimeoutError::Disconnected) => return Ok(()),
             },
         };
+        match hw.feed(&frame, &mut encoder, &mut waiting, &mut bitrate) {
+            Ok(Fed::Disconnected) => return Ok(()),
+            Ok(Fed::Done(newer)) => {
+                failures = 0;
+                last = newer.or(Some(frame));
+            }
+            Err(e) => {
+                failures += 1;
+                if failures >= MAX_FAILURES {
+                    return Err(e.context("the encoder keeps failing"));
+                }
+                log::warn!("encoder: {e:#}; starting it again");
+                encoder = None;
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        }
+    }
+}
+
+/// Encoder errors in a row after which the share's video gives up.
+const MAX_FAILURES: u32 = 20;
+
+/// What became of one frame: fed (with a newer one fed after it, if any),
+/// or the capture is gone.
+enum Fed {
+    Done(Option<Nv12Frame>),
+    Disconnected,
+}
+
+/// What the hardware encoding loop works with.
+struct Hardware<'a> {
+    candidate: &'a mf::Candidate,
+    frames: &'a Receiver<Nv12Frame>,
+    source: &'a NativeVideoSource,
+    counters: &'a VideoCounters,
+    fps: u32,
+    max_bitrate: u32,
+}
+
+impl Hardware<'_> {
+    /// Feeds `frame` to the encoder (opened anew for a new size) and sends
+    /// whatever comes out meanwhile.
+    fn feed(
+        &self,
+        frame: &Nv12Frame,
+        encoder: &mut Option<mf::Encoder>,
+        waiting: &mut Option<Nv12Frame>,
+        bitrate: &mut u32,
+    ) -> Result<Fed> {
         let size_changed = encoder.as_ref().is_none_or(|e| (e.width, e.height) != (frame.width, frame.height));
         if size_changed {
             drop(encoder.take());
             log::info!("encoder at {}x{}", frame.width, frame.height);
-            encoder = Some(mf::Encoder::open(candidate, frame.width, frame.height, fps, bitrate)?);
+            *encoder = Some(mf::Encoder::open(self.candidate, frame.width, frame.height, self.fps, *bitrate)?);
         }
-        let enc = encoder.as_mut().unwrap();
+        let Some(enc) = encoder.as_mut() else { return Ok(Fed::Done(None)) };
         // Feed this frame at the encoder's next request, and send whatever comes out meanwhile.
         loop {
-            if source.take_keyframe_request() {
+            if self.source.take_keyframe_request() {
                 enc.request_keyframe();
             }
-            if let Some(rc) = source.take_rate_control_request() {
-                let wanted = (rc.target_bitrate_bps as u32).clamp(500_000, max_bitrate);
-                if wanted != bitrate {
-                    bitrate = wanted;
-                    enc.set_bitrate(bitrate);
+            if let Some(rc) = self.source.take_rate_control_request() {
+                let wanted = (rc.target_bitrate_bps as u32).clamp(500_000, self.max_bitrate);
+                if wanted != *bitrate {
+                    *bitrate = wanted;
+                    enc.set_bitrate(wanted);
                 }
             }
             match enc.next_event()? {
                 mf::Event::NeedInput => {
-                    enc.feed(&frame)?;
+                    enc.feed(frame)?;
                     break;
                 }
-                mf::Event::HaveOutput => send(enc, source, counters)?,
+                mf::Event::HaveOutput => send(enc, self.source, self.counters)?,
                 mf::Event::Other => {}
             }
         }
@@ -92,26 +145,26 @@ pub fn encode_hardware(
         let mut newer = None;
         while enc.pending() > 0 {
             match enc.next_event()? {
-                mf::Event::HaveOutput => send(enc, source, counters)?,
+                mf::Event::HaveOutput => send(enc, self.source, self.counters)?,
                 mf::Event::NeedInput => {
                     // It wants the next frame before finishing this one: give it when it comes.
-                    match frames.recv_timeout(Duration::from_millis(500)) {
+                    match self.frames.recv_timeout(Duration::from_millis(500)) {
                         Ok(f) if (f.width, f.height) == (enc.width, enc.height) => {
                             enc.feed(&f)?;
                             newer = Some(f);
                         }
                         Ok(f) => {
-                            waiting = Some(f);
+                            *waiting = Some(f);
                             break;
                         }
                         Err(RecvTimeoutError::Timeout) => break,
-                        Err(RecvTimeoutError::Disconnected) => return Ok(()),
+                        Err(RecvTimeoutError::Disconnected) => return Ok(Fed::Disconnected),
                     }
                 }
                 mf::Event::Other => {}
             }
         }
-        last = newer.or(Some(frame));
+        Ok(Fed::Done(newer))
     }
 }
 
