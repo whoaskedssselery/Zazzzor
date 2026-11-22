@@ -16,6 +16,8 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-22
+
 ### Added
 
 - **Кто в голосе — видно из списка серверов.** У сервера, в голосовых
@@ -50,6 +52,8 @@
 
 ### Fixed
 
+- Кнопка полноэкранного режима демонстрации выводит из него и со второго
+  раза, а не предлагает развернуть снова.
 - **`ZAZZZOR_ADMIN_USERNAMES` в `deploy/.env.example`.** Комментарий
   обещал этим логинам права администратора при регистрации. На деле
   обычная регистрация под ними отклоняется: они оставлены для
@@ -110,5 +114,6 @@
   необязательным TURN поверх TLS) и готовые образы в GitHub Container
   Registry.
 
-[Unreleased]: https://github.com/whoaskedssselery/Zazzzor/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/whoaskedssselery/Zazzzor/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/whoaskedssselery/Zazzzor/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/whoaskedssselery/Zazzzor/releases/tag/v0.1.0
