@@ -147,6 +147,7 @@ pub async fn share_start(
     let sharing = window.app_handle().state::<Sharing>();
     check_signaling(&url, &home)?;
     let target = Target::parse(&id).map_err(|e| format!("{e:#}"))?;
+    log::info!("share: start {target:?}, sound {sound}, fps {fps:?}");
     let scope = match (sound, target) {
         (false, _) => None,
         (true, Target::Window(hwnd)) => capture::window_process(hwnd).ok().map(Scope::Only),

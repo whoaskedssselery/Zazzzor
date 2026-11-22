@@ -13,6 +13,7 @@ mod bridge;
 mod hotkeys;
 mod instance;
 mod lang;
+mod logfile;
 #[cfg(windows)]
 mod permissions;
 mod share;
@@ -142,6 +143,7 @@ struct TrayItems {
     change: MenuItem<tauri::Wry>,
     startup: CheckMenuItem<tauri::Wry>,
     updates: MenuItem<tauri::Wry>,
+    logs: MenuItem<tauri::Wry>,
     exit: MenuItem<tauri::Wry>,
     sharing: AtomicBool,
 }
@@ -167,6 +169,7 @@ pub fn tray_relabel(app: &AppHandle) {
     let _ = items.change.set_text(t.change_server);
     let _ = items.startup.set_text(t.autostart);
     let _ = items.updates.set_text(t.check_updates);
+    let _ = items.logs.set_text(t.open_logs);
     let _ = items.exit.set_text(t.quit);
     sharing_shown(app, items.sharing.load(Ordering::Relaxed));
 }
@@ -178,6 +181,7 @@ fn tray(app: &AppHandle) -> tauri::Result<()> {
     let change = MenuItem::with_id(app, "change", t.change_server, true, None::<&str>)?;
     let startup = CheckMenuItem::with_id(app, "autostart", t.autostart, true, autostart::enabled(), None::<&str>)?;
     let updates = MenuItem::with_id(app, "check-update", t.check_updates, true, None::<&str>)?;
+    let logs = MenuItem::with_id(app, "logs", t.open_logs, true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
     let exit = MenuItem::with_id(app, "quit", t.quit, true, None::<&str>)?;
     app.manage(TrayItems {
@@ -186,10 +190,11 @@ fn tray(app: &AppHandle) -> tauri::Result<()> {
         change: change.clone(),
         startup: startup.clone(),
         updates: updates.clone(),
+        logs: logs.clone(),
         exit: exit.clone(),
         sharing: AtomicBool::new(false),
     });
-    let menu = Menu::with_items(app, &[&open, &stop_share, &change, &startup, &updates, &separator, &exit])?;
+    let menu = Menu::with_items(app, &[&open, &stop_share, &change, &startup, &updates, &logs, &separator, &exit])?;
     let mut builder = TrayIconBuilder::with_id(MAIN)
         .tooltip("Zazzzor")
         .menu(&menu)
@@ -208,6 +213,12 @@ fn tray(app: &AppHandle) -> tauri::Result<()> {
                 let _ = startup.set_checked(autostart::enabled());
             }
             "check-update" => update::check(app),
+            // The folder, so the person can send the log when a share misbehaves.
+            "logs" => {
+                if let Ok(dir) = app.path().app_log_dir() {
+                    let _ = app.opener().open_path(dir.to_string_lossy(), None::<&str>);
+                }
+            }
             "quit" => quit(app),
             _ => {}
         })
@@ -339,6 +350,10 @@ fn main() {
             lang::current_language
         ])
         .setup(|app| {
+            if let Err(e) = app.path().app_log_dir().map_err(std::io::Error::other).and_then(|dir| logfile::init(&dir))
+            {
+                eprintln!("log: {e}");
+            }
             let settings = instance::settings_path(&app.path().app_config_dir()?);
             let language = lang::path(&app.path().app_config_dir()?);
             lang::init(&language);
