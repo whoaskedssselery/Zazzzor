@@ -4,7 +4,7 @@
 
 use std::borrow::Cow;
 use std::sync::atomic::Ordering;
-use std::sync::mpsc::sync_channel;
+use std::sync::mpsc::{SyncSender, sync_channel};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -193,7 +193,15 @@ async fn run(
     mut gone: oneshot::Receiver<()>,
 ) -> (End, String) {
     const EVERY: Duration = Duration::from_secs(2);
-    let Parts { track, shared, counters, capture, video, loopback } = parts;
+    let Parts { track, shared, counters, mut capture, video, loopback, frames, fps, target } = parts;
+    // A window that fills its monitor (a video in full screen) is captured
+    // through that monitor until it no longer does; see capture::filled_monitor.
+    let window = match target {
+        Target::Window(hwnd) => Some(hwnd),
+        Target::Monitor(_) => None,
+    };
+    let mut on_monitor = false;
+    let mut follow = tokio::time::interval(Duration::from_millis(500));
     let cpus = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1) as f64;
     let mut quality = Quality::default();
     let mut prev = (0u64, 0u64, 0u64, 0u64, 0u64, procs::cpu_time(), Instant::now());
@@ -203,6 +211,12 @@ async fn run(
     let end = loop {
         tokio::select! {
             _ = tick.tick() => {}
+            _ = follow.tick(), if window.is_some() => {
+                if let Some(hwnd) = window {
+                    follow_window(hwnd, &mut capture, &mut on_monitor, fps, &frames, &shared);
+                }
+                continue;
+            }
             _ = &mut stop => break End::Stopped,
             _ = &mut gone => break End::Disconnected,
         }
@@ -272,6 +286,7 @@ async fn run(
     };
 
     capture.stop();
+    drop(frames);
     // The encoder thread ends once the capture lets go of its frames.
     match tokio::task::spawn_blocking(move || video.join()).await {
         Ok(Ok(Err(e))) => log::error!("video: {e:#}"),
@@ -284,6 +299,37 @@ async fn run(
     room.close().await.ok();
     log::info!("share ended: {end:?}");
     (end, summarize(&lines, &shared))
+}
+
+/// Moves the capture of window `hwnd` to its monitor while the window fills
+/// it, and back once it does not; a window gone while its monitor is
+/// captured ends the share as a closed one.
+fn follow_window(
+    hwnd: isize,
+    capture: &mut capture::Capture,
+    on_monitor: &mut bool,
+    fps: u32,
+    frames: &SyncSender<Nv12Frame>,
+    shared: &Shared,
+) {
+    if *on_monitor && !capture::window_exists(hwnd) {
+        shared.closed.store(true, Ordering::Relaxed);
+        return;
+    }
+    let filled = capture::filled_monitor(hwnd);
+    let next = match (*on_monitor, filled) {
+        (false, Some(monitor)) => capture::start_monitor(monitor, fps, frames.clone(), shared.clone()),
+        (true, None) => capture::start(&Target::Window(hwnd), fps, frames.clone(), shared.clone()),
+        _ => return,
+    };
+    match next {
+        Ok(next) => {
+            std::mem::replace(capture, next).stop();
+            *on_monitor = !*on_monitor;
+            log::info!("capture: window {} its monitor", if *on_monitor { "fills" } else { "left" });
+        }
+        Err(e) => log::warn!("capture: could not follow the window: {e:#}"),
+    }
 }
 
 /// The log line of one reading.
@@ -342,6 +388,10 @@ struct Parts {
     capture: capture::Capture,
     video: std::thread::JoinHandle<Result<()>>,
     loopback: Option<audio::Loopback>,
+    /// A sender of frames kept for a capture started later (see follow_window).
+    frames: SyncSender<Nv12Frame>,
+    fps: u32,
+    target: Target,
 }
 
 async fn publish(
@@ -398,9 +448,19 @@ async fn publish(
             None => encode_software(frames_rx, &source, &counters),
         })?
     };
-    let capture = capture::start(target, options.fps, frames_tx, shared.clone())?;
+    let capture = capture::start(target, options.fps, frames_tx.clone(), shared.clone())?;
     log::info!("sharing {target:?}");
-    Ok(Parts { track, shared, counters, capture, video, loopback })
+    Ok(Parts {
+        track,
+        shared,
+        counters,
+        capture,
+        video,
+        loopback,
+        frames: frames_tx,
+        fps: options.fps,
+        target: *target,
+    })
 }
 
 /// Publishes the sound of `scope`; a share goes on without it when the
