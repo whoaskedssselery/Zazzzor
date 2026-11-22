@@ -7,6 +7,7 @@ import (
 
 	"github.com/whoaskedssselery/zazzzor/server/internal/auth"
 	"github.com/whoaskedssselery/zazzzor/server/internal/platform/httpx"
+	"github.com/whoaskedssselery/zazzzor/server/internal/platform/snowflake"
 )
 
 // Mount registers the voice endpoints of members on r, which must already
@@ -14,6 +15,7 @@ import (
 //
 //	POST /channels/{channel_id}/voice
 //	POST /channels/{channel_id}/voice/screen
+//	PUT /channels/{channel_id}/voice/watching
 //	POST /channels/{channel_id}/call/decline
 //	PATCH /users/@me/voice-state
 //	DELETE /users/@me/voice
@@ -26,6 +28,7 @@ func Mount(r chi.Router, s *Service) {
 		writes := r.With(auth.LimitPerUser(s.writeLimiter))
 		writes.Post("/channels/{channel_id}/voice", httpx.Wrap(s.handleJoin))
 		writes.Post("/channels/{channel_id}/voice/screen", httpx.Wrap(s.handleJoinScreen))
+		writes.Put("/channels/{channel_id}/voice/watching", httpx.Wrap(s.handleWatch))
 		writes.Post("/channels/{channel_id}/call/decline", httpx.Wrap(s.handleDecline))
 		writes.Patch("/users/@me/voice-state", httpx.Wrap(s.handleUpdateSelf))
 		writes.Delete("/users/@me/voice", httpx.Wrap(s.handleLeave))
@@ -93,6 +96,30 @@ func (s *Service) handleUpdateSelf(w http.ResponseWriter, r *http.Request) error
 
 func (s *Service) handleLeave(w http.ResponseWriter, r *http.Request) error {
 	if err := s.Leave(r.Context(), auth.CurrentUser(r).ID); err != nil {
+		return fail(err)
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+type watchRequest struct {
+	UserID   snowflake.ID `json:"user_id"`
+	Watching *bool        `json:"watching"`
+}
+
+func (s *Service) handleWatch(w http.ResponseWriter, r *http.Request) error {
+	id, err := httpx.PathID(r, "channel_id")
+	if err != nil {
+		return err
+	}
+	req, err := httpx.Decode[watchRequest](r)
+	if err != nil {
+		return err
+	}
+	if req.Watching == nil {
+		return fail(invalid("watching", "required"))
+	}
+	if err = s.WatchStream(r.Context(), id, auth.CurrentUser(r).ID, req.UserID, *req.Watching); err != nil {
 		return fail(err)
 	}
 	w.WriteHeader(http.StatusNoContent)

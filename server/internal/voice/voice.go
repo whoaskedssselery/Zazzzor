@@ -65,6 +65,7 @@ var (
 	ErrNotVoiceChannel  = errors.New("voice: not a voice channel")
 	ErrMissingPerm      = errors.New("voice: missing permission")
 	ErrNotInVoice       = errors.New("voice: not in a voice channel")
+	ErrNotStreaming     = errors.New("voice: not sharing a screen in this call")
 	ErrInvalidSignature = errors.New("voice: invalid webhook signature")
 )
 
@@ -100,6 +101,8 @@ func ToProblem(err error) error {
 		return httpx.Forbidden("missing_permission")
 	case errors.Is(err, ErrNotInVoice):
 		return httpx.Conflict("not_in_voice", "the caller is in no voice channel")
+	case errors.Is(err, ErrNotStreaming):
+		return httpx.Conflict("not_streaming", "that user shares no screen in this call")
 	case errors.Is(err, ErrInvalidSignature):
 		return httpx.Unauthorized("invalid_signature")
 	}

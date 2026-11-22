@@ -3271,6 +3271,49 @@ paths:
         "503":
           description: "`voice_unavailable`: voice is not configured."
           $ref: "#/components/responses/Problem"
+  /channels/{channel_id}/voice/watching:
+    put:
+      tags: [voice]
+      operationId: setStreamWatching
+      summary: Tell a screen sharer that the caller started or stopped watching
+      description: |
+        The caller and `user_id` must both be in this voice channel, and
+        `user_id` must be sharing a screen there (`self_stream`). The
+        sharer alone receives `STREAM_WATCH`, so their client can sound it
+        and count the viewers, as Discord does. Nothing is stored: the
+        sharer's client forgets a viewer who leaves the call. Shares the
+        per-user voice write limit (2/second, burst 10).
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StreamWatchRequest"
+      responses:
+        "204":
+          description: The sharer was told.
+        "400":
+          description: "`validation_failed`: `watching` missing, or `user_id` is the caller."
+          $ref: "#/components/responses/Problem"
+        "401":
+          description: "`unauthenticated`."
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          description: "`not_in_voice`: the caller is not in this channel; `not_streaming`: `user_id` shares no screen in it."
+          $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/Problem"
+        "503":
+          description: "`voice_unavailable`: voice is not configured."
+          $ref: "#/components/responses/Problem"
   /channels/{channel_id}/call/decline:
     post:
       tags: [voice]
@@ -4904,6 +4947,7 @@ components:
             - $ref: "#/components/schemas/UserUpdateEvent"
             - $ref: "#/components/schemas/VoiceState"
             - $ref: "#/components/schemas/VoiceMove"
+            - $ref: "#/components/schemas/StreamWatchEvent"
     GatewayHello:
       type: object
       additionalProperties: false
@@ -5054,6 +5098,27 @@ components:
       properties:
         channel_id:
           $ref: "#/components/schemas/Snowflake"
+    StreamWatchRequest:
+      type: object
+      additionalProperties: false
+      required: [user_id, watching]
+      properties:
+        user_id:
+          $ref: "#/components/schemas/Snowflake"
+        watching:
+          type: boolean
+    StreamWatchEvent:
+      type: object
+      additionalProperties: false
+      required: [channel_id, user_id, watching]
+      properties:
+        channel_id:
+          $ref: "#/components/schemas/Snowflake"
+        user_id:
+          description: Who started or stopped watching.
+          $ref: "#/components/schemas/Snowflake"
+        watching:
+          type: boolean
     VoiceJoin:
       type: object
       additionalProperties: false
@@ -5515,3 +5580,6 @@ x-gateway:
       $ref: "#/components/schemas/CallDeleteEvent"
     VOICE_MOVE:
       $ref: "#/components/schemas/VoiceMove"
+    STREAM_WATCH:
+      description: Someone started or stopped watching the receiver's screen share; sent to the sharer only.
+      $ref: "#/components/schemas/StreamWatchEvent"

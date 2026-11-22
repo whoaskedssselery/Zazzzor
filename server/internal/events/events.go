@@ -48,7 +48,10 @@ const (
 	CallCreate            = "CALL_CREATE"
 	CallUpdate            = "CALL_UPDATE"
 	CallDelete            = "CALL_DELETE"
-	SessionRevoked        = "SESSION_REVOKED"
+	// StreamWatch tells a screen sharer that someone started or stopped
+	// watching their share.
+	StreamWatch    = "STREAM_WATCH"
+	SessionRevoked = "SESSION_REVOKED"
 	// PresenceSet is internal: the gateway takes the user's new status and
 	// status line and announces what changed for their peers.
 	PresenceSet = "PRESENCE_SET"
