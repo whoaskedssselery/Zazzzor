@@ -9,6 +9,7 @@
   "mutedNeuter": "{{name}}, заглушено",
   "unreadCount": "{{name}}, непрочитанных: {{count}}",
   "inCall": "{{name}}, идёт звонок",
+  "inVoice": "{{name}}, в голосе: {{count}}",
   "categorySettings": "Настройки категории {{name}}",
   "channelSettings": "Настройки канала {{name}}",
   "voiceChannel": "Голосовой канал {{name}}",

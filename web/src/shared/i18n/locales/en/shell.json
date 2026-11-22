@@ -9,6 +9,7 @@
   "mutedNeuter": "{{name}}, muted",
   "unreadCount": "{{name}}, unread: {{count}}",
   "inCall": "{{name}}, call in progress",
+  "inVoice": "{{name}}, in voice: {{count}}",
   "categorySettings": "Settings of category {{name}}",
   "channelSettings": "Settings of channel {{name}}",
   "voiceChannel": "Voice channel {{name}}",

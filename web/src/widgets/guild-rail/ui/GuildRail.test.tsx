@@ -1,7 +1,15 @@
 import { screen, within } from "@testing-library/react";
 import { resetChannelUi, useChannelUi } from "@/entities/channel";
 import { applyGatewayDispatch, resetGuilds } from "@/entities/guild";
-import { makeChannel, makeGuild, makeGuildState, makeReady, makeUser, renderRouted } from "@/shared/test";
+import {
+  makeChannel,
+  makeGuild,
+  makeGuildState,
+  makeReady,
+  makeUser,
+  makeVoiceState,
+  renderRouted,
+} from "@/shared/test";
 import { GuildRail } from "./GuildRail";
 
 const me = makeUser("100");
@@ -52,6 +60,15 @@ describe("GuildRail", () => {
     await renderRouted(<GuildRail activeGuildId={null} />);
     expect(servers().getByRole("link", { name: "Вечерний сеанс" }).getAttribute("href")).toBe("/channels/30/302");
     expect(servers().getByRole("link", { name: "Дача" }).getAttribute("href")).toBe("/channels/10");
+  });
+
+  it("marks a server with people in voice, as Discord's speaker", async () => {
+    applyGatewayDispatch("VOICE_STATE_UPDATE", makeVoiceState("20", "203", "1"));
+    applyGatewayDispatch("VOICE_STATE_UPDATE", makeVoiceState("20", "203", "2"));
+    await renderRouted(<GuildRail activeGuildId={null} />);
+    const club = servers().getByRole("link", { name: "Книжный клуб, в голосе: 2" });
+    expect(club.querySelector("[data-voice]")).not.toBeNull();
+    expect(servers().getByRole("link", { name: "Дача" }).querySelector("[data-voice]")).toBeNull();
   });
 
   it("shows the server icon, or the initials of its name", async () => {
