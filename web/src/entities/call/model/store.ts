@@ -19,6 +19,8 @@ export interface CallState {
   watching: string[];
   /** The user shares their screen. */
   sharing: boolean;
+  /** Who watches the user's screen share (STREAM_WATCH), as Discord counts them. */
+  viewers: string[];
   /** Who has a camera on in the call (others only). */
   cameras: string[];
   /** The user's camera is on. */
@@ -36,6 +38,7 @@ const CALL_FREE = {
   streams: [],
   watching: [],
   sharing: false,
+  viewers: [],
   cameras: [],
   camera: false,
   noise: null,

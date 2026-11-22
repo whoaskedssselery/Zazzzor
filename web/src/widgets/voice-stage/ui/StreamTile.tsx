@@ -1,6 +1,6 @@
-import { AppWindow, ArrowLeftRight, Maximize, Minimize, Monitor, X } from "lucide-react";
+import { AppWindow, ArrowLeftRight, Eye, Maximize, Minimize, Monitor, X } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
-import { VolumeSlider } from "@/entities/call";
+import { useCall, VolumeSlider } from "@/entities/call";
 import {
   attachOwnStream,
   attachStream,
@@ -103,6 +103,29 @@ const FullscreenButton = ({ target }: { target: RefObject<HTMLElement | null> })
 };
 
 /**
+ * «В эфире» on the user's own share, with how many watch it (STREAM_WATCH),
+ * as Discord shows them.
+ */
+const OwnLive = () => {
+  const viewers = useCall((s) => s.viewers.length);
+  return (
+    <div className="absolute top-2 left-2 flex items-center gap-1.5">
+      <Badge variant="live">{t("shell:live")}</Badge>
+      {viewers > 0 && (
+        <span
+          role="status"
+          aria-label={t("voice:stage.viewers", { count: viewers })}
+          className="flex h-5 items-center gap-1 rounded-sm bg-control px-1.5 text-xs font-medium text-fg tabular-nums"
+        >
+          <Eye aria-hidden className="size-3.5" />
+          {viewers}
+        </span>
+      )}
+    </div>
+  );
+};
+
+/**
  * The desktop app's share of the user, which the page has no picture of:
  * what is shared and how it goes, from the app's figures.
  */
@@ -124,9 +147,7 @@ const NativeOwnStream = ({ compact }: { compact: boolean }) => {
       aria-label={t("voice:stage.yourShare")}
       className="relative flex size-full min-w-0 flex-col items-center justify-center gap-3 rounded-lg bg-panel p-4 text-center"
     >
-      <Badge variant="live" className="absolute top-2 left-2">
-        {t("shell:live")}
-      </Badge>
+      <OwnLive />
       <Icon aria-hidden className="size-10 text-fg-muted" strokeWidth={1.5} />
       <div className="min-w-0 max-w-full">
         <p className="truncate font-medium">{source.name}</p>
@@ -180,9 +201,7 @@ const BrowserOwnStream = ({ compact }: { compact: boolean }) => {
       className="group relative flex size-full min-w-0 [&:fullscreen]:pointer-events-auto"
     >
       <VideoFrame video={video}>
-        <Badge variant="live" className="absolute top-2 left-2">
-          {t("shell:live")}
-        </Badge>
+        <OwnLive />
         <div data-controls className={cn(CORNER, compact && "hidden")}>
           <IconButton
             icon={ArrowLeftRight}

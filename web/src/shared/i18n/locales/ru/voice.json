@@ -110,6 +110,10 @@
     "expand": "Развернуть: {{name}}",
     "others": "Остальные в звонке",
     "nobody": "Здесь пока никого нет.",
-    "here": "Сейчас здесь:"
+    "here": "Сейчас здесь:",
+    "viewers_one": "Смотрит {{count}}",
+    "viewers_few": "Смотрят {{count}}",
+    "viewers_many": "Смотрят {{count}}",
+    "viewers_other": "Смотрят {{count}}"
   }
 }

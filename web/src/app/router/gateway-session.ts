@@ -5,7 +5,7 @@ import { applyGatewayDispatch, getGuildsState, resetGuilds, setConnectionStatus 
 import { applyMessageDispatch, catchUpMessages, resetPending } from "@/entities/message";
 import { onSessionEnd, onUnauthorized, updateSignedIn } from "@/entities/session";
 import { resetDrafts, resetMentions, resetUploads } from "@/features/send-message";
-import { endCall, onVoiceMove, reconcileVoiceFlags } from "@/features/voice-call";
+import { endCall, onStreamWatch, onVoiceMove, reconcileVoiceFlags } from "@/features/voice-call";
 import { getGateway, isCallEvent, parseCallEvent } from "@/shared/api";
 
 /**
@@ -32,9 +32,14 @@ export const useGatewaySession = (active: boolean): void => {
         const after = getGuildsState();
         if (after.me && after.me !== before.me) updateSignedIn(queryClient, after.me);
         // Voice: follow a moderator's move; keep the server's view of the switches in step.
-        if (isCallEvent(t)) {
+        if (t === "VOICE_MOVE") {
           const move = parseCallEvent(t, d);
           if (move) void onVoiceMove(move.channel_id);
+        } else if (t === "STREAM_WATCH") {
+          const watch = parseCallEvent(t, d);
+          if (watch) onStreamWatch(watch);
+        } else if (isCallEvent(t)) {
+          // A call event this client does not apply yet.
         } else if (after !== before) void reconcileVoiceFlags();
       },
       onStatus: (status) => {

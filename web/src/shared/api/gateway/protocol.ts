@@ -451,15 +451,18 @@ export function parseChatEvent<K extends keyof ChatEvents>(t: K, d: unknown): Ch
 }
 
 // Call events: only the voice call applies them (VOICE_MOVE is private to
-// the participant being moved), never the guild store.
+// the participant being moved, STREAM_WATCH to the screen sharer), never
+// the guild store.
 
 /** The payload type of each call event (`x-gateway.events`). */
 export interface CallEvents {
   VOICE_MOVE: S["VoiceMove"];
+  STREAM_WATCH: S["StreamWatchEvent"];
 }
 
 const callSchemas: { [K in keyof CallEvents]: z.ZodMiniType<CallEvents[K]> } = {
   VOICE_MOVE: z.object({ channel_id: snowflake }),
+  STREAM_WATCH: z.object({ channel_id: snowflake, user_id: snowflake, watching: z.boolean() }),
 };
 
 /** Whether `t` is a call event. */

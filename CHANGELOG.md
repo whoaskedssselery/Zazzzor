@@ -24,7 +24,8 @@ release notes on its GitHub releases.
   direct or through the TURN relay.
 - **Change source.** During a screen share the share button opens a menu
   to share something else without stopping; viewers keep watching.
-- **Watch sounds.** A sound when you start and stop watching a stream.
+- **Watch sounds.** A sound when you start and stop watching a stream,
+  and the one sharing hears who comes and goes and sees how many watch.
 
 ### Changed
 
