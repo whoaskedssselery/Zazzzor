@@ -11,6 +11,7 @@ import {
   NO_CONNECT,
   NO_STREAM,
   NO_VIDEO,
+  onStreamWatch,
   STREAM_GRACE_MS,
   setTransportFactory,
   WINDOW_NO_AUDIO,
@@ -438,6 +439,23 @@ describe("the voice channel screen", () => {
     });
     expect(getCall().watching).toEqual([]);
     expect(fake.argsOf("detachScreen")).toHaveLength(1);
+  });
+
+  it("shows the sharer who watches their stream", async () => {
+    renderApp(`/channels/${G}/${LOUNGE}`);
+    const view = await stage();
+    await act(() => joinVoice(G, LOUNGE));
+    act(() => {
+      setCall({ sharing: true });
+      onStreamWatch({ channel_id: LOUNGE, user_id: petya.id, watching: true });
+      onStreamWatch({ channel_id: LOUNGE, user_id: masha.id, watching: true });
+    });
+    const own = await within(view).findByRole("article", { name: "Ваша демонстрация экрана" });
+    expect(within(own).getByRole("status", { name: "Смотрят 2: Петя, Маша" })).toBeTruthy();
+    act(() => {
+      onStreamWatch({ channel_id: LOUNGE, user_id: petya.id, watching: false });
+    });
+    expect(within(own).getByRole("status", { name: "Смотрит 1: Маша" })).toBeTruthy();
   });
 
   it("rings whoever speaks on their tile", async () => {

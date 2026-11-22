@@ -382,7 +382,7 @@ const useCallTiles = (
           {
             key: "own",
             name: t("voice:stage.yourShare"),
-            render: (compact: boolean) => <OwnStreamTile compact={compact} />,
+            render: (compact: boolean) => <OwnStreamTile compact={compact} person={person} />,
           },
         ]
       : []),
