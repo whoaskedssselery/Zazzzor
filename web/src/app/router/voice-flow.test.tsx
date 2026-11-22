@@ -194,6 +194,25 @@ describe("voice in the sidebar and the panels", () => {
     expect(second?.querySelector("[data-speaking]")).toBeNull();
   });
 
+  it("asks before leaving a call for another channel, as Discord does", async () => {
+    crowd();
+    const { user } = renderApp(`/channels/${G}/${TEXT}`);
+    await screen.findByRole("button", { name: "Голосовой канал Игры" });
+    await act(() => joinVoice(G, LOUNGE));
+    tokens.length = 0;
+    await user.click(screen.getByRole("button", { name: "Голосовой канал Игры" }));
+    const ask = await screen.findByRole("alertdialog", { name: "Перейти в другой голосовой канал?" });
+    expect(within(ask).getByText("Вы сейчас в «Лаунж». Выйти оттуда и подключиться к «Игры»?")).toBeTruthy();
+    await user.click(within(ask).getByRole("button", { name: "Отмена" }));
+    expect(tokens).toEqual([]);
+    expect(getCall().channelId).toBe(LOUNGE);
+    await user.click(screen.getByRole("button", { name: "Голосовой канал Игры" }));
+    await user.click(await screen.findByRole("button", { name: "Перейти" }));
+    await waitFor(() => {
+      expect(tokens).toEqual([GAMES]);
+    });
+  });
+
   it("joins a voice channel on a click", async () => {
     crowd();
     const { user } = renderApp(`/channels/${G}/${TEXT}`);

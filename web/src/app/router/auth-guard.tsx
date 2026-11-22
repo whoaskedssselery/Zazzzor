@@ -3,7 +3,7 @@ import { Outlet, type ParsedLocation, redirect } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { loadSession, onUnauthorized, safeNext, useSession } from "@/entities/session";
 import { NotificationPrompt, useMentionAlerts, useUnreadBadge } from "@/features/notify";
-import { CallNotices, NativeSharePicker, useCallSounds, useSwitchKeys } from "@/features/voice-call";
+import { CallNotices, NativeSharePicker, SwitchCallDialog, useCallSounds, useSwitchKeys } from "@/features/voice-call";
 import { SplashScreen } from "@/shared/ui";
 import { ConnectionBanner } from "@/widgets/connection-banner";
 import { IncomingCalls } from "@/widgets/incoming-call";
@@ -83,6 +83,7 @@ export const AuthGuard = () => {
       <CallNotices />
       <IncomingCalls />
       <NativeSharePicker />
+      <SwitchCallDialog />
       {splash !== "gone" && <SplashScreen leaving={splash === "leaving"} />}
     </div>
   );

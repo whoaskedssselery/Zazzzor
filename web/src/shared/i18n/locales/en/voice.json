@@ -113,5 +113,10 @@
     "here": "Here now:",
     "viewers_one": "{{count}} watching",
     "viewers_other": "{{count}} watching"
+  },
+  "switch": {
+    "title": "Switch voice channel?",
+    "text": "You are in “{{from}}”. Leave it and join “{{to}}”?",
+    "confirm": "Switch"
   }
 }

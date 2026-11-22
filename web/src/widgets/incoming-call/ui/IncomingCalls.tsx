@@ -12,7 +12,7 @@ import {
   useGuilds,
 } from "@/entities/guild";
 import { useNotifyPrefs } from "@/features/notify";
-import { declineCall, joinVoice, startRingtone } from "@/features/voice-call";
+import { declineCall, requestJoin, startRingtone } from "@/features/voice-call";
 import { t } from "@/shared/i18n";
 import { Avatar, Button } from "@/shared/ui";
 
@@ -72,7 +72,7 @@ const IncomingCall = ({ entry }: { entry: PrivateEntry }) => {
           autoFocus
           onClick={() => {
             void navigate({ to: "/channels/@me/$channelId", params: { channelId: channel.id } });
-            void joinVoice(null, channel.id);
+            requestJoin(null, channel.id);
           }}
         >
           <Phone aria-hidden className="size-4" />

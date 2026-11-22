@@ -21,7 +21,7 @@ import {
   voiceMembers,
 } from "@/entities/guild";
 import { MemberMenu } from "@/features/manage-member";
-import { joinVoice, NO_CONNECT, watchStream } from "@/features/voice-call";
+import { NO_CONNECT, requestJoin, watchStream } from "@/features/voice-call";
 import { t } from "@/shared/i18n";
 import { Avatar, Badge, Button, cn } from "@/shared/ui";
 import { CallControls } from "./CallControls";
@@ -466,7 +466,7 @@ export const VoiceStage = ({ guildId, channel }: { guildId: string; channel: Cha
             size="lg"
             disabled={!canConnect}
             onClick={() => {
-              void joinVoice(guildId, channel.id);
+              requestJoin(guildId, channel.id);
             }}
           >
             {t("voice:stage.join")}
