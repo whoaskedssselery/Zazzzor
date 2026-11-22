@@ -201,6 +201,7 @@ async fn run(
         Target::Monitor(_) => None,
     };
     let mut on_monitor = false;
+    let mut seen = String::new();
     let mut follow = tokio::time::interval(Duration::from_millis(500));
     let cpus = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1) as f64;
     let mut quality = Quality::default();
@@ -213,7 +214,7 @@ async fn run(
             _ = tick.tick() => {}
             _ = follow.tick(), if window.is_some() => {
                 if let Some(hwnd) = window {
-                    follow_window(hwnd, &mut capture, &mut on_monitor, fps, &frames, &shared);
+                    follow_window(hwnd, &mut capture, &mut on_monitor, &mut seen, fps, &frames, &shared);
                 }
                 continue;
             }
@@ -303,15 +304,23 @@ async fn run(
 
 /// Moves the capture of window `hwnd` to its monitor while the window fills
 /// it, and back once it does not; a window gone while its monitor is
-/// captured ends the share as a closed one.
+/// captured ends the share as a closed one. Each change of the shared
+/// window or of the window in front goes to the log (`seen` is the last).
 fn follow_window(
     hwnd: isize,
     capture: &mut capture::Capture,
     on_monitor: &mut bool,
+    seen: &mut String,
     fps: u32,
     frames: &SyncSender<Nv12Frame>,
     shared: &Shared,
 ) {
+    let front = capture::foreground().map(capture::describe).unwrap_or_else(|| "none".into());
+    let now = format!("shared {} | in front {front}", capture::describe(hwnd));
+    if now != *seen {
+        log::info!("capture: {now}");
+        *seen = now;
+    }
     if *on_monitor && !capture::window_exists(hwnd) {
         shared.closed.store(true, Ordering::Relaxed);
         return;
@@ -449,7 +458,10 @@ async fn publish(
         })?
     };
     let capture = capture::start(target, options.fps, frames_tx.clone(), shared.clone())?;
-    log::info!("sharing {target:?}");
+    match target {
+        Target::Window(hwnd) => log::info!("sharing window {}", capture::describe(*hwnd)),
+        Target::Monitor(_) => log::info!("sharing {target:?}"),
+    }
     Ok(Parts {
         track,
         shared,
