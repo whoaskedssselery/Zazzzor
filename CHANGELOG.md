@@ -15,6 +15,8 @@ release notes on its GitHub releases.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-22
+
 ### Added
 
 - **Who is in voice, from the server list.** A server with people in its
@@ -46,6 +48,8 @@ release notes on its GitHub releases.
 
 ### Fixed
 
+- The full screen button of a stream leaves full screen on a second try
+  too, instead of offering full screen again.
 - **`ZAZZZOR_ADMIN_USERNAMES` in `deploy/.env.example`.** The comment said
   these logins get administrator rights when they register. In fact
   ordinary sign-up under them is refused: they are reserved for
@@ -106,5 +110,6 @@ and talk on their own server.
   (with optional TURN over TLS), and prebuilt images on GitHub Container
   Registry.
 
-[Unreleased]: https://github.com/whoaskedssselery/Zazzzor/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/whoaskedssselery/Zazzzor/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/whoaskedssselery/Zazzzor/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/whoaskedssselery/Zazzzor/releases/tag/v0.1.0
