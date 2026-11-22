@@ -77,10 +77,8 @@ folder's labels is the owner's call.
   LiveKit of the same host. The share stops when the app quits. The
   page sees the windows and their thumbnails only while the app's window
   is shown: sources are listed at most every two seconds, and each listed
-  source gives one thumbnail within a minute. Before a share starts, the
-  app's own dialog names the window (or the screen's number) and the
-  server's host and asks to share or cancel; a reshare of the same source
-  after the call reconnects does not ask again until the share is stopped.
+  source gives one thumbnail within a minute. A share starts from the
+  page's own picker, with no second question from the app.
 - **Push-to-talk everywhere.** In a call with push-to-talk the page asks
   the app to watch its key (`hotkeys_ptt`); a low-level keyboard hook
   reports it while the window is behind, so it works in a game. The hook
