@@ -2,7 +2,7 @@ import { Phone } from "lucide-react";
 import { type ReactElement, useMemo } from "react";
 import { useCall, VolumeSlider } from "@/entities/call";
 import { callMembers, type DMChannel, useGuilds } from "@/entities/guild";
-import { joinVoice } from "@/features/voice-call";
+import { requestJoin } from "@/features/voice-call";
 import { t } from "@/shared/i18n";
 import {
   Avatar,
@@ -63,7 +63,7 @@ export const CallButton = ({ channel }: { channel: DMChannel }) => {
       icon={Phone}
       tooltipSide="bottom"
       onClick={() => {
-        void joinVoice(null, channel.id);
+        requestJoin(null, channel.id);
       }}
     />
   );
@@ -134,7 +134,7 @@ export const PrivateCallStage = ({ channel }: { channel: DMChannel }) => {
       <Button
         size="sm"
         onClick={() => {
-          void joinVoice(null, channel.id);
+          requestJoin(null, channel.id);
         }}
       >
         <Phone aria-hidden className="size-4" />

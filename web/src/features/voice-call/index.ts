@@ -45,6 +45,7 @@ export {
   switchScreenShare,
   watchStream,
 } from "./model/session";
+export { requestJoin } from "./model/switch-call";
 export { comboName, comboOf } from "./model/switch-keys";
 export { MODERATOR_DEAFENED, MODERATOR_MUTED, useSelfSwitches } from "./model/switches";
 export { useSwitchKeys } from "./model/use-switch-keys";
@@ -52,4 +53,5 @@ export { CallNotices } from "./ui/CallNotices";
 export { CameraButton } from "./ui/CameraButton";
 export { NativeSharePicker } from "./ui/NativeSharePicker";
 export { ScreenShareButton } from "./ui/ScreenShareButton";
+export { SwitchCallDialog } from "./ui/SwitchCallDialog";
 export { PTT_FOCUS_HINT, VoiceTab } from "./ui/VoiceTab";

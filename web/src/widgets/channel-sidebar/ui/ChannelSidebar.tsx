@@ -50,7 +50,7 @@ import { LeaveGuildDialog } from "@/features/leave-guild";
 import { MemberMenu } from "@/features/manage-member";
 import { NotifyItems } from "@/features/notify";
 import { readGuild } from "@/features/read-channel";
-import { joinVoice, NO_CONNECT } from "@/features/voice-call";
+import { NO_CONNECT, requestJoin } from "@/features/voice-call";
 import { api, errorText, unwrap } from "@/shared/api";
 import { t } from "@/shared/i18n";
 import {
@@ -228,7 +228,7 @@ const ChannelRow = ({ channel, siblings, selected }: { channel: Channel; sibling
               to: "/channels/$guildId/$channelId",
               params: { guildId: list.guildId, channelId: channel.id },
             });
-            if (inCall !== channel.id) void joinVoice(list.guildId, channel.id);
+            if (inCall !== channel.id) requestJoin(list.guildId, channel.id);
           }}
           {...control}
         >
