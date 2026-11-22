@@ -88,6 +88,9 @@
     "udp": "Direct (UDP)",
     "tcp": "Direct (TCP)",
     "relay": "Through a relay (TURN)",
-    "hint": "Updated every 2 seconds. Ping over 150 ms or loss over 2% is when voices start to break up."
+    "hint": "Updated every 2 seconds. Ping over 150 ms or loss over 2% is when voices start to break up.",
+    "loss": "Loss",
+    "chart": "Ping over the last readings: {{min}}–{{max}} ms",
+    "chartEmpty": "No readings yet"
   }
 }
