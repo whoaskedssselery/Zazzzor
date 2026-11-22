@@ -115,10 +115,23 @@ fn change_instance(app: &AppHandle) {
     show(app);
 }
 
+/// How long the page has to leave the call before the app quits.
+const QUIT_GRACE: std::time::Duration = std::time::Duration::from_millis(1500);
+
+/// Quits: the page is told first (`zazzzor:quit`), so it leaves the call
+/// and the server does not keep a silent copy of the user and their share;
+/// a page that does not answer only delays the quit by `QUIT_GRACE`.
 fn quit(app: &AppHandle) {
     app.state::<App>().quitting.store(true, Ordering::Relaxed);
     let _ = app.save_window_state(state_flags());
-    app.exit(0);
+    if let Some(window) = app.get_webview_window(MAIN) {
+        let _ = window.eval("window.dispatchEvent(new Event('zazzzor:quit'))");
+    }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(QUIT_GRACE);
+        app.exit(0);
+    });
 }
 
 /// The tray's items, to name them again when the language changes; «stop

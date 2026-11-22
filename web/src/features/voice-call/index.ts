@@ -19,6 +19,7 @@ export {
   declineCall,
   endCall,
   joinVoice,
+  leaveOnExit,
   leaveVoice,
   MIC_DENIED,
   NO_CONNECT,

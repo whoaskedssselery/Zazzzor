@@ -209,7 +209,28 @@ const ensureTransport = (): Promise<CallTransport> => {
   return transportPromise;
 };
 
+/**
+ * Leaves the call as the page goes away: closed, reloaded, or the desktop
+ * app quitting (it says so with `zazzzor:quit` first). Without it the
+ * server and LiveKit keep a silent copy of the user, and of their share,
+ * until they notice the connection is gone. The request outlives the page
+ * (`keepalive`), and the transport says goodbye to LiveKit.
+ */
+export const leaveOnExit = (): void => {
+  if (getCall().status === "idle") return;
+  generation += 1;
+  joining = false;
+  void fetch("/api/v1/users/@me/voice", { method: "DELETE", credentials: "include", keepalive: true }).catch(
+    () => undefined,
+  );
+  void dropNativeShare();
+  void transport?.disconnect();
+  clearCall();
+};
+
 const wire = (t: CallTransport): CallTransport => {
+  window.addEventListener("pagehide", leaveOnExit);
+  window.addEventListener("zazzzor:quit", leaveOnExit);
   t.on("link", (state, cause) => {
     // During a join the old room goes away on purpose (or the server drops it first).
     if (state === "disconnected") {
