@@ -78,6 +78,9 @@ const FullscreenButton = ({ target }: { target: RefObject<HTMLElement | null> })
     const sync = () => {
       setFull(document.fullscreenElement != null && document.fullscreenElement === target.current);
     };
+    // Also now: a tile drawn again while on the whole screen (the stage
+    // rearranges as full screen comes and goes) must not start as "off".
+    sync();
     document.addEventListener("fullscreenchange", sync);
     return () => {
       document.removeEventListener("fullscreenchange", sync);
@@ -90,7 +93,9 @@ const FullscreenButton = ({ target }: { target: RefObject<HTMLElement | null> })
       tooltipSide="bottom"
       className={ON_PICTURE}
       onClick={() => {
-        if (full) void document.exitFullscreen();
+        // What the document says, not what this button last heard: a press
+        // always leaves full screen while it is on.
+        if (document.fullscreenElement) void document.exitFullscreen();
         else void target.current?.requestFullscreen();
       }}
     />

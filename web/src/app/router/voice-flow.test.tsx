@@ -346,6 +346,12 @@ describe("the voice channel screen", () => {
       document.dispatchEvent(new Event("fullscreenchange"));
     });
     expect(within(front).getByRole("button", { name: "Во весь экран" })).toBeTruthy();
+    // On the whole screen again, even if the button missed the news: a press leaves it.
+    Object.defineProperty(document, "fullscreenElement", { configurable: true, get: () => front });
+    await user.click(within(front).getByRole("button", { name: "Во весь экран" }));
+    expect(exit).toHaveBeenCalledTimes(2);
+    expect(full).toHaveBeenCalledTimes(1);
+    Object.defineProperty(document, "fullscreenElement", { configurable: true, get: () => null });
     await user.click(within(front).getByRole("button", { name: "Перестать смотреть" }));
     expect(fake.argsOf("watch").at(-1)).toEqual([masha.id, false]);
     expect(fake.argsOf("detachScreen")).toHaveLength(1);
