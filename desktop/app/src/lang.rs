@@ -85,6 +85,7 @@ pub struct Texts {
     pub change_server: &'static str,
     pub autostart: &'static str,
     pub check_updates: &'static str,
+    pub open_logs: &'static str,
     pub quit: &'static str,
     pub sharing_tooltip: &'static str,
     /// «{version}» is replaced with the new version.
@@ -115,6 +116,7 @@ const EN: Texts = Texts {
     change_server: "Change server…",
     autostart: "Start with Windows",
     check_updates: "Check for updates",
+    open_logs: "Open log folder",
     quit: "Quit",
     sharing_tooltip: "Zazzzor — sharing the screen",
     update_available: "Zazzzor {version} is available. Restart and install it?",
@@ -137,6 +139,7 @@ const RU: Texts = Texts {
     change_server: "Сменить сервер…",
     autostart: "Запускать вместе с Windows",
     check_updates: "Проверить обновления",
+    open_logs: "Открыть папку с логами",
     quit: "Выйти",
     sharing_tooltip: "Zazzzor — идёт демонстрация экрана",
     update_available: "Доступно обновление Zazzzor {version}. Перезапустить и установить?",
