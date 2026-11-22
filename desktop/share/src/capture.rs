@@ -214,6 +214,29 @@ pub fn filled_monitor(hwnd: isize) -> Option<Monitor> {
     fills.then_some(monitor)
 }
 
+/// How the window `hwnd` looks now, for the log: its process and title,
+/// its size and place (a minimised window sits far off the screen) and the
+/// size of the monitor it is on.
+pub fn describe(hwnd: isize) -> String {
+    let Ok(window) = window(hwnd) else { return format!("{hwnd:#x} gone") };
+    let process = window.process_name().unwrap_or_default();
+    let title = window.title().unwrap_or_default();
+    let rect = window
+        .rect()
+        .map(|r| format!("{}x{} at {},{}", r.right - r.left, r.bottom - r.top, r.left, r.top))
+        .unwrap_or_else(|_| "no rect".into());
+    let monitor = window
+        .monitor()
+        .and_then(|m| Some(format!("{}x{}", m.width().ok()?, m.height().ok()?)))
+        .unwrap_or_else(|| "no monitor".into());
+    format!("{hwnd:#x} {process} {title:?} {rect} on {monitor}")
+}
+
+/// The window in front now.
+pub fn foreground() -> Option<isize> {
+    Window::foreground().ok().map(|w| w.as_raw_hwnd() as isize)
+}
+
 /// Whether the window `hwnd` still exists.
 pub fn window_exists(hwnd: isize) -> bool {
     window(hwnd).is_ok()
