@@ -44,13 +44,35 @@ pg_image="postgres:$POSTGRES_VERSION"
 base_url=http://127.0.0.1:8080
 
 # API публикует порт на 127.0.0.1; здесь — случайный, чтобы не столкнуться
-# с тем, что уже работает на машине.
+# с тем, что уже работает на машине. Постоянная подсеть сети api нужна только
+# LiveKit, которого здесь нет: без неё проверка не мешает ни стеку на этой
+# машине, ни своей же брошенной копии.
 cat > "$ZAZZZOR_COMPOSE_OVERRIDE" <<'EOF'
 services:
   api:
     ports: !override ["127.0.0.1::8080"]
+networks:
+  api:
+    ipam: !reset {}
 EOF
 compose=(docker compose --env-file "$env_file" -p "$STACK_NAME" -f "$repo_dir/deploy/docker-compose.yml" -f "$ZAZZZOR_COMPOSE_OVERRIDE")
+
+# Проверка, прерванная на полпути (отменённое задание CI убивают раньше, чем
+# она успевает убрать за собой), оставляет свой проект. Те, что старше часа,
+# уже точно никем не выполняются: их контейнеры, сети и тома уходят.
+sweep_stale() {
+  local project started
+  for project in $(docker ps -a --format '{{.Label "com.docker.compose.project"}}' | grep '^zazzzor-restore-test-' | sort -u); do
+    started="${project#zazzzor-restore-test-}"
+    started="${started%%-*}"
+    [[ "$started" =~ ^[0-9]+$ ]] && ((started < $(date +%s) - 3600)) || continue
+    echo "убираю брошенную проверку $project"
+    docker ps -aq --filter "label=com.docker.compose.project=$project" | xargs -r docker rm -f >/dev/null
+    docker network ls -q --filter "label=com.docker.compose.project=$project" | xargs -r docker network rm >/dev/null
+    docker volume ls -q --filter "label=com.docker.compose.project=$project" | xargs -r docker volume rm >/dev/null
+  done
+}
+sweep_stale
 
 # Убирает всё, что создала проверка; при ошибке сначала печатает логи.
 cleanup() {
