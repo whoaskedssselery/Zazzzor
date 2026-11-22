@@ -25,6 +25,7 @@ export {
   NO_STREAM,
   NO_VIDEO,
   onCallNotice,
+  onStreamWatch,
   onVoiceMove,
   readLinkStats,
   reconcileVoiceFlags,

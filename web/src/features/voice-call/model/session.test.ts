@@ -8,6 +8,7 @@ import {
   resetCall,
   resetNativeShare,
   type ShareSource,
+  setCall,
   setVolume,
   writeVoicePrefs,
 } from "@/entities/call";
@@ -40,6 +41,7 @@ import {
   leaveVoice,
   MIC_DENIED,
   onCallNotice,
+  onStreamWatch,
   onVoiceMove,
   reconcileVoiceFlags,
   SHARE_FAILED,
@@ -118,6 +120,7 @@ beforeEach(() => {
       flags.push(await request.json());
       return new HttpResponse(null, { status: 204 });
     }),
+    apiHandler("put", "/channels/{channel_id}/voice/watching", () => new HttpResponse(null, { status: 204 })),
   );
   ready();
 });
@@ -555,6 +558,46 @@ describe("the second review's cases", () => {
     watchStream("200", true);
     watchStream("200", false);
     expect(played).toEqual(["watchStart", "watchStop"]);
+  });
+
+  it("tells the sharer when the user starts and stops watching", async () => {
+    const told: unknown[] = [];
+    server.use(
+      apiHandler("put", "/channels/{channel_id}/voice/watching", async ({ request, params }) => {
+        told.push({ channel: params.channel_id, ...((await request.json()) as object) });
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    await joinVoice(G, LOUNGE);
+    fake.emit("streams", ["200"]);
+    watchStream("200", true);
+    watchStream("200", true);
+    watchStream("200", false);
+    await vi.waitFor(() => {
+      expect(told).toEqual([
+        { channel: LOUNGE, user_id: "200", watching: true },
+        { channel: LOUNGE, user_id: "200", watching: false },
+      ]);
+    });
+  });
+
+  it("sounds and counts who comes to watch the user's share, as Discord does", async () => {
+    await joinVoice(G, LOUNGE);
+    // Not sharing: someone else's word about it is no news.
+    onStreamWatch({ channel_id: LOUNGE, user_id: "300", watching: true });
+    expect(getCall().viewers).toEqual([]);
+    setCall({ sharing: true });
+    played.length = 0;
+    onStreamWatch({ channel_id: LOUNGE, user_id: "300", watching: true });
+    onStreamWatch({ channel_id: LOUNGE, user_id: "300", watching: true });
+    onStreamWatch({ channel_id: LOUNGE, user_id: "400", watching: true });
+    onStreamWatch({ channel_id: LOUNGE, user_id: "300", watching: false });
+    // Another channel's word is stale.
+    onStreamWatch({ channel_id: "999", user_id: "500", watching: true });
+    expect(getCall().viewers).toEqual(["400"]);
+    expect(played).toEqual(["watchStart", "watchStart", "watchStop"]);
+    await stopScreenShare();
+    expect(getCall().viewers).toEqual([]);
   });
 
   it("11: joining again soon after a removal does not say the call moved elsewhere", async () => {

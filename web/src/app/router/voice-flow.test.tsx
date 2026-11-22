@@ -84,6 +84,7 @@ beforeEach(() => {
       return new HttpResponse(null, { status: 204 });
     }),
     apiHandler("post", "/auth/logout", () => new HttpResponse(null, { status: 204 })),
+    apiHandler("put", "/channels/{channel_id}/voice/watching", () => new HttpResponse(null, { status: 204 })),
   );
 });
 

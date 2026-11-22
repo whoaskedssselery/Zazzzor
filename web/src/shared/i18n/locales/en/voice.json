@@ -110,6 +110,8 @@
     "expand": "Expand: {{name}}",
     "others": "Others in the call",
     "nobody": "Nobody is here yet.",
-    "here": "Here now:"
+    "here": "Here now:",
+    "viewers_one": "{{count}} watching",
+    "viewers_other": "{{count}} watching"
   }
 }

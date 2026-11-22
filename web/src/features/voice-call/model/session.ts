@@ -258,7 +258,7 @@ const wire = (t: CallTransport): CallTransport => {
     notify(MIC_DENIED);
   });
   t.on("screenEnded", () => {
-    setCall({ sharing: false });
+    setCall({ sharing: false, viewers: [] });
     playSound("streamStop");
   });
   t.on("cameras", (cameras) => {
@@ -379,6 +379,17 @@ export const endCall = async (cause: EndCause): Promise<void> => {
   await transport?.disconnect();
 };
 
+/**
+ * STREAM_WATCH: someone started or stopped watching the user's screen
+ * share. The sharer hears it, as in Discord, and the tile counts them.
+ */
+export const onStreamWatch = (e: { channel_id: string; user_id: string; watching: boolean }): void => {
+  const { channelId, sharing, viewers } = getCall();
+  if (!sharing || e.channel_id !== channelId || viewers.includes(e.user_id) === e.watching) return;
+  playSound(e.watching ? "watchStart" : "watchStop");
+  setCall({ viewers: e.watching ? [...viewers, e.user_id] : viewers.filter((id) => id !== e.user_id) });
+};
+
 /** VOICE_MOVE: a moderator moved the user; follow them to `channelId` of the same server. */
 export const onVoiceMove = async (channelId: string): Promise<void> => {
   const { guildId } = getCall();
@@ -491,9 +502,21 @@ const sendFlags = async (): Promise<void> => {
 
 /** Starts or stops receiving `userId`'s screen share (only watched streams cost bandwidth). */
 export const watchStream = (userId: string, on: boolean): void => {
-  const { watching } = getCall();
-  // As in Discord, coming into a stream and leaving it each have their sound.
-  if (watching.includes(userId) !== on) playSound(on ? "watchStart" : "watchStop");
+  const { watching, channelId } = getCall();
+  // As in Discord, coming into a stream and leaving it each have their sound,
+  // and the sharer hears it too (STREAM_WATCH).
+  if (watching.includes(userId) !== on) {
+    playSound(on ? "watchStart" : "watchStop");
+    if (channelId !== null) {
+      // Only a sound and a count hang on it: a failure is not worth a word.
+      void api
+        .PUT("/channels/{channel_id}/voice/watching", {
+          params: { path: { channel_id: channelId } },
+          body: { user_id: userId, watching: on },
+        })
+        .catch(() => undefined);
+    }
+  }
   setCall({ watching: on ? [...new Set([...watching, userId])] : watching.filter((id) => id !== userId) });
   transport?.watch(userId, on);
 };
@@ -541,7 +564,7 @@ export const startScreenShare = async (): Promise<void> => {
     if (result.reason === "failed") notify(SHARE_FAILED);
     return;
   }
-  setCall({ sharing: true });
+  setCall({ sharing: true, viewers: [] });
   playSound("streamStart");
   const notice = shareNotice(result, currentBrowser(), canRestrictOwnAudio());
   if (notice !== null) notify(notice);
@@ -576,7 +599,7 @@ export const switchScreenShare = async (): Promise<void> => {
 
 export const stopScreenShare = async (): Promise<void> => {
   if (getCall().sharing) playSound("streamStop");
-  setCall({ sharing: false });
+  setCall({ sharing: false, viewers: [] });
   if (getNativeShare().source !== null) {
     await dropNativeShare();
     return;
@@ -616,7 +639,7 @@ export const shareNatively = async (source: ShareSource, choice: ShareChoice, ag
     notify(text);
     // A share that was going and could not come back has ended.
     if (again && getCall().sharing) {
-      setCall({ sharing: false });
+      setCall({ sharing: false, viewers: [] });
       playSound("streamStop");
     }
   };
@@ -650,7 +673,7 @@ export const shareNatively = async (source: ShareSource, choice: ShareChoice, ag
   }
   setNativeShare({ source, stats: null });
   if (!again) {
-    setCall({ sharing: true });
+    setCall({ sharing: true, viewers: [] });
     playSound("streamStart");
   }
   // A share that came back is tried again only after it went well for a while.
@@ -693,7 +716,7 @@ const followNativeShare = async (
     return false;
   }
   if (!getCall().sharing) return false;
-  setCall({ sharing: false });
+  setCall({ sharing: false, viewers: [] });
   playSound("streamStop");
   if (end === "sourceClosed") notify(SHARE_SOURCE_CLOSED);
   return false;
