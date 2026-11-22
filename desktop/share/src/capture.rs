@@ -168,23 +168,55 @@ impl Capture {
 /// Starts capturing `target` at up to `fps` frames per second, with the cursor
 /// and without the yellow border.
 pub fn start(target: &Target, fps: u32, out: SyncSender<Nv12Frame>, shared: Shared) -> Result<Capture> {
-    let period_us = 1_000_000 / fps.max(1) as i64;
-    let interval = MinimumUpdateIntervalSettings::Custom(Duration::from_micros(period_us as u64 / 2));
-    let flags = Flags { out, shared, period_us };
-    let control = match target {
+    match target {
         Target::Monitor(index) => {
             let monitor = Monitor::from_index(*index).with_context(|| format!("capture: no monitor {index}"))?;
-            check(monitor)?;
-            Handler::start_free_threaded(settings(monitor, interval, flags))
+            start_monitor(monitor, fps, out, shared)
         }
         Target::Window(hwnd) => {
             let window = window(*hwnd)?;
             check(window)?;
-            Handler::start_free_threaded(settings(window, interval, flags))
+            let (interval, flags) = paced(fps, out, shared);
+            let control = Handler::start_free_threaded(settings(window, interval, flags))
+                .map_err(|e| anyhow!("capture: start: {e}"))?;
+            Ok(Capture { control })
         }
     }
-    .map_err(|e| anyhow!("capture: start: {e}"))?;
+}
+
+/// Starts capturing `monitor`, as `start` does a target.
+pub fn start_monitor(monitor: Monitor, fps: u32, out: SyncSender<Nv12Frame>, shared: Shared) -> Result<Capture> {
+    check(monitor)?;
+    let (interval, flags) = paced(fps, out, shared);
+    let control =
+        Handler::start_free_threaded(settings(monitor, interval, flags)).map_err(|e| anyhow!("capture: start: {e}"))?;
     Ok(Capture { control })
+}
+
+/// The update interval and the handler's flags for `fps` frames per second.
+fn paced(fps: u32, out: SyncSender<Nv12Frame>, shared: Shared) -> (MinimumUpdateIntervalSettings, Flags) {
+    let period_us = 1_000_000 / fps.max(1) as i64;
+    let interval = MinimumUpdateIntervalSettings::Custom(Duration::from_micros(period_us as u64 / 2));
+    (interval, Flags { out, shared, period_us })
+}
+
+/// The monitor that the window `hwnd` fills exactly, as a video or a game in
+/// full screen does; none for any other size, a maximised window included.
+/// Windows stops handing such a window's frames to a window capture (it goes
+/// straight to the screen), so its monitor is captured instead meanwhile.
+pub fn filled_monitor(hwnd: isize) -> Option<Monitor> {
+    let window = window(hwnd).ok()?;
+    let monitor = window.monitor()?;
+    let rect = window.rect().ok()?;
+    let (width, height) = (rect.right - rect.left, rect.bottom - rect.top);
+    let fills =
+        u32::try_from(width).ok()? == monitor.width().ok()? && u32::try_from(height).ok()? == monitor.height().ok()?;
+    fills.then_some(monitor)
+}
+
+/// Whether the window `hwnd` still exists.
+pub fn window_exists(hwnd: isize) -> bool {
+    window(hwnd).is_ok()
 }
 
 /// Makes the capture item once, on a thread of its own, for the reason
