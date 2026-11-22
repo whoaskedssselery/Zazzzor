@@ -3,7 +3,7 @@
 [English](CONTRIBUTING.md) · **Русский**
 
 Спасибо за помощь. Здесь короткий путь от клонирования до принятого
-pull request. Сами правила собраны в [`AGENTS.ru.md`](AGENTS.ru.md), стиль
+pull request. Сами правила собраны в [`AGENTS.md`](AGENTS.md) (по-английски), стиль
 кода — в [`tools/agents/STYLE.ru.md`](tools/agents/STYLE.ru.md). Люди
 соблюдают их так же, как агенты. Задачи и pull request можно писать
 по-русски.

@@ -1,7 +1,5 @@
 # AGENTS.md
 
-[Русский](AGENTS.ru.md)
-
 Shared rules for every coding agent in this repository (Codex reads this
 file; Claude Code reads it through `CLAUDE.md`). People follow the same
 rules. Also binding: [`tools/agents/STYLE.md`](tools/agents/STYLE.md), the
