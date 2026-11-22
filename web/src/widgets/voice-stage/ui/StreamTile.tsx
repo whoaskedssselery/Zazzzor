@@ -10,7 +10,7 @@ import {
   watchStream,
 } from "@/features/voice-call";
 import { t } from "@/shared/i18n";
-import { Badge, Button, cn, IconButton } from "@/shared/ui";
+import { Avatar, Badge, Button, cn, IconButton, Tooltip } from "@/shared/ui";
 
 /**
  * A video framed to its own shape, as large as its tile allows: the frame,
@@ -102,24 +102,46 @@ const FullscreenButton = ({ target }: { target: RefObject<HTMLElement | null> })
   );
 };
 
+/** A person's name and picture, by their ID (the stage knows the members). */
+export type PersonOf = (userId: string) => { name: string; avatarUrl: string | null };
+
+/** At most this many viewers' pictures; the count says the rest. */
+const VIEWER_FACES = 3;
+
 /**
- * «В эфире» on the user's own share, with how many watch it (STREAM_WATCH),
- * as Discord shows them.
+ * «В эфире» on the user's own share, with who watches it (STREAM_WATCH):
+ * their pictures and how many, their names on hover, as Discord shows them.
  */
-const OwnLive = () => {
-  const viewers = useCall((s) => s.viewers.length);
+const OwnLive = ({ person }: { person: PersonOf }) => {
+  const viewers = useCall((s) => s.viewers);
+  const people = viewers.map(person);
+  const names = people.map((p) => p.name).join(", ");
   return (
-    <div className="absolute top-2 left-2 flex items-center gap-1.5">
+    <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5">
       <Badge variant="live">{t("shell:live")}</Badge>
-      {viewers > 0 && (
-        <span
-          role="status"
-          aria-label={t("voice:stage.viewers", { count: viewers })}
-          className="flex h-5 items-center gap-1 rounded-sm bg-control px-1.5 text-xs font-medium text-fg tabular-nums"
-        >
-          <Eye aria-hidden className="size-3.5" />
-          {viewers}
-        </span>
+      {viewers.length > 0 && (
+        <Tooltip content={names} side="bottom">
+          <span
+            role="status"
+            data-controls
+            aria-label={`${t("voice:stage.viewers", { count: viewers.length })}: ${names}`}
+            className="flex h-6 items-center gap-1.5 rounded-sm bg-control px-1.5 text-xs font-medium text-fg tabular-nums"
+          >
+            <Eye aria-hidden className="size-3.5" />
+            {viewers.length}
+            <span aria-hidden className="flex -space-x-1.5">
+              {people.slice(0, VIEWER_FACES).map((p, i) => (
+                <Avatar
+                  key={viewers[i]}
+                  name={p.name}
+                  src={p.avatarUrl}
+                  size={20}
+                  className="rounded-full ring-2 ring-(--bg-control)"
+                />
+              ))}
+            </span>
+          </span>
+        </Tooltip>
       )}
     </div>
   );
@@ -129,7 +151,7 @@ const OwnLive = () => {
  * The desktop app's share of the user, which the page has no picture of:
  * what is shared and how it goes, from the app's figures.
  */
-const NativeOwnStream = ({ compact }: { compact: boolean }) => {
+const NativeOwnStream = ({ compact, person }: { compact: boolean; person: PersonOf }) => {
   const source = useNativeShare((s) => s.source);
   const stats = useNativeShare((s) => s.stats);
   if (!source) return null;
@@ -147,7 +169,7 @@ const NativeOwnStream = ({ compact }: { compact: boolean }) => {
       aria-label={t("voice:stage.yourShare")}
       className="relative flex size-full min-w-0 flex-col items-center justify-center gap-3 rounded-lg bg-panel p-4 text-center"
     >
-      <OwnLive />
+      <OwnLive person={person} />
       <Icon aria-hidden className="size-10 text-fg-muted" strokeWidth={1.5} />
       <div className="min-w-0 max-w-full">
         <p className="truncate font-medium">{source.name}</p>
@@ -181,12 +203,16 @@ const NativeOwnStream = ({ compact }: { compact: boolean }) => {
 };
 
 /** The user's own screen share as the others see it: a local preview, so it costs no bandwidth. */
-export const OwnStreamTile = ({ compact = false }: { compact?: boolean }) => {
+export const OwnStreamTile = ({ compact = false, person }: { compact?: boolean; person: PersonOf }) => {
   const native = useNativeShare((s) => s.source !== null);
-  return native ? <NativeOwnStream compact={compact} /> : <BrowserOwnStream compact={compact} />;
+  return native ? (
+    <NativeOwnStream compact={compact} person={person} />
+  ) : (
+    <BrowserOwnStream compact={compact} person={person} />
+  );
 };
 
-const BrowserOwnStream = ({ compact }: { compact: boolean }) => {
+const BrowserOwnStream = ({ compact, person }: { compact: boolean; person: PersonOf }) => {
   const tile = useRef<HTMLElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   useEffect(() => {
@@ -201,7 +227,7 @@ const BrowserOwnStream = ({ compact }: { compact: boolean }) => {
       className="group relative flex size-full min-w-0 [&:fullscreen]:pointer-events-auto"
     >
       <VideoFrame video={video}>
-        <OwnLive />
+        <OwnLive person={person} />
         <div data-controls className={cn(CORNER, compact && "hidden")}>
           <IconButton
             icon={ArrowLeftRight}
